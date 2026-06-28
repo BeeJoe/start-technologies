@@ -98,19 +98,29 @@ interface JobEditor {
           </div>
         </div>
         @for (jobId of review.affectedJobs; track jobId) {
-          <label class="check-row">
-            <input
-              tuiCheckbox
-              type="checkbox"
+          <label>
+            <span>{{ jobName(jobId) }}</span>
+            <select
               [ngModel]="reviewDecision(review.packageId, jobId)"
               (ngModelChange)="
                 setReviewDecision(review.packageId, jobId, $event)
               "
-            />
-            {{ jobName(jobId) }} — {{ 'Add to this job' | i18n }}
+              [ngModelOptions]="{ standalone: true }"
+            >
+              <option [ngValue]="null" disabled>
+                {{ 'Choose action' | i18n }}
+              </option>
+              <option [ngValue]="true">{{ 'Add to this job' | i18n }}</option>
+              <option [ngValue]="false">{{ 'Skip this job' | i18n }}</option>
+            </select>
           </label>
         }
-        <button tuiButton size="s" (click)="resolveReview(review)">
+        <button
+          tuiButton
+          size="s"
+          [disabled]="!reviewComplete(review)"
+          (click)="resolveReview(review)"
+        >
           {{ 'Resolve review' | i18n }}
         </button>
       </article>
@@ -754,7 +764,7 @@ interface JobEditor {
                     {{ 'Retention' | i18n }}
                   </button>
                 }
-                @if (history.archived && history.snapshots.length) {
+                @if (archivedSnapshots(history).length) {
                   <button
                     tuiButton
                     size="xs"
@@ -782,6 +792,9 @@ interface JobEditor {
                       {{ 'Scheduled' | i18n }} · {{ snapshot.jobName }} ·
                       {{ snapshot.completedAt | date: 'medium' }} ·
                       {{ bytes(snapshot.logicalSize) }}
+                      @if (snapshot.archived) {
+                        · {{ 'Archived' | i18n }}
+                      }
                     </button>
                   }
                 </td>
@@ -1068,7 +1081,10 @@ export class ScheduledBackupsComponent implements OnInit {
   waitForSchedule = false
   confirmPrune = false
 
-  private readonly reviewDecisions = new Map<string, Record<string, boolean>>()
+  private readonly reviewDecisions = new Map<
+    string,
+    Record<string, boolean | null>
+  >()
 
   readonly targets = computed(() => [
     ...this.backupService.cifs().map(target => ({
@@ -1122,7 +1138,7 @@ export class ScheduledBackupsComponent implements OnInit {
       for (const review of reviews) {
         this.reviewDecisions.set(
           review.packageId,
-          Object.fromEntries(review.affectedJobs.map(id => [id, false])),
+          Object.fromEntries(review.affectedJobs.map(id => [id, null])),
         )
       }
     } catch (error: any) {
@@ -1389,8 +1405,8 @@ export class ScheduledBackupsComponent implements OnInit {
     this.reassigning.set(null)
   }
 
-  reviewDecision(packageId: string, jobId: string): boolean {
-    return !!this.reviewDecisions.get(packageId)?.[jobId]
+  reviewDecision(packageId: string, jobId: string): boolean | null {
+    return this.reviewDecisions.get(packageId)?.[jobId] ?? null
   }
 
   setReviewDecision(packageId: string, jobId: string, value: boolean) {
@@ -1399,11 +1415,22 @@ export class ScheduledBackupsComponent implements OnInit {
     this.reviewDecisions.set(packageId, decisions)
   }
 
+  reviewComplete(review: T.NewServiceBackupReview): boolean {
+    const decisions = this.reviewDecisions.get(review.packageId)
+    return review.affectedJobs.every(jobId => decisions?.[jobId] != null)
+  }
+
   async resolveReview(review: T.NewServiceBackupReview) {
+    if (!this.reviewComplete(review)) return
+    const decisions = Object.fromEntries(
+      Object.entries(this.reviewDecisions.get(review.packageId) || {}).map(
+        ([jobId, decision]) => [jobId, decision === true],
+      ),
+    )
     await this.perform('Saving', () =>
       this.api.resolveNewServiceBackupReview({
         packageId: review.packageId,
-        decisions: this.reviewDecisions.get(review.packageId) || {},
+        decisions,
       }),
     )
   }
@@ -1465,7 +1492,9 @@ export class ScheduledBackupsComponent implements OnInit {
       this.api.deleteArchivedBackupSnapshots({
         targetId: history.targetId,
         packageId: history.packageId,
-        snapshotIds: history.snapshots.map(snapshot => snapshot.id),
+        snapshotIds: this.archivedSnapshots(history).map(
+          snapshot => snapshot.id,
+        ),
       }),
     )
   }
@@ -1614,7 +1643,9 @@ export class ScheduledBackupsComponent implements OnInit {
   }
 
   stagingBytes(history: T.ServiceTargetHistory): number | null {
-    const latest = this.newestFirst(history.snapshots)[0]
+    const latest = this.newestFirst(
+      history.snapshots.filter(snapshot => !snapshot.archived),
+    )[0]
     return latest
       ? Math.ceil((latest.physicalSize ?? latest.logicalSize) * 1.1)
       : null
@@ -1640,6 +1671,10 @@ export class ScheduledBackupsComponent implements OnInit {
     return [...snapshots].sort((a, b) =>
       b.completedAt.localeCompare(a.completedAt),
     )
+  }
+
+  archivedSnapshots(history: T.ServiceTargetHistory): T.ServiceSnapshot[] {
+    return history.snapshots.filter(snapshot => snapshot.archived)
   }
 
   private policy(tiers: TierEditor[]): T.RetentionPolicy {

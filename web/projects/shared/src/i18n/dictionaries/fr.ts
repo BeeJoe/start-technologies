@@ -888,4 +888,6 @@ export default {
   980: 'Cette tâche est la dernière référence à ces points. Conserver l’archive est le choix sûr par défaut.',
   981: 'Supprimer les points',
   982: 'Conserver l’archive',
+  983: 'Choisir une action',
+  984: 'Ignorer cette tâche',
 } satisfies i18n

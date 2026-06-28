@@ -113,14 +113,43 @@ pub(crate) fn create_review_for_new_service(
     db: &mut crate::db::model::DatabaseModel,
     package_id: &PackageId,
 ) -> Result<(), Error> {
-    let affected_jobs: BTreeSet<BackupJobId> = db
+    let mut jobs = db
         .as_public()
         .as_scheduled_backups()
         .as_jobs()
         .as_entries()?
         .into_iter()
         .map(|(_, job)| job.de())
-        .collect::<Result<Vec<BackupJob>, Error>>()?
+        .collect::<Result<Vec<BackupJob>, Error>>()?;
+    jobs.sort_by_key(|job| job.created_at);
+
+    let package_ids = BTreeSet::from([package_id.clone()]);
+    let configured_jobs: Vec<_> = jobs
+        .iter()
+        .filter(|job| match &job.services {
+            BackupServiceScope::All => true,
+            BackupServiceScope::Selected { package_ids } => package_ids.contains(package_id),
+        })
+        .cloned()
+        .collect();
+    for job in &configured_jobs {
+        super::rpc::associate_histories(db, job, &package_ids)?;
+    }
+    for job in &configured_jobs {
+        super::rpc::validate_new_job_coverage(
+            db,
+            &job.target_id,
+            &package_ids,
+            &job.schedule,
+            &job.default_retention,
+            &job.retention_overrides,
+            Some(&job.id),
+            job.enabled && job.pause.is_none(),
+        )?;
+        super::rpc::refresh_archive_state(db, &job.target_id)?;
+    }
+
+    let affected_jobs: BTreeSet<BackupJobId> = jobs
         .into_iter()
         .filter_map(|job| match job.services {
             BackupServiceScope::Selected { package_ids } if !package_ids.contains(package_id) => {

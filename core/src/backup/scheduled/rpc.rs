@@ -9,8 +9,8 @@ use ts_rs::TS;
 use super::{
     BackupJob, BackupJobId, BackupJobPause, BackupJobStatus, BackupRun, BackupRunTrigger,
     BackupServiceScope, RetentionPolicy, RetentionPolicyChangePreview, Schedule,
-    ScheduledBackupCredential, ScheduledBackupMountGuard, ServiceSnapshotId, ServiceTargetHistory,
-    run_job, validate_combined_schedule_coverage,
+    ScheduledBackupCredential, ScheduledBackupMountGuard, ServiceSnapshot, ServiceSnapshotId,
+    ServiceTargetHistory, run_job, validate_combined_schedule_coverage,
 };
 use crate::auth::PasswordType;
 use crate::backup::target::BackupTargetId;
@@ -130,13 +130,23 @@ pub async fn estimate_capacity(
         let maximum_projected_snapshot_count = policy.maximum_projected_snapshot_count()?;
         let active = history
             .as_ref()
-            .filter(|history| !history.archived)
-            .map(|history| history.snapshots.as_slice())
+            .map(|history| {
+                history
+                    .snapshots
+                    .iter()
+                    .filter(|snapshot| !snapshot.archived)
+                    .collect::<Vec<_>>()
+            })
             .unwrap_or_default();
         let archived = history
             .as_ref()
-            .filter(|history| history.archived)
-            .map(|history| history.snapshots.as_slice())
+            .map(|history| {
+                history
+                    .snapshots
+                    .iter()
+                    .filter(|snapshot| snapshot.archived)
+                    .collect::<Vec<_>>()
+            })
             .unwrap_or_default();
         let scheduled_retained_bytes = active
             .iter()
@@ -293,7 +303,13 @@ pub async fn delete_archived_snapshots(
         .as_idx(&key)
         .or_not_found(&key)?
         .de()?;
-    if !history.archived {
+    let archived_ids: BTreeSet<_> = history
+        .snapshots
+        .iter()
+        .filter(|snapshot| snapshot.archived)
+        .map(|snapshot| snapshot.id.clone())
+        .collect();
+    if !snapshot_ids.is_subset(&archived_ids) {
         return Err(Error::new(
             eyre!("{}", t!("backup.scheduled.delete-active-history")),
             ErrorKind::InvalidRequest,
@@ -315,9 +331,6 @@ pub async fn delete_archived_snapshots(
         &encryption_key,
     )
     .await?;
-    guard
-        .sync_archive_states(&BTreeMap::from([(package_id.clone(), true)]))
-        .await?;
     history.snapshots = guard
         .delete_archived_snapshots(&package_id, &snapshot_ids)
         .await?;
@@ -1172,7 +1185,10 @@ fn disassociate_histories(
     Ok(())
 }
 
-fn refresh_archive_state(db: &mut DatabaseModel, target_id: &BackupTargetId) -> Result<(), Error> {
+pub(crate) fn refresh_archive_state(
+    db: &mut DatabaseModel,
+    target_id: &BackupTargetId,
+) -> Result<(), Error> {
     let jobs: Vec<BackupJob> = db
         .as_public()
         .as_scheduled_backups()
@@ -1195,7 +1211,15 @@ fn refresh_archive_state(db: &mut DatabaseModel, target_id: &BackupTargetId) -> 
             jobs.iter()
                 .any(|job| &job.id == job_id && job.enabled && job.pause.is_none())
         });
-        history.as_archived_mut().ser(&!active)?;
+        let archived = !active;
+        history.as_archived_mut().ser(&archived)?;
+        if archived {
+            let mut snapshots: Vec<ServiceSnapshot> = history.as_snapshots().de()?;
+            for snapshot in &mut snapshots {
+                snapshot.archived = true;
+            }
+            history.as_snapshots_mut().ser(&snapshots)?;
+        }
     }
     Ok(())
 }
@@ -1206,7 +1230,7 @@ pub fn history_key(target_id: &BackupTargetId, package_id: &PackageId) -> String
 
 async fn sync_archive_states(ctx: &RpcContext, target_id: &BackupTargetId) -> Result<(), Error> {
     let db = ctx.db.peek().await;
-    let archived: BTreeMap<PackageId, bool> = db
+    let archived: BTreeMap<PackageId, (bool, BTreeSet<ServiceSnapshotId>)> = db
         .as_public()
         .as_scheduled_backups()
         .as_histories()
@@ -1216,7 +1240,18 @@ async fn sync_archive_states(ctx: &RpcContext, target_id: &BackupTargetId) -> Re
         .collect::<Result<Vec<ServiceTargetHistory>, Error>>()?
         .into_iter()
         .filter(|history| history.target_id == *target_id)
-        .map(|history| (history.package_id, history.archived))
+        .map(|history| {
+            let archived_snapshots = history
+                .snapshots
+                .iter()
+                .filter(|snapshot| snapshot.archived)
+                .map(|snapshot| snapshot.id.clone())
+                .collect();
+            (
+                history.package_id,
+                (history.archived, archived_snapshots),
+            )
+        })
         .collect();
     if archived.is_empty() {
         return Ok(());

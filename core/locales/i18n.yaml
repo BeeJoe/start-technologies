@@ -1577,11 +1577,11 @@ backup.scheduled.retry-before-resume:
   pl_PL: "Przed wznowieniem zadania zweryfikuj cel za pomocą opcji Ponów próbę"
 
 backup.scheduled.delete-active-history:
-  en_US: "Active scheduled backup history cannot be deleted"
-  de_DE: "Aktiver geplanter Sicherungsverlauf kann nicht gelöscht werden"
-  es_ES: "No se puede eliminar un historial de copia programada activo"
-  fr_FR: "L'historique de sauvegarde planifiée actif ne peut pas être supprimé"
-  pl_PL: "Nie można usunąć aktywnej historii zaplanowanych kopii"
+  en_US: "Only archived scheduled checkpoints can be deleted"
+  de_DE: "Nur archivierte geplante Prüfpunkte können gelöscht werden"
+  es_ES: "Solo se pueden eliminar puntos programados archivados"
+  fr_FR: "Seuls les points planifiés archivés peuvent être supprimés"
+  pl_PL: "Można usuwać tylko zarchiwizowane zaplanowane punkty"
 
 backup.scheduled.schedule-invalid-cursor:
   en_US: "Invalid scheduled backup cursor"

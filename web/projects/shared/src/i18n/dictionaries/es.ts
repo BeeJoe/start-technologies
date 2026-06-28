@@ -888,4 +888,6 @@ export default {
   980: 'Este trabajo es la última referencia a estos puntos. Conservar el archivo es la opción predeterminada segura.',
   981: 'Eliminar puntos',
   982: 'Conservar archivo',
+  983: 'Elegir acción',
+  984: 'Omitir este trabajo',
 } satisfies i18n

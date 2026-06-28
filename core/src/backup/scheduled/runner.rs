@@ -150,7 +150,15 @@ async fn run_job_inner(
         }
     };
     mark_target_connected(ctx, &job.target_id).await?;
-    let target_available = crate::disk::util::get_available(scheduled_guard.path()).await?;
+    let target_available = match crate::disk::util::get_available(scheduled_guard.path()).await {
+        Ok(available) => available,
+        Err(error) => {
+            let message = error.to_string();
+            record_connectivity_failure(ctx, &job).await?;
+            record_failed_run(ctx, &job, &package_ids, trigger, message).await?;
+            return Err(error);
+        }
+    };
     if let Err(error) =
         preflight_capacity(&db, &job, &package_ids, &scheduled_guard, target_available).await
     {
@@ -328,6 +336,15 @@ async fn run_job_inner(
                     }
                 },
                 Err(error) => {
+                    delete_dir(
+                        &scheduled_guard
+                            .path()
+                            .join("staging")
+                            .join(run.id.as_ref())
+                            .join(&**package_id),
+                    )
+                    .await
+                    .log_err();
                     phase.complete();
                     failed_report(started, error)
                 }
@@ -360,6 +377,15 @@ async fn run_job_inner(
         BackupRunState::PartiallyFailed
     };
     run.completed_at = Some(Utc::now());
+
+    delete_dir(
+        &scheduled_guard
+            .path()
+            .join("staging")
+            .join(run.id.as_ref()),
+    )
+    .await
+    .log_err();
 
     let owned = Arc::try_unwrap(scheduled_guard).map_err(|_| {
         Error::new(

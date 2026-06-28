@@ -777,7 +777,10 @@ export class Backups<M extends T.SDKManifest> implements InitScript {
     tracker.complete()
     await tracker.sync()
     return {
-      changedBytes: this.customBackupBehavior ? null : changedBytes,
+      changedBytes:
+        this.customBackupBehavior || !Number.isSafeInteger(changedBytes)
+          ? null
+          : changedBytes,
     }
   }
 

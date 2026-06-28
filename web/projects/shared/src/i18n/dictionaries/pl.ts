@@ -888,4 +888,6 @@ export default {
   980: 'To zadanie jest ostatnim odwołaniem do tych punktów. Zachowanie archiwum jest bezpiecznym wyborem domyślnym.',
   981: 'Usuń punkty',
   982: 'Zachowaj archiwum',
+  983: 'Wybierz działanie',
+  984: 'Pomiń to zadanie',
 } satisfies i18n

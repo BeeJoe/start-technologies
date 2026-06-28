@@ -889,4 +889,6 @@ export const ENGLISH: Record<string, number> = {
   'This job is the last reference to these checkpoints. Keeping the archive is the safe default.': 980,
   'Delete checkpoints': 981,
   'Keep archive': 982,
+  'Choose action': 983,
+  'Skip this job': 984,
 }

@@ -318,6 +318,9 @@ impl<G: GenericMountGuard> ScheduledBackupMountGuard<G> {
                 )
             })?;
 
+        self.recovery.timestamp = snapshot.completed_at;
+        self.recovery.version = crate::version::Current::default().semver();
+
         let history = self
             .metadata
             .services
@@ -409,15 +412,10 @@ impl<G: GenericMountGuard> ScheduledBackupMountGuard<G> {
             .services
             .get(package_id)
             .or_not_found(package_id)?;
-        if !history.archived {
-            return Err(Error::new(
-                eyre!("{}", t!("backup.scheduled.delete-active-history")),
-                ErrorKind::InvalidRequest,
-            ));
-        }
         let existing: std::collections::BTreeSet<_> = history
             .snapshots
             .iter()
+            .filter(|snapshot| snapshot.archived)
             .map(|snapshot| snapshot.id.clone())
             .collect();
         if !snapshot_ids.is_subset(&existing) {
@@ -445,13 +443,18 @@ impl<G: GenericMountGuard> ScheduledBackupMountGuard<G> {
 
     pub async fn sync_archive_states(
         &mut self,
-        archived: &BTreeMap<PackageId, bool>,
+        archived: &BTreeMap<
+            PackageId,
+            (bool, std::collections::BTreeSet<ServiceSnapshotId>),
+        >,
     ) -> Result<(), Error> {
-        for (package_id, archived) in archived {
+        for (package_id, (history_archived, archived_snapshots)) in archived {
             if let Some(history) = self.metadata.services.get_mut(package_id) {
-                history.archived = *archived;
+                set_archive_state(history, *history_archived);
                 for snapshot in &mut history.snapshots {
-                    snapshot.archived = *archived;
+                    if archived_snapshots.contains(&snapshot.id) {
+                        snapshot.archived = true;
+                    }
                 }
             }
         }
@@ -561,6 +564,15 @@ fn scheduled_root(target_path: &Path, server_id: &str) -> PathBuf {
         .join(format!("{server_id}.automatic"))
 }
 
+fn set_archive_state(history: &mut OnTargetServiceHistory, archived: bool) {
+    history.archived = archived;
+    if archived {
+        for snapshot in &mut history.snapshots {
+            snapshot.archived = true;
+        }
+    }
+}
+
 async fn read_json<T: serde::de::DeserializeOwned>(path: &Path) -> Result<T, Error> {
     IoFormat::Json.from_slice(
         &tokio::fs::read(path)
@@ -581,6 +593,7 @@ async fn write_json(path: &Path, value: &impl Serialize) -> Result<(), Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::backup::scheduled::BackupSource;
 
     #[test]
     fn scheduled_root_is_separate_from_the_manual_backup_set() {
@@ -592,5 +605,38 @@ mod tests {
             target.join(BACKUP_DIR_NAME).join("server-id.automatic")
         );
         assert_ne!(scheduled, manual);
+    }
+
+    #[test]
+    fn reactivating_history_does_not_unarchive_old_snapshots() {
+        let now = Utc::now();
+        let mut history = OnTargetServiceHistory {
+            timezone: "UTC".into(),
+            policy: RetentionPolicy::latest_only(),
+            archived: true,
+            snapshots: vec![ServiceSnapshot {
+                id: ServiceSnapshotId::new(),
+                package_id: "test-service".parse().unwrap(),
+                package_version: "1.0.0".into(),
+                source: BackupSource::Scheduled,
+                job_id: Guid::new(),
+                job_name: "Nightly".into(),
+                run_id: Guid::new(),
+                completed_at: now,
+                logical_size: 1,
+                physical_size: None,
+                changed_bytes: None,
+                measured_at: now,
+                archived: true,
+            }],
+        };
+
+        set_archive_state(&mut history, false);
+        assert!(!history.archived);
+        assert!(history.snapshots[0].archived);
+
+        history.snapshots[0].archived = false;
+        set_archive_state(&mut history, true);
+        assert!(history.snapshots[0].archived);
     }
 }

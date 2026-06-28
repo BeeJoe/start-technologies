@@ -285,6 +285,7 @@ async fn perform_backup(
             let package_path = package_guard.path().to_owned();
             let backup_result = service.backup(package_guard, phase).await;
             let duration_ms = started.elapsed().as_millis() as u64;
+            let measured_at = backup_result.as_ref().ok().map(|_| Utc::now());
             if backup_result.is_ok() {
                 let manifest = db
                     .as_public()
@@ -317,7 +318,7 @@ async fn perform_backup(
                     },
                     physical_size: None,
                     changed_bytes: backup_result.ok().and_then(|result| result.changed_bytes),
-                    measured_at: Some(Utc::now()),
+                    measured_at,
                 },
             );
         } else {

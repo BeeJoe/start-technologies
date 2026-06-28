@@ -888,4 +888,6 @@ export default {
   980: 'Dieser Auftrag ist die letzte Referenz auf diese Prüfpunkte. Das Beibehalten des Archivs ist die sichere Standardeinstellung.',
   981: 'Prüfpunkte löschen',
   982: 'Archiv behalten',
+  983: 'Aktion auswählen',
+  984: 'Diesen Auftrag überspringen',
 } satisfies i18n
