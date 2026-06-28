@@ -89,11 +89,31 @@ export class BackupRestoreComponent {
     const params = { targetId: this.target.id, serverId, password }
 
     try {
-      const backupInfo = await this.api.getBackupInfo(params)
+      const [backupInfo, scheduledHistories] = await Promise.all([
+        this.api.getBackupInfo(params).catch(() => ({
+          version: '',
+          timestamp: null,
+          packageBackups: {},
+        })),
+        this.api
+          .discoverScheduledBackupHistories({
+            targetId: this.target.id,
+            serverId,
+            password,
+          })
+          .catch(() => []),
+      ])
+      if (
+        !Object.keys(backupInfo.packageBackups).length &&
+        !scheduledHistories.length
+      ) {
+        throw new Error('No restorable checkpoints were found')
+      }
       const data = {
         targetId: this.target.id,
         serverId,
         backupInfo,
+        scheduledHistories,
         password,
       }
 

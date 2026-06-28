@@ -23,6 +23,7 @@ import { BackupNetworkComponent } from './network.component'
 import { BackupPhysicalComponent } from './physical.component'
 import { BackupProgressComponent } from './progress.component'
 import { BACKUP_RESTORE } from './restore.component'
+import { ScheduledBackupsComponent } from './scheduled.component'
 
 @Component({
   template: `
@@ -100,6 +101,7 @@ import { BACKUP_RESTORE } from './restore.component'
           [style.height.rem]="20"
         />
       } @else {
+        <section scheduledBackups [mode]="type"></section>
         <section (networkFolders)="onTarget($event)"></section>
         <section (physicalFolders)="onTarget($event)"></section>
       }
@@ -124,6 +126,7 @@ import { BACKUP_RESTORE } from './restore.component'
     BackupNetworkComponent,
     BackupPhysicalComponent,
     BackupProgressComponent,
+    ScheduledBackupsComponent,
     i18nPipe,
     DocsLinkDirective,
   ],

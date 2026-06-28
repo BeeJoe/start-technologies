@@ -30,13 +30,25 @@ import { RecoverData, RecoverOption } from './backup.types'
           <label tuiBlock>
             <span tuiTitle>
               <strong>{{ option.title }}</strong>
-              <span tuiSubtitle>
-                {{ 'Version' | i18n }} {{ option.version }}
-              </span>
-              <span tuiSubtitle>
-                {{ 'Backup made' | i18n }}:
-                {{ option.timestamp | date: 'medium' }}
-              </span>
+              <select
+                class="checkpoint"
+                [disabled]="option.installed || option.newerOs"
+                [(ngModel)]="option.selectedKey"
+              >
+                @for (checkpoint of option.checkpoints; track checkpoint.key) {
+                  <option [value]="checkpoint.key">
+                    {{
+                      (checkpoint.source === 'manual' ? 'Manual' : 'Scheduled')
+                        | i18n
+                    }}
+                    @if (checkpoint.jobName) {
+                      — {{ checkpoint.jobName }}
+                    }
+                    — {{ checkpoint.timestamp | date: 'medium' }} —
+                    {{ checkpoint.version }}
+                  </option>
+                }
+              </select>
               @if (option | tuiMapper: toMessage; as message) {
                 <span [style.color]="message.color">
                   {{ message.text | i18n }}
@@ -69,6 +81,16 @@ import { RecoverData, RecoverOption } from './backup.types'
       width: 100%;
       margin: 1.5rem 0 0;
     }
+
+    .checkpoint {
+      width: 100%;
+      margin-top: 0.5rem;
+      padding: 0.5rem;
+      color: var(--tui-text-primary);
+      background: var(--tui-background-base);
+      border: 1px solid var(--tui-border-normal);
+      border-radius: 0.5rem;
+    }
   `,
   imports: [
     CommonModule,
@@ -98,18 +120,60 @@ export class BackupsRecoverComponent {
         take(1),
         map(packageData => {
           const backups = this.context.data.backupInfo.packageBackups
+          const scheduled = this.context.data.scheduledHistories
+          const ids = new Set([
+            ...Object.keys(backups),
+            ...scheduled.map(history => history.packageId),
+          ])
 
-          return Object.keys(backups)
-            .map(id => ({
-              ...backups[id]!,
-              id,
-              installed: !!packageData[id],
-              checked: false,
-              newerOs:
-                Version.parse(backups[id]?.osVersion || '').compare(
-                  Version.parse(this.config.version),
-                ) === 'greater',
-            }))
+          return [...ids]
+            .map(id => {
+              const manual = backups[id]
+              const scheduledCheckpoints = scheduled
+                .filter(history => history.packageId === id)
+                .flatMap(history => history.snapshots)
+                .map(snapshot => ({
+                  key: `scheduled:${snapshot.id}`,
+                  source: 'scheduled' as const,
+                  version: snapshot.packageVersion,
+                  timestamp: snapshot.completedAt,
+                  jobName: snapshot.jobName,
+                  snapshotId: snapshot.id,
+                }))
+              const checkpoints = [
+                ...(manual
+                  ? [
+                      {
+                        key: 'manual',
+                        source: 'manual' as const,
+                        version: manual.version,
+                        timestamp: manual.timestamp,
+                      },
+                    ]
+                  : []),
+                ...scheduledCheckpoints,
+              ].sort((a, b) => b.timestamp.localeCompare(a.timestamp))
+              const state = packageData[id]?.stateInfo
+              const title =
+                manual?.title ||
+                (state?.state === 'installed' || state?.state === 'removing'
+                  ? state.manifest.title
+                  : state?.installingInfo.newManifest.title) ||
+                id
+              return {
+                id,
+                title,
+                installed: !!packageData[id],
+                checked: false,
+                selectedKey: checkpoints[0]?.key || '',
+                checkpoints,
+                newerOs:
+                  !!manual &&
+                  Version.parse(manual.osVersion || '').compare(
+                    Version.parse(this.config.version),
+                  ) === 'greater',
+              }
+            })
             .sort((a, b) =>
               b.title.toLowerCase() > a.title.toLowerCase() ? -1 : 1,
             )
@@ -147,13 +211,36 @@ export class BackupsRecoverComponent {
   }
 
   async restore(options: RecoverOption[]): Promise<void> {
-    const ids = options.filter(({ checked }) => !!checked).map(({ id }) => id)
+    const selected = options.filter(({ checked }) => !!checked)
+    const ids = selected
+      .filter(option => option.selectedKey === 'manual')
+      .map(({ id }) => id)
+    const snapshots = Object.fromEntries(
+      selected.flatMap(option => {
+        const checkpoint = option.checkpoints.find(
+          checkpoint => checkpoint.key === option.selectedKey,
+        )
+        return checkpoint?.source === 'scheduled' && checkpoint.snapshotId
+          ? [[option.id, checkpoint.snapshotId]]
+          : []
+      }),
+    )
     const { targetId, serverId, password } = this.context.data
     const params = { ids, targetId, password, serverId }
     const loader = this.loader.open('Initializing').subscribe()
 
     try {
-      await this.api.restorePackages(params)
+      await Promise.all([
+        ids.length ? this.api.restorePackages(params) : Promise.resolve(null),
+        Object.keys(snapshots).length
+          ? this.api.restoreScheduledBackup({
+              targetId,
+              snapshots,
+              serverId,
+              password,
+            })
+          : Promise.resolve(null),
+      ])
 
       this.context.$implicit.complete()
       this.router.navigate(['services'])

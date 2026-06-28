@@ -100,6 +100,7 @@ const INIT_PROGRESS: T.FullProgress = {
 export class MockApiService extends ApiService {
   readonly mockWsSource$ = new Subject<Revision>()
   private readonly revertTime = 1800
+  private scheduledBackupJobs: T.BackupJob[] = []
   sequence = 0
 
   constructor(private readonly auth: AuthService) {
@@ -1001,6 +1002,173 @@ export class MockApiService extends ApiService {
 
     this.mockRevision(originalPatch)
 
+    return null
+  }
+
+  async getScheduledBackupJobs(params: {}): Promise<T.BackupJob[]> {
+    return structuredClone(this.scheduledBackupJobs)
+  }
+
+  async createScheduledBackupJob(
+    params: T.CreateBackupJobParams,
+  ): Promise<T.BackupJob> {
+    const now = new Date().toISOString()
+    const job: T.BackupJob = {
+      ...params,
+      id: crypto.randomUUID(),
+      enabled: params.enabled ?? true,
+      pause: null,
+      targetInstanceId: crypto.randomUUID(),
+      status: {
+        lastScheduledAt: null,
+        lastAttemptedAt: null,
+        lastSucceededAt: null,
+        nextRunAt: now,
+        consecutiveFailures: 0,
+        lastResult: null,
+      },
+      createdAt: now,
+      updatedAt: now,
+    }
+    this.scheduledBackupJobs.push(job)
+    return structuredClone(job)
+  }
+
+  async updateScheduledBackupJob(
+    params: T.UpdateBackupJobParams,
+  ): Promise<T.BackupJob> {
+    const index = this.scheduledBackupJobs.findIndex(
+      job => job.id === params.id,
+    )
+    const job = {
+      ...this.scheduledBackupJobs[index]!,
+      ...params,
+      updatedAt: new Date().toISOString(),
+    }
+    this.scheduledBackupJobs[index] = job
+    return structuredClone(job)
+  }
+
+  async setScheduledBackupJobEnabled(
+    params: T.SetBackupJobEnabledParams,
+  ): Promise<T.BackupJob> {
+    const job = this.scheduledBackupJobs.find(job => job.id === params.id)!
+    job.enabled = params.enabled
+    job.pause = params.enabled ? null : { reason: 'user' }
+    return structuredClone(job)
+  }
+
+  async deleteScheduledBackupJob(
+    params: T.DeleteBackupJobParams,
+  ): Promise<null> {
+    this.scheduledBackupJobs = this.scheduledBackupJobs.filter(
+      job => job.id !== params.id,
+    )
+    return null
+  }
+
+  async runScheduledBackupJob(
+    params: T.RunBackupJobNowParams,
+  ): Promise<T.BackupRun> {
+    const job = this.scheduledBackupJobs.find(job => job.id === params.id)!
+    const now = new Date().toISOString()
+    return {
+      id: crypto.randomUUID(),
+      jobId: job.id,
+      jobName: job.name,
+      targetId: job.targetId,
+      trigger: 'runNow',
+      state: 'succeeded',
+      startedAt: now,
+      completedAt: now,
+      intendedServices:
+        job.services.type === 'selected' ? job.services.packageIds : [],
+      services: {},
+      error: null,
+    }
+  }
+
+  async getScheduledBackupHistories(params: {}): Promise<
+    T.ServiceTargetHistory[]
+  > {
+    return []
+  }
+
+  async discoverScheduledBackupHistories(
+    params: T.DiscoverScheduledBackupsParams,
+  ): Promise<T.ServiceTargetHistory[]> {
+    return []
+  }
+
+  async estimateScheduledBackupCapacity(
+    params: T.EstimateBackupCapacityParams,
+  ): Promise<T.BackupServiceCapacityEstimate[]> {
+    const packageIds =
+      params.services.type === 'selected' ? params.services.packageIds : []
+    return packageIds.map(packageId => ({
+      packageId,
+      liveLogicalBytes: 1024 * 1024 * 100,
+      retainedSnapshotCount: 0,
+      maximumProjectedSnapshotCount: 1,
+      scheduledRetainedBytes: 0,
+      manualCheckpointBytes: null,
+      archivedBytes: 0,
+      stagingHeadroomBytes: 1024 * 1024 * 110,
+      lastChangedBytes: null,
+      conservativePeakExcludingManualBytes: 1024 * 1024 * 210,
+    }))
+  }
+
+  async previewScheduledRetention(
+    params: T.PreviewRetentionPolicyParams,
+  ): Promise<T.RetentionPolicyChangePreview> {
+    return { removed: [], estimatedReclaimedBytes: 0, affectedJobs: [] }
+  }
+
+  async updateScheduledRetention(
+    params: T.UpdateRetentionPolicyParams,
+  ): Promise<T.ServiceTargetHistory> {
+    throw new Error('No mock scheduled backup history')
+  }
+
+  async deleteArchivedBackupSnapshots(
+    params: T.DeleteArchivedSnapshotsParams,
+  ): Promise<T.ServiceTargetHistory> {
+    throw new Error('No mock scheduled backup history')
+  }
+
+  async retryScheduledBackupTarget(
+    params: T.RetryBackupTargetParams,
+  ): Promise<T.BackupJob[]> {
+    return this.scheduledBackupJobs.filter(
+      job => job.targetId === params.targetId,
+    )
+  }
+
+  async reassignScheduledBackupTarget(
+    params: T.ReassignBackupTargetParams,
+  ): Promise<T.BackupJob> {
+    const job = this.scheduledBackupJobs.find(job => job.id === params.id)!
+    job.targetId = params.targetId
+    job.pause = null
+    return structuredClone(job)
+  }
+
+  async getNewServiceBackupReviews(params: {}): Promise<
+    T.NewServiceBackupReview[]
+  > {
+    return []
+  }
+
+  async resolveNewServiceBackupReview(
+    params: T.ResolveNewServiceBackupReviewParams,
+  ): Promise<null> {
+    return null
+  }
+
+  async restoreScheduledBackup(
+    params: T.RestoreScheduledPackagesParams,
+  ): Promise<null> {
     return null
   }
 

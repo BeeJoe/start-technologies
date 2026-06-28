@@ -482,6 +482,112 @@ export class LiveApiService extends ApiService {
     return this.rpcRequest({ method: 'backup.create', params })
   }
 
+  async getScheduledBackupJobs(params: {}): Promise<T.BackupJob[]> {
+    return this.rpcRequest({ method: 'backup.job.list', params })
+  }
+
+  async createScheduledBackupJob(
+    params: T.CreateBackupJobParams,
+  ): Promise<T.BackupJob> {
+    return this.rpcRequest({ method: 'backup.job.create', params })
+  }
+
+  async updateScheduledBackupJob(
+    params: T.UpdateBackupJobParams,
+  ): Promise<T.BackupJob> {
+    return this.rpcRequest({ method: 'backup.job.update', params })
+  }
+
+  async setScheduledBackupJobEnabled(
+    params: T.SetBackupJobEnabledParams,
+  ): Promise<T.BackupJob> {
+    return this.rpcRequest({ method: 'backup.job.set-enabled', params })
+  }
+
+  async deleteScheduledBackupJob(
+    params: T.DeleteBackupJobParams,
+  ): Promise<null> {
+    return this.rpcRequest({ method: 'backup.job.delete', params })
+  }
+
+  async runScheduledBackupJob(
+    params: T.RunBackupJobNowParams,
+  ): Promise<T.BackupRun> {
+    return this.rpcRequest({ method: 'backup.job.run-now', params })
+  }
+
+  async getScheduledBackupHistories(params: {}): Promise<
+    T.ServiceTargetHistory[]
+  > {
+    return this.rpcRequest({ method: 'backup.history.list', params })
+  }
+
+  async discoverScheduledBackupHistories(
+    params: T.DiscoverScheduledBackupsParams,
+  ): Promise<T.ServiceTargetHistory[]> {
+    return this.rpcRequest({ method: 'backup.history.discover', params })
+  }
+
+  async estimateScheduledBackupCapacity(
+    params: T.EstimateBackupCapacityParams,
+  ): Promise<T.BackupServiceCapacityEstimate[]> {
+    return this.rpcRequest({ method: 'backup.policy.estimate', params })
+  }
+
+  async previewScheduledRetention(
+    params: T.PreviewRetentionPolicyParams,
+  ): Promise<T.RetentionPolicyChangePreview> {
+    return this.rpcRequest({ method: 'backup.policy.preview', params })
+  }
+
+  async updateScheduledRetention(
+    params: T.UpdateRetentionPolicyParams,
+  ): Promise<T.ServiceTargetHistory> {
+    return this.rpcRequest({ method: 'backup.policy.update', params })
+  }
+
+  async deleteArchivedBackupSnapshots(
+    params: T.DeleteArchivedSnapshotsParams,
+  ): Promise<T.ServiceTargetHistory> {
+    return this.rpcRequest({
+      method: 'backup.history.delete-archived-snapshots',
+      params,
+    })
+  }
+
+  async retryScheduledBackupTarget(
+    params: T.RetryBackupTargetParams,
+  ): Promise<T.BackupJob[]> {
+    return this.rpcRequest({ method: 'backup.job.retry-target', params })
+  }
+
+  async reassignScheduledBackupTarget(
+    params: T.ReassignBackupTargetParams,
+  ): Promise<T.BackupJob> {
+    return this.rpcRequest({ method: 'backup.job.reassign-target', params })
+  }
+
+  async getNewServiceBackupReviews(params: {}): Promise<
+    T.NewServiceBackupReview[]
+  > {
+    return this.rpcRequest({ method: 'backup.review.list', params })
+  }
+
+  async resolveNewServiceBackupReview(
+    params: T.ResolveNewServiceBackupReviewParams,
+  ): Promise<null> {
+    return this.rpcRequest({ method: 'backup.review.resolve', params })
+  }
+
+  async restoreScheduledBackup(
+    params: T.RestoreScheduledPackagesParams,
+  ): Promise<null> {
+    return this.rpcRequest({
+      method: 'package.backup.restore-scheduled',
+      params,
+    })
+  }
+
   // async addBackupTarget(
   //   type: BackupTargetType,
   //   params: RR.AddCifsBackupTargetReq | RR.AddCloudBackupTargetReq,

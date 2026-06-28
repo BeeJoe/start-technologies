@@ -4,6 +4,13 @@ import { Mock } from './api.fixures'
 const version = require('../../../../../../package.json').version
 
 export const mockPatchData: DataModel = {
+  scheduledBackups: {
+    jobs: {},
+    histories: {},
+    runs: {},
+    targetFailures: {},
+    pendingServiceReviews: {},
+  },
   ui: {
     registries: {
       'https://registry.start9.com/': 'Start9 Registry',
