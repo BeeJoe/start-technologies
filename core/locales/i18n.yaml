@@ -1428,6 +1428,308 @@ backup.target.cifs.target-not-found-id:
   fr_FR: "ID de cible de sauvegarde %{id} non trouvé"
   pl_PL: "Nie znaleziono ID celu kopii zapasowej %{id}"
 
+backup.target.cifs.target-in-use:
+  en_US: "Backup target is referenced by scheduled jobs: %{jobs}"
+  de_DE: "Das Sicherungsziel wird von geplanten Aufträgen verwendet: %{jobs}"
+  es_ES: "El destino de copia es utilizado por tareas programadas: %{jobs}"
+  fr_FR: "La cible de sauvegarde est utilisée par des tâches planifiées : %{jobs}"
+  pl_PL: "Cel kopii jest używany przez zaplanowane zadania: %{jobs}"
+
+# backup/scheduled
+backup.scheduled.job-paused:
+  en_US: "Scheduled backup job is paused"
+  de_DE: "Der geplante Sicherungsauftrag ist pausiert"
+  es_ES: "La tarea de copia programada está en pausa"
+  fr_FR: "La tâche de sauvegarde planifiée est en pause"
+  pl_PL: "Zaplanowane zadanie kopii jest wstrzymane"
+
+backup.scheduled.service-not-ready:
+  en_US: "Service is not ready for backup"
+  de_DE: "Der Dienst ist nicht für eine Sicherung bereit"
+  es_ES: "El servicio no está listo para la copia"
+  fr_FR: "Le service n'est pas prêt pour la sauvegarde"
+  pl_PL: "Usługa nie jest gotowa do utworzenia kopii"
+
+backup.scheduled.leaked-reference:
+  en_US: "Scheduled backup leaked a storage reference"
+  de_DE: "Die geplante Sicherung hat eine Speicherreferenz verloren"
+  es_ES: "La copia programada perdió una referencia de almacenamiento"
+  fr_FR: "La sauvegarde planifiée a perdu une référence de stockage"
+  pl_PL: "Zaplanowana kopia utraciła odwołanie do pamięci"
+
+backup.scheduled.capacity-overflow:
+  en_US: "Scheduled backup capacity estimate overflowed"
+  de_DE: "Die Kapazitätsschätzung der geplanten Sicherung ist übergelaufen"
+  es_ES: "La estimación de capacidad de la copia programada se desbordó"
+  fr_FR: "L'estimation de capacité de la sauvegarde planifiée a débordé"
+  pl_PL: "Przepełnienie oszacowania pojemności zaplanowanej kopii"
+
+backup.scheduled.insufficient-capacity:
+  en_US: "Scheduled backup requires %{required} bytes but the target has %{available} bytes available"
+  de_DE: "Die geplante Sicherung benötigt %{required} Byte, am Ziel sind aber nur %{available} Byte verfügbar"
+  es_ES: "La copia programada requiere %{required} bytes, pero el destino tiene %{available} bytes disponibles"
+  fr_FR: "La sauvegarde planifiée nécessite %{required} octets, mais la cible ne dispose que de %{available} octets"
+  pl_PL: "Zaplanowana kopia wymaga %{required} bajtów, a cel ma dostępne %{available} bajtów"
+
+backup.scheduled.capacity-title:
+  en_US: "Scheduled Backup Needs More Space"
+  de_DE: "Geplante Sicherung benötigt mehr Speicherplatz"
+  es_ES: "La copia programada necesita más espacio"
+  fr_FR: "La sauvegarde planifiée nécessite plus d'espace"
+  pl_PL: "Zaplanowana kopia wymaga więcej miejsca"
+
+backup.scheduled.capacity-message:
+  en_US: "Job %{job} could not start because target %{target} does not have enough free space. Free space, edit the job, reassign it, or delete it."
+  de_DE: "Auftrag %{job} konnte nicht starten, da Ziel %{target} nicht genügend freien Speicher hat. Geben Sie Speicher frei, bearbeiten oder verschieben Sie den Auftrag oder löschen Sie ihn."
+  es_ES: "La tarea %{job} no pudo iniciarse porque el destino %{target} no tiene espacio libre suficiente. Libere espacio, edite, reasigne o elimine la tarea."
+  fr_FR: "La tâche %{job} n'a pas pu démarrer car la cible %{target} manque d'espace. Libérez de l'espace, modifiez, réaffectez ou supprimez la tâche."
+  pl_PL: "Zadanie %{job} nie mogło się rozpocząć, ponieważ cel %{target} nie ma wystarczającej ilości miejsca. Zwolnij miejsce, edytuj, przenieś lub usuń zadanie."
+
+backup.scheduled.run-failed-title:
+  en_US: "Scheduled Backup Had Failures"
+  de_DE: "Fehler bei geplanter Sicherung"
+  es_ES: "La copia programada tuvo errores"
+  fr_FR: "La sauvegarde planifiée a rencontré des erreurs"
+  pl_PL: "Błędy zaplanowanej kopii"
+
+backup.scheduled.run-failed-message:
+  en_US: "Job %{job} on target %{target} failed for: %{services}. Previous checkpoints remain available."
+  de_DE: "Auftrag %{job} auf Ziel %{target} ist fehlgeschlagen für: %{services}. Frühere Prüfpunkte bleiben verfügbar."
+  es_ES: "La tarea %{job} en el destino %{target} falló para: %{services}. Los puntos anteriores siguen disponibles."
+  fr_FR: "La tâche %{job} sur la cible %{target} a échoué pour : %{services}. Les points précédents restent disponibles."
+  pl_PL: "Zadanie %{job} na celu %{target} nie powiodło się dla: %{services}. Poprzednie punkty pozostają dostępne."
+
+backup.scheduled.target-unavailable-title:
+  en_US: "Backup Target Unavailable"
+  de_DE: "Sicherungsziel nicht verfügbar"
+  es_ES: "Destino de copia no disponible"
+  fr_FR: "Cible de sauvegarde indisponible"
+  pl_PL: "Cel kopii niedostępny"
+
+backup.scheduled.target-unavailable-message:
+  en_US: "Target %{target} failed three consecutive connection attempts. Its jobs are paused. Retry now, select another target, or delete the affected jobs."
+  de_DE: "Drei Verbindungsversuche zu Ziel %{target} sind fehlgeschlagen. Die Aufträge sind pausiert. Versuchen Sie es erneut, wählen Sie ein anderes Ziel oder löschen Sie die Aufträge."
+  es_ES: "El destino %{target} falló tres conexiones consecutivas. Sus tareas están en pausa. Reintente, seleccione otro destino o elimine las tareas."
+  fr_FR: "La cible %{target} a échoué trois connexions consécutives. Ses tâches sont en pause. Réessayez, choisissez une autre cible ou supprimez les tâches."
+  pl_PL: "Cel %{target} nie połączył się trzy razy z rzędu. Zadania są wstrzymane. Ponów próbę, wybierz inny cel lub usuń zadania."
+
+backup.scheduled.reauth-title:
+  en_US: "Backup Target Requires Authentication"
+  de_DE: "Sicherungsziel erfordert Authentifizierung"
+  es_ES: "El destino de copia requiere autenticación"
+  fr_FR: "La cible de sauvegarde nécessite une authentification"
+  pl_PL: "Cel kopii wymaga uwierzytelnienia"
+
+backup.scheduled.reauth-message:
+  en_US: "Job %{job} is paused because the credential for target %{target} must be reauthorized. Retry with your password, reassign the target, or delete the job."
+  de_DE: "Auftrag %{job} ist pausiert, weil Ziel %{target} erneut autorisiert werden muss. Versuchen Sie es mit Ihrem Passwort erneut, ändern Sie das Ziel oder löschen Sie den Auftrag."
+  es_ES: "La tarea %{job} está en pausa porque debe volver a autorizar el destino %{target}. Reintente con su contraseña, reasigne el destino o elimine la tarea."
+  fr_FR: "La tâche %{job} est en pause car la cible %{target} doit être réautorisée. Réessayez avec votre mot de passe, réaffectez la cible ou supprimez la tâche."
+  pl_PL: "Zadanie %{job} jest wstrzymane, ponieważ cel %{target} wymaga ponownej autoryzacji. Ponów próbę z hasłem, zmień cel lub usuń zadanie."
+
+backup.scheduled.identity-title:
+  en_US: "Backup Target Identity Changed"
+  de_DE: "Identität des Sicherungsziels geändert"
+  es_ES: "Cambió la identidad del destino de copia"
+  fr_FR: "L'identité de la cible de sauvegarde a changé"
+  pl_PL: "Tożsamość celu kopii uległa zmianie"
+
+backup.scheduled.identity-message:
+  en_US: "Job %{job} is paused because %{target} is not the target originally assigned. Reconnect the original target, retry, reassign, or delete the job."
+  de_DE: "Auftrag %{job} ist pausiert, da %{target} nicht das ursprünglich zugewiesene Ziel ist. Verbinden Sie das ursprüngliche Ziel erneut, versuchen Sie es erneut, weisen Sie neu zu oder löschen Sie den Auftrag."
+  es_ES: "La tarea %{job} está en pausa porque %{target} no es el destino asignado originalmente. Reconecte el destino original, reintente, reasigne o elimine la tarea."
+  fr_FR: "La tâche %{job} est en pause car %{target} n'est pas la cible attribuée initialement. Reconnectez la cible d'origine, réessayez, réaffectez ou supprimez la tâche."
+  pl_PL: "Zadanie %{job} jest wstrzymane, ponieważ %{target} nie jest pierwotnie przypisanym celem. Podłącz pierwotny cel, ponów próbę, przenieś lub usuń zadanie."
+
+backup.scheduled.review-title:
+  en_US: "Backup Selection Requires Review"
+  de_DE: "Sicherungsauswahl muss überprüft werden"
+  es_ES: "Debe revisar la selección de copia"
+  fr_FR: "La sélection de sauvegarde doit être vérifiée"
+  pl_PL: "Wymagany przegląd wyboru kopii"
+
+backup.scheduled.review-message:
+  en_US: "Review whether newly installed service %{package} should be added to each selective backup job before starting it."
+  de_DE: "Prüfen Sie vor dem Start, ob der neu installierte Dienst %{package} zu jedem selektiven Sicherungsauftrag hinzugefügt werden soll."
+  es_ES: "Revise si el nuevo servicio %{package} debe añadirse a cada tarea selectiva antes de iniciarlo."
+  fr_FR: "Vérifiez si le nouveau service %{package} doit être ajouté à chaque tâche sélective avant de le démarrer."
+  pl_PL: "Przed uruchomieniem zdecyduj, czy nowa usługa %{package} ma zostać dodana do każdego selektywnego zadania kopii."
+
+backup.scheduled.review-required:
+  en_US: "Resolve the backup selection review for %{package} before starting or restarting it"
+  de_DE: "Schließen Sie die Sicherungsauswahl für %{package} vor dem Start oder Neustart ab"
+  es_ES: "Resuelva la revisión de copia de %{package} antes de iniciarlo o reiniciarlo"
+  fr_FR: "Résolvez la sélection de sauvegarde pour %{package} avant de le démarrer ou redémarrer"
+  pl_PL: "Rozwiąż przegląd wyboru kopii dla %{package} przed uruchomieniem lub restartem"
+
+backup.scheduled.review-incomplete:
+  en_US: "A decision is required for every affected backup job"
+  de_DE: "Für jeden betroffenen Sicherungsauftrag ist eine Entscheidung erforderlich"
+  es_ES: "Se requiere una decisión para cada tarea de copia afectada"
+  fr_FR: "Une décision est requise pour chaque tâche de sauvegarde concernée"
+  pl_PL: "Wymagana jest decyzja dla każdego zadania kopii"
+
+backup.scheduled.retry-before-resume:
+  en_US: "Verify the backup target with Retry before resuming this job"
+  de_DE: "Überprüfen Sie das Sicherungsziel mit Erneut versuchen, bevor Sie diesen Auftrag fortsetzen"
+  es_ES: "Verifique el destino con Reintentar antes de reanudar esta tarea"
+  fr_FR: "Vérifiez la cible avec Réessayer avant de reprendre cette tâche"
+  pl_PL: "Przed wznowieniem zadania zweryfikuj cel za pomocą opcji Ponów próbę"
+
+backup.scheduled.delete-active-history:
+  en_US: "Active scheduled backup history cannot be deleted"
+  de_DE: "Aktiver geplanter Sicherungsverlauf kann nicht gelöscht werden"
+  es_ES: "No se puede eliminar un historial de copia programada activo"
+  fr_FR: "L'historique de sauvegarde planifiée actif ne peut pas être supprimé"
+  pl_PL: "Nie można usunąć aktywnej historii zaplanowanych kopii"
+
+backup.scheduled.schedule-invalid-cursor:
+  en_US: "Invalid scheduled backup cursor"
+  de_DE: "Ungültiger Cursor für geplante Sicherung"
+  es_ES: "Cursor de copia programada no válido"
+  fr_FR: "Curseur de sauvegarde planifiée invalide"
+  pl_PL: "Nieprawidłowy kursor zaplanowanej kopii"
+
+backup.scheduled.schedule-no-occurrence:
+  en_US: "Schedule has no occurrence in the next five years"
+  de_DE: "Der Zeitplan hat in den nächsten fünf Jahren keinen Termin"
+  es_ES: "La programación no tiene ejecuciones en los próximos cinco años"
+  fr_FR: "La planification ne comporte aucune occurrence dans les cinq prochaines années"
+  pl_PL: "Harmonogram nie ma wystąpień w ciągu następnych pięciu lat"
+
+backup.scheduled.invalid-timezone:
+  en_US: "Invalid IANA timezone: %{timezone}"
+  de_DE: "Ungültige IANA-Zeitzone: %{timezone}"
+  es_ES: "Zona horaria IANA no válida: %{timezone}"
+  fr_FR: "Fuseau horaire IANA invalide : %{timezone}"
+  pl_PL: "Nieprawidłowa strefa czasowa IANA: %{timezone}"
+
+backup.scheduled.five-field-cron:
+  en_US: "Scheduled backups require a five-field cron expression"
+  de_DE: "Geplante Sicherungen benötigen einen Cron-Ausdruck mit fünf Feldern"
+  es_ES: "Las copias programadas requieren una expresión cron de cinco campos"
+  fr_FR: "Les sauvegardes planifiées nécessitent une expression cron à cinq champs"
+  pl_PL: "Zaplanowane kopie wymagają pięciopolowego wyrażenia cron"
+
+backup.scheduled.hourly-limit:
+  en_US: "Scheduled backups cannot run more than once per hour"
+  de_DE: "Geplante Sicherungen können höchstens einmal pro Stunde ausgeführt werden"
+  es_ES: "Las copias programadas no pueden ejecutarse más de una vez por hora"
+  fr_FR: "Les sauvegardes planifiées ne peuvent pas s'exécuter plus d'une fois par heure"
+  pl_PL: "Zaplanowane kopie nie mogą być uruchamiane częściej niż raz na godzinę"
+
+backup.scheduled.invalid-cron-field:
+  en_US: "Invalid cron field: %{field}"
+  de_DE: "Ungültiges Cron-Feld: %{field}"
+  es_ES: "Campo cron no válido: %{field}"
+  fr_FR: "Champ cron invalide : %{field}"
+  pl_PL: "Nieprawidłowe pole cron: %{field}"
+
+backup.scheduled.invalid-retention-tiers:
+  en_US: "Retention tiers must have progressively coarser intervals and increasing coverage"
+  de_DE: "Aufbewahrungsstufen müssen zunehmend gröbere Intervalle und größere Zeiträume haben"
+  es_ES: "Los niveles de retención deben tener intervalos progresivamente mayores y cobertura creciente"
+  fr_FR: "Les niveaux de rétention doivent avoir des intervalles progressivement plus larges et une couverture croissante"
+  pl_PL: "Poziomy retencji muszą mieć coraz większe interwały i rosnący zakres"
+
+backup.scheduled.insufficient-schedule-coverage:
+  en_US: "Enabled schedules do not cover every finest retention bucket"
+  de_DE: "Aktivierte Zeitpläne decken nicht jedes feinste Aufbewahrungsintervall ab"
+  es_ES: "Las programaciones activas no cubren cada intervalo de retención mínimo"
+  fr_FR: "Les planifications actives ne couvrent pas chaque intervalle de rétention minimal"
+  pl_PL: "Aktywne harmonogramy nie pokrywają każdego najmniejszego przedziału retencji"
+
+backup.scheduled.unreasonable-retention:
+  en_US: "Retention policy or capacity estimate is unreasonably large"
+  de_DE: "Aufbewahrungsrichtlinie oder Kapazitätsschätzung ist unangemessen groß"
+  es_ES: "La política de retención o la estimación de capacidad es demasiado grande"
+  fr_FR: "La politique de rétention ou l'estimation de capacité est déraisonnablement grande"
+  pl_PL: "Polityka retencji lub oszacowanie pojemności jest zbyt duże"
+
+backup.scheduled.invalid-credential:
+  en_US: "Scheduled backup credential is invalid"
+  de_DE: "Anmeldedaten der geplanten Sicherung sind ungültig"
+  es_ES: "La credencial de copia programada no es válida"
+  fr_FR: "L'identifiant de sauvegarde planifiée est invalide"
+  pl_PL: "Poświadczenie zaplanowanej kopii jest nieprawidłowe"
+
+backup.scheduled.reauth-required:
+  en_US: "Scheduled backup credential requires reauthentication"
+  de_DE: "Anmeldedaten der geplanten Sicherung müssen erneut authentifiziert werden"
+  es_ES: "La credencial de copia programada requiere nueva autenticación"
+  fr_FR: "L'identifiant de sauvegarde planifiée nécessite une nouvelle authentification"
+  pl_PL: "Poświadczenie zaplanowanej kopii wymaga ponownego uwierzytelnienia"
+
+backup.scheduled.device-key-unavailable:
+  en_US: "Scheduled backup device key is unavailable"
+  de_DE: "Geräteschlüssel der geplanten Sicherung ist nicht verfügbar"
+  es_ES: "La clave del dispositivo para copias programadas no está disponible"
+  fr_FR: "La clé de l'appareil pour les sauvegardes planifiées est indisponible"
+  pl_PL: "Klucz urządzenia dla zaplanowanych kopii jest niedostępny"
+
+backup.scheduled.decode-key-failed:
+  en_US: "Failed to decode scheduled backup key"
+  de_DE: "Schlüssel der geplanten Sicherung konnte nicht dekodiert werden"
+  es_ES: "No se pudo decodificar la clave de copia programada"
+  fr_FR: "Impossible de décoder la clé de sauvegarde planifiée"
+  pl_PL: "Nie udało się zdekodować klucza zaplanowanej kopii"
+
+backup.scheduled.target-identity-mismatch:
+  en_US: "Scheduled backup target identity does not match"
+  de_DE: "Identität des Sicherungsziels stimmt nicht überein"
+  es_ES: "La identidad del destino de copia no coincide"
+  fr_FR: "L'identité de la cible de sauvegarde ne correspond pas"
+  pl_PL: "Tożsamość celu kopii nie jest zgodna"
+
+backup.scheduled.metadata-identity-mismatch:
+  en_US: "Scheduled backup target metadata identity does not match"
+  de_DE: "Metadatenidentität des Sicherungsziels stimmt nicht überein"
+  es_ES: "La identidad de metadatos del destino no coincide"
+  fr_FR: "L'identité des métadonnées de la cible ne correspond pas"
+  pl_PL: "Tożsamość metadanych celu kopii nie jest zgodna"
+
+backup.scheduled.stored-timezone-invalid:
+  en_US: "Stored scheduled backup timezone is invalid"
+  de_DE: "Gespeicherte Zeitzone der geplanten Sicherung ist ungültig"
+  es_ES: "La zona horaria guardada de la copia programada no es válida"
+  fr_FR: "Le fuseau horaire enregistré de la sauvegarde planifiée est invalide"
+  pl_PL: "Zapisana strefa czasowa zaplanowanej kopii jest nieprawidłowa"
+
+backup.scheduled.snapshot-delete-stale:
+  en_US: "Scheduled backup snapshot deletion set is stale"
+  de_DE: "Die Auswahl zum Löschen geplanter Prüfpunkte ist veraltet"
+  es_ES: "La selección para eliminar puntos programados está desactualizada"
+  fr_FR: "La sélection de suppression des points planifiés est obsolète"
+  pl_PL: "Zestaw usuwanych punktów zaplanowanej kopii jest nieaktualny"
+
+backup.scheduled.prune-confirmation-stale:
+  en_US: "Retention pruning confirmation is stale or incomplete"
+  de_DE: "Bestätigung zum Kürzen der Aufbewahrung ist veraltet oder unvollständig"
+  es_ES: "La confirmación de reducción de retención está desactualizada o incompleta"
+  fr_FR: "La confirmation de réduction de rétention est obsolète ou incomplète"
+  pl_PL: "Potwierdzenie przycinania retencji jest nieaktualne lub niekompletne"
+
+backup.scheduled.invalid-job-name:
+  en_US: "Backup job name must contain 1 to 80 characters"
+  de_DE: "Der Name des Sicherungsauftrags muss 1 bis 80 Zeichen enthalten"
+  es_ES: "El nombre de la tarea debe tener entre 1 y 80 caracteres"
+  fr_FR: "Le nom de la tâche doit contenir entre 1 et 80 caractères"
+  pl_PL: "Nazwa zadania kopii musi zawierać od 1 do 80 znaków"
+
+backup.scheduled.invalid-retention-timezone:
+  en_US: "Invalid retention timezone"
+  de_DE: "Ungültige Zeitzone für die Aufbewahrung"
+  es_ES: "Zona horaria de retención no válida"
+  fr_FR: "Fuseau horaire de rétention invalide"
+  pl_PL: "Nieprawidłowa strefa czasowa retencji"
+
+backup.scheduled.snapshot-not-found:
+  en_US: "Scheduled backup snapshot does not exist"
+  de_DE: "Geplanter Sicherungspunkt ist nicht vorhanden"
+  es_ES: "El punto de copia programada no existe"
+  fr_FR: "Le point de sauvegarde planifiée n'existe pas"
+  pl_PL: "Punkt zaplanowanej kopii nie istnieje"
+
 # service/effects/net/plugin.rs
 net.plugin.manifest-missing-plugin:
   en_US: "manifest does not declare the \"%{plugin}\" plugin"

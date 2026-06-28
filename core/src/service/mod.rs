@@ -28,6 +28,7 @@ use tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode;
 use ts_rs::TS;
 use url::Url;
 
+use crate::backup::PackageBackupOutput;
 use crate::context::{CliContext, RpcContext};
 use crate::db::model::package::{
     InstalledState, ManifestPreference, PackageState, PackageStateMatchModelRef, TaskSeverity,
@@ -618,6 +619,8 @@ impl Service {
         progress: Option<InstallProgressHandles>,
     ) -> Result<ServiceRef, Error> {
         let manifest = s9pk.as_manifest().clone();
+        let package_id = manifest.id.clone();
+        let creates_scheduled_backup_review = matches!(kind, InitKind::Install);
         let developer_key = s9pk.as_archive().signer();
         let icon = s9pk.icon_data_url().await?;
         let procedure_id = Guid::new();
@@ -676,6 +679,10 @@ impl Service {
                 entry.as_registry_mut().ser(registry)?;
                 entry.as_status_info_mut().as_error_mut().ser(&None)?;
 
+                if creates_scheduled_backup_review {
+                    crate::backup::scheduled::create_review_for_new_service(db, &package_id)?;
+                }
+
                 Ok(())
             })
             .await
@@ -697,7 +704,7 @@ impl Service {
         &self,
         guard: impl GenericMountGuard,
         progress: crate::progress::PhaseProgressTrackerHandle,
-    ) -> Result<(), Error> {
+    ) -> Result<PackageBackupOutput, Error> {
         let id = &self.seed.id;
         // Prepare the backup future in the actor first, so the cell is
         // populated before the actor reacts to the DesiredStatus change.
@@ -740,8 +747,9 @@ impl Service {
         }
         .await;
 
-        backup.await?;
-        s9pk_res
+        let output = backup.await?;
+        s9pk_res?;
+        Ok(output)
     }
 
     pub fn container_id(&self) -> Result<ContainerId, Error> {
@@ -786,7 +794,7 @@ struct ServiceActorSeed {
     id: PackageId,
     /// Needed to interact with the container for the service
     persistent_container: PersistentContainer,
-    backup: SyncMutex<Option<BoxFuture<'static, Result<(), RpcError>>>>,
+    backup: SyncMutex<Option<BoxFuture<'static, Result<PackageBackupOutput, RpcError>>>>,
     /// Set while a backup procedure is running so the service container can
     /// stream progress updates back via the `setBackupProgress` effect.
     backup_phase: SyncMutex<Option<crate::progress::PhaseProgressTrackerHandle>>,

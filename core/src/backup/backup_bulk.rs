@@ -28,7 +28,7 @@ use crate::notifications::{NotificationLevel, notify};
 use crate::prelude::*;
 use crate::progress::{FullProgress, FullProgressTracker};
 use crate::util::future::NonDetachingJoinHandle;
-use crate::util::io::{AtomicFile, dir_copy};
+use crate::util::io::{AtomicFile, dir_copy, dir_size};
 use crate::util::serde::IoFormat;
 use crate::version::VersionT;
 
@@ -165,6 +165,7 @@ pub async fn backup_all(
         password,
     }: BackupParams,
 ) -> Result<(), Error> {
+    let backup_coordinator = ctx.backup_coordinator.clone().lock_owned().await;
     let old_password_decrypted = old_password
         .as_ref()
         .unwrap_or(&password)
@@ -210,6 +211,7 @@ pub async fn backup_all(
         backup_guard.change_password(&password)?;
     }
     tokio::task::spawn(async move {
+        let _backup_coordinator = backup_coordinator;
         status_guard
             .handle_result(perform_backup(&ctx, backup_guard, &package_ids).await)
             .await
@@ -279,13 +281,11 @@ async fn perform_backup(
         phase.start();
         let started = Instant::now();
         if let Some(service) = &*ctx.services.get(id).await {
-            let backup_result = service
-                .backup(backup_guard.package_backup(id).await?, phase)
-                .await
-                .err()
-                .map(|e| e.to_string());
+            let package_guard = backup_guard.package_backup(id).await?;
+            let package_path = package_guard.path().to_owned();
+            let backup_result = service.backup(package_guard, phase).await;
             let duration_ms = started.elapsed().as_millis() as u64;
-            if backup_result.is_none() {
+            if backup_result.is_ok() {
                 let manifest = db
                     .as_public()
                     .as_package_data()
@@ -308,8 +308,16 @@ async fn perform_backup(
             backup_report.insert(
                 id.clone(),
                 PackageBackupReport {
-                    error: backup_result,
+                    error: backup_result.as_ref().err().map(|e| e.to_string()),
                     duration_ms,
+                    logical_size: if backup_result.is_ok() {
+                        Some(dir_size(&package_path, None).await?)
+                    } else {
+                        None
+                    },
+                    physical_size: None,
+                    changed_bytes: backup_result.ok().and_then(|result| result.changed_bytes),
+                    measured_at: Some(Utc::now()),
                 },
             );
         } else {
@@ -319,6 +327,10 @@ async fn perform_backup(
                 PackageBackupReport {
                     error: Some(t!("backup.bulk.service-not-ready").to_string()),
                     duration_ms: started.elapsed().as_millis() as u64,
+                    logical_size: None,
+                    physical_size: None,
+                    changed_bytes: None,
+                    measured_at: None,
                 },
             );
         }

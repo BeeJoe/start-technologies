@@ -31,6 +31,7 @@ pub async fn restart(context: EffectContext) -> Result<(), Error> {
         .ctx
         .db
         .mutate(|db| {
+            crate::backup::scheduled::ensure_review_resolved(db, id)?;
             db.as_public_mut()
                 .as_package_data_mut()
                 .as_idx_mut(id)

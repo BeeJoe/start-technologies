@@ -9,6 +9,7 @@ use tokio::sync::Mutex;
 use tracing::instrument;
 use ts_rs::TS;
 
+use super::scheduled::{ScheduledBackupCredential, ScheduledBackupMountGuard, ServiceSnapshotId};
 use super::target::BackupTargetId;
 use crate::PackageId;
 use crate::backup::os::OsBackup;
@@ -87,6 +88,106 @@ pub async fn restore_packages_rpc(
             .await;
     });
 
+    Ok(())
+}
+
+#[derive(Deserialize, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct RestoreScheduledPackagesParams {
+    pub target_id: BackupTargetId,
+    pub snapshots: BTreeMap<PackageId, ServiceSnapshotId>,
+    #[serde(default)]
+    #[ts(optional)]
+    pub server_id: Option<String>,
+    #[serde(default)]
+    #[ts(optional)]
+    pub password: Option<String>,
+}
+
+pub async fn restore_scheduled_packages_rpc(
+    ctx: RpcContext,
+    RestoreScheduledPackagesParams {
+        target_id,
+        snapshots,
+        server_id,
+        password,
+    }: RestoreScheduledPackagesParams,
+) -> Result<(), Error> {
+    let db = ctx.db.peek().await;
+    let server_id = match server_id {
+        Some(server_id) => server_id,
+        None => db.as_public().as_server_info().as_id().de()?,
+    };
+    let credential: Option<ScheduledBackupCredential> = db
+        .as_private()
+        .as_scheduled_backup_credentials()
+        .as_idx(&target_id.to_string())
+        .map(|credential| credential.de())
+        .transpose()?;
+    let target = target_id.load(&db)?;
+    let guard = if let Some(credential) = credential {
+        let encryption_key =
+            credential.open(&db.as_private().as_scheduled_backup_device_key().de()?)?;
+        ScheduledBackupMountGuard::mount_with_key(
+            TmpMountGuard::mount(&target, ReadWrite).await?,
+            &server_id,
+            &credential.target_instance_id,
+            &encryption_key,
+        )
+        .await?
+    } else {
+        let password = password.ok_or_else(|| {
+            Error::new(
+                eyre!("{}", t!("backup.scheduled.reauth-required")),
+                ErrorKind::InvalidRequest,
+            )
+        })?;
+        ScheduledBackupMountGuard::discover_with_password(
+            TmpMountGuard::mount(&target, ReadWrite).await?,
+            &server_id,
+            &password,
+        )
+        .await?
+        .0
+    };
+    let guard = Arc::new(guard);
+    let mut tasks = BTreeMap::new();
+    for (package_id, snapshot_id) in snapshots {
+        let snapshot = guard.snapshot(&package_id, &snapshot_id);
+        if tokio::fs::metadata(snapshot.path()).await.is_err() {
+            return Err(Error::new(
+                eyre!("{}", t!("backup.scheduled.snapshot-not-found")),
+                ErrorKind::NotFound,
+            ));
+        }
+        let s9pk_path = snapshot.path().join(&package_id).with_extension("s9pk");
+        let task = ctx
+            .services
+            .install(
+                ctx.clone(),
+                || S9pk::open(s9pk_path, Some(&package_id)),
+                None,
+                Some(snapshot),
+                None,
+            )
+            .await?;
+        tasks.insert(package_id, task);
+    }
+
+    tokio::spawn(async move {
+        stream::iter(tasks)
+            .for_each_concurrent(5, |(id, res)| async move {
+                if let Err(error) = async { res.await?.await }.await {
+                    tracing::error!(
+                        "{}",
+                        t!("backup.restore.package-error", id = id, error = error)
+                    );
+                    tracing::debug!("{error:?}");
+                }
+            })
+            .await;
+    });
     Ok(())
 }
 

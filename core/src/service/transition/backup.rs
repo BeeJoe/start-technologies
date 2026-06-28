@@ -4,6 +4,7 @@ use futures::future::BoxFuture;
 use futures::{FutureExt, TryFutureExt};
 use rpc_toolkit::yajrc::RpcError;
 
+use crate::backup::PackageBackupOutput;
 use crate::disk::mount::filesystem::ReadWrite;
 use crate::prelude::*;
 use crate::progress::PhaseProgressTrackerHandle;
@@ -15,7 +16,6 @@ use crate::service::{ProcedureName, ServiceActor, ServiceActorSeed};
 use crate::status::DesiredStatus;
 use crate::util::actor::background::BackgroundJobQueue;
 use crate::util::actor::{ConflictBuilder, Handler};
-use crate::util::serde::NoOutput;
 
 impl ServiceActorSeed {
     pub fn backup(&self) -> Transition<'_> {
@@ -23,7 +23,7 @@ impl ServiceActorSeed {
             kind: TransitionKind::BackingUp,
             future: async {
                 let res = if let Some(fut) = self.backup.replace(None) {
-                    fut.await.map_err(Error::from)
+                    fut.await.map(|_| ()).map_err(Error::from)
                 } else {
                     Err(Error::new(
                         eyre!("{}", t!("service.transition.backup.no-backup-to-resume")),
@@ -70,7 +70,7 @@ pub(in crate::service) struct Backup {
     pub progress: PhaseProgressTrackerHandle,
 }
 impl Handler<Backup> for ServiceActor {
-    type Response = Result<BoxFuture<'static, Result<(), Error>>, Error>;
+    type Response = Result<BoxFuture<'static, Result<PackageBackupOutput, Error>>, Error>;
     fn conflicts_with(_: &Backup) -> ConflictBuilder<Self> {
         ConflictBuilder::everything().except::<GetActionInput>()
     }
@@ -89,12 +89,18 @@ impl Handler<Backup> for ServiceActor {
                     .persistent_container
                     .mount_backup(path, ReadWrite)
                     .await?;
-                seed.persistent_container
-                    .execute::<NoOutput>(id, ProcedureName::CreateBackup, Value::Null, None)
-                    .await?;
+                let output = seed
+                    .persistent_container
+                    .execute::<Option<PackageBackupOutput>>(
+                        id,
+                        ProcedureName::CreateBackup,
+                        Value::Null,
+                        None,
+                    )
+                    .await?
+                    .unwrap_or_default();
                 backup_guard.unmount(true).await?;
-
-                Ok::<_, Error>(())
+                Ok::<_, Error>(output)
             }
             .await
             .map_err(RpcError::from)
