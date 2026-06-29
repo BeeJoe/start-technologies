@@ -83,6 +83,9 @@ impl BackupStatusGuard {
                 Ok(report) if report.values().all(|service| service.error.is_none()) => {
                     BackupRunState::Succeeded
                 }
+                Ok(report) if report.values().all(|service| service.error.is_some()) => {
+                    BackupRunState::Failed
+                }
                 Ok(_) => BackupRunState::PartiallyFailed,
                 Err(_) => BackupRunState::Failed,
             };
