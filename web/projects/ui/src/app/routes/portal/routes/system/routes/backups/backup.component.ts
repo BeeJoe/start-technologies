@@ -8,6 +8,7 @@ import {
   TuiCheckbox,
   TuiGroup,
   TuiLoader,
+  TuiNotification,
   TuiTitle,
 } from '@taiga-ui/core'
 import { TuiBlock, TuiNotificationMiddleService } from '@taiga-ui/kit'
@@ -32,6 +33,12 @@ interface Package {
 
 @Component({
   template: `
+    <div tuiNotification appearance="warning">
+      {{
+        'For each selected service, this replaces its previous manual checkpoint. Automatic checkpoints are not changed.'
+          | i18n
+      }}
+    </div>
     <div tuiGroup orientation="vertical" [collapsed]="true">
       @if (pkgs(); as pkgs) {
         @for (pkg of pkgs; track $index) {
@@ -82,6 +89,7 @@ interface Package {
     TuiButton,
     TuiGroup,
     TuiLoader,
+    TuiNotification,
     TuiBlock,
     TuiCheckbox,
     TuiTitle,
@@ -95,6 +103,7 @@ export class BackupsBackupComponent {
   private readonly api = inject(ApiService)
   private readonly patch = inject<PatchDB<DataModel>>(PatchDB)
   private readonly service = inject(BackupService)
+  private readonly i18n = inject(i18nPipe)
 
   readonly context = injectContext<BackupContext>()
 
@@ -128,13 +137,15 @@ export class BackupsBackupComponent {
 
     this.dialog
       .openPrompt<string>({
-        label: 'Master password needed',
+        label: this.i18n.transform('Master password needed'),
         data: {
-          message: 'Enter your master password to encrypt this backup.',
-          label: 'Master Password',
-          placeholder: 'Enter master password',
+          message: this.i18n.transform(
+            'Enter your master password to encrypt this backup.',
+          ),
+          label: this.i18n.transform('Master Password'),
+          placeholder: this.i18n.transform('Enter master password'),
           useMask: true,
-          buttonText: 'Create Backup',
+          buttonText: this.i18n.transform('Create a manual backup'),
         },
       })
       .pipe(verifyPassword(passwordHash, e => this.errorService.handleError(e)))

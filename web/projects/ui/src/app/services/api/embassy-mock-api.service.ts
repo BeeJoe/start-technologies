@@ -1172,6 +1172,12 @@ export class MockApiService extends ApiService {
     return null
   }
 
+  async restoreBackupSelection(
+    params: T.RestoreSelectionParams,
+  ): Promise<null> {
+    return null
+  }
+
   // async addBackupTarget(
   //   type: BackupTargetType,
   //   params:

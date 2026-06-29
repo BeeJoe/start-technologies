@@ -588,6 +588,15 @@ export class LiveApiService extends ApiService {
     })
   }
 
+  async restoreBackupSelection(
+    params: T.RestoreSelectionParams,
+  ): Promise<null> {
+    return this.rpcRequest({
+      method: 'package.backup.restore-selection',
+      params,
+    })
+  }
+
   // async addBackupTarget(
   //   type: BackupTargetType,
   //   params: RR.AddCifsBackupTargetReq | RR.AddCloudBackupTargetReq,

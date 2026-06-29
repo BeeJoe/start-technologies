@@ -1,8 +1,9 @@
 import { DatePipe, KeyValuePipe } from '@angular/common'
-import { Component, inject } from '@angular/core'
+import { Component, inject, OnInit } from '@angular/core'
 import {
   DialogService,
   ErrorService,
+  i18nPipe,
   StartOSDiskInfo,
 } from '@start9labs/shared'
 import { TuiButton } from '@taiga-ui/core'
@@ -16,24 +17,28 @@ import { RECOVER } from './recover.component'
 
 @Component({
   template: `
-    <table [appTable]="['Hostname', 'StartOS Version', 'Created', null]">
-      @for (server of target.entry.startOs | keyvalue; track $index) {
-        <tr>
-          <td class="name">{{ server.value.hostname }}.local</td>
-          <td>{{ server.value.version }}</td>
-          <td>{{ server.value.timestamp | date: 'medium' }}</td>
-          <td>
-            <button
-              tuiButton
-              size="s"
-              (click)="onClick(server.key, server.value)"
-            >
-              Select
-            </button>
-          </td>
-        </tr>
-      }
-    </table>
+    @if (servers.length > 1) {
+      <table [appTable]="['Hostname', 'StartOS Version', 'Created', null]">
+        @for (server of target.entry.startOs | keyvalue; track $index) {
+          <tr>
+            <td class="name">{{ server.value.hostname }}.local</td>
+            <td>{{ server.value.version }}</td>
+            <td>{{ server.value.timestamp | date: 'medium' }}</td>
+            <td>
+              <button
+                tuiButton
+                size="s"
+                (click)="onClick(server.key, server.value)"
+              >
+                {{ 'Select' | i18n }}
+              </button>
+            </td>
+          </tr>
+        }
+      </table>
+    } @else {
+      <p>{{ 'Loading' | i18n }}…</p>
+    }
   `,
   styles: `
     td:last-child {
@@ -57,9 +62,9 @@ import { RECOVER } from './recover.component'
       }
     }
   `,
-  imports: [KeyValuePipe, DatePipe, TuiButton, TableComponent],
+  imports: [KeyValuePipe, DatePipe, TuiButton, TableComponent, i18nPipe],
 })
-export class BackupRestoreComponent {
+export class BackupRestoreComponent implements OnInit {
   private readonly dialog = inject(DialogService)
   private readonly loader = inject(TuiNotificationMiddleService)
   private readonly api = inject(ApiService)
@@ -67,6 +72,14 @@ export class BackupRestoreComponent {
   private readonly context = injectContext<BackupContext>()
 
   readonly target = this.context.data
+  readonly servers = Object.entries(this.target.entry.startOs)
+
+  ngOnInit() {
+    const server = this.servers[0]
+    if (this.servers.length === 1 && server) {
+      queueMicrotask(() => this.onClick(server[0], server[1]))
+    }
+  }
 
   onClick(serverId: string, { passwordHash }: StartOSDiskInfo) {
     this.dialog

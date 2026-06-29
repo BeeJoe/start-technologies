@@ -18,6 +18,8 @@ export interface RecoverCheckpoint {
   timestamp: string
   jobName?: string
   snapshotId?: string
+  runId?: string
+  archived?: boolean
 }
 
 export interface RecoverOption {

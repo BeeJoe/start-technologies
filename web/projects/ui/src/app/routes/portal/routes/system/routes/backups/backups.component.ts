@@ -19,11 +19,9 @@ import { TitleDirective } from 'src/app/services/title.service'
 import { BACKUP } from './backup.component'
 import { BackupService, MappedBackupTarget } from './backup.service'
 import { LEGACY_BACKUP } from './legacy.component'
-import { BackupNetworkComponent } from './network.component'
-import { BackupPhysicalComponent } from './physical.component'
+import { BackupLocationPickerComponent } from '../../../backups/location-picker.component'
 import { BackupProgressComponent } from './progress.component'
 import { BACKUP_RESTORE } from './restore.component'
-import { ScheduledBackupsComponent } from './scheduled.component'
 
 @Component({
   template: `
@@ -34,8 +32,8 @@ import { ScheduledBackupsComponent } from './scheduled.component'
         </a>
         {{
           type === 'create'
-            ? ('Create Backup' | i18n)
-            : ('Restore Backup' | i18n)
+            ? ('Create a manual backup' | i18n)
+            : ('Restore from a backup' | i18n)
         }}
         <a
           tuiIconButton
@@ -57,8 +55,8 @@ import { ScheduledBackupsComponent } from './scheduled.component'
         <h3>
           {{
             type === 'create'
-              ? ('Create Backup' | i18n)
-              : ('Restore Backup' | i18n)
+              ? ('Create a manual backup' | i18n)
+              : ('Restore from a backup' | i18n)
           }}
           <a
             tuiIconButton
@@ -101,9 +99,10 @@ import { ScheduledBackupsComponent } from './scheduled.component'
           [style.height.rem]="20"
         />
       } @else {
-        <section scheduledBackups [mode]="type"></section>
-        <section (networkFolders)="onTarget($event)"></section>
-        <section (physicalFolders)="onTarget($event)"></section>
+        <backup-location-picker
+          [mode]="type === 'create' ? 'manual' : 'restore'"
+          (selected)="onTarget($event)"
+        />
       }
     }
   `,
@@ -123,10 +122,8 @@ import { ScheduledBackupsComponent } from './scheduled.component'
     TuiNotification,
     TuiMapperPipe,
     TitleDirective,
-    BackupNetworkComponent,
-    BackupPhysicalComponent,
+    BackupLocationPickerComponent,
     BackupProgressComponent,
-    ScheduledBackupsComponent,
     i18nPipe,
     DocsLinkDirective,
   ],

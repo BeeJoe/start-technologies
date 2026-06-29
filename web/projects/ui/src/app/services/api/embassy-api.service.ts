@@ -292,6 +292,9 @@ export abstract class ApiService {
   abstract restoreScheduledBackup(
     params: T.RestoreScheduledPackagesParams,
   ): Promise<null>
+  abstract restoreBackupSelection(
+    params: T.RestoreSelectionParams,
+  ): Promise<null>
 
   // @TODO 041
 
