@@ -68,6 +68,7 @@ pub fn backup<C: Context>() -> ParentHandler<C> {
             target::target::<C>().with_about("about.commands-backup-target"),
         )
         .subcommand("job", scheduled::job::<C>())
+        .subcommand("activity", scheduled::activity::<C>())
         .subcommand("history", scheduled::history::<C>())
         .subcommand("policy", scheduled::policy::<C>())
         .subcommand("review", scheduled::review::<C>())
@@ -85,5 +86,9 @@ pub fn package_backup<C: Context>() -> ParentHandler<C> {
         .subcommand(
             "restore-scheduled",
             from_fn_async(restore::restore_scheduled_packages_rpc).no_cli(),
+        )
+        .subcommand(
+            "restore-selection",
+            from_fn_async(restore::restore_selection_rpc).no_cli(),
         )
 }

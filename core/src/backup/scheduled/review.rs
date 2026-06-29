@@ -128,6 +128,9 @@ pub(crate) fn create_review_for_new_service(
         .iter()
         .filter(|job| match &job.services {
             BackupServiceScope::All => true,
+            BackupServiceScope::AllExcept {
+                excluded_package_ids,
+            } => !excluded_package_ids.contains(package_id),
             BackupServiceScope::Selected { package_ids } => package_ids.contains(package_id),
         })
         .cloned()

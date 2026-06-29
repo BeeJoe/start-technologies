@@ -9,7 +9,8 @@ use imbl_value::InternedString;
 use super::{
     BackupJob, BackupJobId, BackupJobPause, BackupRun, BackupRunState, BackupRunTrigger,
     BackupServiceScope, BackupTargetFailureState, ScheduledBackupCredential,
-    ScheduledBackupMountGuard, ServiceSnapshot, ServiceSnapshotId,
+    ScheduledBackupMountGuard, ServiceSnapshot, ServiceSnapshotId, activity_from_run,
+    insert_activity,
 };
 use crate::backup::PackageBackupReport;
 use crate::backup::os::OsBackup;
@@ -233,6 +234,7 @@ async fn run_job_inner(
                 .as_scheduled_backups_mut()
                 .as_runs_mut()
                 .insert(&run.id, &run)?;
+            insert_activity(db, &activity_from_run(&run))?;
             Ok(())
         })
         .await
@@ -378,14 +380,9 @@ async fn run_job_inner(
     };
     run.completed_at = Some(Utc::now());
 
-    delete_dir(
-        &scheduled_guard
-            .path()
-            .join("staging")
-            .join(run.id.as_ref()),
-    )
-    .await
-    .log_err();
+    delete_dir(&scheduled_guard.path().join("staging").join(run.id.as_ref()))
+        .await
+        .log_err();
 
     let owned = Arc::try_unwrap(scheduled_guard).map_err(|_| {
         Error::new(
@@ -409,6 +406,9 @@ async fn run_job_inner(
         .mutate(|db| {
             let state = db.as_public_mut().as_scheduled_backups_mut();
             state.as_runs_mut().insert(&run.id, &run)?;
+            state
+                .as_activities_mut()
+                .insert(&run.id, &activity_from_run(&run))?;
             for (package_id, history) in target_metadata.services {
                 let key = history_key(&job.target_id, &package_id);
                 if let Some(public_history) = state.as_histories_mut().as_idx_mut(&key) {
@@ -527,6 +527,17 @@ fn selected_services(
             .into_iter()
             .filter(|(_, package)| package.as_state_info().expect_installed().is_ok())
             .map(|(id, _)| id)
+            .collect(),
+        BackupServiceScope::AllExcept {
+            excluded_package_ids,
+        } => db
+            .as_public()
+            .as_package_data()
+            .as_entries()?
+            .into_iter()
+            .filter(|(_, package)| package.as_state_info().expect_installed().is_ok())
+            .map(|(id, _)| id)
+            .filter(|id| !excluded_package_ids.contains(id))
             .collect(),
         BackupServiceScope::Selected { package_ids } => package_ids.clone(),
     })
@@ -690,6 +701,9 @@ async fn record_failed_run(
         .mutate(|db| {
             let state = db.as_public_mut().as_scheduled_backups_mut();
             state.as_runs_mut().insert(&run.id, &run)?;
+            state
+                .as_activities_mut()
+                .insert(&run.id, &activity_from_run(&run))?;
             let mut persisted: BackupJob = state
                 .as_jobs()
                 .as_idx(&job.id)

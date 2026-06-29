@@ -1342,6 +1342,13 @@ init.initializing:
   pl_PL: "Inicjalizowanie..."
 
 # backup/backup_bulk.rs
+backup.activity.manual-interrupted:
+  en_US: "Manual backup ended before completion"
+  de_DE: "Die manuelle Sicherung wurde vor dem Abschluss beendet"
+  es_ES: "La copia de seguridad manual terminó antes de completarse"
+  fr_FR: "La sauvegarde manuelle s'est terminée avant d'être achevée"
+  pl_PL: "Ręczna kopia zapasowa zakończyła się przed ukończeniem"
+
 backup.bulk.complete-title:
   en_US: "Backup Complete"
   de_DE: "Sicherung abgeschlossen"
@@ -1406,12 +1413,26 @@ backup.bulk.service-not-ready:
   pl_PL: "Nie można utworzyć kopii zapasowej usługi, która jest jeszcze inicjalizowana lub znajduje się w stanie błędu"
 
 # backup/restore.rs
+backup.restore.duplicate-checkpoint:
+  en_US: "A service may be restored from only one checkpoint"
+  de_DE: "Ein Dienst kann nur von einem Wiederherstellungspunkt wiederhergestellt werden"
+  es_ES: "Un servicio solo puede restaurarse desde un punto de restauración"
+  fr_FR: "Un service ne peut être restauré qu'à partir d'un seul point de restauration"
+  pl_PL: "Usługę można przywrócić tylko z jednego punktu przywracania"
+
 backup.restore.package-error:
   en_US: "Error restoring package %{id}: %{error}"
   de_DE: "Fehler beim Wiederherstellen des Pakets %{id}: %{error}"
   es_ES: "Error al restaurar el paquete %{id}: %{error}"
   fr_FR: "Erreur lors de la restauration du paquet %{id} : %{error}"
   pl_PL: "Błąd przywracania pakietu %{id}: %{error}"
+
+backup.restore.select-service:
+  en_US: "Select at least one service to restore"
+  de_DE: "Wähle mindestens einen Dienst zur Wiederherstellung aus"
+  es_ES: "Selecciona al menos un servicio para restaurar"
+  fr_FR: "Sélectionnez au moins un service à restaurer"
+  pl_PL: "Wybierz co najmniej jedną usługę do przywrócenia"
 
 # backup/target/cifs.rs
 backup.target.cifs.target-not-found:

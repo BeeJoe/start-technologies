@@ -4,6 +4,7 @@
 //! backup set. The execution layer uses these types to keep the two histories
 //! independent while presenting one restore history to clients.
 
+mod activity;
 mod credential;
 mod model;
 mod retention;
@@ -14,6 +15,9 @@ mod schedule;
 mod scheduler;
 mod storage;
 
+pub use activity::activity;
+pub(crate) use activity::{complete as complete_activity, from_run as activity_from_run};
+pub(crate) use activity::{insert as insert_activity, running as running_activity};
 pub use credential::*;
 pub use model::*;
 pub use retention::*;

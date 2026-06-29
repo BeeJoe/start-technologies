@@ -14,6 +14,7 @@ use crate::rpc_continuations::Guid;
 
 pub type BackupJobId = Guid;
 pub type BackupRunId = Guid;
+pub type BackupActivityId = Guid;
 pub type ServiceSnapshotId = Guid;
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize, TS)]
@@ -21,6 +22,11 @@ pub type ServiceSnapshotId = Guid;
 #[ts(export)]
 pub enum BackupServiceScope {
     All,
+    AllExcept {
+        #[serde(rename = "excludedPackageIds")]
+        #[ts(rename = "excludedPackageIds")]
+        excluded_package_ids: BTreeSet<PackageId>,
+    },
     Selected {
         #[serde(rename = "packageIds")]
         #[ts(rename = "packageIds")]
@@ -32,6 +38,9 @@ impl BackupServiceScope {
     pub fn includes(&self, package_id: &PackageId) -> bool {
         match self {
             Self::All => true,
+            Self::AllExcept {
+                excluded_package_ids,
+            } => !excluded_package_ids.contains(package_id),
             Self::Selected { package_ids } => package_ids.contains(package_id),
         }
     }
@@ -125,6 +134,37 @@ pub struct BackupRun {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
+pub enum BackupActivityKind {
+    Manual,
+    Automatic,
+    Restore,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize, HasModel, TS)]
+#[serde(rename_all = "camelCase")]
+#[model = "Model<Self>"]
+#[ts(export)]
+pub struct BackupActivity {
+    pub id: BackupActivityId,
+    pub kind: BackupActivityKind,
+    pub state: BackupRunState,
+    pub target_id: BackupTargetId,
+    pub source_server_id: Option<String>,
+    pub job_id: Option<BackupJobId>,
+    pub job_name: Option<String>,
+    pub trigger: Option<BackupRunTrigger>,
+    #[ts(type = "string")]
+    pub started_at: DateTime<Utc>,
+    #[ts(type = "string | null")]
+    pub completed_at: Option<DateTime<Utc>>,
+    pub intended_services: BTreeSet<PackageId>,
+    pub services: BTreeMap<PackageId, PackageBackupReport>,
+    pub error: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
 pub enum BackupSource {
     Manual,
     Scheduled,
@@ -176,6 +216,8 @@ pub struct ScheduledBackupState {
     pub jobs: BTreeMap<BackupJobId, BackupJob>,
     pub histories: BTreeMap<String, ServiceTargetHistory>,
     pub runs: BTreeMap<BackupRunId, BackupRun>,
+    #[serde(default)]
+    pub activities: BTreeMap<BackupActivityId, BackupActivity>,
     pub target_failures: BTreeMap<String, BackupTargetFailureState>,
     pub pending_service_reviews: BTreeMap<PackageId, NewServiceBackupReview>,
 }
@@ -266,6 +308,42 @@ pub struct ScheduledBackupCredential {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn scheduled_state_without_activity_history_migrates_safely() {
+        let state: ScheduledBackupState = serde_json::from_value(serde_json::json!({
+            "jobs": {},
+            "histories": {},
+            "runs": {},
+            "targetFailures": {},
+            "pendingServiceReviews": {}
+        }))
+        .unwrap();
+        assert!(state.activities.is_empty());
+    }
+
+    #[test]
+    fn service_scope_preserves_legacy_and_exclusion_shapes() {
+        let all: BackupServiceScope =
+            serde_json::from_value(serde_json::json!({ "type": "all" })).unwrap();
+        assert!(all.includes(&"bitcoind".parse().unwrap()));
+
+        let selected: BackupServiceScope = serde_json::from_value(serde_json::json!({
+            "type": "selected",
+            "packageIds": ["bitcoind"]
+        }))
+        .unwrap();
+        assert!(selected.includes(&"bitcoind".parse().unwrap()));
+        assert!(!selected.includes(&"lnd".parse().unwrap()));
+
+        let all_except: BackupServiceScope = serde_json::from_value(serde_json::json!({
+            "type": "allExcept",
+            "excludedPackageIds": ["lnd"]
+        }))
+        .unwrap();
+        assert!(all_except.includes(&"bitcoind".parse().unwrap()));
+        assert!(!all_except.includes(&"lnd".parse().unwrap()));
+    }
 
     #[test]
     fn target_failure_threshold_notifies_and_pauses_once() {

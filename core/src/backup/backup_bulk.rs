@@ -17,6 +17,10 @@ use super::PackageBackupReport;
 use super::target::{BackupTargetId, PackageBackupInfo};
 use crate::PackageId;
 use crate::backup::os::OsBackup;
+use crate::backup::scheduled::{
+    BackupActivityId, BackupActivityKind, BackupRunState, complete_activity, insert_activity,
+    running_activity,
+};
 use crate::backup::{BackupReport, ServerBackupReport};
 use crate::context::RpcContext;
 use crate::db::model::{Database, DatabaseModel};
@@ -48,16 +52,22 @@ pub struct BackupParams {
     password: crate::auth::PasswordType,
 }
 
-struct BackupStatusGuard(Option<TypedPatchDb<Database>>);
+struct BackupStatusGuard {
+    db: Option<TypedPatchDb<Database>>,
+    activity_id: BackupActivityId,
+}
 impl BackupStatusGuard {
-    fn new(db: TypedPatchDb<Database>) -> Self {
-        Self(Some(db))
+    fn new(db: TypedPatchDb<Database>, activity_id: BackupActivityId) -> Self {
+        Self {
+            db: Some(db),
+            activity_id,
+        }
     }
     async fn handle_result(
         mut self,
         result: Result<BTreeMap<PackageId, PackageBackupReport>, Error>,
     ) -> Result<(), Error> {
-        if let Some(db) = self.0.as_ref() {
+        if let Some(db) = self.db.as_ref() {
             db.mutate(|v| {
                 v.as_public_mut()
                     .as_server_info_mut()
@@ -68,7 +78,21 @@ impl BackupStatusGuard {
             .await
             .result?;
         }
-        if let Some(db) = self.0.take() {
+        if let Some(db) = self.db.take() {
+            let state = match &result {
+                Ok(report) if report.values().all(|service| service.error.is_none()) => {
+                    BackupRunState::Succeeded
+                }
+                Ok(_) => BackupRunState::PartiallyFailed,
+                Err(_) => BackupRunState::Failed,
+            };
+            let services = result.as_ref().ok().cloned().unwrap_or_default();
+            let activity_error = result.as_ref().err().map(ToString::to_string);
+            db.mutate(|database| {
+                complete_activity(database, &self.activity_id, state, services, activity_error)
+            })
+            .await
+            .result?;
             match result {
                 Ok(report) if report.iter().all(|(_, rep)| rep.error.is_none()) => {
                     db.mutate(|db| {
@@ -138,14 +162,22 @@ impl BackupStatusGuard {
 }
 impl Drop for BackupStatusGuard {
     fn drop(&mut self) {
-        if let Some(db) = self.0.take() {
+        if let Some(db) = self.db.take() {
+            let activity_id = self.activity_id.clone();
             tokio::spawn(async move {
                 db.mutate(|v| {
                     v.as_public_mut()
                         .as_server_info_mut()
                         .as_status_info_mut()
                         .as_backup_progress_mut()
-                        .ser(&None)
+                        .ser(&None)?;
+                    complete_activity(
+                        v,
+                        &activity_id,
+                        BackupRunState::Failed,
+                        BTreeMap::new(),
+                        Some(t!("backup.activity.manual-interrupted").to_string()),
+                    )
                 })
                 .await
                 .result
@@ -173,33 +205,38 @@ pub async fn backup_all(
         .decrypt(&ctx)?;
     let password = password.decrypt(&ctx)?;
 
-    let ((fs, package_ids, server_id), status_guard) = (
-        ctx.db
-            .mutate(|db| {
-                RpcContext::check_password(db, &password)?;
-                let fs = target_id.load(db)?;
-                let package_ids = if let Some(ids) = package_ids {
-                    ids.into_iter().collect()
-                } else {
-                    db.as_public()
-                        .as_package_data()
-                        .as_entries()?
-                        .into_iter()
-                        .filter(|(_, m)| m.as_state_info().expect_installed().is_ok())
-                        .map(|(id, _)| id)
-                        .collect()
-                };
-                assure_backing_up(db, &package_ids)?;
-                Ok((
-                    fs,
-                    package_ids,
-                    db.as_public().as_server_info().as_id().de()?,
-                ))
-            })
-            .await
-            .result?,
-        BackupStatusGuard::new(ctx.db.clone()),
-    );
+    let (fs, package_ids, server_id, activity_id) = ctx
+        .db
+        .mutate(|db| {
+            RpcContext::check_password(db, &password)?;
+            let fs = target_id.clone().load(db)?;
+            let package_ids: OrdSet<PackageId> = if let Some(ids) = package_ids {
+                ids.into_iter().collect()
+            } else {
+                db.as_public()
+                    .as_package_data()
+                    .as_entries()?
+                    .into_iter()
+                    .filter(|(_, m)| m.as_state_info().expect_installed().is_ok())
+                    .map(|(id, _)| id)
+                    .collect()
+            };
+            assure_backing_up(db, &package_ids)?;
+            let server_id: String = db.as_public().as_server_info().as_id().de()?;
+            let activity = running_activity(
+                BackupActivityKind::Manual,
+                target_id.clone(),
+                Some(server_id.clone()),
+                None,
+                None,
+                package_ids.iter().cloned().collect(),
+            );
+            insert_activity(db, &activity)?;
+            Ok((fs, package_ids, server_id, activity.id))
+        })
+        .await
+        .result?;
+    let status_guard = BackupStatusGuard::new(ctx.db.clone(), activity_id);
 
     let mut backup_guard = BackupMountGuard::mount(
         TmpMountGuard::mount(&fs, BackupWrite).await?,
@@ -264,17 +301,18 @@ async fn perform_backup(
         })
         .collect();
     let mut os_data_phase = progress.add_phase("OS Data".into(), Some(1));
-    let _progress_db_sync = NonDetachingJoinHandle::from(tokio::spawn(progress.clone().sync_to_db(
-        ctx.db.clone(),
-        |db| {
-            db.as_public_mut()
-                .as_server_info_mut()
-                .as_status_info_mut()
-                .as_backup_progress_mut()
-                .transpose_mut()
-        },
-        Some(Duration::from_millis(300)),
-    )));
+    let _progress_db_sync =
+        NonDetachingJoinHandle::from(tokio::spawn(progress.clone().sync_to_db(
+            ctx.db.clone(),
+            |db| {
+                db.as_public_mut()
+                    .as_server_info_mut()
+                    .as_status_info_mut()
+                    .as_backup_progress_mut()
+                    .transpose_mut()
+            },
+            Some(Duration::from_millis(300)),
+        )));
 
     for id in package_ids {
         let mut phase = phase_handles.remove(id).expect("phase exists");

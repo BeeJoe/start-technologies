@@ -1116,6 +1116,17 @@ fn selected_installed_services(
             .filter(|(_, package)| package.as_state_info().expect_installed().is_ok())
             .map(|(id, _)| id)
             .collect(),
+        BackupServiceScope::AllExcept {
+            excluded_package_ids,
+        } => db
+            .as_public()
+            .as_package_data()
+            .as_entries()?
+            .into_iter()
+            .filter(|(_, package)| package.as_state_info().expect_installed().is_ok())
+            .map(|(id, _)| id)
+            .filter(|id| !excluded_package_ids.contains(id))
+            .collect(),
         BackupServiceScope::Selected { package_ids } => package_ids.clone(),
     })
 }
@@ -1247,10 +1258,7 @@ async fn sync_archive_states(ctx: &RpcContext, target_id: &BackupTargetId) -> Re
                 .filter(|snapshot| snapshot.archived)
                 .map(|snapshot| snapshot.id.clone())
                 .collect();
-            (
-                history.package_id,
-                (history.archived, archived_snapshots),
-            )
+            (history.package_id, (history.archived, archived_snapshots))
         })
         .collect();
     if archived.is_empty() {
