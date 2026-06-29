@@ -22,8 +22,15 @@ import { SYSTEM_MENU } from './system.const'
             <span tuiTitle>
               <span>
                 {{ page.item | i18n }}
-                @if (page.item === 'General Settings' && badge()) {
-                  <tui-badge-notification>{{ badge() }}</tui-badge-notification>
+                @if (page.item === 'General Settings' && generalBadge()) {
+                  <tui-badge-notification>
+                    {{ generalBadge() }}
+                  </tui-badge-notification>
+                }
+                @if (page.item === 'Backups' && backupsBadge()) {
+                  <tui-badge-notification>
+                    {{ backupsBadge() }}
+                  </tui-badge-notification>
                 }
               </span>
             </span>
@@ -114,5 +121,6 @@ import { SYSTEM_MENU } from './system.const'
 })
 export class SystemComponent {
   readonly menu = SYSTEM_MENU
-  readonly badge = toSignal(inject(BadgeService).getCount('system'))
+  readonly generalBadge = toSignal(inject(BadgeService).getCount('general'))
+  readonly backupsBadge = toSignal(inject(BadgeService).getCount('backups'))
 }

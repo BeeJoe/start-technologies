@@ -68,7 +68,7 @@ type HistoryFilter = 'all' | T.BackupActivityKind
 @Component({
   template: `
     <ng-container *title>
-      <a routerLink="/backups" tuiIconButton iconStart="@tui.arrow-left">
+      <a routerLink="/system/backups" tuiIconButton iconStart="@tui.arrow-left">
         {{ 'Back' | i18n }}
       </a>
       {{
@@ -103,7 +103,7 @@ type HistoryFilter = 'all' | T.BackupActivityKind
     } @else if (setupMode && jobs().length) {
       <div tuiNotification appearance="info">
         {{ 'Automatic backups are already set up.' | i18n }}
-        <a tuiButton size="s" routerLink="/backups/manage">
+        <a tuiButton size="s" routerLink="/system/backups/manage">
           {{ 'Manage' | i18n }}
         </a>
       </div>
@@ -679,7 +679,7 @@ type HistoryFilter = 'all' | T.BackupActivityKind
         } @else {
           <div tuiNotification appearance="info">
             {{ 'Automatic backups are not set up yet.' | i18n }}
-            <a tuiButton size="s" routerLink="/backups/setup">
+            <a tuiButton size="s" routerLink="/system/backups/setup">
               {{ 'Set up' | i18n }}
             </a>
           </div>
@@ -1377,7 +1377,7 @@ export default class AutomaticBackupsComponent implements OnInit {
       if (this.editor.firstBackupNow) {
         await this.api.runScheduledBackupJob({ id: job.id })
       }
-      await this.router.navigate(['/backups'])
+      await this.router.navigate(['/system/backups'])
     } catch (error: any) {
       this.errors.handleError(getErrorMessage(error))
     } finally {

@@ -10,6 +10,13 @@ export const SYSTEM_MENU = [
   ],
   [
     {
+      icon: '@tui.save',
+      item: 'Backups',
+      link: 'backups',
+    },
+  ],
+  [
+    {
       icon: '@tui.monitor',
       item: 'StartOS UI',
       link: 'interfaces',

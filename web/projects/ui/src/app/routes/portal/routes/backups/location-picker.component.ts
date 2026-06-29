@@ -43,7 +43,7 @@ type Location = MappedBackupTarget<CifsBackupTarget | DiskBackupTarget>
         <p>{{ 'No backup locations are available.' | i18n }}</p>
       }
     </div>
-    <a tuiButton appearance="secondary" routerLink="/backups/locations">
+    <a tuiButton appearance="secondary" routerLink="/system/backups/locations">
       {{ 'Add or repair a location' | i18n }}
     </a>
   `,

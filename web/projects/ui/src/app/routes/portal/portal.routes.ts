@@ -21,10 +21,19 @@ const ROUTES: Routes = [
         loadChildren: () => import('./routes/services/services.routes'),
       },
       {
-        title: titleResolver,
         path: 'backups',
-        loadChildren: () => import('./routes/backups/backups.routes'),
-        data: toNavigationItem('backups'),
+        children: [
+          {
+            path: '',
+            redirectTo: '/system/backups',
+            pathMatch: 'full',
+          },
+          {
+            path: ':section',
+            redirectTo: '/system/backups/:section',
+            pathMatch: 'full',
+          },
+        ],
       },
       {
         title: titleResolver,

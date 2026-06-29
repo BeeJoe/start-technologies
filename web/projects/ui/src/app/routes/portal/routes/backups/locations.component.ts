@@ -10,7 +10,7 @@ import { BackupService } from '../system/routes/backups/backup.service'
 @Component({
   template: `
     <ng-container *title>
-      <a routerLink="/backups" tuiIconButton iconStart="@tui.arrow-left">
+      <a routerLink="/system/backups" tuiIconButton iconStart="@tui.arrow-left">
         {{ 'Back' | i18n }}
       </a>
       {{ 'Backup locations' | i18n }}

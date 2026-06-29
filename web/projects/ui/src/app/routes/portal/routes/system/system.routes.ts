@@ -31,13 +31,19 @@ export default [
         loadComponent: () => import('./routes/smtp/smtp.component'),
       },
       {
+        path: 'backups',
+        title: titleResolver,
+        loadChildren: () => import('../backups/backups.routes'),
+        data: { title: 'Backups' },
+      },
+      {
         path: 'backup',
-        redirectTo: '/backups/manual',
+        redirectTo: 'backups/manual',
         pathMatch: 'full',
       },
       {
         path: 'restore',
-        redirectTo: '/backups/restore',
+        redirectTo: 'backups/restore',
         pathMatch: 'full',
       },
       {

@@ -437,7 +437,7 @@ export class BackupsRecoverComponent {
       })
 
       this.context.$implicit.complete()
-      this.router.navigate(['/backups'])
+      this.router.navigate(['/system/backups'])
     } catch (e: any) {
       this.errorService.handleError(e)
     } finally {

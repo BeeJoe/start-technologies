@@ -15,7 +15,7 @@ import { FilterUpdatesPipe } from '../routes/portal/routes/updates/filter-update
 export class BadgeService {
   private readonly notifications = inject(NotificationService)
   private readonly patch = inject<PatchDB<DataModel>>(PatchDB)
-  private readonly system$ = inject(OSService).updateAvailable$.pipe(
+  private readonly general$ = inject(OSService).updateAvailable$.pipe(
     map(Number),
   )
   private readonly metrics$ = this.patch
@@ -31,6 +31,9 @@ export class BadgeService {
           ).length,
       ),
     )
+  private readonly system$ = combineLatest([this.general$, this.backups$]).pipe(
+    map(([general, backups]) => general + backups),
+  )
   private readonly filterUpdatesPipe = inject(FilterUpdatesPipe)
   private readonly hiddenUpdates = inject(HiddenUpdatesService)
   private readonly refinement = inject(UpdatesRefinementService)
@@ -64,6 +67,8 @@ export class BadgeService {
         return this.updates$
       case 'system':
         return this.system$
+      case 'general':
+        return this.general$
       case 'metrics':
         return this.metrics$
       case 'backups':

@@ -23,10 +23,6 @@ export const SYSTEM_UTILITIES: Record<
     icon: '@tui.globe',
     title: 'Updates',
   },
-  backups: {
-    icon: '@tui.save',
-    title: 'Backups',
-  },
   metrics: {
     icon: '@tui.activity',
     title: 'Metrics',
