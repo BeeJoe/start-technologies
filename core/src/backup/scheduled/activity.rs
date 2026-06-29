@@ -13,9 +13,15 @@ use crate::backup::target::BackupTargetId;
 use crate::context::RpcContext;
 use crate::db::model::DatabaseModel;
 use crate::prelude::*;
+use crate::util::serde::HandlerExtSerde;
 
 pub fn activity<C: Context>() -> ParentHandler<C> {
-    ParentHandler::new().subcommand("list", from_fn_async(list).no_cli())
+    ParentHandler::new().subcommand(
+        "list",
+        from_fn_async(list)
+            .with_display_serializable()
+            .with_call_remote::<crate::context::CliContext>(),
+    )
 }
 
 pub async fn list(ctx: RpcContext) -> Result<Vec<BackupActivity>, Error> {

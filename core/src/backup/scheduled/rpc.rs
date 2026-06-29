@@ -2,13 +2,14 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 use chrono::Utc;
+use clap::Parser;
 use rpc_toolkit::{Context, HandlerExt, ParentHandler, from_fn_async};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 use super::{
     BackupJob, BackupJobId, BackupJobPause, BackupJobStatus, BackupRun, BackupRunTrigger,
-    BackupServiceScope, RetentionPolicy, RetentionPolicyChangePreview, Schedule,
+    BackupServiceScope, RetentionPolicy, RetentionPolicyChangePreview, RetentionTier, Schedule,
     ScheduledBackupCredential, ScheduledBackupMountGuard, ServiceSnapshot, ServiceSnapshotId,
     ServiceTargetHistory, run_job, validate_combined_schedule_coverage,
 };
@@ -22,24 +23,63 @@ use crate::middleware::auth::session::SessionAuthContext;
 use crate::prelude::*;
 use crate::rpc_continuations::Guid;
 use crate::util::io::dir_size;
+use crate::util::serde::HandlerExtSerde;
 use crate::volume::PKG_VOLUME_DIR;
 use crate::{DATA_DIR, PackageId};
 
 pub fn job<C: Context>() -> ParentHandler<C> {
     ParentHandler::new()
-        .subcommand("list", from_fn_async(list).no_cli())
+        .subcommand(
+            "list",
+            from_fn_async(list)
+                .with_display_serializable()
+                .with_call_remote::<crate::context::CliContext>(),
+        )
+        .subcommand(
+            "add",
+            from_fn_async(add_cli)
+                .with_display_serializable()
+                .with_call_remote::<crate::context::CliContext>(),
+        )
         .subcommand("create", from_fn_async(create).no_cli())
         .subcommand("update", from_fn_async(update).no_cli())
         .subcommand("set-enabled", from_fn_async(set_enabled).no_cli())
-        .subcommand("delete", from_fn_async(delete).no_cli())
-        .subcommand("run-now", from_fn_async(run_now).no_cli())
+        .subcommand(
+            "enable",
+            from_fn_async(enable_cli)
+                .with_display_serializable()
+                .with_call_remote::<crate::context::CliContext>(),
+        )
+        .subcommand(
+            "disable",
+            from_fn_async(disable_cli)
+                .with_display_serializable()
+                .with_call_remote::<crate::context::CliContext>(),
+        )
+        .subcommand(
+            "delete",
+            from_fn_async(delete)
+                .no_display()
+                .with_call_remote::<crate::context::CliContext>(),
+        )
+        .subcommand(
+            "run-now",
+            from_fn_async(run_now)
+                .with_display_serializable()
+                .with_call_remote::<crate::context::CliContext>(),
+        )
         .subcommand("retry-target", from_fn_async(retry_target).no_cli())
         .subcommand("reassign-target", from_fn_async(reassign_target).no_cli())
 }
 
 pub fn history<C: Context>() -> ParentHandler<C> {
     ParentHandler::new()
-        .subcommand("list", from_fn_async(list_histories).no_cli())
+        .subcommand(
+            "list",
+            from_fn_async(list_histories)
+                .with_display_serializable()
+                .with_call_remote::<crate::context::CliContext>(),
+        )
         .subcommand("discover", from_fn_async(discover_histories).no_cli())
         .subcommand(
             "delete-archived-snapshots",
@@ -684,6 +724,123 @@ pub struct CreateBackupJobParams {
     pub enabled: bool,
 }
 
+/// CLI-friendly automatic backup creation. Omitting both service filters means
+/// every current and future service. Omitting retention tiers means latest-only.
+#[derive(Deserialize, Serialize, Parser)]
+#[group(skip)]
+#[serde(rename_all = "camelCase")]
+#[command(rename_all = "kebab-case")]
+pub struct AddBackupJobCliParams {
+    /// Display name for the automatic backup job.
+    pub name: String,
+    /// Backup target identifier, such as cifs-0 or disk-/dev/sda1.
+    pub target_id: BackupTargetId,
+    /// Master password used to initialize the encrypted automatic backup store.
+    pub password: PasswordType,
+    /// Five-field cron expression (minute, hour, day of month, month, weekday).
+    #[arg(long, default_value = "0 3 * * *")]
+    pub cron: String,
+    /// IANA timezone for the schedule.
+    #[arg(long, default_value = "UTC")]
+    pub timezone: String,
+    /// Back up only these service package IDs. Accepts comma-separated values.
+    #[arg(long, value_delimiter = ',', conflicts_with = "exclude_package_ids")]
+    pub package_ids: Vec<PackageId>,
+    /// Back up every current and future service except these package IDs.
+    #[arg(long, value_delimiter = ',', conflicts_with = "package_ids")]
+    pub exclude_package_ids: Vec<PackageId>,
+    /// Retention tier INTERVAL:COVERAGE; accepts s, m, h, d, or w suffixes and may repeat.
+    #[arg(long = "keep-tier", value_name = "INTERVAL:COVERAGE", value_parser = parse_retention_tier)]
+    pub retention_tiers: Vec<RetentionTier>,
+    /// Create the job paused instead of scheduling its first run.
+    #[arg(long)]
+    pub disabled: bool,
+}
+
+pub async fn add_cli(
+    ctx: RpcContext,
+    AddBackupJobCliParams {
+        name,
+        target_id,
+        password,
+        cron,
+        timezone,
+        package_ids,
+        exclude_package_ids,
+        retention_tiers,
+        disabled,
+    }: AddBackupJobCliParams,
+) -> Result<BackupJob, Error> {
+    let services = if !package_ids.is_empty() {
+        BackupServiceScope::Selected {
+            package_ids: package_ids.into_iter().collect(),
+        }
+    } else {
+        BackupServiceScope::AllExcept {
+            excluded_package_ids: exclude_package_ids.into_iter().collect(),
+        }
+    };
+    create(
+        ctx,
+        CreateBackupJobParams {
+            name,
+            target_id,
+            services,
+            schedule: Schedule::new(cron, timezone)?,
+            default_retention: RetentionPolicy {
+                tiers: retention_tiers,
+            },
+            retention_overrides: BTreeMap::new(),
+            password,
+            enabled: !disabled,
+        },
+    )
+    .await
+}
+
+fn parse_retention_tier(value: &str) -> Result<RetentionTier, String> {
+    let (interval, coverage) = value
+        .split_once(':')
+        .ok_or_else(|| "retention tier must use INTERVAL:COVERAGE, for example 1d:7d".to_owned())?;
+    let tier = RetentionTier {
+        interval_seconds: parse_duration_seconds(interval)?,
+        coverage_seconds: parse_duration_seconds(coverage)?,
+    };
+    RetentionPolicy {
+        tiers: vec![tier.clone()],
+    }
+    .validate()
+    .map_err(|error| error.to_string())?;
+    Ok(tier)
+}
+
+fn parse_duration_seconds(value: &str) -> Result<u64, String> {
+    let value = value.trim();
+    let split = value
+        .find(|character: char| !character.is_ascii_digit())
+        .unwrap_or(value.len());
+    let (amount, suffix) = value.split_at(split);
+    let amount = amount
+        .parse::<u64>()
+        .map_err(|_| format!("invalid duration: {value}"))?;
+    let multiplier = match suffix {
+        "" | "s" => 1,
+        "m" => 60,
+        "h" => 60 * 60,
+        "d" => 24 * 60 * 60,
+        "w" => 7 * 24 * 60 * 60,
+        _ => {
+            return Err(format!(
+                "invalid duration unit in {value}; use s, m, h, d, or w"
+            ));
+        }
+    };
+    amount
+        .checked_mul(multiplier)
+        .filter(|seconds| *seconds > 0)
+        .ok_or_else(|| format!("invalid duration: {value}"))
+}
+
 pub async fn create(
     ctx: RpcContext,
     CreateBackupJobParams {
@@ -921,18 +1078,47 @@ pub async fn set_enabled(
     Ok(job)
 }
 
-#[derive(Deserialize, Serialize, TS)]
+#[derive(Deserialize, Serialize, Parser, TS)]
+#[group(skip)]
 #[ts(export)]
 #[serde(rename_all = "camelCase")]
+#[command(rename_all = "kebab-case")]
 pub struct DeleteBackupJobParams {
+    /// Automatic backup job ID.
     pub id: BackupJobId,
 }
 
-#[derive(Deserialize, Serialize, TS)]
+#[derive(Deserialize, Serialize, Parser, TS)]
+#[group(skip)]
 #[ts(export)]
 #[serde(rename_all = "camelCase")]
+#[command(rename_all = "kebab-case")]
 pub struct RunBackupJobNowParams {
+    /// Automatic backup job ID.
     pub id: BackupJobId,
+}
+
+#[derive(Deserialize, Serialize, Parser)]
+#[group(skip)]
+#[serde(rename_all = "camelCase")]
+#[command(rename_all = "kebab-case")]
+pub struct BackupJobIdCliParams {
+    /// Automatic backup job ID.
+    pub id: BackupJobId,
+}
+
+pub async fn enable_cli(
+    ctx: RpcContext,
+    BackupJobIdCliParams { id }: BackupJobIdCliParams,
+) -> Result<BackupJob, Error> {
+    set_enabled(ctx, SetBackupJobEnabledParams { id, enabled: true }).await
+}
+
+pub async fn disable_cli(
+    ctx: RpcContext,
+    BackupJobIdCliParams { id }: BackupJobIdCliParams,
+) -> Result<BackupJob, Error> {
+    set_enabled(ctx, SetBackupJobEnabledParams { id, enabled: false }).await
 }
 
 pub async fn run_now(
@@ -1288,4 +1474,27 @@ async fn sync_archive_states(ctx: &RpcContext, target_id: &BackupTargetId) -> Re
 
 const fn default_true() -> bool {
     true
+}
+
+#[cfg(test)]
+mod cli_tests {
+    use super::*;
+
+    #[test]
+    fn retention_tier_accepts_human_duration_suffixes() {
+        assert_eq!(
+            parse_retention_tier("1d:2w").unwrap(),
+            RetentionTier {
+                interval_seconds: 24 * 60 * 60,
+                coverage_seconds: 14 * 24 * 60 * 60,
+            }
+        );
+    }
+
+    #[test]
+    fn retention_tier_rejects_invalid_or_inverted_ranges() {
+        assert!(parse_retention_tier("1d").is_err());
+        assert!(parse_retention_tier("1w:1d").is_err());
+        assert!(parse_retention_tier("0d:1d").is_err());
+    }
 }

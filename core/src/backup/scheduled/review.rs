@@ -10,10 +10,16 @@ use crate::PackageId;
 use crate::context::RpcContext;
 use crate::notifications::{NotificationLevel, notify};
 use crate::prelude::*;
+use crate::util::serde::HandlerExtSerde;
 
 pub fn review<C: Context>() -> ParentHandler<C> {
     ParentHandler::new()
-        .subcommand("list", from_fn_async(list).no_cli())
+        .subcommand(
+            "list",
+            from_fn_async(list)
+                .with_display_serializable()
+                .with_call_remote::<crate::context::CliContext>(),
+        )
         .subcommand("resolve", from_fn_async(resolve).no_cli())
 }
 
