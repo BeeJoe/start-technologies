@@ -32,15 +32,13 @@ export default [
       },
       {
         path: 'backup',
-        title: titleResolver,
-        loadComponent: () => import('./routes/backups/backups.component'),
-        data: { type: 'create' },
+        redirectTo: '/backups/manual',
+        pathMatch: 'full',
       },
       {
         path: 'restore',
-        title: titleResolver,
-        loadComponent: () => import('./routes/backups/backups.component'),
-        data: { type: 'restore' },
+        redirectTo: '/backups/restore',
+        pathMatch: 'full',
       },
       {
         path: 'interfaces',

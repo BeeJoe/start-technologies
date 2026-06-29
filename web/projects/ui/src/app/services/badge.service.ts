@@ -21,6 +21,16 @@ export class BadgeService {
   private readonly metrics$ = this.patch
     .watch$('serverInfo', 'ntpSynced')
     .pipe(map(synced => Number(!synced)))
+  private readonly backups$ = this.patch
+    .watch$('scheduledBackups', 'activities')
+    .pipe(
+      map(
+        activities =>
+          Object.values(activities).filter(
+            activity => activity.state === 'running',
+          ).length,
+      ),
+    )
   private readonly filterUpdatesPipe = inject(FilterUpdatesPipe)
   private readonly hiddenUpdates = inject(HiddenUpdatesService)
   private readonly refinement = inject(UpdatesRefinementService)
@@ -56,6 +66,8 @@ export class BadgeService {
         return this.system$
       case 'metrics':
         return this.metrics$
+      case 'backups':
+        return this.backups$
       case 'notifications':
         return this.notifications.unreadCount$
       default:

@@ -8,6 +8,7 @@ export const mockPatchData: DataModel = {
     jobs: {},
     histories: {},
     runs: {},
+    activities: {},
     targetFailures: {},
     pendingServiceReviews: {},
   },

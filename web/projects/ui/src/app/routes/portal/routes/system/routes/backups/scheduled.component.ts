@@ -55,7 +55,7 @@ interface JobEditor {
   id?: string
   name: string
   targetId: string
-  scope: 'all' | 'selected'
+  scope: 'all' | 'allExcept' | 'selected'
   packageIds: string[]
   frequency: BackupScheduleFrequency
   minute: number
@@ -75,10 +75,10 @@ interface JobEditor {
   template: `
     <div tuiNotification appearance="info" icon="@tui.calendar-clock">
       <div tuiTitle>
-        {{ 'Scheduled Backups' | i18n }}
+        {{ 'Automatic backups' | i18n }}
         <div tuiSubtitle>
           {{
-            'Scheduled checkpoints are stored separately from your latest manual checkpoint.'
+            'Automatic checkpoints are stored separately from your latest manual checkpoint.'
               | i18n
           }}
         </div>
@@ -128,7 +128,7 @@ interface JobEditor {
 
     @if (mode() === 'create') {
       <div class="heading">
-        <h3>{{ 'Scheduled Jobs' | i18n }}</h3>
+        <h3>{{ 'Advanced schedules' | i18n }}</h3>
         <button tuiButton size="s" iconStart="@tui.plus" (click)="create()">
           {{ 'Create Job' | i18n }}
         </button>
@@ -142,7 +142,7 @@ interface JobEditor {
             <thead>
               <tr>
                 <th>{{ 'Name' | i18n }}</th>
-                <th>{{ 'Target' | i18n }}</th>
+                <th>{{ 'Backup location' | i18n }}</th>
                 <th>{{ 'Scope' | i18n }}</th>
                 <th>{{ 'Next run' | i18n }}</th>
                 <th>{{ 'Last result' | i18n }}</th>
@@ -205,7 +205,7 @@ interface JobEditor {
                         appearance="secondary"
                         (click)="retry(job)"
                       >
-                        {{ 'Retry target' | i18n }}
+                        {{ 'Retry backup location' | i18n }}
                       </button>
                       <button
                         tuiButton
@@ -213,7 +213,7 @@ interface JobEditor {
                         appearance="secondary"
                         (click)="beginReassign(job)"
                       >
-                        {{ 'Change target' | i18n }}
+                        {{ 'Change backup location' | i18n }}
                       </button>
                     }
                     <button
@@ -228,7 +228,7 @@ interface JobEditor {
                 </tr>
               } @empty {
                 <tr>
-                  <td colspan="6">{{ 'No scheduled jobs' | i18n }}</td>
+                  <td colspan="6">{{ 'No automatic schedules' | i18n }}</td>
                 </tr>
               }
             </tbody>
@@ -241,7 +241,10 @@ interface JobEditor {
           <div class="heading">
             <h3>
               {{
-                (form.id ? 'Edit Scheduled Job' : 'Create Scheduled Job') | i18n
+                (form.id
+                  ? 'Edit automatic schedule'
+                  : 'Create automatic schedule'
+                ) | i18n
               }}
             </h3>
             <button
@@ -262,14 +265,16 @@ interface JobEditor {
             </tui-textfield>
 
             <label>
-              <span>{{ 'Backup target' | i18n }}</span>
+              <span>{{ 'Backup location' | i18n }}</span>
               <select
                 name="target"
                 required
                 [disabled]="!!form.id"
                 [(ngModel)]="form.targetId"
               >
-                <option value="" disabled>{{ 'Select target' | i18n }}</option>
+                <option value="" disabled>
+                  {{ 'Choose a backup location' | i18n }}
+                </option>
                 @for (target of targets(); track target.id) {
                   <option [value]="target.id">{{ target.name }}</option>
                 }
@@ -284,6 +289,9 @@ interface JobEditor {
                 </option>
                 <option value="selected">
                   {{ 'Selected services' | i18n }}
+                </option>
+                <option value="allExcept">
+                  {{ 'All current and future services with exclusions' | i18n }}
                 </option>
               </select>
             </label>
@@ -344,9 +352,6 @@ interface JobEditor {
                 (ngModelChange)="applyPreset(form)"
               >
                 <option value="latest">{{ 'Latest only' | i18n }}</option>
-                <option value="daily-week">
-                  {{ 'Daily for one week' | i18n }}
-                </option>
                 <option value="custom">{{ 'Custom tiers' | i18n }}</option>
               </select>
             </label>
@@ -376,7 +381,7 @@ interface JobEditor {
             </label>
           </div>
 
-          @if (form.scope === 'selected') {
+          @if (form.scope !== 'all') {
             <fieldset>
               <legend>{{ 'Selected services' | i18n }}</legend>
               @for (pkg of packages(); track pkg.id) {
@@ -494,7 +499,7 @@ interface JobEditor {
                     <th>{{ 'Service' | i18n }}</th>
                     <th>{{ 'Live data estimate' | i18n }}</th>
                     <th>{{ 'Checkpoints' | i18n }}</th>
-                    <th>{{ 'Scheduled storage' | i18n }}</th>
+                    <th>{{ 'Automatic storage' | i18n }}</th>
                     <th>{{ 'Manual checkpoint' | i18n }}</th>
                     <th>{{ 'Archived storage' | i18n }}</th>
                     <th>{{ 'Next-run staging' | i18n }}</th>
@@ -617,7 +622,7 @@ interface JobEditor {
 
           <p class="muted">
             {{ 'Captured timezone' | i18n }}: {{ form.timezone }} ·
-            {{ 'Maximum scheduled checkpoints per service' | i18n }}:
+            {{ 'Maximum automatic checkpoints per service' | i18n }}:
             {{ projectedCount(form) }}
           </p>
           <footer class="g-buttons">
@@ -627,7 +632,7 @@ interface JobEditor {
                 saving() ||
                 !form.name.trim() ||
                 !form.targetId ||
-                (form.scope === 'selected' && !form.packageIds.length) ||
+                (form.scope !== 'all' && !form.packageIds.length) ||
                 (!form.id && !form.password) ||
                 (projectedCount(form) > 1 && !form.capacityConfirmed)
               "
@@ -641,7 +646,7 @@ interface JobEditor {
       @if (reassigning(); as job) {
         <form class="editor" (ngSubmit)="reassign(job)">
           <div class="heading">
-            <h3>{{ 'Change backup target' | i18n }} — {{ job.name }}</h3>
+            <h3>{{ 'Change backup location' | i18n }} — {{ job.name }}</h3>
             <button
               tuiButton
               type="button"
@@ -654,7 +659,7 @@ interface JobEditor {
           </div>
           <div class="grid">
             <label>
-              <span>{{ 'New target' | i18n }}</span>
+              <span>{{ 'New backup location' | i18n }}</span>
               <select name="newTarget" required [(ngModel)]="reassignTargetId">
                 @for (target of targets(); track target.id) {
                   <option [value]="target.id">{{ target.name }}</option>
@@ -673,7 +678,7 @@ interface JobEditor {
               />
             </tui-textfield>
             <label class="switch-row">
-              {{ 'Wait for next scheduled run' | i18n }}
+              {{ 'Wait for next automatic run' | i18n }}
               <input
                 tuiSwitch
                 name="waitForSchedule"
@@ -684,7 +689,7 @@ interface JobEditor {
           </div>
           <div tuiNotification appearance="warning">
             {{
-              'Existing snapshots are not migrated. They remain archived on the original target.'
+              'Existing checkpoints are not moved. They remain archived at the original backup location.'
                 | i18n
             }}
           </div>
@@ -693,7 +698,7 @@ interface JobEditor {
               tuiButton
               [disabled]="!reassignTargetId || !reassignPassword"
             >
-              {{ 'Change target' | i18n }}
+              {{ 'Change backup location' | i18n }}
             </button>
           </footer>
         </form>
@@ -701,16 +706,16 @@ interface JobEditor {
     }
 
     <div class="heading history-heading">
-      <h3>{{ 'Scheduled Backup History' | i18n }}</h3>
+      <h3>{{ 'Automatic backup history' | i18n }}</h3>
     </div>
     <div class="table-wrap">
       <table class="g-table histories">
         <thead>
           <tr>
             <th>{{ 'Service' | i18n }}</th>
-            <th>{{ 'Target' | i18n }}</th>
+            <th>{{ 'Backup location' | i18n }}</th>
             <th>{{ 'Checkpoints' | i18n }}</th>
-            <th>{{ 'Scheduled storage' | i18n }}</th>
+            <th>{{ 'Automatic storage' | i18n }}</th>
             <th>{{ 'Next-run staging' | i18n }}</th>
             <th>{{ 'Last changed bytes' | i18n }}</th>
             <th></th>
@@ -787,7 +792,7 @@ interface JobEditor {
                       appearance="flat"
                       (click)="restoreSnapshot(history, snapshot)"
                     >
-                      {{ 'Scheduled' | i18n }} · {{ snapshot.jobName }} ·
+                      {{ 'Automatic' | i18n }} · {{ snapshot.jobName }} ·
                       {{ snapshot.completedAt | date: 'medium' }} ·
                       {{ bytes(snapshot.logicalSize) }}
                       @if (snapshot.archived) {
@@ -800,7 +805,7 @@ interface JobEditor {
             }
           } @empty {
             <tr>
-              <td colspan="7">{{ 'No scheduled checkpoints' | i18n }}</td>
+              <td colspan="7">{{ 'No automatic checkpoints' | i18n }}</td>
             </tr>
           }
         </tbody>
@@ -1179,7 +1184,17 @@ export class ScheduledBackupsComponent implements OnInit {
       packageIds:
         job.services.type === 'selected'
           ? [...job.services.packageIds]
-          : this.packages().map(pkg => pkg.id),
+          : job.services.type === 'allExcept'
+            ? this.packages()
+                .map(pkg => pkg.id)
+                .filter(id => {
+                  const services = job.services
+                  return (
+                    services.type !== 'allExcept' ||
+                    !services.excludedPackageIds.includes(id)
+                  )
+                })
+            : this.packages().map(pkg => pkg.id),
       ...schedule,
       retentionPreset: job.defaultRetention.tiers.length ? 'custom' : 'latest',
       tiers: this.toTierEditors(job.defaultRetention),
@@ -1253,7 +1268,14 @@ export class ScheduledBackupsComponent implements OnInit {
         services:
           form.scope === 'all'
             ? ({ type: 'all' } as const)
-            : ({ type: 'selected', packageIds: form.packageIds } as const),
+            : form.scope === 'allExcept'
+              ? ({
+                  type: 'allExcept',
+                  excludedPackageIds: this.packages()
+                    .map(pkg => pkg.id)
+                    .filter(id => !form.packageIds.includes(id)),
+                } as const)
+              : ({ type: 'selected', packageIds: form.packageIds } as const),
         schedule: serializeBackupSchedule(form),
         defaultRetention: this.policy(form.tiers),
         retentionOverrides: Object.fromEntries(
@@ -1546,15 +1568,17 @@ export class ScheduledBackupsComponent implements OnInit {
   }
 
   scopeLabel(scope: T.BackupServiceScope): string {
-    return scope.type === 'all' ? 'All services' : 'Selected services'
+    if (scope.type === 'all') return 'All services'
+    if (scope.type === 'allExcept') return 'All services with exclusions'
+    return 'Selected services'
   }
 
   pauseLabel(pause: T.BackupJobPause) {
     switch (pause.reason) {
       case 'targetUnavailable':
-        return 'Target unavailable' as const
+        return 'Backup location unavailable' as const
       case 'targetIdentityMismatch':
-        return 'Target changed' as const
+        return 'Backup location changed' as const
       case 'reauthenticationRequired':
         return 'Authentication required' as const
       default:
@@ -1605,7 +1629,14 @@ export class ScheduledBackupsComponent implements OnInit {
           services:
             form.scope === 'all'
               ? { type: 'all' }
-              : { type: 'selected', packageIds: form.packageIds },
+              : form.scope === 'allExcept'
+                ? {
+                    type: 'allExcept',
+                    excludedPackageIds: this.packages()
+                      .map(pkg => pkg.id)
+                      .filter(id => !form.packageIds.includes(id)),
+                  }
+                : { type: 'selected', packageIds: form.packageIds },
           defaultRetention: this.policy(form.tiers),
           retentionOverrides: Object.fromEntries(
             Object.entries(form.retentionOverrides).map(

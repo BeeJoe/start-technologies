@@ -20,13 +20,12 @@ const ROUTES: Routes = [
         title: titleResolver,
         loadChildren: () => import('./routes/services/services.routes'),
       },
-      // @TODO 041
-      // {
-      //   title: titleResolver,
-      //   path: 'backups',
-      //   loadComponent: () => import('./routes/backups/backups.component'),
-      //   data: toNavigationItem('backups'),
-      // },
+      {
+        title: titleResolver,
+        path: 'backups',
+        loadChildren: () => import('./routes/backups/backups.routes'),
+        data: toNavigationItem('backups'),
+      },
       {
         title: titleResolver,
         path: 'logs',
