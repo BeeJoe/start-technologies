@@ -20,7 +20,7 @@ import { map, take } from 'rxjs'
 import { ApiService } from 'src/app/services/api/embassy-api.service'
 import { ConfigService } from 'src/app/services/config.service'
 import { DataModel } from 'src/app/services/patch-db/data-model'
-import { RecoverData, RecoverOption } from './backup.types'
+import { RecoverCheckpoint, RecoverData, RecoverOption } from './backup.types'
 
 @Component({
   template: `
@@ -140,7 +140,7 @@ export class BackupsRecoverComponent {
                   jobName: snapshot.jobName,
                   snapshotId: snapshot.id,
                 }))
-              const checkpoints = [
+              const checkpoints: RecoverCheckpoint[] = [
                 ...(manual
                   ? [
                       {

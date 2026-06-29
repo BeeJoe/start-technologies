@@ -415,62 +415,60 @@ interface JobEditor {
                     <option value="custom">{{ 'Custom tiers' | i18n }}</option>
                   </select>
                 </div>
-                @if (form.retentionOverrides[pkg.id]?.preset === 'custom') {
-                  @for (
-                    tier of form.retentionOverrides[pkg.id].tiers;
-                    track $index
-                  ) {
-                    <div class="tier override-tier">
-                      <tui-textfield>
-                        <label tuiLabel>{{ 'Interval hours' | i18n }}</label>
-                        <input
-                          tuiInput
-                          type="number"
-                          min="1"
-                          [name]="'override-interval-' + pkg.id + '-' + $index"
-                          [(ngModel)]="tier.intervalHours"
-                        />
-                      </tui-textfield>
-                      <tui-textfield>
-                        <label tuiLabel>{{ 'Coverage hours' | i18n }}</label>
-                        <input
-                          tuiInput
-                          type="number"
-                          min="1"
-                          [name]="'override-coverage-' + pkg.id + '-' + $index"
-                          [(ngModel)]="tier.coverageHours"
-                        />
-                      </tui-textfield>
-                      <button
-                        tuiButton
-                        type="button"
-                        size="xs"
-                        appearance="flat-destructive"
-                        (click)="
-                          form.retentionOverrides[pkg.id].tiers.splice(
-                            $index,
-                            1
-                          )
-                        "
-                      >
-                        {{ 'Remove' | i18n }}
-                      </button>
-                    </div>
+                @if (form.retentionOverrides[pkg.id]; as override) {
+                  @if (override.preset === 'custom') {
+                    @for (tier of override.tiers; track $index) {
+                      <div class="tier override-tier">
+                        <tui-textfield>
+                          <label tuiLabel>{{ 'Interval hours' | i18n }}</label>
+                          <input
+                            tuiInput
+                            type="number"
+                            min="1"
+                            [name]="
+                              'override-interval-' + pkg.id + '-' + $index
+                            "
+                            [(ngModel)]="tier.intervalHours"
+                          />
+                        </tui-textfield>
+                        <tui-textfield>
+                          <label tuiLabel>{{ 'Coverage hours' | i18n }}</label>
+                          <input
+                            tuiInput
+                            type="number"
+                            min="1"
+                            [name]="
+                              'override-coverage-' + pkg.id + '-' + $index
+                            "
+                            [(ngModel)]="tier.coverageHours"
+                          />
+                        </tui-textfield>
+                        <button
+                          tuiButton
+                          type="button"
+                          size="xs"
+                          appearance="flat-destructive"
+                          (click)="override.tiers.splice($index, 1)"
+                        >
+                          {{ 'Remove' | i18n }}
+                        </button>
+                      </div>
+                    }
+                    <button
+                      tuiButton
+                      type="button"
+                      size="s"
+                      appearance="secondary"
+                      (click)="
+                        override.tiers.push({
+                          intervalHours: 24,
+                          coverageHours: 168,
+                        })
+                      "
+                    >
+                      {{ 'Add tier' | i18n }}
+                    </button>
                   }
-                  <button
-                    tuiButton
-                    type="button"
-                    size="s"
-                    appearance="secondary"
-                    (click)="
-                      form.retentionOverrides[pkg.id].tiers.push({
-                        intervalHours: 24,
-                        coverageHours: 168,
-                      })
-                    "
-                  >
-                    {{ 'Add tier' | i18n }}
-                  </button>
                 }
               }
             </fieldset>
