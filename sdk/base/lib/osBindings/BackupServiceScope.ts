@@ -3,4 +3,5 @@ import type { PackageId } from './PackageId'
 
 export type BackupServiceScope =
   | { type: 'all' }
+  | { type: 'allExcept'; excludedPackageIds: Array<PackageId> }
   | { type: 'selected'; packageIds: Array<PackageId> }
