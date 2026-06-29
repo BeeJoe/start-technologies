@@ -773,6 +773,13 @@ type HistoryFilter = 'all' | T.BackupActivityKind
       margin-top: 0.25rem;
     }
 
+    [tuiTitle],
+    .schedule-controls > *,
+    .activity summary > * {
+      min-width: 0;
+      overflow-wrap: anywhere;
+    }
+
     .steps,
     .tabs,
     .wizard-actions,
@@ -985,6 +992,38 @@ type HistoryFilter = 'all' | T.BackupActivityKind
       dl div {
         grid-template-columns: 1fr;
         gap: 0.2rem;
+      }
+    }
+
+    @media (max-width: 30rem) {
+      .panel > header,
+      .setting-row:not(.vertical),
+      .activity summary,
+      .advanced-link {
+        align-items: stretch;
+        flex-direction: column;
+      }
+
+      .panel > header > :last-child,
+      .setting-row:not(.vertical) > button,
+      .activity summary > tui-icon,
+      .activity summary > [tuiBadge],
+      .advanced-link > tui-icon,
+      .advanced-link > [tuiBadge] {
+        align-self: flex-start;
+      }
+
+      .inline-switch {
+        width: 100%;
+        justify-content: space-between;
+      }
+
+      .schedule-controls {
+        grid-template-columns: 1fr;
+      }
+
+      .wizard-actions {
+        flex-wrap: wrap;
       }
     }
   `,

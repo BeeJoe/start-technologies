@@ -10,7 +10,7 @@
     "check:shared": "tsc --project projects/shared/tsconfig.json --noEmit --skipLibCheck",
     "check:marketplace": "tsc --project projects/marketplace/tsconfig.json --noEmit --skipLibCheck",
     "check:setup": "tsc --project projects/setup-wizard/tsconfig.json --noEmit --skipLibCheck",
-    "check:ui": "tsc --project projects/ui/tsconfig.json --noEmit --skipLibCheck",
+    "check:ui": "tsc --project projects/ui/tsconfig.json --noEmit --skipLibCheck && node scripts/check-backup-mobile.mjs",
     "check:tunnel": "tsc --project projects/start-tunnel/tsconfig.json --noEmit --skipLibCheck",
     "check:brochure": "tsc --project projects/brochure/tsconfig.json --noEmit --skipLibCheck",
     "check:i18n": "node scripts/check-i18n.mjs",

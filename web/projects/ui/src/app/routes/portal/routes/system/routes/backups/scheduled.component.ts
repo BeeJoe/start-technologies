@@ -1041,6 +1041,26 @@ interface JobEditor {
     .estimate-heading {
       margin: 0 0 0.5rem;
     }
+
+    @media (max-width: 30rem) {
+      .heading {
+        align-items: stretch;
+        flex-direction: column;
+      }
+
+      .heading > button {
+        align-self: flex-start;
+      }
+
+      .tier,
+      .override {
+        grid-template-columns: 1fr;
+      }
+
+      .override-tier {
+        margin-left: 0;
+      }
+    }
   `,
   imports: [
     DatePipe,

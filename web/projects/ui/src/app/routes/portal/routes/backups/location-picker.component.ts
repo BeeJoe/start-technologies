@@ -60,6 +60,8 @@ type Location = MappedBackupTarget<CifsBackupTarget | DiskBackupTarget>
 
     [tuiTitle] {
       flex: 1;
+      min-width: 0;
+      overflow-wrap: anywhere;
     }
 
     [tuiSubtitle] {

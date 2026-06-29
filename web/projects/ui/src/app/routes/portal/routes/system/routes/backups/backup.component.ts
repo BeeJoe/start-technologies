@@ -79,6 +79,11 @@ interface Package {
       align-items: center;
     }
 
+    [tuiTitle] {
+      min-width: 0;
+      overflow-wrap: anywhere;
+    }
+
     img {
       width: 2.5rem;
       border-radius: 100%;

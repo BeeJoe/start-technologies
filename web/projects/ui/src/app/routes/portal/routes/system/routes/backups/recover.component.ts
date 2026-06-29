@@ -158,6 +158,28 @@ import { RecoverCheckpoint, RecoverData, RecoverOption } from './backup.types'
       border: 1px solid var(--tui-border-normal);
       border-radius: 0.5rem;
     }
+
+    [tuiTitle] {
+      min-width: 0;
+      overflow-wrap: anywhere;
+    }
+
+    @media (max-width: 30rem) {
+      .bulk-controls {
+        align-items: stretch;
+        flex-direction: column;
+      }
+
+      .bulk-controls label,
+      .bulk-controls select {
+        width: 100%;
+        min-width: 0;
+      }
+
+      .bulk-controls > button {
+        align-self: flex-start;
+      }
+    }
   `,
   imports: [
     CommonModule,

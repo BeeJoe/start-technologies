@@ -259,6 +259,12 @@ import { BackupService } from '../system/routes/backups/backup.service'
       margin-top: 0.25rem;
     }
 
+    [tuiTitle],
+    .status-grid > div {
+      min-width: 0;
+      overflow-wrap: anywhere;
+    }
+
     .toggle {
       justify-content: flex-end;
       white-space: nowrap;
@@ -342,6 +348,33 @@ import { BackupService } from '../system/routes/backups/backup.service'
 
       .actions > * {
         flex: 1;
+      }
+    }
+
+    @media (max-width: 30rem) {
+      .page-heading,
+      .automatic > header,
+      .operation,
+      .attention,
+      .empty {
+        align-items: stretch;
+        flex-direction: column;
+      }
+
+      .page-heading > a,
+      .operation > :last-child,
+      .attention > :last-child,
+      .empty > :last-child {
+        align-self: flex-start;
+      }
+
+      .automatic > header .toggle {
+        width: 100%;
+        justify-content: space-between;
+      }
+
+      .actions {
+        flex-wrap: wrap;
       }
     }
   `,
