@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
+use std::future::Future;
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use chrono::Utc;
 use color_eyre::eyre::eyre;
@@ -15,7 +16,7 @@ use super::{
 use crate::backup::PackageBackupReport;
 use crate::backup::os::OsBackup;
 use crate::backup::scheduled::rpc::history_key;
-use crate::backup::target::BackupTargetId;
+use crate::backup::target::{BackupTargetFS, BackupTargetId};
 use crate::context::RpcContext;
 use crate::disk::mount::filesystem::ReadWrite;
 use crate::disk::mount::guard::{GenericMountGuard, TmpMountGuard};
@@ -30,6 +31,32 @@ use crate::{DATA_DIR, PackageId};
 
 const PREFLIGHT_MARGIN_PERCENT: u64 = 10;
 const PREFLIGHT_METADATA_BYTES: u64 = 1024 * 1024;
+const TARGET_MOUNT_RETRY_DELAYS: [Duration; 2] =
+    [Duration::from_millis(500), Duration::from_millis(1500)];
+
+async fn retry_mount<T, F, Fut>(mut mount: F, retry_delays: &[Duration]) -> Result<T, Error>
+where
+    F: FnMut() -> Fut,
+    Fut: Future<Output = Result<T, Error>>,
+{
+    let mut result = mount().await;
+    for delay in retry_delays {
+        if result.is_ok() {
+            return result;
+        }
+        tokio::time::sleep(*delay).await;
+        result = mount().await;
+    }
+    result
+}
+
+async fn mount_target(target: &BackupTargetFS) -> Result<TmpMountGuard, Error> {
+    retry_mount(
+        || TmpMountGuard::mount(target, ReadWrite),
+        &TARGET_MOUNT_RETRY_DELAYS,
+    )
+    .await
+}
 
 pub async fn run_job(
     ctx: RpcContext,
@@ -70,6 +97,7 @@ async fn run_job_inner(
             ErrorKind::InvalidRequest,
         ));
     }
+    let target_name = job.target_id.user_facing_name(&db);
     let package_ids = selected_services(&db, &job.services)?;
     let encryption_key = (|| {
         let credential: ScheduledBackupCredential = db
@@ -93,7 +121,7 @@ async fn run_job_inner(
                 t!(
                     "backup.scheduled.reauth-message",
                     job = job.name,
-                    target = job.target_id
+                    target = target_name.as_str()
                 )
                 .to_string(),
             )
@@ -112,7 +140,7 @@ async fn run_job_inner(
             return Err(error);
         }
     };
-    let target_guard = match TmpMountGuard::mount(&target_fs, ReadWrite).await {
+    let target_guard = match mount_target(&target_fs).await {
         Ok(guard) => guard,
         Err(error) => {
             let message = error.to_string();
@@ -141,7 +169,7 @@ async fn run_job_inner(
                 t!(
                     "backup.scheduled.identity-message",
                     job = job.name,
-                    target = job.target_id
+                    target = target_name.as_str()
                 )
                 .to_string(),
             )
@@ -175,7 +203,7 @@ async fn run_job_inner(
                     t!(
                         "backup.scheduled.capacity-message",
                         job = job.name,
-                        target = job.target_id
+                        target = target_name.as_str()
                     )
                     .to_string(),
                     job.id.to_string(),
@@ -460,7 +488,7 @@ async fn run_job_inner(
                     t!(
                         "backup.scheduled.run-failed-message",
                         job = job.name,
-                        target = job.target_id,
+                        target = target_name.as_str(),
                         services = affected
                     )
                     .to_string(),
@@ -496,6 +524,7 @@ async fn notify_run_failure(
         .join(", ");
     ctx.db
         .mutate(|db| {
+            let target_name = job.target_id.user_facing_name(db);
             notify(
                 db,
                 None,
@@ -504,7 +533,7 @@ async fn notify_run_failure(
                 t!(
                     "backup.scheduled.run-failed-message",
                     job = job.name,
-                    target = job.target_id,
+                    target = target_name.as_str(),
                     services = services
                 )
                 .to_string(),
@@ -725,6 +754,7 @@ async fn record_connectivity_failure(ctx: &RpcContext, job: &BackupJob) -> Resul
     let target_key = job.target_id.to_string();
     ctx.db
         .mutate(|db| {
+            let target_name = job.target_id.user_facing_name(db);
             let state = db.as_public_mut().as_scheduled_backups_mut();
             let affected: Vec<BackupJob> = state
                 .as_jobs()
@@ -769,7 +799,7 @@ async fn record_connectivity_failure(ctx: &RpcContext, job: &BackupJob) -> Resul
                     t!("backup.scheduled.target-unavailable-title").to_string(),
                     t!(
                         "backup.scheduled.target-unavailable-message",
-                        target = job.target_id
+                        target = target_name.as_str()
                     )
                     .to_string(),
                     target_key,
@@ -857,6 +887,8 @@ async fn pause_for_intervention(
 
 #[cfg(test)]
 mod tests {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
     use super::*;
 
     #[test]
@@ -865,5 +897,51 @@ mod tests {
         let reversed = complete_run_required_capacity([(200, 1, 1), (100, 0, 1)]).unwrap();
         assert_eq!(first, reversed);
         assert_eq!(first, PREFLIGHT_METADATA_BYTES + 100 + 220);
+    }
+
+    #[tokio::test]
+    async fn transient_mount_failure_is_retried() {
+        let attempts = AtomicUsize::new(0);
+        let result = retry_mount(
+            || {
+                let attempt = attempts.fetch_add(1, Ordering::SeqCst);
+                async move {
+                    if attempt == 0 {
+                        Err(Error::new(
+                            eyre!("transient mount failure"),
+                            ErrorKind::Filesystem,
+                        ))
+                    } else {
+                        Ok(())
+                    }
+                }
+            },
+            &[Duration::ZERO],
+        )
+        .await;
+
+        assert!(result.is_ok());
+        assert_eq!(attempts.load(Ordering::SeqCst), 2);
+    }
+
+    #[tokio::test]
+    async fn persistent_mount_failure_stops_after_bounded_retries() {
+        let attempts = AtomicUsize::new(0);
+        let result: Result<(), Error> = retry_mount(
+            || {
+                attempts.fetch_add(1, Ordering::SeqCst);
+                async {
+                    Err(Error::new(
+                        eyre!("persistent mount failure"),
+                        ErrorKind::Filesystem,
+                    ))
+                }
+            },
+            &[Duration::ZERO, Duration::ZERO],
+        )
+        .await;
+
+        assert!(result.is_err());
+        assert_eq!(attempts.load(Ordering::SeqCst), 3);
     }
 }

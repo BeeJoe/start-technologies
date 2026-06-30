@@ -27,6 +27,10 @@ file tracks notable changes since the move to the monorepo.
 
 ### Fixed
 
+- **Automatic backup network mounts.** Scheduled backups retry brief target
+  mount failures before reporting an error, and notifications identify network
+  folders by their user-facing location instead of internal IDs such as
+  `cifs-0`.
 - **Automatic Backups mobile layout.** The overview card now reflows from its
   actual available width inside System, avoids nested page gutters, and keeps
   status text, controls, and actions readable on narrow screens.
