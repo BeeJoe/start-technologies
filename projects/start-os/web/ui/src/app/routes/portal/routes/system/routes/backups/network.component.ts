@@ -69,7 +69,7 @@ const ERROR =
               (tuiDropdownOpenChange)="opens[$index] = $event"
             >
               {{ 'More' | i18n }}
-              <tui-data-list *tuiDropdown>
+              <tui-data-list class="backup-menu" *tuiDropdown>
                 <button tuiOption (click)="edit(target)">
                   {{ 'Edit' | i18n }}
                 </button>
@@ -126,12 +126,16 @@ const ERROR =
 
     :host-context(tui-root._mobile) {
       tr {
-        grid-template-columns: min-content 1fr 4rem;
-        white-space: nowrap;
+        grid-template-columns: minmax(0, 1fr) auto auto;
+        width: 100%;
+        min-width: 0;
+        white-space: normal;
       }
 
       td {
+        min-width: 0;
         grid-column: span 2;
+        overflow-wrap: anywhere;
 
         &:first-child {
           font-size: 0;
@@ -142,7 +146,7 @@ const ERROR =
         }
 
         &:last-child {
-          grid-area: 1 / 3 / 4 / 3;
+          grid-area: 1 / 3 / 4 / 4;
           align-self: center;
           justify-self: end;
         }
@@ -158,7 +162,7 @@ const ERROR =
         font: var(--tui-typography-body-m);
         font-weight: bold;
         grid-column: 1;
-        max-width: 12rem;
+        max-width: 100%;
       }
     }
   `,

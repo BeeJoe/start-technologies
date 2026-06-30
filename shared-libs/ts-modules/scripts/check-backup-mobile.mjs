@@ -99,6 +99,15 @@ function assertNestedRoute(file) {
   }
 }
 
+function assertSource(file, patterns) {
+  const source = fs.readFileSync(path.join(root, file), 'utf8')
+  for (const pattern of patterns) {
+    if (!pattern.test(source)) {
+      throw new Error(`${file}: missing required layout contract ${pattern}`)
+    }
+  }
+}
+
 const homeFile =
   'projects/start-os/web/ui/src/app/routes/portal/routes/backups/backups.component.ts'
 const editorFile =
@@ -113,6 +122,15 @@ const recoverFile =
   'projects/start-os/web/ui/src/app/routes/portal/routes/system/routes/backups/recover.component.ts'
 const advancedFile =
   'projects/start-os/web/ui/src/app/routes/portal/routes/system/routes/backups/scheduled.component.ts'
+const manualPageFile =
+  'projects/start-os/web/ui/src/app/routes/portal/routes/system/routes/backups/backups.component.ts'
+const networkFile =
+  'projects/start-os/web/ui/src/app/routes/portal/routes/system/routes/backups/network.component.ts'
+const physicalFile =
+  'projects/start-os/web/ui/src/app/routes/portal/routes/system/routes/backups/physical.component.ts'
+const navigationFile =
+  'projects/start-os/web/ui/src/app/routes/portal/routes/backups/backup-navigation.component.ts'
+const globalStylesFile = 'projects/start-os/web/ui/src/styles.scss'
 const systemFile =
   'projects/start-os/web/ui/src/app/routes/portal/routes/system/system.component.ts'
 const phone = '(max-width: 30rem)'
@@ -123,6 +141,8 @@ const location = componentStyles(locationFile)
 const manual = componentStyles(manualFile)
 const recover = componentStyles(recoverFile)
 const advanced = componentStyles(advancedFile)
+const network = componentStyles(networkFile)
+const physical = componentStyles(physicalFile)
 const system = componentStyles(systemFile)
 
 for (const file of [homeFile, editorFile, locationsFile]) {
@@ -138,6 +158,10 @@ for (const selector of ['[tuiTitle]', '.status-grid > div']) {
     'overflow-wrap': 'anywhere',
   })
 }
+assertRule(home, homeFile, '.automatic > header', {
+  position: 'static',
+  height: 'auto',
+})
 
 for (const selector of ['.page-heading', '.operation']) {
   assertRule(
@@ -161,7 +185,7 @@ assertContainerRule(
   home,
   homeFile,
   '.automatic > header .toggle',
-  { width: '100%', 'justify-content': 'space-between' },
+  { width: 'fit-content', 'justify-content': 'flex-start' },
   narrowCard,
 )
 assertContainerRule(
@@ -182,6 +206,10 @@ for (const selector of [
     'overflow-wrap': 'anywhere',
   })
 }
+assertRule(editor, editorFile, '.panel > header', {
+  position: 'static',
+  height: 'auto',
+})
 
 for (const selector of [
   '.panel > header',
@@ -211,7 +239,13 @@ assertRule(
   { 'flex-wrap': 'wrap' },
   phone,
 )
-assertRule(editor, editorFile, '.inline-switch', { width: '100%' }, phone)
+assertRule(
+  editor,
+  editorFile,
+  '.inline-switch',
+  { width: 'fit-content', 'justify-content': 'flex-start' },
+  phone,
+)
 
 for (const [sheet, file] of [
   [location, locationFile],
@@ -254,5 +288,45 @@ for (const selector of ['.tier', '.override']) {
     phone,
   )
 }
+
+for (const [sheet, file, columns] of [
+  [network, networkFile, 'minmax(0, 1fr) auto auto'],
+  [physical, physicalFile, 'minmax(0, 1fr) auto'],
+]) {
+  assertRule(
+    sheet,
+    file,
+    'tr',
+    {
+      'grid-template-columns': columns,
+      'min-width': '0',
+      'white-space': 'normal',
+    },
+    null,
+  )
+}
+
+for (const file of [homeFile, editorFile, locationsFile, manualPageFile]) {
+  assertSource(file, [/<backup-navigation\s*\/>/])
+}
+
+for (const file of [editorFile, manualFile, recoverFile]) {
+  assertSource(file, [
+    /tuiCheckbox[\s\S]{0,320}['"]Toggle all['"]/,
+    /host:\s*\{\s*class:\s*['"]backup-(?:page|settings)['"]|<backup-navigation\s*\/>/,
+  ])
+}
+
+assertSource(navigationFile, [
+  /routerLink="\/system\/backups\/manage"/,
+  /routerLink="\/system\/backups\/manual"/,
+  /routerLink="\/system\/backups\/restore"/,
+  /routerLink="\/system\/backups\/locations"/,
+  /overflow-x:\s*auto/,
+])
+assertSource(globalStylesFile, [
+  /\.backup-page,[\s\S]*\.backup-settings[\s\S]*select\s*\{[\s\S]*min-height:\s*3rem[\s\S]*padding:\s*0\.75rem 2\.5rem 0\.75rem 1rem/,
+  /tui-data-list\.backup-menu[\s\S]*min-width:\s*12rem[\s\S]*min-height:\s*3rem/,
+])
 
 console.log('Backup mobile layout contract passed')

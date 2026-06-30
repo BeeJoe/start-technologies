@@ -371,13 +371,13 @@ interface JobEditor {
             }
 
             <label class="switch-row">
-              {{ 'Enabled' | i18n }}
               <input
                 tuiSwitch
                 type="checkbox"
                 name="enabled"
                 [(ngModel)]="form.enabled"
               />
+              <span>{{ 'Enabled' | i18n }}</span>
             </label>
           </div>
 
@@ -678,13 +678,13 @@ interface JobEditor {
               />
             </tui-textfield>
             <label class="switch-row">
-              {{ 'Wait for next automatic run' | i18n }}
               <input
                 tuiSwitch
                 name="waitForSchedule"
                 type="checkbox"
                 [(ngModel)]="waitForSchedule"
               />
+              <span>{{ 'Wait for next automatic run' | i18n }}</span>
             </label>
           </div>
           <div tuiNotification appearance="warning">
@@ -944,6 +944,9 @@ interface JobEditor {
     }
 
     .table-wrap {
+      width: 100%;
+      max-width: 100%;
+      min-width: 0;
       overflow-x: auto;
     }
 
@@ -961,6 +964,8 @@ interface JobEditor {
       padding: 1rem;
       border: 1px solid var(--tui-border-normal);
       border-radius: 0.75rem;
+      min-width: 0;
+      overflow: hidden;
     }
 
     .grid {
@@ -976,19 +981,10 @@ interface JobEditor {
       color: var(--tui-text-secondary);
     }
 
-    select {
-      width: 100%;
-      min-height: 2.75rem;
-      padding: 0 0.75rem;
-      color: var(--tui-text-primary);
-      background: var(--tui-background-base);
-      border: 1px solid var(--tui-border-normal);
-      border-radius: 0.5rem;
-    }
-
     fieldset {
       display: grid;
       gap: 0.65rem;
+      min-width: 0;
       border: 1px solid var(--tui-border-normal);
       border-radius: 0.5rem;
     }
@@ -1001,7 +997,7 @@ interface JobEditor {
     }
 
     .switch-row {
-      justify-content: space-between;
+      justify-content: flex-start;
       min-height: 2.75rem;
     }
 
@@ -1034,6 +1030,21 @@ interface JobEditor {
       gap: 0.35rem;
     }
 
+    .snapshot-row button,
+    .actions button {
+      max-width: 100%;
+      height: auto;
+      white-space: normal;
+      overflow-wrap: anywhere;
+    }
+
+    .grid > *,
+    .override > *,
+    .histories td {
+      min-width: 0;
+      overflow-wrap: anywhere;
+    }
+
     .history-heading {
       margin-top: 2rem;
     }
@@ -1062,6 +1073,7 @@ interface JobEditor {
       }
     }
   `,
+  host: { class: 'backup-settings' },
   imports: [
     DatePipe,
     FormsModule,
