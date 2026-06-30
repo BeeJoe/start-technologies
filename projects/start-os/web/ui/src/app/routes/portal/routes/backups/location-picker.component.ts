@@ -1,7 +1,13 @@
 import { Component, computed, inject, input, output } from '@angular/core'
 import { RouterLink } from '@angular/router'
 import { i18nPipe } from '@start9labs/shared'
-import { TuiButton, TuiCell, TuiIcon, TuiTitle } from '@taiga-ui/core'
+import {
+  TuiAppearance,
+  TuiButton,
+  TuiCell,
+  TuiIcon,
+  TuiTitle,
+} from '@taiga-ui/core'
 import {
   CifsBackupTarget,
   DiskBackupTarget,
@@ -20,6 +26,7 @@ type Location = MappedBackupTarget<CifsBackupTarget | DiskBackupTarget>
       @for (target of targets(); track target.location.id) {
         <button
           tuiCell
+          tuiAppearance="outline-grayscale"
           type="button"
           [disabled]="!target.available"
           [class.selected]="selectedId() === target.location.id"
@@ -55,7 +62,13 @@ type Location = MappedBackupTarget<CifsBackupTarget | DiskBackupTarget>
     }
 
     [tuiCell] {
+      width: 100%;
+      min-width: 0;
+      max-width: 100%;
+      gap: 0.75rem;
+      overflow: hidden;
       text-align: left;
+      box-sizing: border-box;
     }
 
     [tuiTitle] {
@@ -77,7 +90,15 @@ type Location = MappedBackupTarget<CifsBackupTarget | DiskBackupTarget>
       color: var(--tui-text-secondary);
     }
   `,
-  imports: [RouterLink, TuiButton, TuiCell, TuiIcon, TuiTitle, i18nPipe],
+  imports: [
+    RouterLink,
+    TuiAppearance,
+    TuiButton,
+    TuiCell,
+    TuiIcon,
+    TuiTitle,
+    i18nPipe,
+  ],
 })
 export class BackupLocationPickerComponent {
   private readonly backupService = inject(BackupService)

@@ -23,7 +23,7 @@ Back up your server's data to a physical drive or a network folder.
 
 1. Upon completion, StartOS issues a backup report, indicating which services were backed up, as well as any errors.
 
-1. Backups are differential — each new backup to the same target overwrites the previous one. To maintain multiple backup points, use multiple backup targets.
+1. A manual backup replaces the previous manual checkpoint for each selected service. Automatic backups are stored separately and can retain additional checkpoints according to the version-history setting.
 
 1. Backups taken from a specific system architecture (x86, ARM, RISC-V) are backed up for just that architecture. If restored to another architecture, they will likely need to be reinstalled to run efficiently.
 
@@ -39,6 +39,16 @@ Even with proper backups the risk of data corruption is always non-zero. Therefo
 - High quality SSDs should be favored over HDDs as a backup target.
 - Backup to multiple targets.
 - If backing up to multiple targets make sure all backups are up to date.
+
+## Using Backups in StartOS
+
+Go to `System > Backups`. From any backup page, use the navigation row to move
+directly between:
+
+- **Automatic** to create or manage scheduled backups.
+- **Manual backup** to create a one-time backup for selected services.
+- **Restore** to choose a manual or automatic checkpoint.
+- **Locations** to add or repair physical drives and network folders.
 
 ## Physical Drive
 
@@ -341,9 +351,9 @@ A network folder backup sends your encrypted backup over the LAN to a shared fol
 
 ### Step 2. Connect from StartOS
 
-1. In StartOS, go to `System > Create Backup`.
+1. In StartOS, go to `System > Backups > Locations`.
 
-1. Click "Open New".
+1. Under Network Folders, click "New".
 
 1. Complete the form:
 

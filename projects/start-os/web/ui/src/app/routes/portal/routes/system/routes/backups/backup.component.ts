@@ -43,8 +43,6 @@ interface Package {
       @if (pkgs(); as pkgs) {
         @for (pkg of pkgs; track $index) {
           <label tuiBlock="m">
-            <img alt="" [src]="pkg.icon" />
-            <span tuiTitle>{{ pkg.title }}</span>
             <input
               type="checkbox"
               tuiCheckbox
@@ -52,6 +50,8 @@ interface Package {
               [(ngModel)]="pkg.checked"
               (ngModelChange)="handleChange()"
             />
+            <img alt="" [src]="pkg.icon" />
+            <span tuiTitle>{{ pkg.title }}</span>
           </label>
         } @empty {
           {{ 'No services installed' | i18n }}
@@ -61,9 +61,17 @@ interface Package {
       }
     </div>
     <footer class="g-buttons">
-      <button tuiButton appearance="flat-grayscale" (click)="toggleSelectAll()">
-        {{ 'Toggle all' | i18n }}
-      </button>
+      <label class="toggle-all">
+        <input
+          tuiCheckbox
+          type="checkbox"
+          [ngModel]="allEligibleSelected()"
+          (ngModelChange)="setAll($event)"
+        />
+        <span tuiTitle>
+          <b>{{ 'Toggle all' | i18n }}</b>
+        </span>
+      </label>
       <button tuiButton [disabled]="!hasSelection" (click)="done()">
         {{ 'Done' | i18n }}
       </button>
@@ -88,7 +96,15 @@ interface Package {
       width: 2.5rem;
       border-radius: 100%;
     }
+
+    .toggle-all {
+      display: flex;
+      align-items: center;
+      gap: 0.65rem;
+      margin-right: auto;
+    }
   `,
+  host: { class: 'backup-settings' },
   imports: [
     FormsModule,
     TuiButton,
@@ -174,9 +190,14 @@ export class BackupsBackupComponent {
     this.hasSelection = !!this.pkgs()?.some(p => p.checked)
   }
 
-  toggleSelectAll() {
-    this.pkgs()?.forEach(p => (p.checked = !this.hasSelection && !p.disabled))
-    this.hasSelection = !this.hasSelection
+  allEligibleSelected(): boolean {
+    const eligible = this.pkgs()?.filter(pkg => !pkg.disabled) || []
+    return !!eligible.length && eligible.every(pkg => pkg.checked)
+  }
+
+  setAll(checked: boolean) {
+    this.pkgs()?.forEach(pkg => (pkg.checked = checked && !pkg.disabled))
+    this.handleChange()
   }
 
   private async oldPassword(password: string) {

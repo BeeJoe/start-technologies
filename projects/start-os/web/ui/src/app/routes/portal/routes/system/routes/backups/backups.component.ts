@@ -22,6 +22,7 @@ import { LEGACY_BACKUP } from './legacy.component'
 import { BackupLocationPickerComponent } from '../../../backups/location-picker.component'
 import { BackupProgressComponent } from './progress.component'
 import { BACKUP_RESTORE } from './restore.component'
+import { BackupNavigationComponent } from '../../../backups/backup-navigation.component'
 
 @Component({
   template: `
@@ -49,6 +50,8 @@ import { BACKUP_RESTORE } from './restore.component'
         ></a>
       </div>
     </ng-container>
+
+    <backup-navigation />
 
     <header tuiHeader>
       <hgroup tuiTitle>
@@ -107,10 +110,20 @@ import { BACKUP_RESTORE } from './restore.component'
     }
   `,
   styles: `
+    :host {
+      display: grid;
+      gap: 1rem;
+      width: 100%;
+      min-width: 0;
+      max-width: 64rem;
+      margin-inline: auto;
+    }
+
     :host-context(tui-root._mobile) [tuiHeader] {
       display: none;
     }
   `,
+  host: { class: 'backup-page' },
   imports: [
     AsyncPipe,
     DatePipe,
@@ -124,6 +137,7 @@ import { BACKUP_RESTORE } from './restore.component'
     TitleDirective,
     BackupLocationPickerComponent,
     BackupProgressComponent,
+    BackupNavigationComponent,
     i18nPipe,
     DocsLinkDirective,
   ],

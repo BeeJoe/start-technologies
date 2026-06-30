@@ -11,6 +11,7 @@ import {
 } from '@start9labs/shared'
 import { T } from '@start9labs/start-core'
 import {
+  TuiAppearance,
   TuiButton,
   TuiCell,
   TuiCheckbox,
@@ -39,6 +40,7 @@ import {
 } from '../system/routes/backups/scheduled.utils'
 import { ScheduledBackupsComponent } from '../system/routes/backups/scheduled.component'
 import { BackupLocationPickerComponent } from './location-picker.component'
+import { BackupNavigationComponent } from './backup-navigation.component'
 
 interface ServiceChoice {
   id: string
@@ -76,6 +78,8 @@ type HistoryFilter = 'all' | T.BackupActivityKind
           | i18n
       }}
     </ng-container>
+
+    <backup-navigation />
 
     <header class="page-heading">
       <span tuiTitle>
@@ -232,26 +236,29 @@ type HistoryFilter = 'all' | T.BackupActivityKind
             <div tuiGroup orientation="vertical" [collapsed]="true">
               @for (service of editor.services; track service.id) {
                 <label tuiBlock="m">
-                  <img alt="" [src]="service.icon" />
-                  <span tuiTitle>
-                    <b>{{ service.title }}</b>
-                  </span>
                   <input
                     tuiCheckbox
                     type="checkbox"
                     [(ngModel)]="service.checked"
                   />
+                  <img alt="" [src]="service.icon" />
+                  <span tuiTitle>
+                    <b>{{ service.title }}</b>
+                  </span>
                 </label>
               }
             </div>
-            <button
-              tuiButton
-              type="button"
-              appearance="flat-grayscale"
-              (click)="toggleAllServices()"
-            >
-              {{ 'Toggle all' | i18n }}
-            </button>
+            <label class="checkbox-row toggle-all">
+              <input
+                tuiCheckbox
+                type="checkbox"
+                [ngModel]="allServicesSelected()"
+                (ngModelChange)="setAllServices($event)"
+              />
+              <span tuiTitle>
+                <b>{{ 'Toggle all' | i18n }}</b>
+              </span>
+            </label>
           }
 
           <div class="setting-row">
@@ -267,12 +274,12 @@ type HistoryFilter = 'all' | T.BackupActivityKind
               </span>
             </span>
             <label class="inline-switch">
-              <span>{{ 'Keep additional versions' | i18n }}</span>
               <input
                 tuiSwitch
                 type="checkbox"
                 [(ngModel)]="editor.keepAdditional"
               />
+              <span>{{ 'Keep additional versions' | i18n }}</span>
             </label>
           </div>
 
@@ -439,12 +446,17 @@ type HistoryFilter = 'all' | T.BackupActivityKind
                   }}
                 </span>
               </span>
-              <input
-                tuiSwitch
-                type="checkbox"
-                [ngModel]="job.enabled && !job.pause"
-                (ngModelChange)="toggleMain($event)"
-              />
+              <label class="inline-switch main-switch">
+                <input
+                  tuiSwitch
+                  type="checkbox"
+                  [ngModel]="job.enabled && !job.pause"
+                  (ngModelChange)="toggleMain($event)"
+                />
+                <span>
+                  {{ (job.enabled && !job.pause ? 'On' : 'Off') | i18n }}
+                </span>
+              </label>
             </header>
 
             @if (job.services.type === 'selected' && !editor.includeFuture) {
@@ -544,26 +556,29 @@ type HistoryFilter = 'all' | T.BackupActivityKind
               <div tuiGroup orientation="vertical" [collapsed]="true">
                 @for (service of editor.services; track service.id) {
                   <label tuiBlock="m">
-                    <img alt="" [src]="service.icon" />
-                    <span tuiTitle>
-                      <b>{{ service.title }}</b>
-                    </span>
                     <input
                       tuiCheckbox
                       type="checkbox"
                       [(ngModel)]="service.checked"
                     />
+                    <img alt="" [src]="service.icon" />
+                    <span tuiTitle>
+                      <b>{{ service.title }}</b>
+                    </span>
                   </label>
                 }
               </div>
-              <button
-                tuiButton
-                type="button"
-                appearance="flat-grayscale"
-                (click)="toggleAllServices()"
-              >
-                {{ 'Toggle all' | i18n }}
-              </button>
+              <label class="checkbox-row toggle-all">
+                <input
+                  tuiCheckbox
+                  type="checkbox"
+                  [ngModel]="allServicesSelected()"
+                  (ngModelChange)="setAllServices($event)"
+                />
+                <span tuiTitle>
+                  <b>{{ 'Toggle all' | i18n }}</b>
+                </span>
+              </label>
             </div>
 
             <div class="setting-row vertical">
@@ -657,6 +672,7 @@ type HistoryFilter = 'all' | T.BackupActivityKind
 
           <button
             tuiCell
+            tuiAppearance="outline-grayscale"
             class="advanced-link"
             (click)="showAdvanced.set(!showAdvanced())"
           >
@@ -736,6 +752,7 @@ type HistoryFilter = 'all' | T.BackupActivityKind
 
         <button
           tuiCell
+          tuiAppearance="outline-grayscale"
           class="advanced-link"
           (click)="showCheckpoints.set(!showCheckpoints())"
         >
@@ -825,6 +842,16 @@ type HistoryFilter = 'all' | T.BackupActivityKind
       padding: 1.25rem;
     }
 
+    .panel > header {
+      position: static;
+      inset: auto;
+      height: auto;
+      padding: 0;
+      background: transparent;
+      font: inherit;
+      font-weight: inherit;
+    }
+
     .panel > header,
     .setting-row,
     .danger,
@@ -889,6 +916,12 @@ type HistoryFilter = 'all' | T.BackupActivityKind
     }
 
     .inline-switch.left {
+      justify-content: flex-start;
+    }
+
+    .main-switch,
+    .toggle-all {
+      width: fit-content;
       justify-content: flex-start;
     }
 
@@ -1014,8 +1047,8 @@ type HistoryFilter = 'all' | T.BackupActivityKind
       }
 
       .inline-switch {
-        width: 100%;
-        justify-content: space-between;
+        width: fit-content;
+        justify-content: flex-start;
       }
 
       .schedule-controls {
@@ -1027,10 +1060,12 @@ type HistoryFilter = 'all' | T.BackupActivityKind
       }
     }
   `,
+  host: { class: 'backup-page' },
   imports: [
     DatePipe,
     FormsModule,
     RouterLink,
+    TuiAppearance,
     TuiBadge,
     TuiBlock,
     TuiButton,
@@ -1045,6 +1080,7 @@ type HistoryFilter = 'all' | T.BackupActivityKind
     TitleDirective,
     ScheduledBackupsComponent,
     BackupLocationPickerComponent,
+    BackupNavigationComponent,
     i18nPipe,
   ],
 })
@@ -1244,10 +1280,17 @@ export default class AutomaticBackupsComponent implements OnInit {
     this.step.update(step => Math.max(1, step - 1))
   }
 
-  toggleAllServices() {
+  allServicesSelected(): boolean {
     this.ensureServices()
-    const select = !this.editor.services.some(service => service.checked)
-    this.editor.services.forEach(service => (service.checked = select))
+    return (
+      this.editor.services.length > 0 &&
+      this.editor.services.every(service => service.checked)
+    )
+  }
+
+  setAllServices(checked: boolean) {
+    this.ensureServices()
+    this.editor.services.forEach(service => (service.checked = checked))
   }
 
   scheduleSummary(): string {

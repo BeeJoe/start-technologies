@@ -6,6 +6,7 @@ import { TitleDirective } from 'src/app/services/title.service'
 import { BackupNetworkComponent } from '../system/routes/backups/network.component'
 import { BackupPhysicalComponent } from '../system/routes/backups/physical.component'
 import { BackupService } from '../system/routes/backups/backup.service'
+import { BackupNavigationComponent } from './backup-navigation.component'
 
 @Component({
   template: `
@@ -15,6 +16,8 @@ import { BackupService } from '../system/routes/backups/backup.service'
       </a>
       {{ 'Backup locations' | i18n }}
     </ng-container>
+
+    <backup-navigation />
 
     <header class="heading">
       <span tuiTitle>
@@ -55,6 +58,7 @@ import { BackupService } from '../system/routes/backups/backup.service'
       margin-top: 0.25rem;
     }
   `,
+  host: { class: 'backup-page' },
   imports: [
     RouterLink,
     TuiButton,
@@ -63,6 +67,7 @@ import { BackupService } from '../system/routes/backups/backup.service'
     TitleDirective,
     BackupNetworkComponent,
     BackupPhysicalComponent,
+    BackupNavigationComponent,
     i18nPipe,
   ],
 })

@@ -1006,4 +1006,7 @@ export default {
   1098: 'Auf den nächsten automatischen Lauf warten',
   1099: 'Verlauf automatischer Sicherungen',
   1100: 'Keine automatischen Wiederherstellungspunkte',
+  1101: 'Übersicht',
+  1102: 'Manuelle Sicherung',
+  1103: 'Speicherorte',
 } satisfies i18n

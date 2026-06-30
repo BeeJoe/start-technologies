@@ -10,7 +10,13 @@ import {
   i18nPipe,
 } from '@start9labs/shared'
 import { T } from '@start9labs/start-core'
-import { TuiButton, TuiCell, TuiIcon, TuiTitle } from '@taiga-ui/core'
+import {
+  TuiAppearance,
+  TuiButton,
+  TuiCell,
+  TuiIcon,
+  TuiTitle,
+} from '@taiga-ui/core'
 import { TuiBadge, TuiSwitch } from '@taiga-ui/kit'
 import { PatchDB } from 'patch-db-client'
 import { filter, firstValueFrom } from 'rxjs'
@@ -18,10 +24,13 @@ import { ApiService } from 'src/app/services/api/embassy-api.service'
 import { DataModel } from 'src/app/services/patch-db/data-model'
 import { TitleDirective } from 'src/app/services/title.service'
 import { BackupService } from '../system/routes/backups/backup.service'
+import { BackupNavigationComponent } from './backup-navigation.component'
 
 @Component({
   template: `
     <ng-container *title>{{ 'Backups' | i18n }}</ng-container>
+
+    <backup-navigation />
 
     <header class="page-heading">
       <div>
@@ -88,7 +97,6 @@ import { BackupService } from '../system/routes/backups/backup.service'
         </span>
         @if (jobs().length) {
           <label class="toggle">
-            <span>{{ (automaticOn() ? 'On' : 'Off') | i18n }}</span>
             <input
               tuiSwitch
               type="checkbox"
@@ -96,6 +104,7 @@ import { BackupService } from '../system/routes/backups/backup.service'
               [disabled]="changingAutomatic"
               (ngModelChange)="setAutomatic($event)"
             />
+            <span>{{ (automaticOn() ? 'On' : 'Off') | i18n }}</span>
           </label>
         }
       </header>
@@ -176,6 +185,7 @@ import { BackupService } from '../system/routes/backups/backup.service'
     <section class="options">
       <a
         tuiCell
+        tuiAppearance="outline-grayscale"
         [routerLink]="runningActivities().length ? null : 'manual'"
         [attr.aria-disabled]="!!runningActivities().length"
       >
@@ -191,6 +201,7 @@ import { BackupService } from '../system/routes/backups/backup.service'
 
       <a
         tuiCell
+        tuiAppearance="outline-grayscale"
         [routerLink]="runningActivities().length ? null : 'restore'"
         [attr.aria-disabled]="!!runningActivities().length"
       >
@@ -204,7 +215,7 @@ import { BackupService } from '../system/routes/backups/backup.service'
         <tui-icon icon="@tui.chevron-right" />
       </a>
 
-      <a tuiCell routerLink="locations">
+      <a tuiCell tuiAppearance="outline-grayscale" routerLink="locations">
         <tui-icon icon="@tui.hard-drive" />
         <span tuiTitle>
           <b>{{ 'Manage backup locations' | i18n }}</b>
@@ -253,6 +264,9 @@ import { BackupService } from '../system/routes/backups/backup.service'
     }
 
     .automatic > header {
+      position: static;
+      height: auto;
+      min-height: 3rem;
       padding: 1rem 1.25rem;
     }
 
@@ -268,7 +282,8 @@ import { BackupService } from '../system/routes/backups/backup.service'
     }
 
     .toggle {
-      justify-content: flex-end;
+      width: fit-content;
+      justify-content: flex-start;
       white-space: nowrap;
     }
 
@@ -382,8 +397,8 @@ import { BackupService } from '../system/routes/backups/backup.service'
       }
 
       .automatic > header .toggle {
-        width: 100%;
-        justify-content: space-between;
+        width: fit-content;
+        justify-content: flex-start;
       }
 
       .actions {
@@ -391,10 +406,12 @@ import { BackupService } from '../system/routes/backups/backup.service'
       }
     }
   `,
+  host: { class: 'backup-page' },
   imports: [
     DatePipe,
     FormsModule,
     RouterLink,
+    TuiAppearance,
     TuiBadge,
     TuiButton,
     TuiCell,
@@ -402,6 +419,7 @@ import { BackupService } from '../system/routes/backups/backup.service'
     TuiSwitch,
     TuiTitle,
     TitleDirective,
+    BackupNavigationComponent,
     i18nPipe,
   ],
 })

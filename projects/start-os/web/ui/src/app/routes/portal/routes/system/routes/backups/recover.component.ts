@@ -31,13 +31,17 @@ import { RecoverCheckpoint, RecoverData, RecoverOption } from './backup.types'
   template: `
     @if (packageData(); as options) {
       <div class="bulk-controls">
-        <button
-          tuiButton
-          appearance="flat-grayscale"
-          (click)="toggleAll(options)"
-        >
-          {{ 'Toggle all' | i18n }}
-        </button>
+        <label class="toggle-all">
+          <input
+            tuiCheckbox
+            type="checkbox"
+            [ngModel]="allEligibleSelected(options)"
+            (ngModelChange)="setAll(options, $event)"
+          />
+          <span tuiTitle>
+            <b>{{ 'Toggle all' | i18n }}</b>
+          </span>
+        </label>
         <label>
           <span>{{ 'Checkpoint for selected services' | i18n }}</span>
           <select
@@ -68,7 +72,14 @@ import { RecoverCheckpoint, RecoverData, RecoverOption } from './backup.types'
       </div>
       <div tuiGroup orientation="vertical" [collapsed]="true">
         @for (option of options; track $index) {
-          <label tuiBlock>
+          <label tuiBlock class="service-choice">
+            <input
+              type="checkbox"
+              tuiCheckbox
+              [disabled]="option.installed || option.newerOs"
+              [(ngModel)]="option.checked"
+              (ngModelChange)="selectionChanged(options)"
+            />
             <span tuiTitle>
               <strong>{{ option.title }}</strong>
               <select
@@ -99,13 +110,6 @@ import { RecoverCheckpoint, RecoverData, RecoverOption } from './backup.types'
                 </span>
               }
             </span>
-            <input
-              type="checkbox"
-              tuiCheckbox
-              [disabled]="option.installed || option.newerOs"
-              [(ngModel)]="option.checked"
-              (ngModelChange)="selectionChanged(options)"
-            />
           </label>
         }
       </div>
@@ -137,11 +141,6 @@ import { RecoverCheckpoint, RecoverData, RecoverOption } from './backup.types'
 
     .bulk-controls select {
       min-width: 16rem;
-      padding: 0.5rem;
-      color: var(--tui-text-primary);
-      background: var(--tui-background-base);
-      border: 1px solid var(--tui-border-normal);
-      border-radius: 0.5rem;
     }
 
     [tuiGroup] {
@@ -152,11 +151,17 @@ import { RecoverCheckpoint, RecoverData, RecoverOption } from './backup.types'
     .checkpoint {
       width: 100%;
       margin-top: 0.5rem;
-      padding: 0.5rem;
-      color: var(--tui-text-primary);
-      background: var(--tui-background-base);
-      border: 1px solid var(--tui-border-normal);
-      border-radius: 0.5rem;
+    }
+
+    .bulk-controls .toggle-all,
+    .service-choice {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.65rem;
+    }
+
+    .toggle-all {
+      color: var(--tui-text-primary) !important;
     }
 
     [tuiTitle] {
@@ -176,11 +181,12 @@ import { RecoverCheckpoint, RecoverData, RecoverOption } from './backup.types'
         min-width: 0;
       }
 
-      .bulk-controls > button {
+      .bulk-controls > .toggle-all {
         align-self: flex-start;
       }
     }
   `,
+  host: { class: 'backup-settings' },
   imports: [
     CommonModule,
     FormsModule,
@@ -309,13 +315,18 @@ export class BackupsRecoverComponent {
     return options.filter(option => option.checked)
   }
 
-  toggleAll(options: RecoverOption[]) {
+  allEligibleSelected(options: RecoverOption[]): boolean {
     const eligible = options.filter(
       option => !option.installed && !option.newerOs,
     )
-    const select = !eligible.some(option => option.checked)
-    eligible.forEach(option => (option.checked = select))
-    if (select) this.applyBulk(options, this.bulkSelection)
+    return !!eligible.length && eligible.every(option => option.checked)
+  }
+
+  setAll(options: RecoverOption[], checked: boolean) {
+    options
+      .filter(option => !option.installed && !option.newerOs)
+      .forEach(option => (option.checked = checked))
+    this.selectionChanged(options)
   }
 
   selectionChanged(options: RecoverOption[]) {

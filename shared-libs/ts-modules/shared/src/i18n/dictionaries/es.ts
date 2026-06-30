@@ -1006,4 +1006,7 @@ export default {
   1098: 'Esperar a la próxima ejecución automática',
   1099: 'Historial de copias automáticas',
   1100: 'No hay puntos automáticos',
+  1101: 'Resumen',
+  1102: 'Copia manual',
+  1103: 'Ubicaciones',
 } satisfies i18n

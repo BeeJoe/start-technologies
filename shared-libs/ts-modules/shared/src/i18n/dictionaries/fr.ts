@@ -1006,4 +1006,7 @@ export default {
   1098: 'Attendre la prochaine exécution automatique',
   1099: 'Historique des sauvegardes automatiques',
   1100: 'Aucun point automatique',
+  1101: 'Vue d’ensemble',
+  1102: 'Sauvegarde manuelle',
+  1103: 'Emplacements',
 } satisfies i18n

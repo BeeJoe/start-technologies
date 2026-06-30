@@ -1007,4 +1007,7 @@ export const ENGLISH: Record<string, number> = {
   'Wait for next automatic run': 1098,
   'Automatic backup history': 1099,
   'No automatic checkpoints': 1100,
+  'Overview': 1101,
+  'Manual backup': 1102,
+  'Locations': 1103,
 }

@@ -1006,4 +1006,7 @@ export default {
   1098: 'Czekaj na następne automatyczne uruchomienie',
   1099: 'Historia automatycznych kopii',
   1100: 'Brak automatycznych punktów',
+  1101: 'Przegląd',
+  1102: 'Ręczna kopia zapasowa',
+  1103: 'Lokalizacje',
 } satisfies i18n
