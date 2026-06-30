@@ -83,6 +83,8 @@ import { SYSTEM_MENU } from './system.const'
     }
 
     :host-context(tui-root._mobile) {
+      padding-inline: 0.75rem;
+
       aside {
         padding: 0;
         width: 100%;

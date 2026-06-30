@@ -32,6 +32,17 @@ function insideMedia(rule, query) {
   return false
 }
 
+function insideContainer(rule, query) {
+  let parent = rule.parent
+  while (parent) {
+    if (parent.type === 'atrule' && parent.name === 'container') {
+      return parent.params === query
+    }
+    parent = parent.parent
+  }
+  return false
+}
+
 function assertRule(sheet, file, selector, expected, media = null) {
   let matched = false
   sheet.walkRules(rule => {
@@ -56,25 +67,70 @@ function assertRule(sheet, file, selector, expected, media = null) {
   }
 }
 
+function assertContainerRule(sheet, file, selector, expected, container) {
+  let matched = false
+  sheet.walkRules(rule => {
+    const selectors = rule.selectors?.map(value => value.trim()) || []
+    if (!selectors.includes(selector) || !insideContainer(rule, container)) {
+      return
+    }
+    const actual = declarations(rule)
+    if (
+      Object.entries(expected).every(
+        ([property, value]) => actual[property] === value,
+      )
+    ) {
+      matched = true
+    }
+  })
+  if (!matched) {
+    throw new Error(
+      `${file}: ${selector} inside @container ${container} must include ${JSON.stringify(expected)}`,
+    )
+  }
+}
+
+function assertNestedRoute(file) {
+  const source = fs.readFileSync(path.join(root, file), 'utf8')
+  if (/host:\s*\{\s*class:\s*['"]g-page['"]\s*\}/.test(source)) {
+    throw new Error(
+      `${file}: nested System routes must not create another g-page shell`,
+    )
+  }
+}
+
 const homeFile =
   'projects/start-os/web/ui/src/app/routes/portal/routes/backups/backups.component.ts'
 const editorFile =
   'projects/start-os/web/ui/src/app/routes/portal/routes/backups/automatic.component.ts'
 const locationFile =
   'projects/start-os/web/ui/src/app/routes/portal/routes/backups/location-picker.component.ts'
+const locationsFile =
+  'projects/start-os/web/ui/src/app/routes/portal/routes/backups/locations.component.ts'
 const manualFile =
   'projects/start-os/web/ui/src/app/routes/portal/routes/system/routes/backups/backup.component.ts'
 const recoverFile =
   'projects/start-os/web/ui/src/app/routes/portal/routes/system/routes/backups/recover.component.ts'
 const advancedFile =
   'projects/start-os/web/ui/src/app/routes/portal/routes/system/routes/backups/scheduled.component.ts'
+const systemFile =
+  'projects/start-os/web/ui/src/app/routes/portal/routes/system/system.component.ts'
 const phone = '(max-width: 30rem)'
+const narrowCard = 'card (max-width: 30rem)'
 const home = componentStyles(homeFile)
 const editor = componentStyles(editorFile)
 const location = componentStyles(locationFile)
 const manual = componentStyles(manualFile)
 const recover = componentStyles(recoverFile)
 const advanced = componentStyles(advancedFile)
+const system = componentStyles(systemFile)
+
+for (const file of [homeFile, editorFile, locationsFile]) {
+  assertNestedRoute(file)
+}
+assertRule(system, systemFile, ':host-context(tui-root._mobile)', {
+  'padding-inline': '0.75rem',
+})
 
 for (const selector of ['[tuiTitle]', '.status-grid > div']) {
   assertRule(home, homeFile, selector, {
@@ -83,13 +139,7 @@ for (const selector of ['[tuiTitle]', '.status-grid > div']) {
   })
 }
 
-for (const selector of [
-  '.page-heading',
-  '.automatic > header',
-  '.operation',
-  '.attention',
-  '.empty',
-]) {
+for (const selector of ['.page-heading', '.operation']) {
   assertRule(
     home,
     homeFile,
@@ -98,7 +148,29 @@ for (const selector of [
     phone,
   )
 }
-assertRule(home, homeFile, '.actions', { 'flex-wrap': 'wrap' }, phone)
+for (const selector of ['.automatic > header', '.attention', '.empty']) {
+  assertContainerRule(
+    home,
+    homeFile,
+    selector,
+    { 'align-items': 'stretch', 'flex-direction': 'column' },
+    narrowCard,
+  )
+}
+assertContainerRule(
+  home,
+  homeFile,
+  '.automatic > header .toggle',
+  { width: '100%', 'justify-content': 'space-between' },
+  narrowCard,
+)
+assertContainerRule(
+  home,
+  homeFile,
+  '.actions',
+  { 'flex-wrap': 'wrap' },
+  narrowCard,
+)
 
 for (const selector of [
   '[tuiTitle]',

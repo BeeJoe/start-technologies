@@ -25,6 +25,12 @@ file tracks notable changes since the move to the monorepo.
   submodule to `shared-libs/crates/patch-db`. Builds now run against the root Cargo and
   Angular workspaces (`cargo build -p start-os`, web from `shared-libs/ts-modules`).
 
+### Fixed
+
+- **Automatic Backups mobile layout.** The overview card now reflows from its
+  actual available width inside System, avoids nested page gutters, and keeps
+  status text, controls, and actions readable on narrow screens.
+
 ## [0.4.0-beta.10]
 
 ### Added

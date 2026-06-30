@@ -220,6 +220,8 @@ import { BackupService } from '../system/routes/backups/backup.service'
     :host {
       display: grid;
       gap: 1rem;
+      width: 100%;
+      min-width: 0;
       max-width: 64rem;
       margin-inline: auto;
     }
@@ -341,7 +343,9 @@ import { BackupService } from '../system/routes/backups/backup.service'
       .page-heading {
         align-items: flex-start;
       }
+    }
 
+    @container card (max-width: 40rem) {
       .status-grid {
         grid-template-columns: 1fr;
       }
@@ -353,16 +357,25 @@ import { BackupService } from '../system/routes/backups/backup.service'
 
     @media (max-width: 30rem) {
       .page-heading,
+      .operation {
+        align-items: stretch;
+        flex-direction: column;
+      }
+
+      .page-heading > a,
+      .operation > :last-child {
+        align-self: flex-start;
+      }
+    }
+
+    @container card (max-width: 30rem) {
       .automatic > header,
-      .operation,
       .attention,
       .empty {
         align-items: stretch;
         flex-direction: column;
       }
 
-      .page-heading > a,
-      .operation > :last-child,
       .attention > :last-child,
       .empty > :last-child {
         align-self: flex-start;
@@ -378,7 +391,6 @@ import { BackupService } from '../system/routes/backups/backup.service'
       }
     }
   `,
-  host: { class: 'g-page' },
   imports: [
     DatePipe,
     FormsModule,

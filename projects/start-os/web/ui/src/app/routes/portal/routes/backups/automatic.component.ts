@@ -1027,7 +1027,6 @@ type HistoryFilter = 'all' | T.BackupActivityKind
       }
     }
   `,
-  host: { class: 'g-page' },
   imports: [
     DatePipe,
     FormsModule,

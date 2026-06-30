@@ -55,7 +55,6 @@ import { BackupService } from '../system/routes/backups/backup.service'
       margin-top: 0.25rem;
     }
   `,
-  host: { class: 'g-page' },
   imports: [
     RouterLink,
     TuiButton,
