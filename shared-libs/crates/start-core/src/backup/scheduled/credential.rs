@@ -1,4 +1,5 @@
 use color_eyre::eyre::eyre;
+use digest::KeyInit;
 use hmac::{Hmac, Mac};
 use sha2::Sha256;
 

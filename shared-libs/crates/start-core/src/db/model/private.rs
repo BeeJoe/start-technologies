@@ -40,6 +40,6 @@ pub struct Private {
 
 pub fn generate_developer_key() -> Pem<ed25519_dalek::SigningKey> {
     Pem(ed25519_dalek::SigningKey::generate(
-        &mut ssh_key::rand_core::OsRng::default(),
+        &mut crate::util::crypto::os_rng(),
     ))
 }
