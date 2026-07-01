@@ -1010,4 +1010,7 @@ export const ENGLISH: Record<string, number> = {
   'Overview': 1101,
   'Manual backup': 1102,
   'Locations': 1103,
+  'Backup history': 1104,
+  'Turn off automatic backups?': 1105,
+  'Turn off and delete': 1106,
 }

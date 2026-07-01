@@ -12,7 +12,11 @@ import { CifsBackupTarget } from 'src/app/services/api/api.types'
 import { ApiService } from 'src/app/services/api/embassy-api.service'
 import { FormDialogService } from 'src/app/services/form-dialog.service'
 import { configBuilderToSpec } from 'src/app/utils/configBuilderToSpec'
-import { BackupService, MappedBackupTarget } from './backup.service'
+import {
+  BackupService,
+  formatCifsLocation,
+  MappedBackupTarget,
+} from './backup.service'
 import { BackupStatusComponent } from './status.component'
 
 const ERROR =
@@ -34,7 +38,7 @@ const ERROR =
       </button>
     </header>
 
-    <table [appTable]="['Status', 'Name', 'Hostname', 'Path', null]">
+    <table [appTable]="['Status', 'Name', 'Location', null]">
       @for (target of service.cifs(); track $index) {
         <tr
           tabindex="0"
@@ -56,8 +60,7 @@ const ERROR =
             }
           </td>
           <td class="name">{{ target.entry.path.split('/').pop() }}</td>
-          <td>{{ target.entry.hostname }}</td>
-          <td>{{ target.entry.path }}</td>
+          <td class="location">{{ locationName(target.entry) }}</td>
           <td (click)="$event.stopPropagation()">
             <button
               tuiIconButton
@@ -86,7 +89,7 @@ const ERROR =
         </tr>
       } @empty {
         <tr>
-          <td colspan="5">
+          <td colspan="4">
             <app-placeholder icon="@tui.folder-x">
               No network folders
             </app-placeholder>
@@ -109,11 +112,31 @@ const ERROR =
       }
     }
 
+    :host {
+      width: 100%;
+      min-width: 0;
+    }
+
+    table {
+      width: 100%;
+      table-layout: fixed;
+    }
+
     td:first-child {
-      width: 16rem;
+      width: 11rem;
+    }
+
+    td:nth-child(2) {
+      width: 28%;
+    }
+
+    .location {
+      overflow-wrap: anywhere;
+      text-align: right;
     }
 
     td:last-child {
+      width: 3.5rem;
       white-space: nowrap;
       text-align: right;
     }
@@ -125,6 +148,10 @@ const ERROR =
     }
 
     :host-context(tui-root._mobile) {
+      table {
+        table-layout: auto;
+      }
+
       tr {
         grid-template-columns: minmax(0, 1fr) auto auto;
         width: 100%;
@@ -164,6 +191,12 @@ const ERROR =
         grid-column: 1;
         max-width: 100%;
       }
+
+      .location {
+        grid-column: 1 / 3;
+        justify-self: end;
+        max-width: 100%;
+      }
     }
   `,
   host: { class: 'g-card' },
@@ -191,6 +224,10 @@ export class BackupNetworkComponent {
   readonly networkFolders = output<MappedBackupTarget<CifsBackupTarget>>()
 
   opens: Record<number, boolean> = {}
+
+  locationName(target: CifsBackupTarget): string {
+    return formatCifsLocation(target)
+  }
 
   select(target: MappedBackupTarget<CifsBackupTarget>) {
     if (!target.entry.mountable) {

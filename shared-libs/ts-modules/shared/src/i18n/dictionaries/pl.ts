@@ -1009,4 +1009,7 @@ export default {
   1101: 'Przegląd',
   1102: 'Ręczna kopia zapasowa',
   1103: 'Lokalizacje',
+  1104: 'Historia kopii zapasowych',
+  1105: 'Wyłączyć automatyczne kopie zapasowe?',
+  1106: 'Wyłącz i usuń',
 } satisfies i18n

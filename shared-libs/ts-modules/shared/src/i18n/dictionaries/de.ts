@@ -1009,4 +1009,7 @@ export default {
   1101: 'Übersicht',
   1102: 'Manuelle Sicherung',
   1103: 'Speicherorte',
+  1104: 'Sicherungsverlauf',
+  1105: 'Automatische Sicherungen ausschalten?',
+  1106: 'Ausschalten und löschen',
 } satisfies i18n

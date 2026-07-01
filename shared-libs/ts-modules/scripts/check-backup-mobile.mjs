@@ -121,6 +121,10 @@ const homeFile =
   'projects/start-os/web/ui/src/app/routes/portal/routes/backups/backups.component.ts'
 const editorFile =
   'projects/start-os/web/ui/src/app/routes/portal/routes/backups/automatic.component.ts'
+const historyFile =
+  'projects/start-os/web/ui/src/app/routes/portal/routes/backups/history.component.ts'
+const disableDialogFile =
+  'projects/start-os/web/ui/src/app/routes/portal/routes/backups/disable-automatic.dialog.ts'
 const locationFile =
   'projects/start-os/web/ui/src/app/routes/portal/routes/backups/location-picker.component.ts'
 const locationsFile =
@@ -139,6 +143,15 @@ const networkFile =
   'projects/start-os/web/ui/src/app/routes/portal/routes/system/routes/backups/network.component.ts'
 const physicalFile =
   'projects/start-os/web/ui/src/app/routes/portal/routes/system/routes/backups/physical.component.ts'
+const backupServiceFile =
+  'projects/start-os/web/ui/src/app/routes/portal/routes/system/routes/backups/backup.service.ts'
+const liveApiFile =
+  'projects/start-os/web/ui/src/app/services/api/embassy-live-api.service.ts'
+const dataModelFile =
+  'projects/start-os/web/ui/src/app/services/patch-db/data-model.ts'
+const backendBackupFile = 'shared-libs/crates/start-core/src/backup/mod.rs'
+const backendScheduledRpcFile =
+  'shared-libs/crates/start-core/src/backup/scheduled/rpc.rs'
 const globalStylesFile = 'projects/start-os/web/ui/src/styles.scss'
 const systemFile =
   'projects/start-os/web/ui/src/app/routes/portal/routes/system/system.component.ts'
@@ -146,6 +159,7 @@ const phone = '(max-width: 30rem)'
 const narrowCard = 'card (max-width: 30rem)'
 const home = componentStyles(homeFile)
 const editor = componentStyles(editorFile)
+const history = componentStyles(historyFile)
 const location = componentStyles(locationFile)
 const manual = componentStyles(manualFile)
 const recover = componentStyles(recoverFile)
@@ -154,7 +168,7 @@ const network = componentStyles(networkFile)
 const physical = componentStyles(physicalFile)
 const system = componentStyles(systemFile)
 
-for (const file of [homeFile, editorFile, locationsFile]) {
+for (const file of [homeFile, editorFile, historyFile, locationsFile]) {
   assertNestedRoute(file)
 }
 assertRule(system, systemFile, ':host-context(tui-root._mobile)', {
@@ -207,11 +221,7 @@ assertContainerRule(
   'card (max-width: 44rem)',
 )
 
-for (const selector of [
-  '[tuiTitle]',
-  '.schedule-controls > *',
-  '.activity summary > *',
-]) {
+for (const selector of ['[tuiTitle]', '.schedule-controls > *']) {
   assertRule(editor, editorFile, selector, {
     'min-width': '0',
     'overflow-wrap': 'anywhere',
@@ -225,7 +235,6 @@ assertRule(editor, editorFile, '.panel > header', {
 for (const selector of [
   '.panel > header',
   '.setting-row:not(.vertical)',
-  '.activity summary',
   '.advanced-link',
 ]) {
   assertRule(
@@ -241,6 +250,33 @@ assertRule(
   editorFile,
   '.schedule-controls',
   { 'grid-template-columns': '1fr' },
+  phone,
+)
+assertRule(editor, editorFile, ':host', { width: '100%', 'min-width': '0' })
+assertRule(editor, editorFile, '.panel', {
+  width: '100%',
+  'min-width': '0',
+})
+assertRule(history, historyFile, ':host', {
+  width: '100%',
+  'min-width': '0',
+})
+assertRule(location, locationFile, '.location-detail', {
+  'margin-inline-start': 'auto',
+  'text-align': 'right',
+})
+assertRule(
+  location,
+  locationFile,
+  '.location-detail',
+  { 'flex-basis': '100%' },
+  phone,
+)
+assertRule(
+  history,
+  historyFile,
+  '.activity summary',
+  { 'align-items': 'flex-start', 'flex-direction': 'column' },
   phone,
 )
 assertRule(
@@ -325,15 +361,17 @@ for (const file of [editorFile, manualFile, recoverFile]) {
 }
 
 assertSource(homeFile, [
-  /href="https:\/\/docs\.start9\.com\/start-os\/0\.4\.0\.x"/,
+  /docsLink[\s\S]{0,120}path="\/start-os\/"[\s\S]{0,80}fragment="#backups"/,
   /iconStart="@tui\.book-open-text"/,
   /readonly expanded = signal<BackupPanel \| null>\(null\)/,
   /<automatic-backups[\s\S]*\[embedded\]="true"/,
-  /<system-backup mode="create" \[embedded\]="true"/,
-  /<system-backup mode="restore" \[embedded\]="true"/,
+  /<system-backup[\s\S]{0,100}mode="create"[\s\S]{0,100}\[embedded\]="true"/,
+  /<system-backup[\s\S]{0,100}mode="restore"[\s\S]{0,100}\[embedded\]="true"/,
   /<backup-locations \[embedded\]="true"/,
-  /['"]Run now['"]/,
-  /tuiCheckbox[\s\S]{0,320}['"]Also permanently delete automatic backup checkpoints['"]/,
+  /@if \(expanded\(\) === 'automatic'\) \{[\s\S]{0,500}['"]Run now['"]/,
+  /<backup-locations[\s\S]*['"]Backup history['"][\s\S]*<backup-history/,
+  /class="card-heading automatic-heading"[\s\S]*class="card-actions"[\s\S]*class="expand-toggle"/,
+  /parseBackupSchedule\(primary\.schedule\)/,
   /activity => activity\.state === 'running'/,
   /scrollIntoView/,
   /\[showIcons\]="false"/,
@@ -343,6 +381,7 @@ assertNotSource(homeFile, [
   /['"]Help['"]\s*\|\s*i18n/,
   /routerLink="manage"/,
   /['"]Dismiss['"]\s*\|\s*i18n/,
+  /class="delete-checkpoints"/,
 ])
 assertSource(routesFile, [
   /path: 'manage',[\s\S]{0,80}redirectTo: ''/,
@@ -352,21 +391,86 @@ assertSource(routesFile, [
 ])
 
 assertSource(editorFile, [
-  /<details class="history-section g-card">/,
   /selector:\s*'automatic-backups'/,
   /readonly embedded = input\(false\)/,
+  /initializeEditor = effect\([\s\S]{0,520}this\.editor = this\.editorFor\(job\)/,
 ])
 assertNotSource(editorFile, [
   /<nav class="tabs">/,
   /class="danger g-card"/,
   /<backup-navigation/,
   /showCheckpoints/,
+  /history-section/,
+  /filteredActivities/,
   /select,\s*\.retention-rule input/,
 ])
+assertSource(historyFile, [
+  /selector:\s*'backup-history'/,
+  /filteredActivities\(\)/,
+  /['"]Backup location['"]/,
+])
+assertSource(disableDialogFile, [
+  /tuiCheckbox/,
+  /['"]Also permanently delete automatic backup checkpoints['"]/,
+  /deleteCheckpoints:\s*this\.deleteCheckpoints/,
+])
 assertNotSource(manualPageFile, [/'Last Backup'/, /<backup-navigation/])
+assertSource(locationFile, [
+  /readonly manage = output<void>\(\)/,
+  /\(click\)="manage\.emit\(\)"[\s\S]{0,160}['"]Add or repair a location['"]/,
+  /class="location-detail"[\s\S]{0,200}target\.detail/,
+  /formatCifsLocation\(location\.entry\)/,
+])
+assertNotSource(locationFile, [/routerLink="\/system\/backups\/locations"/])
+assertSource(manualPageFile, [/\(manage\)="manageLocations\.emit\(\)"/])
+assertSource(editorFile, [/\(manage\)="manageLocations\.emit\(\)"/])
+assertSource(homeFile, [
+  /\(manageLocations\)="openLocations\(\)"/,
+  /openLocations\(\)[\s\S]{0,100}this\.expanded\.set\('locations'\)/,
+])
+assertSource(networkFile, [
+  /\['Status', 'Name', 'Location', null\]/,
+  /class="name"[\s\S]{0,180}class="location"/,
+  /locationName\(target\.entry\)/,
+])
+assertSource(physicalFile, [
+  /\['Status', 'Name', 'Capacity', 'Location'\]/,
+  /class="name"[\s\S]{0,180}class="location"/,
+])
+assertSource(backupServiceFile, [
+  /formatCifsLocation[\s\S]{0,180}target\.hostname[\s\S]{0,80}share/,
+])
+
+// Keep the refactored UI connected to the typed live RPC surface and the
+// backend handlers that publish its PatchDB state.
+assertSource(dataModelFile, [/scheduledBackups:\s*T\.ScheduledBackupState/])
+for (const file of [homeFile, editorFile, historyFile]) {
+  assertSource(file, [/watch\$\('scheduledBackups'\)/])
+}
+assertSource(liveApiFile, [
+  /createScheduledBackupJob[\s\S]{0,220}method:\s*'backup\.job\.create'/,
+  /updateScheduledBackupJob[\s\S]{0,220}method:\s*'backup\.job\.update'/,
+  /setScheduledBackupJobEnabled[\s\S]{0,240}method:\s*'backup\.job\.set-enabled'/,
+  /runScheduledBackupJob[\s\S]{0,220}method:\s*'backup\.job\.run-now'/,
+  /deleteArchivedBackupSnapshots[\s\S]{0,260}method:\s*'backup\.history\.delete-archived-snapshots'/,
+  /restoreBackupSelection[\s\S]{0,260}method:\s*'package\.backup\.restore-selection'/,
+])
+assertSource(backendBackupFile, [
+  /subcommand\("job", scheduled::job::<C>\(\)\)/,
+  /subcommand\("history", scheduled::history::<C>\(\)\)/,
+  /"restore-selection"[\s\S]{0,180}restore_selection_rpc/,
+])
+assertSource(backendScheduledRpcFile, [
+  /"create", from_fn_async\(create\)/,
+  /"update", from_fn_async\(update\)/,
+  /"set-enabled", from_fn_async\(set_enabled\)/,
+  /"run-now"[\s\S]{0,120}from_fn_async\(run_now\)/,
+  /"delete-archived-snapshots"[\s\S]{0,120}from_fn_async\(delete_archived_snapshots\)/,
+])
 assertSource(globalStylesFile, [
-  /\.backup-page,[\s\S]*\.backup-settings[\s\S]*select\s*\{[\s\S]*min-height:\s*3\.5rem[\s\S]*font:\s*var\(--tui-font-text-m\)[\s\S]*background-color:\s*var\(--tui-background-neutral-1\)/,
+  /\.backup-page,[\s\S]*\.backup-settings[\s\S]*select\s*\{[\s\S]*appearance:\s*none[\s\S]*min-height:\s*3\.5rem[\s\S]*font:\s*var\(--tui-typography-body-l\)[\s\S]*background-color:\s*var\(--tui-background-neutral-1\)[\s\S]*background-image:/,
   /select:focus-visible[\s\S]*var\(--tui-border-focus\)/,
+  /option\s*\{[\s\S]*background:\s*var\(--tui-background-base\)[\s\S]*var\(--tui-typography-body-l\)/,
   /tui-data-list\.backup-menu[\s\S]*min-width:\s*12rem[\s\S]*min-height:\s*3rem/,
 ])
 

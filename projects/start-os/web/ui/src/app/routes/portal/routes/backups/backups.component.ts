@@ -12,21 +12,16 @@ import { toSignal } from '@angular/core/rxjs-interop'
 import { FormsModule } from '@angular/forms'
 import {
   DialogService,
+  DocsLinkDirective,
   ErrorService,
   getErrorMessage,
   i18nPipe,
 } from '@start9labs/shared'
 import { T } from '@start9labs/start-core'
-import {
-  TuiButton,
-  TuiCell,
-  TuiCheckbox,
-  TuiIcon,
-  TuiTitle,
-} from '@taiga-ui/core'
+import { TuiButton, TuiCell, TuiIcon, TuiTitle } from '@taiga-ui/core'
 import { TuiBadge, TuiSwitch } from '@taiga-ui/kit'
 import { PatchDB } from 'patch-db-client'
-import { filter, firstValueFrom } from 'rxjs'
+import { firstValueFrom } from 'rxjs'
 import { ApiService } from 'src/app/services/api/embassy-api.service'
 import { OSService } from 'src/app/services/os.service'
 import { DataModel } from 'src/app/services/patch-db/data-model'
@@ -34,10 +29,26 @@ import { TitleDirective } from 'src/app/services/title.service'
 import { BackupService } from '../system/routes/backups/backup.service'
 import SystemBackupComponent from '../system/routes/backups/backups.component'
 import { BackupProgressComponent } from '../system/routes/backups/progress.component'
+import { parseBackupSchedule } from '../system/routes/backups/scheduled.utils'
 import AutomaticBackupsComponent from './automatic.component'
+import {
+  DISABLE_AUTOMATIC_DIALOG,
+  DisableAutomaticDecision,
+} from './disable-automatic.dialog'
+import { BackupHistoryComponent } from './history.component'
 import BackupLocationsComponent from './locations.component'
 
-type BackupPanel = 'automatic' | 'manual' | 'restore' | 'locations'
+type BackupPanel = 'automatic' | 'manual' | 'restore' | 'locations' | 'history'
+
+const WEEKDAYS = [
+  'Sunday',
+  'Monday',
+  'Tuesday',
+  'Wednesday',
+  'Thursday',
+  'Friday',
+  'Saturday',
+]
 
 @Component({
   template: `
@@ -50,9 +61,9 @@ type BackupPanel = 'automatic' | 'manual' | 'restore' | 'locations'
           <a
             tuiIconButton
             size="xs"
-            href="https://docs.start9.com/start-os/0.4.0.x"
-            target="_blank"
-            rel="noreferrer"
+            docsLink
+            path="/start-os/"
+            fragment="#backups"
             appearance="icon"
             iconStart="@tui.book-open-text"
             [attr.aria-label]="'Documentation' | i18n"
@@ -88,7 +99,7 @@ type BackupPanel = 'automatic' | 'manual' | 'restore' | 'locations'
       class="backup-card g-card"
       [class.expanded]="expanded() === 'automatic'"
     >
-      <header class="card-heading">
+      <header class="card-heading automatic-heading">
         <button
           type="button"
           class="card-toggle"
@@ -100,23 +111,21 @@ type BackupPanel = 'automatic' | 'manual' | 'restore' | 'locations'
             <b>{{ 'Automatic backups' | i18n }}</b>
             <span tuiSubtitle>{{ automaticSummary() | i18n }}</span>
           </span>
-          <tui-icon
-            icon="@tui.chevron-down"
-            [class.rotated]="expanded() === 'automatic'"
-          />
         </button>
 
         @if (jobs().length) {
           <div class="card-actions">
-            <button
-              tuiButton
-              type="button"
-              size="s"
-              [disabled]="!canRunNow()"
-              (click)="runNow()"
-            >
-              {{ 'Run now' | i18n }}
-            </button>
+            @if (expanded() === 'automatic') {
+              <button
+                tuiButton
+                type="button"
+                size="s"
+                [disabled]="!canRunNow()"
+                (click)="runNow()"
+              >
+                {{ 'Run now' | i18n }}
+              </button>
+            }
             <label class="simple-switch">
               <input
                 tuiSwitch
@@ -128,23 +137,20 @@ type BackupPanel = 'automatic' | 'manual' | 'restore' | 'locations'
               />
               <span>{{ (automaticOn() ? 'On' : 'Off') | i18n }}</span>
             </label>
-            @if (expanded() === 'automatic') {
-              <label class="delete-checkpoints">
-                <input
-                  tuiCheckbox
-                  type="checkbox"
-                  [(ngModel)]="deleteWhenDisabled"
-                />
-                <span>
-                  {{
-                    'Also permanently delete automatic backup checkpoints'
-                      | i18n
-                  }}
-                </span>
-              </label>
-            }
           </div>
         }
+        <button
+          type="button"
+          class="expand-toggle"
+          [attr.aria-label]="'Automatic backups' | i18n"
+          [attr.aria-expanded]="expanded() === 'automatic'"
+          (click)="togglePanel('automatic')"
+        >
+          <tui-icon
+            icon="@tui.chevron-down"
+            [class.rotated]="expanded() === 'automatic'"
+          />
+        </button>
       </header>
 
       @if (expanded() === 'automatic') {
@@ -161,6 +167,7 @@ type BackupPanel = 'automatic' | 'manual' | 'restore' | 'locations'
           <automatic-backups
             [embedded]="true"
             [mode]="jobs().length ? 'manage' : 'setup'"
+            (manageLocations)="openLocations()"
           />
         </div>
       }
@@ -191,7 +198,11 @@ type BackupPanel = 'automatic' | 'manual' | 'restore' | 'locations'
       </header>
       @if (expanded() === 'manual') {
         <div class="card-body">
-          <system-backup mode="create" [embedded]="true" />
+          <system-backup
+            mode="create"
+            [embedded]="true"
+            (manageLocations)="openLocations()"
+          />
         </div>
       }
     </section>
@@ -223,7 +234,11 @@ type BackupPanel = 'automatic' | 'manual' | 'restore' | 'locations'
       </header>
       @if (expanded() === 'restore') {
         <div class="card-body">
-          <system-backup mode="restore" [embedded]="true" />
+          <system-backup
+            mode="restore"
+            [embedded]="true"
+            (manageLocations)="openLocations()"
+          />
         </div>
       }
     </section>
@@ -255,6 +270,37 @@ type BackupPanel = 'automatic' | 'manual' | 'restore' | 'locations'
       @if (expanded() === 'locations') {
         <div class="card-body">
           <backup-locations [embedded]="true" />
+        </div>
+      }
+    </section>
+
+    <section
+      class="backup-card g-card"
+      [class.expanded]="expanded() === 'history'"
+    >
+      <header class="card-heading">
+        <button
+          type="button"
+          class="card-toggle"
+          [attr.aria-expanded]="expanded() === 'history'"
+          (click)="togglePanel('history')"
+        >
+          <tui-icon icon="@tui.history" />
+          <span tuiTitle>
+            <b>{{ 'Backup history' | i18n }}</b>
+            <span tuiSubtitle>
+              {{ activities().length }} {{ 'All activity' | i18n }}
+            </span>
+          </span>
+          <tui-icon
+            icon="@tui.chevron-down"
+            [class.rotated]="expanded() === 'history'"
+          />
+        </button>
+      </header>
+      @if (expanded() === 'history') {
+        <div class="card-body">
+          <backup-history />
         </div>
       }
     </section>
@@ -339,8 +385,7 @@ type BackupPanel = 'automatic' | 'manual' | 'restore' | 'locations'
     }
 
     .card-actions,
-    .simple-switch,
-    .delete-checkpoints {
+    .simple-switch {
       display: flex;
       align-items: center;
       gap: 0.5rem;
@@ -352,14 +397,26 @@ type BackupPanel = 'automatic' | 'manual' | 'restore' | 'locations'
       padding: 0.75rem 1.25rem 0.75rem 0;
     }
 
-    .simple-switch,
-    .delete-checkpoints {
+    .simple-switch {
       width: fit-content;
       white-space: normal;
     }
 
-    .delete-checkpoints {
-      max-width: 19rem;
+    .automatic-heading {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto auto;
+    }
+
+    .expand-toggle {
+      display: grid;
+      place-items: center;
+      align-self: stretch;
+      width: 3.5rem;
+      padding: 0;
+      color: inherit;
+      background: transparent;
+      border: 0;
+      cursor: pointer;
     }
 
     .card-body {
@@ -414,6 +471,21 @@ type BackupPanel = 'automatic' | 'manual' | 'restore' | 'locations'
         justify-content: flex-start;
         padding: 0 1.25rem 1rem;
       }
+
+      .automatic-heading {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+      }
+
+      .automatic-heading .card-actions {
+        grid-column: 1 / -1;
+        grid-row: 2;
+      }
+
+      .automatic-heading .expand-toggle {
+        grid-column: 2;
+        grid-row: 1;
+      }
     }
 
     @media (max-width: 30rem) {
@@ -428,10 +500,6 @@ type BackupPanel = 'automatic' | 'manual' | 'restore' | 'locations'
 
       .card-actions > button {
         width: 100%;
-      }
-
-      .delete-checkpoints {
-        max-width: 100%;
       }
 
       .card-body {
@@ -455,7 +523,6 @@ type BackupPanel = 'automatic' | 'manual' | 'restore' | 'locations'
     TuiBadge,
     TuiButton,
     TuiCell,
-    TuiCheckbox,
     TuiIcon,
     TuiSwitch,
     TuiTitle,
@@ -463,7 +530,9 @@ type BackupPanel = 'automatic' | 'manual' | 'restore' | 'locations'
     AutomaticBackupsComponent,
     SystemBackupComponent,
     BackupLocationsComponent,
+    BackupHistoryComponent,
     BackupProgressComponent,
+    DocsLinkDirective,
     i18nPipe,
   ],
 })
@@ -481,7 +550,6 @@ export default class BackupsComponent implements OnInit {
   readonly progress = viewChild<ElementRef<HTMLElement>>('progress')
   readonly manualRunning = toSignal(this.os.backingUp$, { initialValue: false })
   changingAutomatic = false
-  deleteWhenDisabled = false
 
   readonly jobs = computed(() =>
     Object.values(this.state()?.jobs || {}).sort((a, b) =>
@@ -532,20 +600,28 @@ export default class BackupsComponent implements OnInit {
 
   togglePanel(panel: BackupPanel) {
     this.expanded.update(current => (current === panel ? null : panel))
-    if (panel !== 'automatic') this.deleteWhenDisabled = false
+  }
+
+  openLocations() {
+    this.expanded.set('locations')
   }
 
   automaticSummary(): string {
     const jobs = this.jobs()
     if (!jobs.length) return 'Automatic backups are not set up yet.'
-    const paused = jobs.filter(job => !job.enabled || !!job.pause).length
-    if (!this.automaticOn()) {
-      return 'Automatic backups are off. Saved settings and checkpoints are kept.'
-    }
-    if (paused) return `${paused} of ${jobs.length} schedules paused`
-    return jobs.length === 1
-      ? 'Your services are protected on schedule.'
-      : `${jobs.length} schedules are protecting your services.`
+    const primary = jobs[0]!
+    const schedule = parseBackupSchedule(primary.schedule)
+    const time = `${String(schedule.hour).padStart(2, '0')}:${String(
+      schedule.minute,
+    ).padStart(2, '0')}`
+    const timing =
+      schedule.frequency === 'hourly'
+        ? `Hourly at minute ${String(schedule.minute).padStart(2, '0')}`
+        : schedule.frequency === 'weekly'
+          ? `${WEEKDAYS[schedule.weekday] || 'Sunday'} at ${time}`
+          : `Daily at ${time}`
+    const state = this.automaticOn() ? timing : `Off · ${timing}`
+    return jobs.length === 1 ? state : `${state} · ${jobs.length} schedules`
   }
 
   healthDetail(): string {
@@ -595,6 +671,7 @@ export default class BackupsComponent implements OnInit {
     const snapshots = this.histories().flatMap(history =>
       history.snapshots.map(snapshot => ({ history, snapshot })),
     )
+    let deleteCheckpoints = false
 
     if (!enabled) {
       const bytes = snapshots.reduce(
@@ -602,25 +679,22 @@ export default class BackupsComponent implements OnInit {
           sum + (item.snapshot.physicalSize ?? item.snapshot.logicalSize),
         0,
       )
-      const confirmed = await firstValueFrom(
-        this.dialogs
-          .openConfirm({
-            label: this.deleteWhenDisabled
-              ? 'Turn off and delete automatic checkpoints?'
-              : 'Turn off automatic backups?',
+      const decision = await firstValueFrom(
+        this.dialogs.openComponent<DisableAutomaticDecision | null>(
+          DISABLE_AUTOMATIC_DIALOG,
+          {
+            label: 'Turn off automatic backups?',
             size: 's',
             data: {
-              content: this.deleteWhenDisabled
-                ? `This will pause every schedule and permanently delete ${snapshots.length} automatic checkpoints, reclaiming about ${this.bytes(bytes)}. Manual checkpoints and any still-shared checkpoints are kept.`
-                : 'This pauses every automatic schedule. Your settings and existing checkpoints are kept.',
-              yes: this.deleteWhenDisabled ? 'Turn off and delete' : 'Turn off',
-              no: 'Cancel',
+              checkpointCount: snapshots.length,
+              reclaimable: this.bytes(bytes),
             },
-          })
-          .pipe(filter(Boolean)),
-        { defaultValue: false },
+          },
+        ),
+        { defaultValue: null },
       )
-      if (!confirmed) return
+      if (!decision) return
+      deleteCheckpoints = decision.deleteCheckpoints
     }
 
     this.changingAutomatic = true
@@ -630,7 +704,7 @@ export default class BackupsComponent implements OnInit {
           this.api.setScheduledBackupJobEnabled({ id: job.id, enabled }),
         ),
       )
-      if (!enabled && this.deleteWhenDisabled) {
+      if (!enabled && deleteCheckpoints) {
         for (const history of this.histories()) {
           const snapshotIds = history.snapshots.map(snapshot => snapshot.id)
           if (snapshotIds.length) {
@@ -642,7 +716,6 @@ export default class BackupsComponent implements OnInit {
           }
         }
       }
-      this.deleteWhenDisabled = false
     } catch (error: any) {
       this.errors.handleError(getErrorMessage(error))
     } finally {

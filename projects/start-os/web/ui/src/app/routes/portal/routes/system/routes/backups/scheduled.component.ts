@@ -32,7 +32,7 @@ import { PatchDB } from 'patch-db-client'
 import { filter, firstValueFrom, map } from 'rxjs'
 import { ApiService } from 'src/app/services/api/embassy-api.service'
 import { DataModel } from 'src/app/services/patch-db/data-model'
-import { BackupService } from './backup.service'
+import { BackupService, formatCifsLocation } from './backup.service'
 import {
   BackupScheduleFrequency,
   parseBackupSchedule,
@@ -1126,7 +1126,7 @@ export class ScheduledBackupsComponent implements OnInit {
   readonly targets = computed(() => [
     ...this.backupService.cifs().map(target => ({
       id: target.id,
-      name: `${target.entry.hostname}${target.entry.path}`,
+      name: formatCifsLocation(target.entry),
     })),
     ...this.backupService.drives().map(target => ({
       id: target.id,

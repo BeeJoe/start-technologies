@@ -1009,4 +1009,7 @@ export default {
   1101: 'Resumen',
   1102: 'Copia manual',
   1103: 'Ubicaciones',
+  1104: 'Historial de copias de seguridad',
+  1105: '¿Desactivar copias automáticas?',
+  1106: 'Desactivar y eliminar',
 } satisfies i18n

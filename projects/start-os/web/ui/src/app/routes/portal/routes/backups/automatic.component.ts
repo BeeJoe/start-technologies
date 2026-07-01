@@ -1,10 +1,11 @@
-import { DatePipe } from '@angular/common'
 import {
   Component,
   computed,
+  effect,
   inject,
   input,
   OnInit,
+  output,
   signal,
 } from '@angular/core'
 import { toSignal } from '@angular/core/rxjs-interop'
@@ -35,17 +36,24 @@ import {
   TuiSwitch,
 } from '@taiga-ui/kit'
 import { PatchDB } from 'patch-db-client'
-import { filter, firstValueFrom } from 'rxjs'
+import { firstValueFrom } from 'rxjs'
 import { ApiService } from 'src/app/services/api/embassy-api.service'
 import { DataModel } from 'src/app/services/patch-db/data-model'
 import { TitleDirective } from 'src/app/services/title.service'
-import { BackupService } from '../system/routes/backups/backup.service'
+import {
+  BackupService,
+  formatCifsLocation,
+} from '../system/routes/backups/backup.service'
 import {
   BackupScheduleFrequency,
   parseBackupSchedule,
   serializeBackupSchedule,
 } from '../system/routes/backups/scheduled.utils'
 import { ScheduledBackupsComponent } from '../system/routes/backups/scheduled.component'
+import {
+  DISABLE_AUTOMATIC_DIALOG,
+  DisableAutomaticDecision,
+} from './disable-automatic.dialog'
 import { BackupLocationPickerComponent } from './location-picker.component'
 
 interface ServiceChoice {
@@ -70,8 +78,6 @@ interface AutomaticEditor {
   password: string
   firstBackupNow: boolean
 }
-
-type HistoryFilter = 'all' | T.BackupActivityKind
 
 @Component({
   selector: 'automatic-backups',
@@ -149,6 +155,7 @@ type HistoryFilter = 'all' | T.BackupActivityKind
             mode="automatic"
             [selectedId]="targetId()"
             (selected)="targetId.set($event.id)"
+            (manage)="manageLocations.emit()"
           />
         </section>
       }
@@ -652,75 +659,14 @@ type HistoryFilter = 'all' | T.BackupActivityKind
           {{ 'Automatic backups are not set up yet.' | i18n }}
         </div>
       }
-
-      <details class="history-section g-card">
-        <summary>
-          <tui-icon icon="@tui.history" />
-          <span tuiTitle>
-            <b>{{ 'History' | i18n }}</b>
-            <span tuiSubtitle>
-              {{ activities().length }} {{ 'All activity' | i18n }}
-            </span>
-          </span>
-          <tui-icon icon="@tui.chevron-down" />
-        </summary>
-        <div class="history-content">
-          <section class="history-toolbar">
-            <label>
-              <span>{{ 'Show' | i18n }}</span>
-              <select [(ngModel)]="historyFilter">
-                <option value="all">{{ 'All activity' | i18n }}</option>
-                <option value="manual">{{ 'Manual' | i18n }}</option>
-                <option value="automatic">{{ 'Automatic' | i18n }}</option>
-                <option value="restore">{{ 'Restore' | i18n }}</option>
-              </select>
-            </label>
-          </section>
-
-          <section class="timeline">
-            @for (activity of filteredActivities(); track activity.id) {
-              <details class="g-card activity">
-                <summary>
-                  <tui-icon [icon]="activityIcon(activity)" />
-                  <span tuiTitle>
-                    <b>{{ activityLabel(activity) | i18n }}</b>
-                    <span tuiSubtitle>
-                      {{ activity.startedAt | date: 'medium' }} ·
-                      {{ activityState(activity) | i18n }}
-                    </span>
-                  </span>
-                  <span tuiBadge [appearance]="activityAppearance(activity)">
-                    {{ activityState(activity) | i18n }}
-                  </span>
-                </summary>
-                <div class="activity-details">
-                  <p>
-                    <b>{{ 'Backup location' | i18n }}:</b>
-                    {{ targetName(activity.targetId) }}
-                  </p>
-                  <p>
-                    <b>{{ 'Services' | i18n }}:</b>
-                    {{ activity.intendedServices.length }}
-                  </p>
-                  @if (activity.error) {
-                    <p class="error">{{ activity.error }}</p>
-                  }
-                </div>
-              </details>
-            } @empty {
-              <div tuiNotification appearance="info">
-                {{ 'No backup activity yet.' | i18n }}
-              </div>
-            }
-          </section>
-        </div>
-      </details>
     }
   `,
   styles: `
     :host {
       display: grid;
       gap: 1rem;
+      width: 100%;
+      min-width: 0;
       max-width: 64rem;
       margin-inline: auto;
     }
@@ -738,8 +684,7 @@ type HistoryFilter = 'all' | T.BackupActivityKind
     }
 
     [tuiTitle],
-    .schedule-controls > *,
-    .activity summary > * {
+    .schedule-controls > * {
       min-width: 0;
       overflow-wrap: anywhere;
     }
@@ -785,7 +730,10 @@ type HistoryFilter = 'all' | T.BackupActivityKind
     .panel {
       display: grid;
       gap: 1rem;
+      width: 100%;
+      min-width: 0;
       padding: 1.25rem;
+      box-sizing: border-box;
     }
 
     .panel > header {
@@ -800,7 +748,6 @@ type HistoryFilter = 'all' | T.BackupActivityKind
 
     .panel > header,
     .setting-row,
-    .danger,
     .checkbox-row,
     .inline-switch {
       display: flex;
@@ -809,16 +756,23 @@ type HistoryFilter = 'all' | T.BackupActivityKind
       gap: 1rem;
     }
 
-    .timeline {
-      display: grid;
-      gap: 0.5rem;
+    .setting-row {
+      width: 100%;
+      min-width: 0;
     }
 
     .schedule-controls {
       display: grid;
-      grid-template-columns: repeat(4, minmax(7rem, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
       gap: 0.75rem;
       align-items: end;
+      width: 100%;
+      min-width: 0;
+    }
+
+    .schedule-controls select,
+    .schedule-controls tui-textfield {
+      width: 100%;
     }
 
     label > span:first-child,
@@ -901,45 +855,15 @@ type HistoryFilter = 'all' | T.BackupActivityKind
     }
 
     .advanced-link {
+      width: 100%;
+      min-width: 0;
       text-align: left;
       gap: 0.75rem;
+      box-sizing: border-box;
     }
 
     .advanced-link [tuiTitle] {
       flex: 1;
-    }
-
-    .history-toolbar {
-      display: flex;
-      justify-content: flex-end;
-    }
-
-    .history-section {
-      padding: 0;
-      overflow: hidden;
-    }
-
-    .history-section > summary {
-      display: flex;
-      align-items: center;
-      gap: 0.75rem;
-      padding: 1rem 1.25rem;
-      cursor: pointer;
-      list-style: none;
-    }
-
-    .history-section > summary [tuiTitle] {
-      flex: 1;
-    }
-
-    .history-section[open] > summary > tui-icon:last-child {
-      transform: rotate(180deg);
-    }
-
-    .history-content {
-      display: grid;
-      gap: 1rem;
-      padding: 0 1.25rem 1.25rem;
     }
 
     .embedded-panel {
@@ -949,30 +873,8 @@ type HistoryFilter = 'all' | T.BackupActivityKind
       box-shadow: none;
     }
 
-    .activity {
-      padding: 0;
-      overflow: hidden;
-    }
-
-    .activity summary {
-      display: flex;
-      align-items: center;
-      gap: 0.75rem;
-      padding: 1rem 1.25rem;
-      cursor: pointer;
-      list-style: none;
-    }
-
-    .activity summary [tuiTitle] {
-      flex: 1;
-    }
-
-    .activity-details {
-      padding: 0 1.25rem 1rem 3.25rem;
-    }
-
-    .error {
-      color: var(--tui-status-negative);
+    .save-row {
+      justify-content: flex-end;
     }
 
     @media (max-width: 48rem) {
@@ -1001,7 +903,6 @@ type HistoryFilter = 'all' | T.BackupActivityKind
     @media (max-width: 30rem) {
       .panel > header,
       .setting-row:not(.vertical),
-      .activity summary,
       .advanced-link {
         align-items: stretch;
         flex-direction: column;
@@ -1009,8 +910,6 @@ type HistoryFilter = 'all' | T.BackupActivityKind
 
       .panel > header > :last-child,
       .setting-row:not(.vertical) > button,
-      .activity summary > tui-icon,
-      .activity summary > [tuiBadge],
       .advanced-link > tui-icon,
       .advanced-link > [tuiBadge] {
         align-self: flex-start;
@@ -1032,7 +931,6 @@ type HistoryFilter = 'all' | T.BackupActivityKind
   `,
   host: { class: 'backup-page' },
   imports: [
-    DatePipe,
     FormsModule,
     RouterLink,
     TuiAppearance,
@@ -1063,9 +961,11 @@ export default class AutomaticBackupsComponent implements OnInit {
   private readonly patch = inject<PatchDB<DataModel>>(PatchDB)
   private readonly packageData = toSignal(this.patch.watch$('packageData'))
   private readonly state = toSignal(this.patch.watch$('scheduledBackups'))
+  private initializedEditorSource = ''
 
   readonly mode = input<'setup' | 'manage'>()
   readonly embedded = input(false)
+  readonly manageLocations = output<void>()
   private readonly route = inject(ActivatedRoute)
   readonly setupMode = computed(
     () =>
@@ -1078,8 +978,6 @@ export default class AutomaticBackupsComponent implements OnInit {
   readonly showSchedule = signal(false)
   readonly showServices = signal(false)
   readonly showAdvanced = signal(false)
-  historyFilter: HistoryFilter = 'all'
-  deleteWhenDisabled = false
 
   readonly setupSteps = [
     { number: 1, label: 'Location' as const },
@@ -1106,17 +1004,12 @@ export default class AutomaticBackupsComponent implements OnInit {
   readonly histories = computed(() =>
     Object.values(this.state()?.histories || {}),
   )
-  readonly activities = computed(() =>
-    Object.values(this.state()?.activities || {}).sort((a, b) =>
-      b.startedAt.localeCompare(a.startedAt),
-    ),
-  )
 
   readonly targets = computed(() => [
     ...this.backupService.cifs().map(target => ({
       id: target.id,
       name: target.entry.path.split('/').pop() || target.entry.path,
-      detail: `${target.entry.hostname}${target.entry.path}`,
+      detail: formatCifsLocation(target.entry),
       icon: '@tui.folder-network',
       available: target.entry.mountable,
       capacity: null as number | null,
@@ -1138,11 +1031,25 @@ export default class AutomaticBackupsComponent implements OnInit {
   editor: AutomaticEditor = this.defaultEditor()
   readonly estimates = signal<T.BackupServiceCapacityEstimate[]>([])
 
+  private readonly initializeEditor = effect(() => {
+    const job = this.primary()
+    const packageData = this.packageData()
+    if (!job || !packageData) return
+    const source = JSON.stringify({
+      id: job.id,
+      schedule: job.schedule,
+      services: job.services,
+      defaultRetention: job.defaultRetention,
+      packages: Object.keys(packageData).sort(),
+    })
+    if (source === this.initializedEditorSource) return
+    this.editor = this.editorFor(job)
+    this.initializedEditorSource = source
+  })
+
   async ngOnInit() {
     await this.backupService.getBackupTargets()
     this.targetId.set(this.targets().find(target => target.available)?.id || '')
-    const job = this.primary()
-    if (job) this.editor = this.editorFor(job)
     this.loading.set(false)
   }
 
@@ -1453,25 +1360,21 @@ export default class AutomaticBackupsComponent implements OnInit {
         sum + (item.snapshot.physicalSize ?? item.snapshot.logicalSize),
       0,
     )
-    const confirmed = await firstValueFrom(
-      this.dialogs
-        .openConfirm({
-          label: this.deleteWhenDisabled
-            ? 'Turn off and delete automatic checkpoints?'
-            : 'Turn off automatic backups?',
+    const decision = await firstValueFrom(
+      this.dialogs.openComponent<DisableAutomaticDecision | null>(
+        DISABLE_AUTOMATIC_DIALOG,
+        {
+          label: 'Turn off automatic backups?',
           size: 's',
           data: {
-            content: this.deleteWhenDisabled
-              ? `This will pause every schedule and permanently delete ${snapshots.length} automatic checkpoints, reclaiming about ${this.bytes(bytes)}. Manual checkpoints and any still-shared checkpoints are kept.`
-              : 'This pauses every schedule. Settings and existing checkpoints are kept.',
-            yes: this.deleteWhenDisabled ? 'Turn off and delete' : 'Turn off',
-            no: 'Cancel',
+            checkpointCount: snapshots.length,
+            reclaimable: this.bytes(bytes),
           },
-        })
-        .pipe(filter(Boolean)),
-      { defaultValue: false },
+        },
+      ),
+      { defaultValue: null },
     )
-    if (!confirmed) return
+    if (!decision) return
 
     try {
       for (const job of this.jobs()) {
@@ -1482,7 +1385,7 @@ export default class AutomaticBackupsComponent implements OnInit {
           })
         }
       }
-      if (this.deleteWhenDisabled) {
+      if (decision.deleteCheckpoints) {
         for (const history of this.histories()) {
           const ids = history.snapshots.map(snapshot => snapshot.id)
           if (ids.length) {
@@ -1494,52 +1397,9 @@ export default class AutomaticBackupsComponent implements OnInit {
           }
         }
       }
-      this.deleteWhenDisabled = false
     } catch (error: any) {
       this.errors.handleError(getErrorMessage(error))
     }
-  }
-
-  filteredActivities(): T.BackupActivity[] {
-    return this.historyFilter === 'all'
-      ? this.activities()
-      : this.activities().filter(
-          activity => activity.kind === this.historyFilter,
-        )
-  }
-
-  activityLabel(activity: T.BackupActivity): string {
-    if (activity.kind === 'manual') return 'Manual backup'
-    if (activity.kind === 'restore') return 'Restore'
-    return activity.jobName || 'Automatic backup'
-  }
-
-  activityState(activity: T.BackupActivity): string {
-    switch (activity.state) {
-      case 'succeeded':
-        return 'Succeeded'
-      case 'partiallyFailed':
-        return 'Partially failed'
-      case 'failed':
-        return 'Failed'
-      default:
-        return 'In progress'
-    }
-  }
-
-  activityIcon(activity: T.BackupActivity): string {
-    if (activity.kind === 'manual') return '@tui.copy-plus'
-    if (activity.kind === 'restore') return '@tui.database-backup'
-    return '@tui.calendar-clock'
-  }
-
-  activityAppearance(
-    activity: T.BackupActivity,
-  ): 'positive' | 'warning' | 'negative' | 'neutral' {
-    if (activity.state === 'succeeded') return 'positive'
-    if (activity.state === 'partiallyFailed') return 'warning'
-    if (activity.state === 'failed') return 'negative'
-    return 'neutral'
   }
 
   targetName(id: string): string {

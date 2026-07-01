@@ -13,6 +13,11 @@ export interface MappedBackupTarget<T> {
   entry: T
 }
 
+export function formatCifsLocation(target: CifsBackupTarget): string {
+  const share = target.path.replace(/^\/+/, '')
+  return share ? `${target.hostname}/${share}` : target.hostname
+}
+
 @Injectable({
   providedIn: 'root',
 })

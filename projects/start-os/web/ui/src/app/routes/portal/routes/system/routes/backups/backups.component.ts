@@ -1,5 +1,12 @@
 import { AsyncPipe } from '@angular/common'
-import { Component, computed, inject, input, OnInit } from '@angular/core'
+import {
+  Component,
+  computed,
+  inject,
+  input,
+  OnInit,
+  output,
+} from '@angular/core'
 import { ActivatedRoute, RouterLink } from '@angular/router'
 import { DialogService, DocsLinkDirective, i18nPipe } from '@start9labs/shared'
 import { T } from '@start9labs/start-core'
@@ -76,6 +83,7 @@ import { BACKUP_RESTORE } from './restore.component'
         <backup-location-picker
           [mode]="type() === 'create' ? 'manual' : 'restore'"
           (selected)="onTarget($event)"
+          (manage)="manageLocations.emit()"
         />
       }
     }
@@ -112,6 +120,7 @@ import { BACKUP_RESTORE } from './restore.component'
 export default class SystemBackupComponent implements OnInit {
   readonly mode = input<'create' | 'restore'>()
   readonly embedded = input(false)
+  readonly manageLocations = output<void>()
   readonly dialog = inject(DialogService)
   private readonly route = inject(ActivatedRoute)
   readonly type = computed(

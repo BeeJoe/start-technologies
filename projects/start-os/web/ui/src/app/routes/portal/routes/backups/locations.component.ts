@@ -49,8 +49,15 @@ import { BackupService } from '../system/routes/backups/backup.service'
     :host {
       display: grid;
       gap: 1rem;
-      max-width: 64rem;
+      width: 100%;
+      min-width: 0;
+      max-width: none;
       margin-inline: auto;
+    }
+
+    section {
+      width: 100%;
+      min-width: 0;
     }
 
     h2 {

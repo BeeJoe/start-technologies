@@ -15,7 +15,7 @@ import { BackupStatusComponent } from './status.component'
       {{ 'Physical Drives' | i18n }}
     </header>
 
-    <table [appTable]="['Status', 'Logicalname', 'Name', 'Capacity']">
+    <table [appTable]="['Status', 'Name', 'Capacity', 'Location']">
       @for (target of service.drives(); track $index) {
         <tr
           tabindex="0"
@@ -25,9 +25,9 @@ import { BackupStatusComponent } from './status.component'
           <td>
             <span [backupStatus]="target.hasAnyBackup" [physical]="true"></span>
           </td>
-          <td class="name">{{ target.entry.logicalname }}</td>
-          <td>{{ driveName(target.entry) }}</td>
+          <td class="name">{{ driveName(target.entry) }}</td>
           <td>{{ formatCapacity(target.entry.capacity) }}</td>
+          <td class="location">{{ target.entry.logicalname }}</td>
         </tr>
       } @empty {
         <tr>
@@ -61,7 +61,34 @@ import { BackupStatusComponent } from './status.component'
       }
     }
 
+    :host {
+      width: 100%;
+      min-width: 0;
+    }
+
+    table {
+      width: 100%;
+      table-layout: fixed;
+    }
+
+    td:first-child {
+      width: 11rem;
+    }
+
+    td:last-child {
+      width: 10rem;
+    }
+
+    .location {
+      overflow-wrap: anywhere;
+      text-align: right;
+    }
+
     :host-context(tui-root._mobile) {
+      table {
+        table-layout: auto;
+      }
+
       tr {
         grid-template-columns: minmax(0, 1fr) auto;
         width: 100%;
@@ -88,6 +115,11 @@ import { BackupStatusComponent } from './status.component'
         font: var(--tui-typography-body-m);
         font-weight: bold;
         grid-column: 1;
+        max-width: 100%;
+      }
+
+      .location {
+        justify-self: end;
         max-width: 100%;
       }
     }

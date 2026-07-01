@@ -1,5 +1,4 @@
 import { Component, computed, inject, input, output } from '@angular/core'
-import { RouterLink } from '@angular/router'
 import { i18nPipe } from '@start9labs/shared'
 import {
   TuiAppearance,
@@ -14,6 +13,7 @@ import {
 } from 'src/app/services/api/api.types'
 import {
   BackupService,
+  formatCifsLocation,
   MappedBackupTarget,
 } from '../system/routes/backups/backup.service'
 
@@ -35,24 +35,29 @@ type Location = MappedBackupTarget<CifsBackupTarget | DiskBackupTarget>
           <tui-icon [icon]="target.icon" />
           <span tuiTitle>
             <b>{{ target.name }}</b>
-            <span tuiSubtitle>
-              {{ target.detail }}
-              @if (!target.available) {
-                — {{ target.reason | i18n }}
-              }
-            </span>
           </span>
           @if (selectedId() === target.location.id) {
             <tui-icon icon="@tui.circle-check" />
           }
+          <span class="location-detail" tuiSubtitle>
+            {{ target.detail }}
+            @if (!target.available) {
+              — {{ target.reason | i18n }}
+            }
+          </span>
         </button>
       } @empty {
         <p>{{ 'No backup locations are available.' | i18n }}</p>
       }
     </div>
-    <a tuiButton appearance="secondary" routerLink="/system/backups/locations">
+    <button
+      tuiButton
+      type="button"
+      appearance="secondary"
+      (click)="manage.emit()"
+    >
       {{ 'Add or repair a location' | i18n }}
-    </a>
+    </button>
   `,
   styles: `
     :host,
@@ -77,9 +82,12 @@ type Location = MappedBackupTarget<CifsBackupTarget | DiskBackupTarget>
       overflow-wrap: anywhere;
     }
 
-    [tuiSubtitle] {
-      display: block;
-      margin-top: 0.25rem;
+    .location-detail {
+      flex: 0 1 45%;
+      min-width: 0;
+      margin-inline-start: auto;
+      overflow-wrap: anywhere;
+      text-align: right;
     }
 
     .selected {
@@ -89,16 +97,19 @@ type Location = MappedBackupTarget<CifsBackupTarget | DiskBackupTarget>
     p {
       color: var(--tui-text-secondary);
     }
+
+    @media (max-width: 30rem) {
+      [tuiCell] {
+        flex-wrap: wrap;
+      }
+
+      .location-detail {
+        flex-basis: 100%;
+        padding-inline-start: 2.25rem;
+      }
+    }
   `,
-  imports: [
-    RouterLink,
-    TuiAppearance,
-    TuiButton,
-    TuiCell,
-    TuiIcon,
-    TuiTitle,
-    i18nPipe,
-  ],
+  imports: [TuiAppearance, TuiButton, TuiCell, TuiIcon, TuiTitle, i18nPipe],
 })
 export class BackupLocationPickerComponent {
   private readonly backupService = inject(BackupService)
@@ -106,12 +117,13 @@ export class BackupLocationPickerComponent {
   readonly mode = input.required<'automatic' | 'manual' | 'restore'>()
   readonly selectedId = input('')
   readonly selected = output<Location>()
+  readonly manage = output<void>()
 
   readonly targets = computed(() => [
     ...this.backupService.cifs().map(location => ({
       location,
       name: location.entry.path.split('/').pop() || location.entry.path,
-      detail: `${location.entry.hostname}${location.entry.path}`,
+      detail: formatCifsLocation(location.entry),
       icon: '@tui.folder-network',
       available:
         location.entry.mountable &&

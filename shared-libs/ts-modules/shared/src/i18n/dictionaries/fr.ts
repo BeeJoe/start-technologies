@@ -1009,4 +1009,7 @@ export default {
   1101: 'Vue d’ensemble',
   1102: 'Sauvegarde manuelle',
   1103: 'Emplacements',
+  1104: 'Historique des sauvegardes',
+  1105: 'Désactiver les sauvegardes automatiques ?',
+  1106: 'Désactiver et supprimer',
 } satisfies i18n
