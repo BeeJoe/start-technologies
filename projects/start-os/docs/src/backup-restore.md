@@ -6,7 +6,7 @@ Restore previously created backups to recover individual services or your entire
 
 This option should only be necessary if you accidentally uninstall a service.
 
-1.  Go to `System > Backups > Restore`.
+1.  Go to `System > Backups` and expand **Restore from a backup**.
 1.  Select your backup drive.
 1.  Decrypt the backup drive by entering the password that was used to create it.
 1.  Select the service(s) you want to restore and click "Restore Selected".

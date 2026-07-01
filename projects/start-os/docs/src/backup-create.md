@@ -42,13 +42,30 @@ Even with proper backups the risk of data corruption is always non-zero. Therefo
 
 ## Using Backups in StartOS
 
-Go to `System > Backups`. From any backup page, use the navigation row to move
-directly between:
+Go to `System > Backups`. Backup tools appear together as collapsed cards on
+one page. Select a card to expand it; opening another card closes the current
+one.
 
-- **Automatic** to create or manage scheduled backups.
-- **Manual backup** to create a one-time backup for selected services.
-- **Restore** to choose a manual or automatic checkpoint.
-- **Locations** to add or repair physical drives and network folders.
+- **Automatic backups** creates or manages scheduled backups. **Run now** is
+  available without expanding the card. When expanded, the card includes the
+  main schedule, service selection, retention settings, advanced schedules,
+  and an expandable history at the bottom.
+- **Create a manual backup** creates a one-time backup for selected services.
+- **Restore from a backup** chooses a manual or automatic checkpoint.
+- **Manage backup locations** adds or repairs physical drives and network
+  folders.
+
+When a backup starts, its progress moves to the top of the page and StartOS
+scrolls to it automatically. You may leave the page while the operation
+continues. Completed operations remain available in **History** instead of
+appearing as a separate completion message on the Backups page.
+
+Turning off automatic backups keeps the schedule settings and existing
+checkpoints by default. To remove the automatic checkpoints at the same time,
+first expand **Automatic backups**, select **Also permanently delete automatic
+backup checkpoints** beside the switch, and then turn the switch off. StartOS
+asks for confirmation before deleting anything; manual checkpoints are not
+deleted.
 
 ## Physical Drive
 
