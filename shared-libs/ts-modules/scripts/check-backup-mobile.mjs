@@ -361,6 +361,7 @@ assertNotSource(editorFile, [
   /class="danger g-card"/,
   /<backup-navigation/,
   /showCheckpoints/,
+  /select,\s*\.retention-rule input/,
 ])
 assertNotSource(manualPageFile, [/'Last Backup'/, /<backup-navigation/])
 assertSource(globalStylesFile, [

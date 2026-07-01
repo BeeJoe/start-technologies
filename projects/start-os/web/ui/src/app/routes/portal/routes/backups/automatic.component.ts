@@ -826,7 +826,6 @@ type HistoryFilter = 'all' | T.BackupActivityKind
       color: var(--tui-text-secondary);
     }
 
-    select,
     .retention-rule input {
       width: 100%;
       min-height: 2.75rem;
