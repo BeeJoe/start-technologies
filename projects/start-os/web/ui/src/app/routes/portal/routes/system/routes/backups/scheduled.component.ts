@@ -374,6 +374,7 @@ interface JobEditor {
               <input
                 tuiSwitch
                 type="checkbox"
+                [showIcons]="false"
                 name="enabled"
                 [(ngModel)]="form.enabled"
               />
@@ -680,6 +681,7 @@ interface JobEditor {
             <label class="switch-row">
               <input
                 tuiSwitch
+                [showIcons]="false"
                 name="waitForSchedule"
                 type="checkbox"
                 [(ngModel)]="waitForSchedule"

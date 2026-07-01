@@ -1,5 +1,12 @@
 import { DatePipe } from '@angular/common'
-import { Component, computed, inject, OnInit, signal } from '@angular/core'
+import {
+  Component,
+  computed,
+  inject,
+  input,
+  OnInit,
+  signal,
+} from '@angular/core'
 import { toSignal } from '@angular/core/rxjs-interop'
 import { FormsModule } from '@angular/forms'
 import { ActivatedRoute, Router, RouterLink } from '@angular/router'
@@ -40,7 +47,6 @@ import {
 } from '../system/routes/backups/scheduled.utils'
 import { ScheduledBackupsComponent } from '../system/routes/backups/scheduled.component'
 import { BackupLocationPickerComponent } from './location-picker.component'
-import { BackupNavigationComponent } from './backup-navigation.component'
 
 interface ServiceChoice {
   id: string
@@ -68,50 +74,54 @@ interface AutomaticEditor {
 type HistoryFilter = 'all' | T.BackupActivityKind
 
 @Component({
+  selector: 'automatic-backups',
   template: `
-    <ng-container *title>
-      <a routerLink="/system/backups" tuiIconButton iconStart="@tui.arrow-left">
-        {{ 'Back' | i18n }}
-      </a>
-      {{
-        (setupMode ? 'Set up automatic backups' : 'Manage automatic backups')
-          | i18n
-      }}
-    </ng-container>
+    @if (!embedded()) {
+      <ng-container *title>
+        <a
+          routerLink="/system/backups"
+          tuiIconButton
+          iconStart="@tui.arrow-left"
+        >
+          {{ 'Back' | i18n }}
+        </a>
+        {{
+          (setupMode()
+            ? 'Set up automatic backups'
+            : 'Manage automatic backups'
+          ) | i18n
+        }}
+      </ng-container>
 
-    <backup-navigation />
-
-    <header class="page-heading">
-      <span tuiTitle>
-        <h2>
-          {{
-            (setupMode
-              ? 'Set up automatic backups'
-              : 'Manage automatic backups'
-            ) | i18n
-          }}
-        </h2>
-        <span tuiSubtitle>
-          {{
-            (setupMode
-              ? 'Choose where and when StartOS protects your services.'
-              : 'Change your primary schedule or review backup history'
-            ) | i18n
-          }}
+      <header class="page-heading">
+        <span tuiTitle>
+          <h2>
+            {{
+              (setupMode()
+                ? 'Set up automatic backups'
+                : 'Manage automatic backups'
+              ) | i18n
+            }}
+          </h2>
+          <span tuiSubtitle>
+            {{
+              (setupMode()
+                ? 'Choose where and when StartOS protects your services.'
+                : 'Change your primary schedule or review backup history'
+              ) | i18n
+            }}
+          </span>
         </span>
-      </span>
-    </header>
+      </header>
+    }
 
     @if (loading()) {
       <div class="loading">{{ 'Loading' | i18n }}…</div>
-    } @else if (setupMode && jobs().length) {
+    } @else if (setupMode() && jobs().length) {
       <div tuiNotification appearance="info">
         {{ 'Automatic backups are already set up.' | i18n }}
-        <a tuiButton size="s" routerLink="/system/backups/manage">
-          {{ 'Manage' | i18n }}
-        </a>
       </div>
-    } @else if (setupMode) {
+    } @else if (setupMode()) {
       <nav class="steps" aria-label="Setup progress">
         @for (item of setupSteps; track item.number) {
           <span [class.active]="step() === item.number">
@@ -277,6 +287,7 @@ type HistoryFilter = 'all' | T.BackupActivityKind
               <input
                 tuiSwitch
                 type="checkbox"
+                [showIcons]="false"
                 [(ngModel)]="editor.keepAdditional"
               />
               <span>{{ 'Keep additional versions' | i18n }}</span>
@@ -408,32 +419,9 @@ type HistoryFilter = 'all' | T.BackupActivityKind
         }
       </footer>
     } @else {
-      <nav class="tabs">
-        <button
-          tuiButton
-          [appearance]="tab() === 'settings' ? 'primary' : 'secondary'"
-          (click)="tab.set('settings')"
-        >
-          {{ 'Settings' | i18n }}
-        </button>
-        <button
-          tuiButton
-          [appearance]="tab() === 'history' ? 'primary' : 'secondary'"
-          (click)="tab.set('history')"
-        >
-          {{ 'History' | i18n }}
-        </button>
-      </nav>
-
-      @if (tab() === 'settings') {
-        <div id="help" tuiNotification appearance="info">
-          {{
-            'Automatic checkpoints are stored separately from your latest manual checkpoint.'
-              | i18n
-          }}
-        </div>
-        @if (primary(); as job) {
-          <section class="g-card panel">
+      @if (primary(); as job) {
+        <section class="g-card panel" [class.embedded-panel]="embedded()">
+          @if (!embedded()) {
             <header>
               <span tuiTitle>
                 <b>{{ 'Automatic backups' | i18n }}</b>
@@ -450,6 +438,7 @@ type HistoryFilter = 'all' | T.BackupActivityKind
                 <input
                   tuiSwitch
                   type="checkbox"
+                  [showIcons]="false"
                   [ngModel]="job.enabled && !job.pause"
                   (ngModelChange)="toggleMain($event)"
                 />
@@ -458,316 +447,274 @@ type HistoryFilter = 'all' | T.BackupActivityKind
                 </span>
               </label>
             </header>
+          }
 
-            @if (job.services.type === 'selected' && !editor.includeFuture) {
-              <div tuiNotification appearance="info">
-                <span tuiTitle>
-                  <b>{{ 'Existing service selection preserved' | i18n }}</b>
-                  <span tuiSubtitle>
-                    {{
-                      'This schedule keeps its previous exact selection and will not silently add future services.'
-                        | i18n
-                    }}
-                  </span>
+          @if (job.services.type === 'selected' && !editor.includeFuture) {
+            <div tuiNotification appearance="info">
+              <span tuiTitle>
+                <b>{{ 'Existing service selection preserved' | i18n }}</b>
+                <span tuiSubtitle>
+                  {{
+                    'This schedule keeps its previous exact selection and will not silently add future services.'
+                      | i18n
+                  }}
                 </span>
-                <label class="checkbox-row">
-                  <input
-                    tuiCheckbox
-                    type="checkbox"
-                    [(ngModel)]="editor.includeFuture"
-                  />
-                  <span>
-                    {{ 'Automatically include future services' | i18n }}
-                  </span>
-                </label>
-              </div>
-            }
-
-            <div class="setting-row">
-              <span tuiTitle>
-                <b>{{ 'Backup location' | i18n }}</b>
-                <span tuiSubtitle>{{ targetName(job.targetId) }}</span>
               </span>
-              @if (job.pause && job.pause.reason !== 'user') {
-                <button tuiButton size="s" (click)="showAdvanced.set(true)">
-                  {{ 'Fix backup' | i18n }}
-                </button>
-              }
+              <label class="checkbox-row">
+                <input
+                  tuiCheckbox
+                  type="checkbox"
+                  [(ngModel)]="editor.includeFuture"
+                />
+                <span>
+                  {{ 'Automatically include future services' | i18n }}
+                </span>
+              </label>
             </div>
+          }
 
-            <div class="setting-row vertical">
-              <span tuiTitle>
-                <b>{{ 'Schedule' | i18n }}</b>
-                <span tuiSubtitle>{{ scheduleSummary() }}</span>
-              </span>
-              <div class="schedule-controls">
+          <div class="setting-row">
+            <span tuiTitle>
+              <b>{{ 'Backup location' | i18n }}</b>
+              <span tuiSubtitle>{{ targetName(job.targetId) }}</span>
+            </span>
+            @if (job.pause && job.pause.reason !== 'user') {
+              <button tuiButton size="s" (click)="showAdvanced.set(true)">
+                {{ 'Fix backup' | i18n }}
+              </button>
+            }
+          </div>
+
+          <div class="setting-row vertical">
+            <span tuiTitle>
+              <b>{{ 'Schedule' | i18n }}</b>
+              <span tuiSubtitle>{{ scheduleSummary() }}</span>
+            </span>
+            <div class="schedule-controls">
+              <label>
+                <span>{{ 'Frequency' | i18n }}</span>
+                <select [(ngModel)]="editor.frequency">
+                  <option value="hourly">{{ 'Hourly' | i18n }}</option>
+                  <option value="daily">{{ 'Daily' | i18n }}</option>
+                  <option value="weekly">{{ 'Weekly' | i18n }}</option>
+                </select>
+              </label>
+              @if (editor.frequency === 'weekly') {
                 <label>
-                  <span>{{ 'Frequency' | i18n }}</span>
-                  <select [(ngModel)]="editor.frequency">
-                    <option value="hourly">{{ 'Hourly' | i18n }}</option>
-                    <option value="daily">{{ 'Daily' | i18n }}</option>
-                    <option value="weekly">{{ 'Weekly' | i18n }}</option>
+                  <span>{{ 'Day of week' | i18n }}</span>
+                  <select [(ngModel)]="editor.weekday">
+                    @for (day of weekdays; track day.value) {
+                      <option [ngValue]="day.value">
+                        {{ day.label | i18n }}
+                      </option>
+                    }
                   </select>
                 </label>
-                @if (editor.frequency === 'weekly') {
-                  <label>
-                    <span>{{ 'Day of week' | i18n }}</span>
-                    <select [(ngModel)]="editor.weekday">
-                      @for (day of weekdays; track day.value) {
-                        <option [ngValue]="day.value">
-                          {{ day.label | i18n }}
-                        </option>
-                      }
-                    </select>
-                  </label>
-                }
-                @if (editor.frequency !== 'hourly') {
-                  <tui-textfield>
-                    <label tuiLabel>{{ 'Hour' | i18n }}</label>
-                    <input
-                      tuiInput
-                      type="number"
-                      min="0"
-                      max="23"
-                      [(ngModel)]="editor.hour"
-                    />
-                  </tui-textfield>
-                }
+              }
+              @if (editor.frequency !== 'hourly') {
                 <tui-textfield>
-                  <label tuiLabel>{{ 'Minute' | i18n }}</label>
+                  <label tuiLabel>{{ 'Hour' | i18n }}</label>
                   <input
                     tuiInput
                     type="number"
                     min="0"
-                    max="59"
-                    [(ngModel)]="editor.minute"
+                    max="23"
+                    [(ngModel)]="editor.hour"
                   />
                 </tui-textfield>
-              </div>
-            </div>
-
-            <div class="setting-row vertical">
-              <span tuiTitle>
-                <b>{{ 'Services' | i18n }}</b>
-                <span tuiSubtitle>
-                  {{ selectedServiceSummary() }}
-                </span>
-              </span>
-              <div tuiGroup orientation="vertical" [collapsed]="true">
-                @for (service of editor.services; track service.id) {
-                  <label tuiBlock="m">
-                    <input
-                      tuiCheckbox
-                      type="checkbox"
-                      [(ngModel)]="service.checked"
-                    />
-                    <img alt="" [src]="service.icon" />
-                    <span tuiTitle>
-                      <b>{{ service.title }}</b>
-                    </span>
-                  </label>
-                }
-              </div>
-              <label class="checkbox-row toggle-all">
-                <input
-                  tuiCheckbox
-                  type="checkbox"
-                  [ngModel]="allServicesSelected()"
-                  (ngModelChange)="setAllServices($event)"
-                />
-                <span tuiTitle>
-                  <b>{{ 'Toggle all' | i18n }}</b>
-                </span>
-              </label>
-            </div>
-
-            <div class="setting-row vertical">
-              <span tuiTitle>
-                <b>{{ 'Version history' | i18n }}</b>
-                <span tuiSubtitle>
-                  {{
-                    (editor.keepAdditional
-                      ? retentionSummary()
-                      : 'Keep only the latest automatic checkpoint'
-                    ) | i18n
-                  }}
-                </span>
-              </span>
-              <label class="inline-switch left">
-                <input
-                  tuiSwitch
-                  type="checkbox"
-                  [(ngModel)]="editor.keepAdditional"
-                />
-                <span>{{ 'Keep additional versions' | i18n }}</span>
-              </label>
-              @if (editor.keepAdditional) {
-                <div class="retention-rule">
-                  <span>{{ 'Keep one backup every' | i18n }}</span>
-                  <select [(ngModel)]="editor.interval">
-                    <option value="day">{{ 'Day' | i18n }}</option>
-                    <option value="week">{{ 'Week' | i18n }}</option>
-                    <option value="month">{{ 'Month' | i18n }}</option>
-                  </select>
-                  <span>{{ 'for' | i18n }}</span>
-                  <input
-                    type="number"
-                    min="1"
-                    max="365"
-                    [(ngModel)]="editor.duration"
-                  />
-                  <span>{{ 'periods' | i18n }}</span>
-                </div>
-                <p class="helper">
-                  {{
-                    'Use different version history settings for specific services under Advanced schedules.'
-                      | i18n
-                  }}
-                </p>
               }
+              <tui-textfield>
+                <label tuiLabel>{{ 'Minute' | i18n }}</label>
+                <input
+                  tuiInput
+                  type="number"
+                  min="0"
+                  max="59"
+                  [(ngModel)]="editor.minute"
+                />
+              </tui-textfield>
             </div>
+          </div>
 
-            <footer class="save-row">
-              <button
-                tuiButton
-                [disabled]="saving()"
-                (click)="savePrimary(job)"
-              >
-                {{ 'Save changes' | i18n }}
-              </button>
-            </footer>
-          </section>
-
-          <section class="danger g-card">
+          <div class="setting-row vertical">
             <span tuiTitle>
-              <b>{{ 'Turn off and remove automatic backups' | i18n }}</b>
+              <b>{{ 'Services' | i18n }}</b>
               <span tuiSubtitle>
-                {{
-                  'Turning off pauses schedules. Deleting checkpoints is optional and never deletes manual backups.'
-                    | i18n
-                }}
+                {{ selectedServiceSummary() }}
               </span>
             </span>
-            <label class="checkbox-row">
+            <div tuiGroup orientation="vertical" [collapsed]="true">
+              @for (service of editor.services; track service.id) {
+                <label tuiBlock="m">
+                  <input
+                    tuiCheckbox
+                    type="checkbox"
+                    [(ngModel)]="service.checked"
+                  />
+                  <img alt="" [src]="service.icon" />
+                  <span tuiTitle>
+                    <b>{{ service.title }}</b>
+                  </span>
+                </label>
+              }
+            </div>
+            <label class="checkbox-row toggle-all">
               <input
                 tuiCheckbox
                 type="checkbox"
-                [(ngModel)]="deleteWhenDisabled"
+                [ngModel]="allServicesSelected()"
+                (ngModelChange)="setAllServices($event)"
               />
-              <span>
-                {{
-                  'Also permanently delete automatic backup checkpoints' | i18n
-                }}
+              <span tuiTitle>
+                <b>{{ 'Toggle all' | i18n }}</b>
               </span>
             </label>
-            <button
-              tuiButton
-              appearance="flat-destructive"
-              [disabled]="!anyJobEnabled()"
-              (click)="disableAutomatic()"
-            >
-              {{ 'Turn off automatic backups' | i18n }}
-            </button>
-          </section>
+          </div>
 
-          <button
-            tuiCell
-            tuiAppearance="outline-grayscale"
-            class="advanced-link"
-            (click)="showAdvanced.set(!showAdvanced())"
-          >
-            <tui-icon icon="@tui.settings-2" />
+          <div class="setting-row vertical">
             <span tuiTitle>
-              <b>{{ 'Advanced schedules' | i18n }}</b>
+              <b>{{ 'Version history' | i18n }}</b>
               <span tuiSubtitle>
                 {{
-                  'Add another exact time, customize a service, or repair a backup location.'
-                    | i18n
+                  (editor.keepAdditional
+                    ? retentionSummary()
+                    : 'Keep only the latest automatic checkpoint'
+                  ) | i18n
                 }}
               </span>
             </span>
-            <span tuiBadge>{{ jobs().length }}</span>
-          </button>
-
-          @if (showAdvanced()) {
-            <section scheduledBackups mode="create"></section>
-          }
-        } @else {
-          <div tuiNotification appearance="info">
-            {{ 'Automatic backups are not set up yet.' | i18n }}
-            <a tuiButton size="s" routerLink="/system/backups/setup">
-              {{ 'Set up' | i18n }}
-            </a>
-          </div>
-        }
-      } @else {
-        <section class="history-toolbar">
-          <label>
-            <span>{{ 'Show' | i18n }}</span>
-            <select [(ngModel)]="historyFilter">
-              <option value="all">{{ 'All activity' | i18n }}</option>
-              <option value="manual">{{ 'Manual' | i18n }}</option>
-              <option value="automatic">{{ 'Automatic' | i18n }}</option>
-              <option value="restore">{{ 'Restore' | i18n }}</option>
-            </select>
-          </label>
-        </section>
-
-        <section class="timeline">
-          @for (activity of filteredActivities(); track activity.id) {
-            <details class="g-card activity">
-              <summary>
-                <tui-icon [icon]="activityIcon(activity)" />
-                <span tuiTitle>
-                  <b>{{ activityLabel(activity) | i18n }}</b>
-                  <span tuiSubtitle>
-                    {{ activity.startedAt | date: 'medium' }} ·
-                    {{ activityState(activity) | i18n }}
-                  </span>
-                </span>
-                <span tuiBadge [appearance]="activityAppearance(activity)">
-                  {{ activityState(activity) | i18n }}
-                </span>
-              </summary>
-              <div class="activity-details">
-                <p>
-                  <b>{{ 'Backup location' | i18n }}:</b>
-                  {{ targetName(activity.targetId) }}
-                </p>
-                <p>
-                  <b>{{ 'Services' | i18n }}:</b>
-                  {{ activity.intendedServices.length }}
-                </p>
-                @if (activity.error) {
-                  <p class="error">{{ activity.error }}</p>
-                }
+            <label class="inline-switch left">
+              <input
+                tuiSwitch
+                type="checkbox"
+                [showIcons]="false"
+                [(ngModel)]="editor.keepAdditional"
+              />
+              <span>{{ 'Keep additional versions' | i18n }}</span>
+            </label>
+            @if (editor.keepAdditional) {
+              <div class="retention-rule">
+                <span>{{ 'Keep one backup every' | i18n }}</span>
+                <select [(ngModel)]="editor.interval">
+                  <option value="day">{{ 'Day' | i18n }}</option>
+                  <option value="week">{{ 'Week' | i18n }}</option>
+                  <option value="month">{{ 'Month' | i18n }}</option>
+                </select>
+                <span>{{ 'for' | i18n }}</span>
+                <input
+                  type="number"
+                  min="1"
+                  max="365"
+                  [(ngModel)]="editor.duration"
+                />
+                <span>{{ 'periods' | i18n }}</span>
               </div>
-            </details>
-          } @empty {
-            <div tuiNotification appearance="info">
-              {{ 'No backup activity yet.' | i18n }}
-            </div>
-          }
+              <p class="helper">
+                {{
+                  'Use different version history settings for specific services under Advanced schedules.'
+                    | i18n
+                }}
+              </p>
+            }
+          </div>
+
+          <footer class="save-row">
+            <button tuiButton [disabled]="saving()" (click)="savePrimary(job)">
+              {{ 'Save changes' | i18n }}
+            </button>
+          </footer>
         </section>
 
         <button
           tuiCell
           tuiAppearance="outline-grayscale"
           class="advanced-link"
-          (click)="showCheckpoints.set(!showCheckpoints())"
+          (click)="showAdvanced.set(!showAdvanced())"
         >
-          <tui-icon icon="@tui.archive" />
+          <tui-icon icon="@tui.settings-2" />
           <span tuiTitle>
-            <b>{{ 'Manage stored checkpoints' | i18n }}</b>
+            <b>{{ 'Advanced schedules' | i18n }}</b>
             <span tuiSubtitle>
-              {{ 'View retention details and archived checkpoints.' | i18n }}
+              {{
+                'Add another exact time, customize a service, or repair a backup location.'
+                  | i18n
+              }}
             </span>
           </span>
+          <span tuiBadge>{{ jobs().length }}</span>
         </button>
-        @if (showCheckpoints()) {
-          <section scheduledBackups mode="restore"></section>
+
+        @if (showAdvanced()) {
+          <section scheduledBackups mode="create"></section>
         }
+      } @else {
+        <div tuiNotification appearance="info">
+          {{ 'Automatic backups are not set up yet.' | i18n }}
+        </div>
       }
+
+      <details class="history-section g-card">
+        <summary>
+          <tui-icon icon="@tui.history" />
+          <span tuiTitle>
+            <b>{{ 'History' | i18n }}</b>
+            <span tuiSubtitle>
+              {{ activities().length }} {{ 'All activity' | i18n }}
+            </span>
+          </span>
+          <tui-icon icon="@tui.chevron-down" />
+        </summary>
+        <div class="history-content">
+          <section class="history-toolbar">
+            <label>
+              <span>{{ 'Show' | i18n }}</span>
+              <select [(ngModel)]="historyFilter">
+                <option value="all">{{ 'All activity' | i18n }}</option>
+                <option value="manual">{{ 'Manual' | i18n }}</option>
+                <option value="automatic">{{ 'Automatic' | i18n }}</option>
+                <option value="restore">{{ 'Restore' | i18n }}</option>
+              </select>
+            </label>
+          </section>
+
+          <section class="timeline">
+            @for (activity of filteredActivities(); track activity.id) {
+              <details class="g-card activity">
+                <summary>
+                  <tui-icon [icon]="activityIcon(activity)" />
+                  <span tuiTitle>
+                    <b>{{ activityLabel(activity) | i18n }}</b>
+                    <span tuiSubtitle>
+                      {{ activity.startedAt | date: 'medium' }} ·
+                      {{ activityState(activity) | i18n }}
+                    </span>
+                  </span>
+                  <span tuiBadge [appearance]="activityAppearance(activity)">
+                    {{ activityState(activity) | i18n }}
+                  </span>
+                </summary>
+                <div class="activity-details">
+                  <p>
+                    <b>{{ 'Backup location' | i18n }}:</b>
+                    {{ targetName(activity.targetId) }}
+                  </p>
+                  <p>
+                    <b>{{ 'Services' | i18n }}:</b>
+                    {{ activity.intendedServices.length }}
+                  </p>
+                  @if (activity.error) {
+                    <p class="error">{{ activity.error }}</p>
+                  }
+                </div>
+              </details>
+            } @empty {
+              <div tuiNotification appearance="info">
+                {{ 'No backup activity yet.' | i18n }}
+              </div>
+            }
+          </section>
+        </div>
+      </details>
     }
   `,
   styles: `
@@ -798,7 +745,6 @@ type HistoryFilter = 'all' | T.BackupActivityKind
     }
 
     .steps,
-    .tabs,
     .wizard-actions,
     .save-row {
       display: flex;
@@ -955,16 +901,6 @@ type HistoryFilter = 'all' | T.BackupActivityKind
       flex: 1;
     }
 
-    .tabs {
-      justify-content: center;
-    }
-
-    .danger {
-      align-items: flex-start;
-      flex-direction: column;
-      padding: 1.25rem;
-    }
-
     .advanced-link {
       text-align: left;
       gap: 0.75rem;
@@ -977,6 +913,41 @@ type HistoryFilter = 'all' | T.BackupActivityKind
     .history-toolbar {
       display: flex;
       justify-content: flex-end;
+    }
+
+    .history-section {
+      padding: 0;
+      overflow: hidden;
+    }
+
+    .history-section > summary {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 1rem 1.25rem;
+      cursor: pointer;
+      list-style: none;
+    }
+
+    .history-section > summary [tuiTitle] {
+      flex: 1;
+    }
+
+    .history-section[open] > summary > tui-icon:last-child {
+      transform: rotate(180deg);
+    }
+
+    .history-content {
+      display: grid;
+      gap: 1rem;
+      padding: 0 1.25rem 1.25rem;
+    }
+
+    .embedded-panel {
+      padding: 0;
+      border: 0;
+      border-radius: 0;
+      box-shadow: none;
     }
 
     .activity {
@@ -1080,7 +1051,6 @@ type HistoryFilter = 'all' | T.BackupActivityKind
     TitleDirective,
     ScheduledBackupsComponent,
     BackupLocationPickerComponent,
-    BackupNavigationComponent,
     i18nPipe,
   ],
 })
@@ -1095,17 +1065,20 @@ export default class AutomaticBackupsComponent implements OnInit {
   private readonly packageData = toSignal(this.patch.watch$('packageData'))
   private readonly state = toSignal(this.patch.watch$('scheduledBackups'))
 
-  readonly setupMode =
-    inject(ActivatedRoute).snapshot.data['mode'] === ('setup' as const)
+  readonly mode = input<'setup' | 'manage'>()
+  readonly embedded = input(false)
+  private readonly route = inject(ActivatedRoute)
+  readonly setupMode = computed(
+    () =>
+      (this.mode() || this.route.snapshot.data['mode']) === ('setup' as const),
+  )
   readonly loading = signal(true)
   readonly saving = signal(false)
   readonly step = signal(1)
-  readonly tab = signal<'settings' | 'history'>('settings')
   readonly targetId = signal('')
   readonly showSchedule = signal(false)
   readonly showServices = signal(false)
   readonly showAdvanced = signal(false)
-  readonly showCheckpoints = signal(false)
   historyFilter: HistoryFilter = 'all'
   deleteWhenDisabled = false
 
@@ -1419,7 +1392,7 @@ export default class AutomaticBackupsComponent implements OnInit {
       if (this.editor.firstBackupNow) {
         await this.api.runScheduledBackupJob({ id: job.id })
       }
-      await this.router.navigate(['/system/backups'])
+      if (!this.embedded()) await this.router.navigate(['/system/backups'])
     } catch (error: any) {
       this.errors.handleError(getErrorMessage(error))
     } finally {

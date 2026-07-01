@@ -1,4 +1,4 @@
-import { Component, inject, OnInit } from '@angular/core'
+import { Component, inject, input, OnInit } from '@angular/core'
 import { RouterLink } from '@angular/router'
 import { i18nPipe } from '@start9labs/shared'
 import { TuiButton, TuiNotification, TuiTitle } from '@taiga-ui/core'
@@ -6,30 +6,34 @@ import { TitleDirective } from 'src/app/services/title.service'
 import { BackupNetworkComponent } from '../system/routes/backups/network.component'
 import { BackupPhysicalComponent } from '../system/routes/backups/physical.component'
 import { BackupService } from '../system/routes/backups/backup.service'
-import { BackupNavigationComponent } from './backup-navigation.component'
 
 @Component({
+  selector: 'backup-locations',
   template: `
-    <ng-container *title>
-      <a routerLink="/system/backups" tuiIconButton iconStart="@tui.arrow-left">
-        {{ 'Back' | i18n }}
-      </a>
-      {{ 'Backup locations' | i18n }}
-    </ng-container>
+    @if (!embedded()) {
+      <ng-container *title>
+        <a
+          routerLink="/system/backups"
+          tuiIconButton
+          iconStart="@tui.arrow-left"
+        >
+          {{ 'Back' | i18n }}
+        </a>
+        {{ 'Backup locations' | i18n }}
+      </ng-container>
 
-    <backup-navigation />
-
-    <header class="heading">
-      <span tuiTitle>
-        <h2>{{ 'Backup locations' | i18n }}</h2>
-        <span tuiSubtitle>
-          {{
-            'Use a physical drive or a shared folder on your local network.'
-              | i18n
-          }}
+      <header class="heading">
+        <span tuiTitle>
+          <h2>{{ 'Backup locations' | i18n }}</h2>
+          <span tuiSubtitle>
+            {{
+              'Use a physical drive or a shared folder on your local network.'
+                | i18n
+            }}
+          </span>
         </span>
-      </span>
-    </header>
+      </header>
+    }
 
     <div tuiNotification appearance="info">
       {{
@@ -67,11 +71,11 @@ import { BackupNavigationComponent } from './backup-navigation.component'
     TitleDirective,
     BackupNetworkComponent,
     BackupPhysicalComponent,
-    BackupNavigationComponent,
     i18nPipe,
   ],
 })
 export default class BackupLocationsComponent implements OnInit {
+  readonly embedded = input(false)
   private readonly service = inject(BackupService)
 
   ngOnInit() {

@@ -108,6 +108,15 @@ function assertSource(file, patterns) {
   }
 }
 
+function assertNotSource(file, patterns) {
+  const source = fs.readFileSync(path.join(root, file), 'utf8')
+  for (const pattern of patterns) {
+    if (pattern.test(source)) {
+      throw new Error(`${file}: forbidden legacy layout contract ${pattern}`)
+    }
+  }
+}
+
 const homeFile =
   'projects/start-os/web/ui/src/app/routes/portal/routes/backups/backups.component.ts'
 const editorFile =
@@ -116,6 +125,8 @@ const locationFile =
   'projects/start-os/web/ui/src/app/routes/portal/routes/backups/location-picker.component.ts'
 const locationsFile =
   'projects/start-os/web/ui/src/app/routes/portal/routes/backups/locations.component.ts'
+const routesFile =
+  'projects/start-os/web/ui/src/app/routes/portal/routes/backups/backups.routes.ts'
 const manualFile =
   'projects/start-os/web/ui/src/app/routes/portal/routes/system/routes/backups/backup.component.ts'
 const recoverFile =
@@ -128,8 +139,6 @@ const networkFile =
   'projects/start-os/web/ui/src/app/routes/portal/routes/system/routes/backups/network.component.ts'
 const physicalFile =
   'projects/start-os/web/ui/src/app/routes/portal/routes/system/routes/backups/physical.component.ts'
-const navigationFile =
-  'projects/start-os/web/ui/src/app/routes/portal/routes/backups/backup-navigation.component.ts'
 const globalStylesFile = 'projects/start-os/web/ui/src/styles.scss'
 const systemFile =
   'projects/start-os/web/ui/src/app/routes/portal/routes/system/system.component.ts'
@@ -152,48 +161,50 @@ assertRule(system, systemFile, ':host-context(tui-root._mobile)', {
   'padding-inline': '0.75rem',
 })
 
-for (const selector of ['[tuiTitle]', '.status-grid > div']) {
+for (const selector of [
+  '.card-toggle [tuiTitle]',
+  '.operation [tuiTitle]',
+  '.attention [tuiTitle]',
+]) {
   assertRule(home, homeFile, selector, {
     'min-width': '0',
     'overflow-wrap': 'anywhere',
   })
 }
-assertRule(home, homeFile, '.automatic > header', {
+assertRule(home, homeFile, '.card-heading', {
   position: 'static',
   height: 'auto',
 })
 
-for (const selector of ['.page-heading', '.operation']) {
-  assertRule(
-    home,
-    homeFile,
-    selector,
-    { 'align-items': 'stretch', 'flex-direction': 'column' },
-    phone,
-  )
-}
-for (const selector of ['.automatic > header', '.attention', '.empty']) {
+assertRule(
+  home,
+  homeFile,
+  '.operation',
+  { 'align-items': 'stretch', 'flex-direction': 'column' },
+  phone,
+)
+assertRule(
+  home,
+  homeFile,
+  '.card-actions',
+  { 'align-items': 'flex-start', 'flex-direction': 'column' },
+  phone,
+)
+for (const selector of ['.card-heading']) {
   assertContainerRule(
     home,
     homeFile,
     selector,
     { 'align-items': 'stretch', 'flex-direction': 'column' },
-    narrowCard,
+    'card (max-width: 44rem)',
   )
 }
 assertContainerRule(
   home,
   homeFile,
-  '.automatic > header .toggle',
-  { width: 'fit-content', 'justify-content': 'flex-start' },
-  narrowCard,
-)
-assertContainerRule(
-  home,
-  homeFile,
-  '.actions',
-  { 'flex-wrap': 'wrap' },
-  narrowCard,
+  '.card-actions',
+  { 'justify-content': 'flex-start' },
+  'card (max-width: 44rem)',
 )
 
 for (const selector of [
@@ -306,26 +317,55 @@ for (const [sheet, file, columns] of [
   )
 }
 
-for (const file of [homeFile, editorFile, locationsFile, manualPageFile]) {
-  assertSource(file, [/<backup-navigation\s*\/>/])
-}
-
 for (const file of [editorFile, manualFile, recoverFile]) {
   assertSource(file, [
     /tuiCheckbox[\s\S]{0,320}['"]Toggle all['"]/,
-    /host:\s*\{\s*class:\s*['"]backup-(?:page|settings)['"]|<backup-navigation\s*\/>/,
+    /host:\s*\{\s*class:\s*['"]backup-(?:page|settings)['"]|selector:\s*['"]automatic-backups['"]/,
   ])
 }
 
-assertSource(navigationFile, [
-  /routerLink="\/system\/backups\/manage"/,
-  /routerLink="\/system\/backups\/manual"/,
-  /routerLink="\/system\/backups\/restore"/,
-  /routerLink="\/system\/backups\/locations"/,
-  /overflow-x:\s*auto/,
+assertSource(homeFile, [
+  /href="https:\/\/docs\.start9\.com\/start-os\/0\.4\.0\.x"/,
+  /iconStart="@tui\.book-open-text"/,
+  /readonly expanded = signal<BackupPanel \| null>\(null\)/,
+  /<automatic-backups[\s\S]*\[embedded\]="true"/,
+  /<system-backup mode="create" \[embedded\]="true"/,
+  /<system-backup mode="restore" \[embedded\]="true"/,
+  /<backup-locations \[embedded\]="true"/,
+  /['"]Run now['"]/,
+  /tuiCheckbox[\s\S]{0,320}['"]Also permanently delete automatic backup checkpoints['"]/,
+  /activity => activity\.state === 'running'/,
+  /scrollIntoView/,
+  /\[showIcons\]="false"/,
 ])
+assertNotSource(homeFile, [
+  /<backup-navigation/,
+  /['"]Help['"]\s*\|\s*i18n/,
+  /routerLink="manage"/,
+  /['"]Dismiss['"]\s*\|\s*i18n/,
+])
+assertSource(routesFile, [
+  /path: 'manage',[\s\S]{0,80}redirectTo: ''/,
+  /path: 'manual',[\s\S]{0,80}redirectTo: ''/,
+  /path: 'restore',[\s\S]{0,80}redirectTo: ''/,
+  /path: 'locations',[\s\S]{0,80}redirectTo: ''/,
+])
+
+assertSource(editorFile, [
+  /<details class="history-section g-card">/,
+  /selector:\s*'automatic-backups'/,
+  /readonly embedded = input\(false\)/,
+])
+assertNotSource(editorFile, [
+  /<nav class="tabs">/,
+  /class="danger g-card"/,
+  /<backup-navigation/,
+  /showCheckpoints/,
+])
+assertNotSource(manualPageFile, [/'Last Backup'/, /<backup-navigation/])
 assertSource(globalStylesFile, [
-  /\.backup-page,[\s\S]*\.backup-settings[\s\S]*select\s*\{[\s\S]*min-height:\s*3rem[\s\S]*padding:\s*0\.75rem 2\.5rem 0\.75rem 1rem/,
+  /\.backup-page,[\s\S]*\.backup-settings[\s\S]*select\s*\{[\s\S]*min-height:\s*3\.5rem[\s\S]*font:\s*var\(--tui-font-text-m\)[\s\S]*background-color:\s*var\(--tui-background-neutral-1\)/,
+  /select:focus-visible[\s\S]*var\(--tui-border-focus\)/,
   /tui-data-list\.backup-menu[\s\S]*min-width:\s*12rem[\s\S]*min-height:\s*3rem/,
 ])
 

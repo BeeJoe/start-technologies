@@ -85,8 +85,8 @@ import { TARGET, TARGET_CREATE } from './target.component'
           <input
             tuiSwitch
             type="checkbox"
-            name="now"
             [showIcons]="false"
+            name="now"
             [(ngModel)]="job.now"
           />
         </div>
