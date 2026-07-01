@@ -46,26 +46,64 @@ Go to `System > Backups`. Backup tools appear together as collapsed cards on
 one page. Select a card to expand it; opening another card closes the current
 one.
 
-- **Automatic backups** creates or manages scheduled backups. **Run now** is
-  available without expanding the card. When expanded, the card includes the
-  main schedule, service selection, retention settings, advanced schedules,
-  and an expandable history at the bottom.
+- **Automatic backups** creates or manages scheduled backups. The collapsed
+  card summarizes the primary schedule. Expand it to use **Run now** or change
+  the schedule, service selection, retention settings, and advanced schedules.
 - **Create a manual backup** creates a one-time backup for selected services.
 - **Restore from a backup** chooses a manual or automatic checkpoint.
 - **Manage backup locations** adds or repairs physical drives and network
   folders.
+- **Backup history** shows completed manual backups, automatic backups, and
+  restores.
 
 When a backup starts, its progress moves to the top of the page and StartOS
 scrolls to it automatically. You may leave the page while the operation
-continues. Completed operations remain available in **History** instead of
+continues. Completed operations remain available in **Backup history** instead of
 appearing as a separate completion message on the Backups page.
 
 Turning off automatic backups keeps the schedule settings and existing
-checkpoints by default. To remove the automatic checkpoints at the same time,
-first expand **Automatic backups**, select **Also permanently delete automatic
-backup checkpoints** beside the switch, and then turn the switch off. StartOS
-asks for confirmation before deleting anything; manual checkpoints are not
-deleted.
+checkpoints by default. When you switch automatic backups off, the confirmation
+dialog offers **Also permanently delete automatic backup checkpoints** and
+changes the confirmation action to **Turn off and delete** when selected.
+Manual checkpoints are not deleted.
+
+## Automatic Backups
+
+Automatic backups run on a schedule without requiring you to return to the
+Backups page. To set them up, expand **Automatic backups**, choose a backup
+location, and then choose the schedule and services to protect. StartOS asks for
+your master password during setup so it can unlock the encrypted backup. Your
+password is not stored.
+
+The default schedule runs once each day at the exact time shown. You can switch
+to hourly or weekly backups, choose another exact time, or add more schedules
+under **Advanced schedules**. Times follow the timezone detected from the device
+where the schedule is created. The collapsed **Automatic backups** card shows
+the primary schedule at a glance.
+
+All current services are selected by default. Use the checkboxes to exclude
+individual services, or use **Toggle all** to change the full selection. Unless
+you choose a fixed selection, services installed later are included
+automatically. StartOS will ask you to review a new service before starting it
+when an existing selective schedule does not include it.
+
+Each automatic run stops a selected service, backs it up, and starts it again if
+it was running beforehand. Other services remain available. You can leave the
+Backups page while a run or restore is in progress. Use **Run now** inside the
+expanded card when you want the primary schedule to run immediately.
+
+By default, StartOS keeps the latest automatic checkpoint for each service and
+backup location. **Keep additional versions** retains older checkpoints at the
+interval and duration you choose. Every retained version is a full copy, and a
+run also needs temporary staging space, so additional versions can use
+substantially more storage—especially on network folders and slower drives. A
+manual checkpoint remains separate from automatic history.
+
+Use **Backup history** to review completed automatic and manual backups and
+restores. When restoring, each service defaults to its newest checkpoint, but
+you can choose a different manual or automatic checkpoint. Turning automatic
+backups off preserves the schedule and checkpoints unless you select the
+permanent-delete option in the confirmation dialog.
 
 ## Physical Drive
 

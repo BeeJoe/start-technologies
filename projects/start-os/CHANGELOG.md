@@ -14,11 +14,13 @@ file tracks notable changes since the move to the monorepo.
 
 - **Unified Backups workspace.** Automatic backups, manual backups, restore,
   and backup locations now expand in place from one consistent card stack,
-  with only one panel open at a time. Automatic backup history is expandable
-  below its settings, **Run now** remains available from the collapsed card,
-  and active progress is promoted to the top of the page automatically.
-  Dropdowns match text fields, switches omit decorative state icons, and the
-  Backups heading links directly to the documentation.
+  with only one panel open at a time. Backup history has its own card, the
+  collapsed Automatic card summarizes its schedule, and **Run now** appears
+  with the expanded settings. Active progress is promoted to the top of the
+  page automatically. Dropdowns match text fields, switches omit decorative
+  state icons, location names remain left-aligned while their device or network
+  paths align to the right, and the Backups heading links directly to the
+  backups documentation.
 - **Migrated `startos-backup-fs` into the monorepo** as the `start-os/backup-fs`
   workspace member (from the former `Start9Labs/start-fs` repo); it is no longer
   built as an external `cargo install --git` dependency.
