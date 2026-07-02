@@ -27,6 +27,9 @@ file tracks notable changes since the move to the monorepo.
   Manual and custom automatic runs no longer force-scroll or place a blocking
   notification over navigation; their blue progress indicator stays at the top
   of the page and scrolls out of view normally.
+- **Interrupted backup progress.** StartOS now marks persisted in-progress
+  backup activity as interrupted during startup, so an operation interrupted by
+  a restart no longer leaves the backup progress card visible while idle.
 - **Automatic backup failure notifications.** Scheduled-backup warnings show
   the backup location's user-facing name without exposing internal job or
   target identifiers through a meaningless **View details** action.

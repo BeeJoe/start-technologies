@@ -63,7 +63,9 @@ When a backup starts, its progress appears at the top of the page without
 moving your current view or blocking navigation. Scroll to the top to see the
 blue progress indicator and percentage, or leave the page while the operation
 continues. Completed operations remain available in **Backup history** instead
-of appearing as a separate completion message on the Backups page.
+of appearing as a separate completion message on the Backups page. If StartOS
+restarts during a backup, the interrupted activity is marked failed during
+startup and the progress card is hidden once the server is idle.
 
 Turning off automatic backups keeps the schedule settings and existing
 checkpoints by default. When you switch automatic backups off, the confirmation

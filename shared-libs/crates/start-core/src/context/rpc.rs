@@ -381,7 +381,7 @@ impl RpcContext {
 
         crate::version::post_init(&res, run_migrations).await?;
         tracing::info!("{}", t!("context.rpc.completed-migrations"));
-        crate::backup::scheduled::start_scheduler(&res);
+        crate::backup::scheduled::start_scheduler(&res).await?;
         Ok(res)
     }
 

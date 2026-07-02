@@ -1342,6 +1342,13 @@ init.initializing:
   pl_PL: "Inicjalizowanie..."
 
 # backup/backup_bulk.rs
+backup.activity.interrupted:
+  en_US: "Backup ended before completion because StartOS restarted"
+  de_DE: "Die Sicherung wurde vor dem Abschluss beendet, weil StartOS neu gestartet wurde"
+  es_ES: "La copia de seguridad terminó antes de completarse porque StartOS se reinició"
+  fr_FR: "La sauvegarde s'est terminée avant d'être achevée car StartOS a redémarré"
+  pl_PL: "Kopia zapasowa zakończyła się przed ukończeniem, ponieważ StartOS został ponownie uruchomiony"
+
 backup.activity.manual-interrupted:
   en_US: "Manual backup ended before completion"
   de_DE: "Die manuelle Sicherung wurde vor dem Abschluss beendet"
