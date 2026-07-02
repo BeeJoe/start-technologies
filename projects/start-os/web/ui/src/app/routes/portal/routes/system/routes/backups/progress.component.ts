@@ -15,12 +15,15 @@ import { DataModel } from 'src/app/services/patch-db/data-model'
     @let overallLeaf = backupProgress()?.overall || null | leafProgress;
     @let overallPct = overallLeaf | installingProgress;
     <header>
-      {{ 'Backup Progress' | i18n }}
-      @if (overallLeaf === true) {
-        <span>{{ 'complete' | i18n }}</span>
-      } @else {
-        <span>{{ overallPct }}%</span>
-      }
+      <span>{{ 'Backup Progress' | i18n }}</span>
+      <span class="progress-status">
+        @if (overallLeaf === true) {
+          {{ 'complete' | i18n }}
+        } @else {
+          <tui-loader class="overall-loader" size="s" />
+          <span>{{ overallPct }}%</span>
+        }
+      </span>
     </header>
     @for (phase of backupProgress()?.phases; track phase.name) {
       @let pkg = pkgs()?.[phase.name];
@@ -61,7 +64,23 @@ import { DataModel } from 'src/app/services/patch-db/data-model'
     }
 
     header {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
       justify-content: space-between;
+    }
+
+    .progress-status {
+      display: flex;
+      flex-shrink: 0;
+      align-items: center;
+      gap: 0.5rem;
+      margin-inline-start: auto;
+    }
+
+    .overall-loader,
+    .title tui-loader {
+      color: var(--tui-text-action);
     }
 
     tui-icon {
@@ -79,8 +98,10 @@ import { DataModel } from 'src/app/services/patch-db/data-model'
 
     .title {
       display: flex;
+      flex-wrap: wrap;
       align-items: center;
       gap: 0.25rem;
+      min-width: 0;
     }
   `,
   host: { class: 'g-card' },

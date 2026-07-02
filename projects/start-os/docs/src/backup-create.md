@@ -59,15 +59,16 @@ one.
 - **Backup history** shows completed manual backups, automatic backups, and
   restores.
 
-When a backup starts, its progress moves to the top of the page and StartOS
-scrolls to it automatically. You may leave the page while the operation
-continues. Completed operations remain available in **Backup history** instead of
-appearing as a separate completion message on the Backups page.
+When a backup starts, its progress appears at the top of the page without
+moving your current view or blocking navigation. Scroll to the top to see the
+blue progress indicator and percentage, or leave the page while the operation
+continues. Completed operations remain available in **Backup history** instead
+of appearing as a separate completion message on the Backups page.
 
 Turning off automatic backups keeps the schedule settings and existing
 checkpoints by default. When you switch automatic backups off, the confirmation
 dialog offers **Also permanently delete automatic backup checkpoints** and
-changes the confirmation action to **Turn off and delete** when selected.
+changes the confirmation action to **Pause and delete** when selected.
 Manual checkpoints are not deleted.
 
 ## Automatic Backups

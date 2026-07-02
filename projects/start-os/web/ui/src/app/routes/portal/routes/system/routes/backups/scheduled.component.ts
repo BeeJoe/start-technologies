@@ -23,11 +23,7 @@ import {
   TuiNotification,
   TuiTitle,
 } from '@taiga-ui/core'
-import {
-  TuiBadge,
-  TuiNotificationMiddleService,
-  TuiSwitch,
-} from '@taiga-ui/kit'
+import { TuiBadge, TuiSwitch } from '@taiga-ui/kit'
 import { PatchDB } from 'patch-db-client'
 import { filter, firstValueFrom, map } from 'rxjs'
 import { ApiService } from 'src/app/services/api/embassy-api.service'
@@ -876,7 +872,6 @@ export class ScheduledBackupsComponent implements OnInit {
   private readonly backupService = inject(BackupService)
   private readonly dialogs = inject(DialogService)
   private readonly errors = inject(ErrorService)
-  private readonly notifications = inject(TuiNotificationMiddleService)
   private readonly packageData = toSignal(
     inject<PatchDB<DataModel>>(PatchDB).watch$('packageData'),
   )
@@ -1126,13 +1121,11 @@ export class ScheduledBackupsComponent implements OnInit {
   }
 
   async runNow(job: T.BackupJob) {
-    await this.perform('Running backup', () =>
-      this.api.runScheduledBackupJob({ id: job.id }),
-    )
+    await this.perform(() => this.api.runScheduledBackupJob({ id: job.id }))
   }
 
   async toggle(job: T.BackupJob) {
-    await this.perform(job.enabled ? 'Pausing' : 'Resuming', () =>
+    await this.perform(() =>
       this.api.setScheduledBackupJobEnabled({
         id: job.id,
         enabled: !job.enabled,
@@ -1180,7 +1173,7 @@ export class ScheduledBackupsComponent implements OnInit {
         )
       : false
 
-    await this.perform('Deleting', async () => {
+    await this.perform(async () => {
       await this.api.deleteScheduledBackupJob({ id: job.id })
       if (deleteCheckpoints) {
         for (const history of unreferenced) {
@@ -1209,7 +1202,7 @@ export class ScheduledBackupsComponent implements OnInit {
       { defaultValue: '' },
     )
     if (!password) return
-    await this.perform('Retrying', () =>
+    await this.perform(() =>
       this.api.retryScheduledBackupTarget({
         targetId: job.targetId,
         password,
@@ -1226,7 +1219,7 @@ export class ScheduledBackupsComponent implements OnInit {
   }
 
   async reassign(job: T.BackupJob) {
-    await this.perform('Changing target', () =>
+    await this.perform(() =>
       this.api.reassignScheduledBackupTarget({
         id: job.id,
         targetId: this.reassignTargetId,
@@ -1259,7 +1252,7 @@ export class ScheduledBackupsComponent implements OnInit {
         ([jobId, decision]) => [jobId, decision === true],
       ),
     )
-    await this.perform('Saving', () =>
+    await this.perform(() =>
       this.api.resolveNewServiceBackupReview({
         packageId: review.packageId,
         decisions,
@@ -1292,7 +1285,7 @@ export class ScheduledBackupsComponent implements OnInit {
   async applyPolicy(history: T.ServiceTargetHistory) {
     const preview = this.policyPreview()
     if (!preview) return
-    await this.perform('Saving', () =>
+    await this.perform(() =>
       this.api.updateScheduledRetention({
         targetId: history.targetId,
         packageId: history.packageId,
@@ -1320,7 +1313,7 @@ export class ScheduledBackupsComponent implements OnInit {
       { defaultValue: false },
     )
     if (!confirmed) return
-    await this.perform('Deleting', () =>
+    await this.perform(() =>
       this.api.deleteArchivedBackupSnapshots({
         targetId: history.targetId,
         packageId: history.packageId,
@@ -1355,7 +1348,7 @@ export class ScheduledBackupsComponent implements OnInit {
       { defaultValue: false },
     )
     if (!confirmed) return
-    await this.perform('Restoring', () =>
+    await this.perform(() =>
       this.api.restoreScheduledBackup({
         targetId: history.targetId,
         snapshots: { [history.packageId]: snapshot.id },
@@ -1546,15 +1539,12 @@ export class ScheduledBackupsComponent implements OnInit {
     return 'custom'
   }
 
-  private async perform<T>(label: string, action: () => Promise<T>) {
-    const loader = this.notifications.open(label).subscribe()
+  private async perform<T>(action: () => Promise<T>) {
     try {
       await action()
       await this.reload()
     } catch (error: any) {
       this.errors.handleError(getErrorMessage(error))
-    } finally {
-      loader.unsubscribe()
     }
   }
 }

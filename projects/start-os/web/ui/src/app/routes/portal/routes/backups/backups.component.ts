@@ -1,13 +1,4 @@
-import {
-  Component,
-  computed,
-  effect,
-  ElementRef,
-  inject,
-  OnInit,
-  signal,
-  viewChild,
-} from '@angular/core'
+import { Component, computed, inject, OnInit, signal } from '@angular/core'
 import { toSignal } from '@angular/core/rxjs-interop'
 import { FormsModule } from '@angular/forms'
 import {
@@ -79,11 +70,11 @@ const WEEKDAYS = [
     </header>
 
     @if (manualRunning()) {
-      <section #progress class="progress-prominent">
+      <section class="progress-prominent">
         <section backupProgress></section>
       </section>
     } @else if (operationActivity(); as activity) {
-      <section #progress class="operation" tuiCell>
+      <section class="operation" tuiCell>
         <tui-icon icon="@tui.loader-circle" />
         <span tuiTitle>
           <b>{{ operationTitle(activity) | i18n }}</b>
@@ -443,9 +434,8 @@ const WEEKDAYS = [
     }
 
     .operation {
-      position: sticky;
+      position: static;
       z-index: 1;
-      top: 0.5rem;
       width: 100%;
       background: color-mix(in hsl, var(--start9-base-1) 50%, transparent);
       border: 1px solid var(--tui-border-normal);
@@ -454,6 +444,7 @@ const WEEKDAYS = [
     }
 
     .operation > tui-icon {
+      color: var(--tui-text-action);
       animation: backup-progress-spin 1.5s linear infinite;
     }
 
@@ -465,30 +456,14 @@ const WEEKDAYS = [
     }
 
     .progress-prominent {
-      position: sticky;
+      position: static;
       z-index: 1;
-      top: 0.5rem;
       width: 100%;
       padding: 0.75rem;
       background: color-mix(in hsl, var(--start9-base-1) 50%, transparent);
       border: 1px solid var(--tui-border-normal);
       border-radius: var(--tui-radius-l);
       box-sizing: border-box;
-    }
-
-    .progress-prominent::before {
-      position: absolute;
-      z-index: 1;
-      top: 1rem;
-      right: 1rem;
-      width: 1rem;
-      height: 1rem;
-      border: 2px solid var(--tui-border-normal);
-      border-top-color: var(--tui-text-secondary);
-      border-radius: 50%;
-      animation: backup-progress-spin 1.5s linear infinite;
-      content: '';
-      pointer-events: none;
     }
 
     @keyframes backup-progress-spin {
@@ -587,7 +562,6 @@ export default class BackupsComponent implements OnInit {
   )
 
   readonly expanded = signal<BackupPanel | null>(null)
-  readonly progress = viewChild<ElementRef<HTMLElement>>('progress')
   readonly manualRunning = toSignal(this.os.backingUp$, { initialValue: false })
   changingAutomatic = false
 
@@ -623,16 +597,6 @@ export default class BackupsComponent implements OnInit {
         job.status.lastResult === 'partiallyFailed',
     ),
   )
-
-  private readonly scrollToProgress = effect(() => {
-    if (!this.progressActive()) return
-    setTimeout(() => {
-      this.progress()?.nativeElement.scrollIntoView({
-        behavior: 'smooth',
-        block: 'start',
-      })
-    })
-  })
 
   ngOnInit() {
     void this.backupService.getBackupTargets()
