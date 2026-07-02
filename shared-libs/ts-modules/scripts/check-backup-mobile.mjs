@@ -125,6 +125,8 @@ const historyFile =
   'projects/start-os/web/ui/src/app/routes/portal/routes/backups/history.component.ts'
 const disableDialogFile =
   'projects/start-os/web/ui/src/app/routes/portal/routes/backups/disable-automatic.dialog.ts'
+const progressFile =
+  'projects/start-os/web/ui/src/app/routes/portal/routes/system/routes/backups/progress.component.ts'
 const locationFile =
   'projects/start-os/web/ui/src/app/routes/portal/routes/backups/location-picker.component.ts'
 const locationsFile =
@@ -163,6 +165,7 @@ const home = componentStyles(homeFile)
 const editor = componentStyles(editorFile)
 const history = componentStyles(historyFile)
 const disableDialog = componentStyles(disableDialogFile)
+const progress = componentStyles(progressFile)
 const location = componentStyles(locationFile)
 const manual = componentStyles(manualFile)
 const recover = componentStyles(recoverFile)
@@ -193,12 +196,25 @@ assertRule(home, homeFile, '.card-heading', {
   height: 'auto',
 })
 assertRule(home, homeFile, '.progress-prominent', {
+  position: 'static',
   width: '100%',
   'box-sizing': 'border-box',
   background: 'color-mix(in hsl, var(--start9-base-1) 50%, transparent)',
 })
-assertRule(home, homeFile, '.progress-prominent::before', {
-  animation: 'backup-progress-spin 1.5s linear infinite',
+assertRule(home, homeFile, '.operation', {
+  position: 'static',
+})
+assertRule(home, homeFile, '.operation > tui-icon', {
+  color: 'var(--tui-text-action)',
+})
+assertRule(progress, progressFile, '.progress-status', {
+  display: 'flex',
+  'align-items': 'center',
+  gap: '0.5rem',
+  'flex-shrink': '0',
+})
+assertRule(progress, progressFile, '.overall-loader', {
+  color: 'var(--tui-text-action)',
 })
 
 assertRule(
@@ -275,6 +291,17 @@ assertRule(history, historyFile, ':host', {
 assertRule(location, locationFile, '.manual-or-restore > [tuiTitle]', {
   display: 'grid',
   'grid-template-columns': 'minmax(0, 1fr) minmax(8rem, 45%)',
+  'align-items': 'center',
+})
+assertRule(location, locationFile, '.locations', {
+  width: '100%',
+  'max-width': '48rem',
+  'margin-inline': 'auto',
+})
+assertRule(location, locationFile, '.manage-location', {
+  width: '100%',
+  'max-width': '48rem',
+  'margin-inline': 'auto',
 })
 assertRule(
   location,
@@ -299,10 +326,17 @@ assertRule(editor, editorFile, '.first-backup', {
 assertRule(disableDialog, disableDialogFile, '.actions button', {
   'block-size': 'auto',
   height: 'auto',
-  'min-block-size': '3.5rem',
-  'min-height': '3.5rem',
+  'min-block-size': '2.75rem',
+  'min-height': '2.75rem',
   'white-space': 'normal',
 })
+assertRule(
+  disableDialog,
+  disableDialogFile,
+  '.actions',
+  { 'grid-template-columns': 'auto minmax(0, 1fr)' },
+  phone,
+)
 assertRule(
   history,
   historyFile,
@@ -414,7 +448,6 @@ assertSource(homeFile, [
   /class="card-heading automatic-heading"[\s\S]*class="card-actions"[\s\S]*class="expand-toggle"/,
   /parseBackupSchedule\(primary\.schedule\)/,
   /activity => activity\.state === 'running'/,
-  /scrollIntoView/,
   /\[showIcons\]="false"/,
 ])
 assertNotSource(homeFile, [
@@ -426,6 +459,9 @@ assertNotSource(homeFile, [
   /class="card-actions"[\s\S]{0,500}['"]Run now['"]/,
   /progress-prominent[\s\S]{0,500}--tui-background-accent-2/,
   /\[disabled\]="progressActive\(\)"/,
+  /scrollIntoView/,
+  /position:\s*sticky/,
+  /progress-prominent::before/,
 ])
 assertSource(routesFile, [
   /path: 'manage',[\s\S]{0,80}redirectTo: ''/,
@@ -459,6 +495,7 @@ assertSource(disableDialogFile, [
   /tuiCheckbox/,
   /['"]Also permanently delete automatic backup checkpoints['"]/,
   /deleteCheckpoints:\s*this\.deleteCheckpoints/,
+  /['"]Pause and delete['"]/,
 ])
 assertNotSource(manualPageFile, [/'Last Backup'/, /<backup-navigation/])
 assertSource(locationFile, [
@@ -492,6 +529,12 @@ assertNotSource(advancedFile, [
   /showHistory/,
   /class="g-table histories"/,
   /notifications\.open\('Saving'\)/,
+  /TuiNotificationMiddleService/,
+  /notifications\.open\(/,
+])
+assertSource(progressFile, [
+  /class="progress-status"/,
+  /class="overall-loader"/,
 ])
 assertSource(backupServiceFile, [
   /formatCifsLocation[\s\S]{0,180}target\.hostname[\s\S]{0,80}share/,

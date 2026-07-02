@@ -23,7 +23,10 @@ file tracks notable changes since the move to the monorepo.
   width with the standard dark card treatment, saving automatic settings no
   longer opens a blocking progress notification, retention controls share a
   consistent size, and narrow screens keep location names, addresses, empty
-  drive states, and destructive actions readable without overlap.
+  drive states, and compact destructive actions readable without overlap.
+  Manual and custom automatic runs no longer force-scroll or place a blocking
+  notification over navigation; their blue progress indicator stays at the top
+  of the page and scrolls out of view normally.
 - **Automatic backup failure notifications.** Scheduled-backup warnings show
   the backup location's user-facing name without exposing internal job or
   target identifiers through a meaningless **View details** action.

@@ -1014,11 +1014,11 @@ export default {
   1106: 'Desactivar y eliminar',
   1107: 'Rango externo',
   1108: 'Rango interno',
-  1109:
-    'O habilite el reenvío de puertos automático (PCP) en la puerta de enlace. UPnP y NAT-PMP no admiten rangos de puertos.',
+  1109: 'O habilite el reenvío de puertos automático (PCP) en la puerta de enlace. UPnP y NAT-PMP no admiten rangos de puertos.',
   1110: 'Eliminar copia antigua',
   1111: 'Copia antigua eliminada',
   1112: '¿Eliminar copia antigua?',
-  1113:
-    '¿Eliminar permanentemente la copia antigua (V1) de este destino? Esta acción no se puede deshacer. Su copia actual (V2) no se verá afectada.',
+  1113: '¿Eliminar permanentemente la copia antigua (V1) de este destino? Esta acción no se puede deshacer. Su copia actual (V2) no se verá afectada.',
+  1114: 'Pausar y eliminar',
+  1115: 'Pausar copias de seguridad automáticas',
 } satisfies i18n

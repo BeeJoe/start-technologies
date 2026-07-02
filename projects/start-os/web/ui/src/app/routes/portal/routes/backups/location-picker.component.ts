@@ -53,6 +53,7 @@ type Location = MappedBackupTarget<CifsBackupTarget | DiskBackupTarget>
     </div>
     <button
       tuiButton
+      class="manage-location"
       type="button"
       appearance="secondary"
       (click)="manage.emit()"
@@ -67,10 +68,22 @@ type Location = MappedBackupTarget<CifsBackupTarget | DiskBackupTarget>
       gap: 0.5rem;
     }
 
+    :host {
+      align-items: center;
+    }
+
+    .locations,
+    .manage-location {
+      width: 100%;
+      max-width: 48rem;
+      margin-inline: auto;
+    }
+
     [tuiCell] {
       width: 100%;
       min-width: 0;
       max-width: 100%;
+      align-items: center;
       gap: 0.75rem;
       overflow: hidden;
       text-align: left;
@@ -99,7 +112,7 @@ type Location = MappedBackupTarget<CifsBackupTarget | DiskBackupTarget>
     .manual-or-restore > [tuiTitle] {
       display: grid;
       grid-template-columns: minmax(0, 1fr) minmax(8rem, 45%);
-      align-items: start;
+      align-items: center;
       gap: 0.75rem;
       width: 100%;
     }
@@ -114,6 +127,21 @@ type Location = MappedBackupTarget<CifsBackupTarget | DiskBackupTarget>
       margin-block-start: 0;
       overflow-wrap: anywhere;
       text-align: right;
+    }
+
+    @media (max-width: 30rem) {
+      [tuiCell] {
+        padding-inline: 0.75rem;
+      }
+
+      .manual-or-restore > [tuiTitle] {
+        grid-template-columns: minmax(0, 1fr) minmax(7rem, 45%);
+        gap: 0.5rem;
+      }
+
+      .manage-location {
+        justify-self: center;
+      }
     }
   `,
   imports: [TuiAppearance, TuiButton, TuiCell, TuiIcon, TuiTitle, i18nPipe],

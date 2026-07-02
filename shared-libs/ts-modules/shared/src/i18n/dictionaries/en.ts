@@ -1020,4 +1020,6 @@ export const ENGLISH: Record<string, number> = {
   'Old backup deleted': 1111,
   'Delete old backup?': 1112,
   'Permanently delete the old (V1) backup from this target? This cannot be undone. Your current (V2) backup will not be affected.': 1113,
+  'Pause and delete': 1114,
+  'Pause automatic backups': 1115,
 }

@@ -41,19 +41,18 @@ export interface DisableAutomaticDecision {
     </label>
 
     <footer class="actions">
-      <button tuiButton appearance="secondary" (click)="cancel()">
+      <button tuiButton size="s" appearance="secondary" (click)="cancel()">
         {{ 'Cancel' | i18n }}
       </button>
       <button
         tuiButton
+        size="s"
         [appearance]="deleteCheckpoints ? 'primary-destructive' : 'primary'"
         (click)="confirm()"
       >
         {{
-          (deleteCheckpoints
-            ? 'Turn off and delete'
-            : 'Turn off automatic backups'
-          ) | i18n
+          (deleteCheckpoints ? 'Pause and delete' : 'Pause automatic backups')
+            | i18n
         }}
       </button>
     </footer>
@@ -98,15 +97,26 @@ export interface DisableAutomaticDecision {
     .actions button {
       block-size: auto;
       height: auto;
-      min-block-size: 3.5rem;
-      min-height: 3.5rem;
+      min-block-size: 2.75rem;
+      min-height: 2.75rem;
+      max-inline-size: 100%;
+      padding-inline: 1rem;
       white-space: normal;
       overflow-wrap: anywhere;
     }
 
     @media (max-width: 30rem) {
+      .actions {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr);
+        align-items: stretch;
+        justify-content: stretch;
+        gap: 0.5rem;
+      }
+
       .actions button {
-        flex: 1 0 100%;
+        width: 100%;
+        min-width: 0;
       }
     }
   `,

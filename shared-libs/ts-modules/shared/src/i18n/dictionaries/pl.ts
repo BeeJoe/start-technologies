@@ -1014,11 +1014,11 @@ export default {
   1106: 'Wyłącz i usuń',
   1107: 'Zakres zewnętrzny',
   1108: 'Zakres wewnętrzny',
-  1109:
-    'Lub włącz automatyczne przekierowanie portów (PCP) w bramie. UPnP i NAT-PMP nie obsługują zakresów portów.',
+  1109: 'Lub włącz automatyczne przekierowanie portów (PCP) w bramie. UPnP i NAT-PMP nie obsługują zakresów portów.',
   1110: 'Usuń starą kopię zapasową',
   1111: 'Stara kopia zapasowa usunięta',
   1112: 'Usunąć starą kopię zapasową?',
-  1113:
-    'Trwale usunąć starą kopię (V1) z tego celu? Tej operacji nie można cofnąć. Bieżąca kopia (V2) nie zostanie naruszona.',
+  1113: 'Trwale usunąć starą kopię (V1) z tego celu? Tej operacji nie można cofnąć. Bieżąca kopia (V2) nie zostanie naruszona.',
+  1114: 'Wstrzymaj i usuń',
+  1115: 'Wstrzymaj automatyczne kopie zapasowe',
 } satisfies i18n
