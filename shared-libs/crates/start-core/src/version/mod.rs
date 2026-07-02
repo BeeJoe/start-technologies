@@ -80,6 +80,17 @@ pub type Current = v0_4_0_beta_10::Version; // VERSION_BUMP
 impl Current {
     #[instrument(skip(self, db))]
     pub async fn pre_init(self, db: &PatchDb) -> Result<(), Error> {
+        // A short-lived beta.10 build persisted the built-in UI interface with
+        // HostId::default(), which serializes as an empty string but cannot be
+        // deserialized as an Id. Repair that exact field before any typed
+        // database deserialization so affected servers can boot normally.
+        db.apply_function(|mut db| {
+            repair_startos_ui_host_id(&mut db);
+            Ok::<_, Error>((db, ()))
+        })
+        .await
+        .result?;
+
         let from = from_value::<Version>(
             version_accessor(&mut db.dump(&ROOT).await.value)
                 .or_not_found("`version` in db")?
@@ -113,6 +124,98 @@ impl Current {
             }
         }
         Ok(())
+    }
+}
+
+fn repair_startos_ui_host_id(db: &mut Value) {
+    let Some(host_id) = db
+        .get_mut("public")
+        .and_then(|value| value.get_mut("serverInfo"))
+        .and_then(|value| value.get_mut("network"))
+        .and_then(|value| value.get_mut("host"))
+        .and_then(|value| value.get_mut("bindings"))
+        .and_then(|value| value.get_mut("80"))
+        .and_then(|value| value.get_mut("interfaces"))
+        .and_then(|value| value.get_mut("startos-ui"))
+        .and_then(|value| value.get_mut("addressInfo"))
+        .and_then(|value| value.get_mut("hostId"))
+    else {
+        return;
+    };
+
+    if host_id.as_str() == Some("") {
+        *host_id = Value::String(std::sync::Arc::new("startos-ui".to_owned()));
+    }
+}
+
+#[cfg(test)]
+mod preinit_repair_tests {
+    use imbl_value::json;
+
+    use super::*;
+
+    #[test]
+    fn repairs_empty_startos_ui_host_id_before_deserialization() {
+        let mut db = json!({
+            "public": {
+                "serverInfo": {
+                    "network": {
+                        "host": {
+                            "bindings": {
+                                "80": {
+                                    "interfaces": {
+                                        "startos-ui": {
+                                            "addressInfo": { "hostId": "" }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        repair_startos_ui_host_id(&mut db);
+
+        assert_eq!(
+            db["public"]["serverInfo"]["network"]["host"]["bindings"]["80"]
+                ["interfaces"]["startos-ui"]["addressInfo"]["hostId"]
+                .as_str(),
+            Some("startos-ui")
+        );
+    }
+
+    #[test]
+    fn preserves_valid_startos_ui_host_id() {
+        let mut db = json!({
+            "public": {
+                "serverInfo": {
+                    "network": {
+                        "host": {
+                            "bindings": {
+                                "80": {
+                                    "interfaces": {
+                                        "startos-ui": {
+                                            "addressInfo": { "hostId": "custom" }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        repair_startos_ui_host_id(&mut db);
+
+        assert_eq!(
+            db["public"]["serverInfo"]["network"]["host"]["bindings"]["80"]
+                ["interfaces"]["startos-ui"]["addressInfo"]["hostId"]
+                .as_str(),
+            Some("custom")
+        );
     }
 }
 

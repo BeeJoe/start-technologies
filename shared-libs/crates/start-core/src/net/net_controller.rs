@@ -41,7 +41,7 @@ use crate::util::sync::{SyncMutex, Watch};
 use crate::{GatewayId, HOST_IP, HostId, Id, OptionExt, PackageId, ServiceInterfaceId};
 
 fn os_host_id() -> HostId {
-    HostId::from(Id::try_from("main").expect("valid OS host id"))
+    HostId::from(Id::try_from("startos-ui").expect("valid OS host id"))
 }
 
 pub struct NetController {
