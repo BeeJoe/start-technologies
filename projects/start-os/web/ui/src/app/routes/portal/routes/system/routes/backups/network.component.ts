@@ -17,6 +17,7 @@ import {
   formatCifsLocation,
   MappedBackupTarget,
 } from './backup.service'
+import { BackupLegacyWarningComponent } from './legacy-warning.component'
 import { BackupStatusComponent } from './status.component'
 
 const ERROR =
@@ -62,6 +63,14 @@ const ERROR =
           <td class="name">{{ target.entry.path.split('/').pop() }}</td>
           <td class="location">{{ locationName(target.entry) }}</td>
           <td (click)="$event.stopPropagation()">
+            @if (
+              type === 'create' &&
+              target.entry.mountable &&
+              target.hasAnyBackup &&
+              target.entry.legacyBackup
+            ) {
+              <backup-legacy-warning [id]="target.id" />
+            }
             <button
               tuiIconButton
               tuiDropdown
@@ -105,7 +114,7 @@ const ERROR =
       @include taiga.transition(background);
 
       @media (taiga.$tui-mouse) {
-        &:not(:has(app-placeholder)):hover {
+        &:not(:has(app-placeholder)):hover:not(:has(button:hover)) {
           cursor: pointer;
           background: var(--tui-background-neutral-1-hover);
         }
@@ -207,6 +216,7 @@ const ERROR =
     TuiIcon,
     PlaceholderComponent,
     BackupStatusComponent,
+    BackupLegacyWarningComponent,
     TableComponent,
     i18nPipe,
   ],
@@ -217,7 +227,7 @@ export class BackupNetworkComponent {
   private readonly api = inject(ApiService)
   private readonly loader = inject(TuiNotificationMiddleService)
   private readonly errorService = inject(ErrorService)
-  private readonly type = inject(ActivatedRoute).snapshot.data['type']
+  protected readonly type = inject(ActivatedRoute).snapshot.data['type']
   private readonly i18n = inject(i18nPipe)
 
   readonly service = inject(BackupService)

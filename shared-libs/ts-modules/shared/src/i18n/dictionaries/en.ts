@@ -1013,4 +1013,11 @@ export const ENGLISH: Record<string, number> = {
   'Backup history': 1104,
   'Turn off automatic backups?': 1105,
   'Turn off and delete': 1106,
+  'External Range': 1107,
+  'Internal Range': 1108,
+  'Or enable automatic port forwarding (PCP) on the gateway. UPnP and NAT-PMP do not support port ranges.': 1109,
+  'Delete old backup': 1110,
+  'Old backup deleted': 1111,
+  'Delete old backup?': 1112,
+  'Permanently delete the old (V1) backup from this target? This cannot be undone. Your current (V2) backup will not be affected.': 1113,
 }

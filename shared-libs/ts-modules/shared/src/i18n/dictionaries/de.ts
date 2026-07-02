@@ -1012,4 +1012,13 @@ export default {
   1104: 'Sicherungsverlauf',
   1105: 'Automatische Sicherungen ausschalten?',
   1106: 'Ausschalten und löschen',
+  1107: 'Externer Portbereich',
+  1108: 'Interner Portbereich',
+  1109:
+    'Oder aktivieren Sie die automatische Portweiterleitung (PCP) auf dem Gateway. UPnP und NAT-PMP unterstützen keine Portbereiche.',
+  1110: 'Alte Sicherung löschen',
+  1111: 'Alte Sicherung gelöscht',
+  1112: 'Alte Sicherung löschen?',
+  1113:
+    'Die alte (V1) Sicherung dauerhaft von diesem Ziel löschen? Dies kann nicht rückgängig gemacht werden. Ihre aktuelle (V2) Sicherung ist nicht betroffen.',
 } satisfies i18n

@@ -1012,4 +1012,13 @@ export default {
   1104: 'Historia kopii zapasowych',
   1105: 'Wyłączyć automatyczne kopie zapasowe?',
   1106: 'Wyłącz i usuń',
+  1107: 'Zakres zewnętrzny',
+  1108: 'Zakres wewnętrzny',
+  1109:
+    'Lub włącz automatyczne przekierowanie portów (PCP) w bramie. UPnP i NAT-PMP nie obsługują zakresów portów.',
+  1110: 'Usuń starą kopię zapasową',
+  1111: 'Stara kopia zapasowa usunięta',
+  1112: 'Usunąć starą kopię zapasową?',
+  1113:
+    'Trwale usunąć starą kopię (V1) z tego celu? Tej operacji nie można cofnąć. Bieżąca kopia (V2) nie zostanie naruszona.',
 } satisfies i18n

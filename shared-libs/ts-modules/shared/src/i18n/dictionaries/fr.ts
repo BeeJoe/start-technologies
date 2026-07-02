@@ -1012,4 +1012,13 @@ export default {
   1104: 'Historique des sauvegardes',
   1105: 'Désactiver les sauvegardes automatiques ?',
   1106: 'Désactiver et supprimer',
+  1107: 'Plage externe',
+  1108: 'Plage interne',
+  1109:
+    'Ou activez la redirection de port automatique (PCP) sur la passerelle. UPnP et NAT-PMP ne prennent pas en charge les plages de ports.',
+  1110: "Supprimer l'ancienne sauvegarde",
+  1111: 'Ancienne sauvegarde supprimée',
+  1112: "Supprimer l'ancienne sauvegarde ?",
+  1113:
+    "Supprimer définitivement l'ancienne sauvegarde (V1) de cette cible ? Cette action est irréversible. Votre sauvegarde actuelle (V2) ne sera pas affectée.",
 } satisfies i18n
