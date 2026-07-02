@@ -26,6 +26,8 @@ file tracks notable changes since the move to the monorepo.
   drive states, and compact destructive actions readable without overlap.
   Backup-location rows now consistently place the icon and name on the left,
   the address or device path on the right, and center the no-drive state.
+  Manual and restore location choices also share the action button's centered
+  width and keep long location names horizontal on phones.
   Manual and custom automatic runs no longer force-scroll or place a blocking
   notification over navigation; their blue progress indicator stays at the top
   of the page and scrolls out of view normally.

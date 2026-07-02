@@ -313,6 +313,42 @@ assertRule(location, locationFile, '.manual-or-restore.location-option', {
 assertRule(
   location,
   locationFile,
+  '.manual-or-restore.location-option',
+  { 'justify-self': 'center', 'margin-inline': 'auto' },
+  phone,
+)
+assertRule(
+  location,
+  locationFile,
+  '.manage-location',
+  { 'justify-self': 'center', 'margin-inline': 'auto' },
+  phone,
+)
+assertRule(
+  location,
+  locationFile,
+  '.manual-or-restore > [tuiTitle]',
+  {
+    'grid-template-columns': 'minmax(6rem, 1fr) minmax(5rem, 40%)',
+  },
+  phone,
+)
+assertRule(
+  location,
+  locationFile,
+  '.manual-or-restore > [tuiTitle] > b',
+  {
+    'min-width': '0',
+    'overflow-wrap': 'normal',
+    'white-space': 'nowrap',
+    overflow: 'hidden',
+    'text-overflow': 'ellipsis',
+  },
+  phone,
+)
+assertRule(
+  location,
+  locationFile,
   '.manual-or-restore > [tuiTitle] [tuiSubtitle]',
   { 'grid-column': '2', 'text-align': 'right' },
 )

@@ -145,9 +145,23 @@ type Location = MappedBackupTarget<CifsBackupTarget | DiskBackupTarget>
         padding-inline: 0.75rem;
       }
 
+      .manual-or-restore.location-option,
+      .manage-location {
+        justify-self: center;
+        margin-inline: auto;
+      }
+
       .manual-or-restore > [tuiTitle] {
-        grid-template-columns: minmax(0, 1fr) minmax(7rem, 45%);
+        grid-template-columns: minmax(6rem, 1fr) minmax(5rem, 40%);
         gap: 0.5rem;
+      }
+
+      .manual-or-restore > [tuiTitle] > b {
+        min-width: 0;
+        overflow: hidden;
+        overflow-wrap: normal;
+        text-overflow: ellipsis;
+        white-space: nowrap;
       }
     }
   `,

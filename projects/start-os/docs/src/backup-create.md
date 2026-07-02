@@ -57,7 +57,8 @@ one.
 - **Manage backup locations** adds or repairs physical drives and network
   folders. Location rows keep their icon and name on the left and their address
   or device path on the right; when no physical drive is connected, the refresh
-  prompt remains centered.
+  prompt remains centered. On phones, location choices remain centered above
+  the location-management action and long names stay on one readable line.
 - **Backup history** shows completed manual backups, automatic backups, and
   restores.
 
