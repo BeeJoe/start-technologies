@@ -206,7 +206,7 @@ async fn run_job_inner(
                         target = target_name.as_str()
                     )
                     .to_string(),
-                    job.id.to_string(),
+                    (),
                 )
             })
             .await
@@ -492,7 +492,7 @@ async fn run_job_inner(
                         services = affected
                     )
                     .to_string(),
-                    job.id.to_string(),
+                    (),
                 )
             })
             .await
@@ -537,7 +537,7 @@ async fn notify_run_failure(
                     services = services
                 )
                 .to_string(),
-                job.id.to_string(),
+                (),
             )
         })
         .await
@@ -802,7 +802,7 @@ async fn record_connectivity_failure(ctx: &RpcContext, job: &BackupJob) -> Resul
                         target = target_name.as_str()
                     )
                     .to_string(),
-                    target_key,
+                    (),
                 )?;
             }
             Ok(())
@@ -870,14 +870,7 @@ async fn pause_for_intervention(
                     .insert(&affected_job.id, &affected_job)?;
             }
             if should_notify {
-                notify(
-                    db,
-                    None,
-                    NotificationLevel::Error,
-                    title,
-                    message,
-                    job.target_id.to_string(),
-                )?;
+                notify(db, None, NotificationLevel::Error, title, message, ())?;
             }
             Ok(())
         })
