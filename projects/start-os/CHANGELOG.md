@@ -27,6 +27,9 @@ file tracks notable changes since the move to the monorepo.
 - **Automatic backup failure notifications.** Scheduled-backup warnings show
   the backup location's user-facing name without exposing internal job or
   target identifiers through a meaningless **View details** action.
+- **StartOS UI network metadata.** The built-in UI now stores a valid host ID,
+  preventing an existing server database from failing validation and entering
+  diagnostic mode after the upstream service-interface migration.
 
 ## [0.4.0-beta.10]
 

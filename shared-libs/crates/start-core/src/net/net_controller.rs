@@ -40,6 +40,10 @@ use crate::util::serde::MaybeUtf8String;
 use crate::util::sync::{SyncMutex, Watch};
 use crate::{GatewayId, HOST_IP, HostId, Id, OptionExt, PackageId, ServiceInterfaceId};
 
+fn os_host_id() -> HostId {
+    HostId::from(Id::try_from("main").expect("valid OS host id"))
+}
+
 pub struct NetController {
     pub(crate) db: TypedPatchDb<Database>,
     pub(super) vhost: VHostController,
@@ -226,7 +230,7 @@ impl NetController {
         service.clear_bindings(Default::default()).await?;
         service
             .bind(
-                HostId::default(),
+                os_host_id(),
                 80,
                 BindOptions {
                     preferred_external_port: 80,
@@ -263,7 +267,7 @@ impl NetController {
                     masked: false,
                     address_info: AddressInfo {
                         username: None,
-                        host_id: HostId::default(),
+                        host_id: os_host_id(),
                         internal_port: 80,
                         scheme: Some(InternedString::intern("http")),
                         ssl_scheme: Some(InternedString::intern("https")),
@@ -1138,7 +1142,7 @@ impl NetService {
                         let host = watch.peek()?.de()?;
                         let mut data = thread_data.lock().await;
                         let ctrl = data.net_controller()?;
-                        data.update(&*ctrl, HostId::default(), host).await?;
+                        data.update(&*ctrl, os_host_id(), host).await?;
                         Ok::<_, Error>(())
                     }
                     .await
@@ -1286,7 +1290,7 @@ impl NetService {
                     host.as_bindings_mut().mutate(|b| {
                         for (internal_port, info) in b.iter_mut() {
                             if !except.contains(&BindId {
-                                id: HostId::default(),
+                                id: os_host_id(),
                                 internal_port: *internal_port,
                             }) {
                                 info.disable();
@@ -1297,7 +1301,7 @@ impl NetService {
                     host.as_binding_ranges_mut().mutate(|r| {
                         for (internal_port, info) in r.iter_mut() {
                             if !except.contains(&BindId {
-                                id: HostId::default(),
+                                id: os_host_id(),
                                 internal_port: *internal_port,
                             }) {
                                 info.disable();
@@ -1372,5 +1376,18 @@ impl Drop for NetService {
             let svc = std::mem::replace(self, Self::dummy());
             tokio::spawn(async move { svc.remove_all().await.log_err() });
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn os_host_id_survives_database_round_trip() {
+        let id = os_host_id();
+        let encoded = serde_json::to_string(&id).unwrap();
+        let decoded: HostId = serde_json::from_str(&encoded).unwrap();
+        assert_eq!(decoded, id);
     }
 }
