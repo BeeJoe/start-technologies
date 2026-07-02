@@ -303,6 +303,13 @@ assertRule(location, locationFile, '.manage-location', {
   'max-width': '48rem',
   'margin-inline': 'auto',
 })
+assertRule(location, locationFile, '.manage-location', {
+  'justify-content': 'flex-start',
+})
+assertRule(location, locationFile, '.manual-or-restore.location-option', {
+  width: '100%',
+  'box-sizing': 'border-box',
+})
 assertRule(
   location,
   locationFile,
@@ -401,19 +408,27 @@ for (const selector of ['.tier', '.override']) {
   )
 }
 
-assertRule(network, networkFile, '.location', { 'text-align': 'left' })
-assertRule(network, networkFile, '.location', {
-  'justify-self': 'start',
-  'text-align': 'left',
-})
+for (const [sheet, file] of [
+  [network, networkFile],
+  [physical, physicalFile],
+]) {
+  assertRule(sheet, file, '.name', {
+    'justify-self': 'start',
+    'text-align': 'left',
+  })
+  assertRule(sheet, file, '.location', {
+    'justify-self': 'end',
+    'text-align': 'right',
+  })
+}
 assertRule(physical, physicalFile, '.empty-state', {
   'justify-self': 'center',
   'text-align': 'center',
 })
 
 for (const [sheet, file, columns] of [
-  [network, networkFile, 'minmax(0, 1fr) auto auto'],
-  [physical, physicalFile, 'minmax(0, 1fr) auto'],
+  [network, networkFile, 'auto minmax(0, 1fr) minmax(7rem, 45%) auto'],
+  [physical, physicalFile, 'auto minmax(0, 1fr) minmax(7rem, 45%)'],
 ]) {
   assertRule(
     sheet,
@@ -500,7 +515,7 @@ assertSource(disableDialogFile, [
 assertNotSource(manualPageFile, [/'Last Backup'/, /<backup-navigation/])
 assertSource(locationFile, [
   /readonly manage = output<void>\(\)/,
-  /\(click\)="manage\.emit\(\)"[\s\S]{0,160}['"]Add or repair a location['"]/,
+  /iconStart="@tui\.plus"[\s\S]{0,160}\(click\)="manage\.emit\(\)"[\s\S]{0,160}['"]Add or repair a location['"]/,
   /\[class\.manual-or-restore\]="mode\(\) !== 'automatic'"/,
   /<span tuiTitle>[\s\S]{0,100}<b>\{\{ target\.name \}\}<\/b>[\s\S]{0,160}<span tuiSubtitle>[\s\S]{0,100}target\.detail/,
   /formatCifsLocation\(location\.entry\)/,
@@ -524,6 +539,7 @@ assertSource(physicalFile, [
   /\['Status', 'Name', 'Capacity', 'Location', null\]/,
   /class="name"[\s\S]{0,180}class="location"/,
   /class="empty-state"/,
+  /&:first-child:not\(\.empty-state\)/,
 ])
 assertNotSource(advancedFile, [
   /showHistory/,

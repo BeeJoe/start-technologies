@@ -91,8 +91,14 @@ import { BackupStatusComponent } from './status.component'
       text-align: right;
     }
 
+    .name {
+      justify-self: start;
+      text-align: left;
+    }
+
     .location {
       width: 10rem;
+      justify-self: end;
       overflow-wrap: anywhere;
       text-align: right;
     }
@@ -103,7 +109,7 @@ import { BackupStatusComponent } from './status.component'
       }
 
       tr {
-        grid-template-columns: minmax(0, 1fr) auto;
+        grid-template-columns: auto minmax(0, 1fr) minmax(7rem, 45%);
         width: 100%;
         min-width: 0;
         white-space: normal;
@@ -114,12 +120,21 @@ import { BackupStatusComponent } from './status.component'
         grid-column: span 2;
         overflow-wrap: anywhere;
 
-        &:first-child {
+        &:first-child:not(.empty-state) {
           font-size: 0;
           width: auto;
-          grid-area: 1 / 2;
+          grid-area: 1 / 1 / 3 / 2;
           place-content: center;
           margin: 0 0.5rem;
+        }
+
+        &:nth-child(3) {
+          grid-area: 2 / 2;
+        }
+
+        &:last-child:not(.empty-state) {
+          grid-column: 1 / -1;
+          width: auto;
         }
       }
 
@@ -127,19 +142,24 @@ import { BackupStatusComponent } from './status.component'
         color: var(--tui-text-primary);
         font: var(--tui-typography-body-m);
         font-weight: bold;
-        grid-column: 1;
+        grid-area: 1 / 2;
+        justify-self: start;
         max-width: 100%;
+        text-align: left;
       }
 
       .location {
+        grid-area: 1 / 3 / 3 / 4;
         justify-self: end;
         max-width: 100%;
+        text-align: right;
       }
 
       .empty-state {
         grid-column: 1 / -1;
         justify-self: center;
         width: 100%;
+        white-space: normal;
         text-align: center;
       }
     }

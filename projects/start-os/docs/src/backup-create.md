@@ -55,7 +55,9 @@ one.
 - **Create a manual backup** creates a one-time backup for selected services.
 - **Restore from a backup** chooses a manual or automatic checkpoint.
 - **Manage backup locations** adds or repairs physical drives and network
-  folders.
+  folders. Location rows keep their icon and name on the left and their address
+  or device path on the right; when no physical drive is connected, the refresh
+  prompt remains centered.
 - **Backup history** shows completed manual backups, automatic backups, and
   restores.
 

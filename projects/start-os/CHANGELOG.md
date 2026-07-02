@@ -24,6 +24,8 @@ file tracks notable changes since the move to the monorepo.
   longer opens a blocking progress notification, retention controls share a
   consistent size, and narrow screens keep location names, addresses, empty
   drive states, and compact destructive actions readable without overlap.
+  Backup-location rows now consistently place the icon and name on the left,
+  the address or device path on the right, and center the no-drive state.
   Manual and custom automatic runs no longer force-scroll or place a blocking
   notification over navigation; their blue progress indicator stays at the top
   of the page and scrolls out of view normally.

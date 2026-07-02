@@ -27,6 +27,7 @@ type Location = MappedBackupTarget<CifsBackupTarget | DiskBackupTarget>
         <button
           tuiCell
           tuiAppearance="outline-grayscale"
+          class="location-option"
           type="button"
           [disabled]="!target.available"
           [class.selected]="selectedId() === target.location.id"
@@ -56,6 +57,7 @@ type Location = MappedBackupTarget<CifsBackupTarget | DiskBackupTarget>
       class="manage-location"
       type="button"
       appearance="secondary"
+      iconStart="@tui.plus"
       (click)="manage.emit()"
     >
       {{ 'Add or repair a location' | i18n }}
@@ -77,6 +79,10 @@ type Location = MappedBackupTarget<CifsBackupTarget | DiskBackupTarget>
       width: 100%;
       max-width: 48rem;
       margin-inline: auto;
+    }
+
+    .manage-location {
+      justify-content: flex-start;
     }
 
     [tuiCell] {
@@ -117,6 +123,11 @@ type Location = MappedBackupTarget<CifsBackupTarget | DiskBackupTarget>
       width: 100%;
     }
 
+    .manual-or-restore.location-option {
+      width: 100%;
+      box-sizing: border-box;
+    }
+
     .manual-or-restore > [tuiTitle] > b {
       grid-column: 1;
     }
@@ -137,10 +148,6 @@ type Location = MappedBackupTarget<CifsBackupTarget | DiskBackupTarget>
       .manual-or-restore > [tuiTitle] {
         grid-template-columns: minmax(0, 1fr) minmax(7rem, 45%);
         gap: 0.5rem;
-      }
-
-      .manage-location {
-        justify-self: center;
       }
     }
   `,

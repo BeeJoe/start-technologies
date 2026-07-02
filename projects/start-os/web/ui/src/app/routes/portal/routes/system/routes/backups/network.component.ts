@@ -139,9 +139,15 @@ const ERROR =
       width: 28%;
     }
 
-    .location {
-      overflow-wrap: anywhere;
+    .name {
+      justify-self: start;
       text-align: left;
+    }
+
+    .location {
+      justify-self: end;
+      overflow-wrap: anywhere;
+      text-align: right;
     }
 
     td:last-child {
@@ -162,7 +168,7 @@ const ERROR =
       }
 
       tr {
-        grid-template-columns: minmax(0, 1fr) auto auto;
+        grid-template-columns: auto minmax(0, 1fr) minmax(7rem, 45%) auto;
         width: 100%;
         min-width: 0;
         white-space: normal;
@@ -173,16 +179,16 @@ const ERROR =
         grid-column: span 2;
         overflow-wrap: anywhere;
 
-        &:first-child {
+        &:first-child:not(:only-child) {
           font-size: 0;
           width: auto;
-          grid-area: 1 / 2;
+          grid-area: 1 / 1;
           place-content: center;
           margin: 0 0.5rem;
         }
 
         &:last-child {
-          grid-area: 1 / 3 / 4 / 4;
+          grid-area: 1 / 4;
           align-self: center;
           justify-self: end;
         }
@@ -197,15 +203,17 @@ const ERROR =
         color: var(--tui-text-primary);
         font: var(--tui-typography-body-m);
         font-weight: bold;
-        grid-column: 1;
-        max-width: 100%;
-      }
-
-      .location {
-        grid-column: 1 / 3;
+        grid-column: 2;
         justify-self: start;
         max-width: 100%;
         text-align: left;
+      }
+
+      .location {
+        grid-column: 3;
+        justify-self: end;
+        max-width: 100%;
+        text-align: right;
       }
     }
   `,
