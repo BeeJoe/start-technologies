@@ -10,6 +10,24 @@ file tracks notable changes since the move to the monorepo.
 
 ## [Unreleased]
 
+### Changed
+
+- **Simplified Automatic Backups.** The expanded card now uses a flat settings
+  layout, keeps **Run now** with the detailed actions, and leaves checkpoint
+  browsing and restore actions in the dedicated **Backup history** and restore
+  cards.
+
+### Fixed
+
+- **Backup progress and mobile layout.** Backup progress uses the full content
+  width with the standard dark card treatment, saving automatic settings no
+  longer opens a blocking progress notification, retention controls share a
+  consistent size, and narrow screens keep location names, addresses, empty
+  drive states, and destructive actions readable without overlap.
+- **Automatic backup failure notifications.** Scheduled-backup warnings show
+  the backup location's user-facing name without exposing internal job or
+  target identifiers through a meaningless **View details** action.
+
 ## [0.4.0-beta.10]
 
 ### Added

@@ -28,7 +28,6 @@ Back up your server's data to a physical drive or a network folder.
 1. Backups taken from a specific system architecture (x86, ARM, RISC-V) are backed up for just that architecture. If restored to another architecture, they will likely need to be reinstalled to run efficiently.
 
 1. The backup format changed. New backups are written to a `StartOSBackupsV2` folder on the target, replacing the older `StartOSBackups` (V1) format. StartOS helps you clean up the obsolete V1 data:
-
    - When you select a target that still holds a V1 backup, StartOS warns you before backing up (and refuses if the old folder is too large to leave room for the new one — see below).
    - After a backup completes, if the target still contains a V1 backup, StartOS raises a notification reminding you it is no longer needed.
    - On the `Create Backup` page, any target holding **both** a V1 and a V2 backup shows a warning with a **Delete old backup** button. After you confirm, StartOS removes the old `StartOSBackups` folder to reclaim space; your current `StartOSBackupsV2` backup is untouched.
@@ -83,7 +82,9 @@ The default schedule runs once each day at the exact time shown. You can switch
 to hourly or weekly backups, choose another exact time, or add more schedules
 under **Advanced schedules**. Times follow the timezone detected from the device
 where the schedule is created. The collapsed **Automatic backups** card shows
-the primary schedule at a glance.
+the primary schedule at a glance. **Advanced schedules** focuses on schedule
+configuration; service checkpoints remain in the separate **Backup history**
+card.
 
 All current services are selected by default. Use the checkboxes to exclude
 individual services, or use **Toggle all** to change the full selection. Unless
@@ -93,8 +94,9 @@ when an existing selective schedule does not include it.
 
 Each automatic run stops a selected service, backs it up, and starts it again if
 it was running beforehand. Other services remain available. You can leave the
-Backups page while a run or restore is in progress. Use **Run now** inside the
-expanded card when you want the primary schedule to run immediately.
+Backups page while settings save or while a run or restore is in progress. Use
+**Run now** inside the expanded card when you want the primary schedule to run
+immediately.
 
 By default, StartOS keeps the latest automatic checkpoint for each service and
 backup location. **Keep additional versions** retains older checkpoints at the

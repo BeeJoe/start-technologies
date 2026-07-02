@@ -115,17 +115,6 @@ const WEEKDAYS = [
 
         @if (jobs().length) {
           <div class="card-actions">
-            @if (expanded() === 'automatic') {
-              <button
-                tuiButton
-                type="button"
-                size="s"
-                [disabled]="!canRunNow()"
-                (click)="runNow()"
-              >
-                {{ 'Run now' | i18n }}
-              </button>
-            }
             <label class="simple-switch">
               <input
                 tuiSwitch
@@ -155,6 +144,19 @@ const WEEKDAYS = [
 
       @if (expanded() === 'automatic') {
         <div class="card-body">
+          @if (jobs().length) {
+            <div class="expanded-actions">
+              <button
+                tuiButton
+                type="button"
+                size="s"
+                [disabled]="!canRunNow()"
+                (click)="runNow()"
+              >
+                {{ 'Run now' | i18n }}
+              </button>
+            </div>
+          }
           @if (needsAttention()) {
             <div class="attention" tuiCell>
               <tui-icon icon="@tui.triangle-alert" />
@@ -181,7 +183,6 @@ const WEEKDAYS = [
         <button
           type="button"
           class="card-toggle"
-          [disabled]="progressActive()"
           [attr.aria-expanded]="expanded() === 'manual'"
           (click)="togglePanel('manual')"
         >
@@ -215,7 +216,6 @@ const WEEKDAYS = [
         <button
           type="button"
           class="card-toggle"
-          [disabled]="progressActive()"
           [attr.aria-expanded]="expanded() === 'restore'"
           (click)="togglePanel('restore')"
         >
@@ -427,6 +427,15 @@ const WEEKDAYS = [
       border-top: 1px solid var(--tui-border-normal);
     }
 
+    .automatic-heading + .card-body {
+      border-top: 0;
+    }
+
+    .expanded-actions {
+      display: flex;
+      justify-content: flex-end;
+    }
+
     .operation,
     .attention {
       gap: 0.75rem;
@@ -437,10 +446,15 @@ const WEEKDAYS = [
       position: sticky;
       z-index: 1;
       top: 0.5rem;
-      background: var(--tui-background-accent-2);
-      border: 2px solid var(--tui-border-focus);
+      width: 100%;
+      background: color-mix(in hsl, var(--start9-base-1) 50%, transparent);
+      border: 1px solid var(--tui-border-normal);
       border-radius: var(--tui-radius-l);
-      box-shadow: var(--tui-shadow-medium);
+      box-sizing: border-box;
+    }
+
+    .operation > tui-icon {
+      animation: backup-progress-spin 1.5s linear infinite;
     }
 
     .operation [tuiTitle],
@@ -454,11 +468,33 @@ const WEEKDAYS = [
       position: sticky;
       z-index: 1;
       top: 0.5rem;
-      padding: 0.25rem;
-      background: var(--tui-background-accent-2);
-      border: 2px solid var(--tui-border-focus);
+      width: 100%;
+      padding: 0.75rem;
+      background: color-mix(in hsl, var(--start9-base-1) 50%, transparent);
+      border: 1px solid var(--tui-border-normal);
       border-radius: var(--tui-radius-l);
-      box-shadow: var(--tui-shadow-medium);
+      box-sizing: border-box;
+    }
+
+    .progress-prominent::before {
+      position: absolute;
+      z-index: 1;
+      top: 1rem;
+      right: 1rem;
+      width: 1rem;
+      height: 1rem;
+      border: 2px solid var(--tui-border-normal);
+      border-top-color: var(--tui-text-secondary);
+      border-radius: 50%;
+      animation: backup-progress-spin 1.5s linear infinite;
+      content: '';
+      pointer-events: none;
+    }
+
+    @keyframes backup-progress-spin {
+      to {
+        transform: rotate(1turn);
+      }
     }
 
     @container card (max-width: 44rem) {
@@ -499,6 +535,10 @@ const WEEKDAYS = [
       }
 
       .card-actions > button {
+        width: 100%;
+      }
+
+      .expanded-actions > button {
         width: 100%;
       }
 

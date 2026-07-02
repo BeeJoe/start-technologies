@@ -30,21 +30,22 @@ type Location = MappedBackupTarget<CifsBackupTarget | DiskBackupTarget>
           type="button"
           [disabled]="!target.available"
           [class.selected]="selectedId() === target.location.id"
+          [class.manual-or-restore]="mode() !== 'automatic'"
           (click)="selected.emit(target.location)"
         >
           <tui-icon [icon]="target.icon" />
           <span tuiTitle>
             <b>{{ target.name }}</b>
+            <span tuiSubtitle>
+              {{ target.detail }}
+              @if (!target.available) {
+                — {{ target.reason | i18n }}
+              }
+            </span>
           </span>
           @if (selectedId() === target.location.id) {
             <tui-icon icon="@tui.circle-check" />
           }
-          <span class="location-detail" tuiSubtitle>
-            {{ target.detail }}
-            @if (!target.available) {
-              — {{ target.reason | i18n }}
-            }
-          </span>
         </button>
       } @empty {
         <p>{{ 'No backup locations are available.' | i18n }}</p>
@@ -82,12 +83,9 @@ type Location = MappedBackupTarget<CifsBackupTarget | DiskBackupTarget>
       overflow-wrap: anywhere;
     }
 
-    .location-detail {
-      flex: 0 1 45%;
-      min-width: 0;
-      margin-inline-start: auto;
-      overflow-wrap: anywhere;
-      text-align: right;
+    [tuiSubtitle] {
+      display: block;
+      margin-top: 0.25rem;
     }
 
     .selected {
@@ -98,15 +96,24 @@ type Location = MappedBackupTarget<CifsBackupTarget | DiskBackupTarget>
       color: var(--tui-text-secondary);
     }
 
-    @media (max-width: 30rem) {
-      [tuiCell] {
-        flex-wrap: wrap;
-      }
+    .manual-or-restore > [tuiTitle] {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(8rem, 45%);
+      align-items: start;
+      gap: 0.75rem;
+      width: 100%;
+    }
 
-      .location-detail {
-        flex-basis: 100%;
-        padding-inline-start: 2.25rem;
-      }
+    .manual-or-restore > [tuiTitle] > b {
+      grid-column: 1;
+    }
+
+    .manual-or-restore > [tuiTitle] [tuiSubtitle] {
+      grid-column: 2;
+      min-width: 0;
+      margin-block-start: 0;
+      overflow-wrap: anywhere;
+      text-align: right;
     }
   `,
   imports: [TuiAppearance, TuiButton, TuiCell, TuiIcon, TuiTitle, i18nPipe],

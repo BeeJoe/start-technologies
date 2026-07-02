@@ -41,7 +41,7 @@ import { BackupStatusComponent } from './status.component'
         </tr>
       } @empty {
         <tr>
-          <td colspan="5">
+          <td class="empty-state" colspan="5">
             <app-placeholder icon="@tui.save-off">
               {{ 'No drives detected' | i18n }}
               <button
@@ -134,6 +134,13 @@ import { BackupStatusComponent } from './status.component'
       .location {
         justify-self: end;
         max-width: 100%;
+      }
+
+      .empty-state {
+        grid-column: 1 / -1;
+        justify-self: center;
+        width: 100%;
+        text-align: center;
       }
     }
   `,

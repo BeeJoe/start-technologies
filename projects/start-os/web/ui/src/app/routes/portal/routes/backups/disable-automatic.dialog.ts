@@ -40,7 +40,7 @@ export interface DisableAutomaticDecision {
       </span>
     </label>
 
-    <footer>
+    <footer class="actions">
       <button tuiButton appearance="secondary" (click)="cancel()">
         {{ 'Cancel' | i18n }}
       </button>
@@ -95,9 +95,18 @@ export interface DisableAutomaticDecision {
       gap: 0.75rem;
     }
 
+    .actions button {
+      block-size: auto;
+      height: auto;
+      min-block-size: 3.5rem;
+      min-height: 3.5rem;
+      white-space: normal;
+      overflow-wrap: anywhere;
+    }
+
     @media (max-width: 30rem) {
-      footer button {
-        flex: 1;
+      .actions button {
+        flex: 1 0 100%;
       }
     }
   `,

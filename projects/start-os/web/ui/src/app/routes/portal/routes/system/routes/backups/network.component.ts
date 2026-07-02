@@ -141,7 +141,7 @@ const ERROR =
 
     .location {
       overflow-wrap: anywhere;
-      text-align: right;
+      text-align: left;
     }
 
     td:last-child {
@@ -203,8 +203,9 @@ const ERROR =
 
       .location {
         grid-column: 1 / 3;
-        justify-self: end;
+        justify-self: start;
         max-width: 100%;
+        text-align: left;
       }
     }
   `,

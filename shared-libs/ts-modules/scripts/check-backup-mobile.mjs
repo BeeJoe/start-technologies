@@ -152,6 +152,8 @@ const dataModelFile =
 const backendBackupFile = 'shared-libs/crates/start-core/src/backup/mod.rs'
 const backendScheduledRpcFile =
   'shared-libs/crates/start-core/src/backup/scheduled/rpc.rs'
+const backendScheduledRunnerFile =
+  'shared-libs/crates/start-core/src/backup/scheduled/runner.rs'
 const globalStylesFile = 'projects/start-os/web/ui/src/styles.scss'
 const systemFile =
   'projects/start-os/web/ui/src/app/routes/portal/routes/system/system.component.ts'
@@ -160,6 +162,7 @@ const narrowCard = 'card (max-width: 30rem)'
 const home = componentStyles(homeFile)
 const editor = componentStyles(editorFile)
 const history = componentStyles(historyFile)
+const disableDialog = componentStyles(disableDialogFile)
 const location = componentStyles(locationFile)
 const manual = componentStyles(manualFile)
 const recover = componentStyles(recoverFile)
@@ -188,6 +191,14 @@ for (const selector of [
 assertRule(home, homeFile, '.card-heading', {
   position: 'static',
   height: 'auto',
+})
+assertRule(home, homeFile, '.progress-prominent', {
+  width: '100%',
+  'box-sizing': 'border-box',
+  background: 'color-mix(in hsl, var(--start9-base-1) 50%, transparent)',
+})
+assertRule(home, homeFile, '.progress-prominent::before', {
+  animation: 'backup-progress-spin 1.5s linear infinite',
 })
 
 assertRule(
@@ -261,17 +272,37 @@ assertRule(history, historyFile, ':host', {
   width: '100%',
   'min-width': '0',
 })
-assertRule(location, locationFile, '.location-detail', {
-  'margin-inline-start': 'auto',
-  'text-align': 'right',
+assertRule(location, locationFile, '.manual-or-restore > [tuiTitle]', {
+  display: 'grid',
+  'grid-template-columns': 'minmax(0, 1fr) minmax(8rem, 45%)',
 })
 assertRule(
   location,
   locationFile,
-  '.location-detail',
-  { 'flex-basis': '100%' },
-  phone,
+  '.manual-or-restore > [tuiTitle] [tuiSubtitle]',
+  { 'grid-column': '2', 'text-align': 'right' },
 )
+assertRule(editor, editorFile, '.embedded-panel', {
+  padding: '0',
+  border: '0',
+  'box-shadow': 'none',
+  background: 'transparent',
+})
+assertRule(editor, editorFile, '.retention-rule input', {
+  font: 'var(--tui-typography-body-l)',
+  'min-height': '3.5rem',
+  'background-color': 'var(--tui-background-neutral-1)',
+})
+assertRule(editor, editorFile, '.first-backup', {
+  'justify-content': 'flex-start',
+})
+assertRule(disableDialog, disableDialogFile, '.actions button', {
+  'block-size': 'auto',
+  height: 'auto',
+  'min-block-size': '3.5rem',
+  'min-height': '3.5rem',
+  'white-space': 'normal',
+})
 assertRule(
   history,
   historyFile,
@@ -336,6 +367,16 @@ for (const selector of ['.tier', '.override']) {
   )
 }
 
+assertRule(network, networkFile, '.location', { 'text-align': 'left' })
+assertRule(network, networkFile, '.location', {
+  'justify-self': 'start',
+  'text-align': 'left',
+})
+assertRule(physical, physicalFile, '.empty-state', {
+  'justify-self': 'center',
+  'text-align': 'center',
+})
+
 for (const [sheet, file, columns] of [
   [network, networkFile, 'minmax(0, 1fr) auto auto'],
   [physical, physicalFile, 'minmax(0, 1fr) auto'],
@@ -368,7 +409,7 @@ assertSource(homeFile, [
   /<system-backup[\s\S]{0,100}mode="create"[\s\S]{0,100}\[embedded\]="true"/,
   /<system-backup[\s\S]{0,100}mode="restore"[\s\S]{0,100}\[embedded\]="true"/,
   /<backup-locations \[embedded\]="true"/,
-  /@if \(expanded\(\) === 'automatic'\) \{[\s\S]{0,500}['"]Run now['"]/,
+  /class="card-body"[\s\S]{0,500}['"]Run now['"]/,
   /<backup-locations[\s\S]*['"]Backup history['"][\s\S]*<backup-history/,
   /class="card-heading automatic-heading"[\s\S]*class="card-actions"[\s\S]*class="expand-toggle"/,
   /parseBackupSchedule\(primary\.schedule\)/,
@@ -382,6 +423,9 @@ assertNotSource(homeFile, [
   /routerLink="manage"/,
   /['"]Dismiss['"]\s*\|\s*i18n/,
   /class="delete-checkpoints"/,
+  /class="card-actions"[\s\S]{0,500}['"]Run now['"]/,
+  /progress-prominent[\s\S]{0,500}--tui-background-accent-2/,
+  /\[disabled\]="progressActive\(\)"/,
 ])
 assertSource(routesFile, [
   /path: 'manage',[\s\S]{0,80}redirectTo: ''/,
@@ -403,6 +447,8 @@ assertNotSource(editorFile, [
   /history-section/,
   /filteredActivities/,
   /select,\s*\.retention-rule input/,
+  /class="g-card panel/,
+  /notifications\.open\('Saving'\)/,
 ])
 assertSource(historyFile, [
   /selector:\s*'backup-history'/,
@@ -418,10 +464,14 @@ assertNotSource(manualPageFile, [/'Last Backup'/, /<backup-navigation/])
 assertSource(locationFile, [
   /readonly manage = output<void>\(\)/,
   /\(click\)="manage\.emit\(\)"[\s\S]{0,160}['"]Add or repair a location['"]/,
-  /class="location-detail"[\s\S]{0,200}target\.detail/,
+  /\[class\.manual-or-restore\]="mode\(\) !== 'automatic'"/,
+  /<span tuiTitle>[\s\S]{0,100}<b>\{\{ target\.name \}\}<\/b>[\s\S]{0,160}<span tuiSubtitle>[\s\S]{0,100}target\.detail/,
   /formatCifsLocation\(location\.entry\)/,
 ])
-assertNotSource(locationFile, [/routerLink="\/system\/backups\/locations"/])
+assertNotSource(locationFile, [
+  /routerLink="\/system\/backups\/locations"/,
+  /class="location-detail"/,
+])
 assertSource(manualPageFile, [/\(manage\)="manageLocations\.emit\(\)"/])
 assertSource(editorFile, [/\(manage\)="manageLocations\.emit\(\)"/])
 assertSource(homeFile, [
@@ -434,8 +484,14 @@ assertSource(networkFile, [
   /locationName\(target\.entry\)/,
 ])
 assertSource(physicalFile, [
-  /\['Status', 'Name', 'Capacity', 'Location'\]/,
+  /\['Status', 'Name', 'Capacity', 'Location', null\]/,
   /class="name"[\s\S]{0,180}class="location"/,
+  /class="empty-state"/,
+])
+assertNotSource(advancedFile, [
+  /showHistory/,
+  /class="g-table histories"/,
+  /notifications\.open\('Saving'\)/,
 ])
 assertSource(backupServiceFile, [
   /formatCifsLocation[\s\S]{0,180}target\.hostname[\s\S]{0,80}share/,
@@ -466,6 +522,11 @@ assertSource(backendScheduledRpcFile, [
   /"set-enabled", from_fn_async\(set_enabled\)/,
   /"run-now"[\s\S]{0,120}from_fn_async\(run_now\)/,
   /"delete-archived-snapshots"[\s\S]{0,120}from_fn_async\(delete_archived_snapshots\)/,
+])
+assertNotSource(backendScheduledRunnerFile, [
+  /notify\([\s\S]{0,350}job\.id\.to_string\(\)/,
+  /notify\([\s\S]{0,350}job\.target_id\.to_string\(\)/,
+  /notify\([\s\S]{0,350}\btarget_key\s*,?\s*\)/,
 ])
 assertSource(globalStylesFile, [
   /\.backup-page,[\s\S]*\.backup-settings[\s\S]*select\s*\{[\s\S]*appearance:\s*none[\s\S]*min-height:\s*3\.5rem[\s\S]*font:\s*var\(--tui-typography-body-l\)[\s\S]*background-color:\s*var\(--tui-background-neutral-1\)[\s\S]*background-image:/,

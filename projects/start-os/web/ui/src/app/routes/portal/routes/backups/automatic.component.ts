@@ -29,12 +29,7 @@ import {
   TuiNotification,
   TuiTitle,
 } from '@taiga-ui/core'
-import {
-  TuiBadge,
-  TuiBlock,
-  TuiNotificationMiddleService,
-  TuiSwitch,
-} from '@taiga-ui/kit'
+import { TuiBadge, TuiBlock, TuiSwitch } from '@taiga-ui/kit'
 import { PatchDB } from 'patch-db-client'
 import { firstValueFrom } from 'rxjs'
 import { ApiService } from 'src/app/services/api/embassy-api.service'
@@ -138,7 +133,11 @@ interface AutomaticEditor {
       </nav>
 
       @if (step() === 1) {
-        <section class="g-card panel">
+        <section
+          class="panel"
+          [class.g-card]="!embedded()"
+          [class.embedded-panel]="embedded()"
+        >
           <header>
             <span tuiTitle>
               <b>{{ 'Choose a backup location' | i18n }}</b>
@@ -161,7 +160,11 @@ interface AutomaticEditor {
       }
 
       @if (step() === 2) {
-        <section class="g-card panel">
+        <section
+          class="panel"
+          [class.g-card]="!embedded()"
+          [class.embedded-panel]="embedded()"
+        >
           <header>
             <span tuiTitle>
               <b>{{ 'Schedule and services' | i18n }}</b>
@@ -329,7 +332,11 @@ interface AutomaticEditor {
       }
 
       @if (step() === 3) {
-        <section class="g-card panel review-panel">
+        <section
+          class="panel review-panel"
+          [class.g-card]="!embedded()"
+          [class.embedded-panel]="embedded()"
+        >
           <header>
             <span tuiTitle>
               <b>{{ 'Review automatic backups' | i18n }}</b>
@@ -388,7 +395,7 @@ interface AutomaticEditor {
             />
           </tui-textfield>
 
-          <label class="checkbox-row">
+          <label class="checkbox-row first-backup">
             <input
               tuiCheckbox
               type="checkbox"
@@ -427,7 +434,11 @@ interface AutomaticEditor {
       </footer>
     } @else {
       @if (primary(); as job) {
-        <section class="g-card panel" [class.embedded-panel]="embedded()">
+        <section
+          class="panel"
+          [class.g-card]="!embedded()"
+          [class.embedded-panel]="embedded()"
+        >
           @if (!embedded()) {
             <header>
               <span tuiTitle>
@@ -782,12 +793,15 @@ interface AutomaticEditor {
 
     .retention-rule input {
       width: 100%;
-      min-height: 2.75rem;
-      padding: 0.5rem 0.75rem;
+      min-height: 3.5rem;
+      padding: 0 1rem;
       color: var(--tui-text-primary);
-      background: var(--tui-background-base);
-      border: 1px solid var(--tui-border-normal);
+      background-color: var(--tui-background-neutral-1);
+      border: 0;
       border-radius: var(--tui-radius-m);
+      box-shadow: inset 0 0 0 1px var(--tui-border-normal);
+      font: var(--tui-typography-body-l);
+      box-sizing: border-box;
     }
 
     [tuiGroup] {
@@ -821,6 +835,10 @@ interface AutomaticEditor {
     .main-switch,
     .toggle-all {
       width: fit-content;
+      justify-content: flex-start;
+    }
+
+    .first-backup {
       justify-content: flex-start;
     }
 
@@ -871,6 +889,7 @@ interface AutomaticEditor {
       border: 0;
       border-radius: 0;
       box-shadow: none;
+      background: transparent;
     }
 
     .save-row {
@@ -956,7 +975,6 @@ export default class AutomaticBackupsComponent implements OnInit {
   private readonly backupService = inject(BackupService)
   private readonly dialogs = inject(DialogService)
   private readonly errors = inject(ErrorService)
-  private readonly notifications = inject(TuiNotificationMiddleService)
   private readonly router = inject(Router)
   private readonly patch = inject<PatchDB<DataModel>>(PatchDB)
   private readonly packageData = toSignal(this.patch.watch$('packageData'))
@@ -1283,7 +1301,6 @@ export default class AutomaticBackupsComponent implements OnInit {
   async createAutomaticBackup() {
     if (!this.canSaveSetup()) return
     this.saving.set(true)
-    const loader = this.notifications.open('Saving').subscribe()
     try {
       const job = await this.api.createScheduledBackupJob({
         name: 'Automatic backups',
@@ -1302,14 +1319,12 @@ export default class AutomaticBackupsComponent implements OnInit {
     } catch (error: any) {
       this.errors.handleError(getErrorMessage(error))
     } finally {
-      loader.unsubscribe()
       this.saving.set(false)
     }
   }
 
   async savePrimary(job: T.BackupJob) {
     this.saving.set(true)
-    const loader = this.notifications.open('Saving').subscribe()
     try {
       await this.api.updateScheduledBackupJob({
         id: job.id,
@@ -1322,7 +1337,6 @@ export default class AutomaticBackupsComponent implements OnInit {
     } catch (error: any) {
       this.errors.handleError(getErrorMessage(error))
     } finally {
-      loader.unsubscribe()
       this.saving.set(false)
     }
   }
