@@ -156,8 +156,10 @@ type Location = MappedBackupTarget<CifsBackupTarget | DiskBackupTarget>
         gap: 0.5rem;
       }
 
-      .manual-or-restore > [tuiTitle] > b {
+      .location-option > [tuiTitle] > b {
+        display: block;
         min-width: 0;
+        max-width: 100%;
         overflow: hidden;
         overflow-wrap: normal;
         text-overflow: ellipsis;

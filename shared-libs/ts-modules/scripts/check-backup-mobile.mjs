@@ -336,9 +336,11 @@ assertRule(
 assertRule(
   location,
   locationFile,
-  '.manual-or-restore > [tuiTitle] > b',
+  '.location-option > [tuiTitle] > b',
   {
+    display: 'block',
     'min-width': '0',
+    'max-width': '100%',
     'overflow-wrap': 'normal',
     'white-space': 'nowrap',
     overflow: 'hidden',
