@@ -98,9 +98,9 @@ const ERROR =
         </tr>
       } @empty {
         <tr>
-          <td colspan="4">
+          <td class="empty-state" colspan="4">
             <app-placeholder icon="@tui.folder-x">
-              No network folders
+              {{ 'No network folders' | i18n }}
             </app-placeholder>
           </td>
         </tr>
@@ -145,9 +145,9 @@ const ERROR =
     }
 
     .location {
-      justify-self: end;
+      justify-self: start;
       overflow-wrap: anywhere;
-      text-align: right;
+      text-align: left;
     }
 
     td:last-child {
@@ -192,11 +192,6 @@ const ERROR =
           align-self: center;
           justify-self: end;
         }
-
-        &:only-child {
-          grid-column: 1 / -1;
-          justify-self: center;
-        }
       }
 
       .name {
@@ -214,6 +209,15 @@ const ERROR =
         justify-self: end;
         max-width: 100%;
         text-align: right;
+      }
+
+      .empty-state {
+        grid-column: 1 / -1;
+        justify-self: center;
+        width: 100%;
+        overflow: visible;
+        white-space: normal;
+        text-align: center;
       }
     }
   `,

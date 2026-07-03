@@ -1019,4 +1019,6 @@ export const ENGLISH: Record<string, number> = {
   'Turn off and delete': 1118,
   'Pause and delete': 1126,
   'Pause automatic backups': 1127,
+  'No network folders': 1128,
+  'Selecting checkpoint deletion also removes automatic schedules, allowing unused backup locations to be forgotten.': 1129,
 }

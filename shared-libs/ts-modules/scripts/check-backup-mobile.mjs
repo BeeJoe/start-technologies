@@ -295,13 +295,21 @@ assertRule(location, locationFile, '.manual-or-restore > [tuiTitle]', {
 })
 assertRule(location, locationFile, '.locations', {
   width: '100%',
-  'max-width': '48rem',
-  'margin-inline': 'auto',
+  'max-width': 'none',
+  'margin-inline': '0',
+  'box-sizing': 'border-box',
 })
 assertRule(location, locationFile, '.manage-location', {
   width: '100%',
+  'max-width': 'none',
+  'margin-inline': '0',
+  'box-sizing': 'border-box',
+})
+assertRule(location, locationFile, ':host', {
+  width: '100%',
   'max-width': '48rem',
   'margin-inline': 'auto',
+  'box-sizing': 'border-box',
 })
 assertRule(location, locationFile, '.manage-location', {
   'justify-content': 'flex-start',
@@ -314,14 +322,14 @@ assertRule(
   location,
   locationFile,
   '.manual-or-restore.location-option',
-  { 'justify-self': 'center', 'margin-inline': 'auto' },
+  { 'justify-self': 'stretch' },
   phone,
 )
 assertRule(
   location,
   locationFile,
   '.manage-location',
-  { 'justify-self': 'center', 'margin-inline': 'auto' },
+  { 'justify-self': 'stretch' },
   phone,
 )
 assertRule(
@@ -455,14 +463,22 @@ for (const [sheet, file] of [
     'text-align': 'left',
   })
   assertRule(sheet, file, '.location', {
-    'justify-self': 'end',
-    'text-align': 'right',
+    'justify-self': 'start',
+    'text-align': 'left',
   })
 }
-assertRule(physical, physicalFile, '.empty-state', {
-  'justify-self': 'center',
-  'text-align': 'center',
-})
+for (const [sheet, file] of [
+  [network, networkFile],
+  [physical, physicalFile],
+]) {
+  assertRule(sheet, file, '.empty-state', {
+    'grid-column': '1 / -1',
+    'justify-self': 'center',
+    width: '100%',
+    'white-space': 'normal',
+    'text-align': 'center',
+  })
+}
 
 for (const [sheet, file, columns] of [
   [network, networkFile, 'auto minmax(0, 1fr) minmax(7rem, 45%) auto'],
@@ -548,7 +564,8 @@ assertSource(disableDialogFile, [
   /tuiCheckbox/,
   /['"]Also permanently delete automatic backup checkpoints['"]/,
   /deleteCheckpoints:\s*this\.deleteCheckpoints/,
-  /['"]Pause and delete['"]/,
+  /['"]Turn off and remove automatic backups['"]/,
+  /['"]Selecting checkpoint deletion also removes automatic schedules, allowing unused backup locations to be forgotten\.['"]/,
 ])
 assertNotSource(manualPageFile, [/'Last Backup'/, /<backup-navigation/])
 assertSource(locationFile, [
@@ -572,6 +589,7 @@ assertSource(networkFile, [
   /\['Status', 'Name', 'Location', null\]/,
   /class="name"[\s\S]{0,180}class="location"/,
   /locationName\(target\.entry\)/,
+  /class="empty-state"[\s\S]{0,120}['"]No network folders['"]\s*\|\s*i18n/,
 ])
 assertSource(physicalFile, [
   /\['Status', 'Name', 'Capacity', 'Location', null\]/,
@@ -590,8 +608,15 @@ assertSource(progressFile, [
   /class="progress-status"/,
   /class="overall-loader"/,
 ])
+assertNotSource(progressFile, [/host:\s*\{\s*class:\s*['"]g-card['"]\s*\}/])
 assertSource(backupServiceFile, [
   /formatCifsLocation[\s\S]{0,180}target\.hostname[\s\S]{0,80}share/,
+])
+assertSource(homeFile, [
+  /if \(!enabled && deleteCheckpoints\)[\s\S]{0,1200}deleteArchivedBackupSnapshots[\s\S]{0,1200}deleteScheduledBackupJob/,
+])
+assertSource(editorFile, [
+  /if \(decision\.deleteCheckpoints\)[\s\S]{0,1200}deleteArchivedBackupSnapshots[\s\S]{0,1200}deleteScheduledBackupJob/,
 ])
 
 // Keep the refactored UI connected to the typed live RPC surface and the

@@ -36,6 +36,11 @@ export interface DisableAutomaticDecision {
         <span tuiSubtitle>
           {{ 'Automatic backup history' | i18n }}:
           {{ context.data.checkpointCount }} · {{ context.data.reclaimable }}
+          <br />
+          {{
+            'Selecting checkpoint deletion also removes automatic schedules, allowing unused backup locations to be forgotten.'
+              | i18n
+          }}
         </span>
       </span>
     </label>
@@ -51,8 +56,10 @@ export interface DisableAutomaticDecision {
         (click)="confirm()"
       >
         {{
-          (deleteCheckpoints ? 'Pause and delete' : 'Pause automatic backups')
-            | i18n
+          (deleteCheckpoints
+            ? 'Turn off and remove automatic backups'
+            : 'Pause automatic backups'
+          ) | i18n
         }}
       </button>
     </footer>

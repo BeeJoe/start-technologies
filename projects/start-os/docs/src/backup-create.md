@@ -55,27 +55,29 @@ one.
 - **Create a manual backup** creates a one-time backup for selected services.
 - **Restore from a backup** chooses a manual or automatic checkpoint.
 - **Manage backup locations** adds or repairs physical drives and network
-  folders. Location rows keep their icon and name on the left and their address
-  or device path on the right; when no physical drive is connected, the refresh
-  prompt remains centered. On phones, manual and automatic location choices
-  remain centered above the location-management action and long names stay on
-  one readable line.
+  folders. Location details align with their table headings, and empty network
+  and physical-drive messages remain fully visible and centered on phones.
+  Manual, restore, and automatic location choices share the same centered edges
+  as the location-management action, while long names stay on one readable line.
 - **Backup history** shows completed manual backups, automatic backups, and
   restores.
 
-When a backup starts, its progress appears at the top of the page without
-moving your current view or blocking navigation. Scroll to the top to see the
-blue progress indicator and percentage, or leave the page while the operation
-continues. Completed operations remain available in **Backup history** instead
-of appearing as a separate completion message on the Backups page. If StartOS
-restarts during a backup, the interrupted activity is marked failed during
-startup and the progress card is hidden once the server is idle.
+When a backup starts, its flat, single-panel progress display appears at the top
+of the page without moving your current view or blocking navigation. Scroll to
+the top to see the blue progress indicator and percentage, or leave the page
+while the operation continues. Completed operations remain available in
+**Backup history** instead of appearing as a separate completion message on the
+Backups page. If StartOS restarts during a backup, the interrupted activity is
+marked failed during startup and the progress card is hidden once the server is
+idle.
 
 Turning off automatic backups keeps the schedule settings and existing
 checkpoints by default. When you switch automatic backups off, the confirmation
 dialog offers **Also permanently delete automatic backup checkpoints** and
-changes the confirmation action to **Pause and delete** when selected.
-Manual checkpoints are not deleted.
+changes the confirmation action to **Turn off and remove automatic backups**
+when selected. That option deletes the automatic checkpoints and schedule
+definitions, returning the card to first-time setup and allowing an unused
+network backup location to be forgotten. Manual checkpoints are not deleted.
 
 ## Automatic Backups
 
@@ -116,7 +118,8 @@ Use **Backup history** to review completed automatic and manual backups and
 restores. When restoring, each service defaults to its newest checkpoint, but
 you can choose a different manual or automatic checkpoint. Turning automatic
 backups off preserves the schedule and checkpoints unless you select the
-permanent-delete option in the confirmation dialog.
+permanent-delete option in the confirmation dialog; that option also removes
+the automatic schedules so they can be recreated cleanly later.
 
 ## Physical Drive
 

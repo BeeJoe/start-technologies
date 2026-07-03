@@ -104,7 +104,6 @@ import { DataModel } from 'src/app/services/patch-db/data-model'
       min-width: 0;
     }
   `,
-  host: { class: 'g-card' },
   imports: [
     TuiFade,
     TuiCell,

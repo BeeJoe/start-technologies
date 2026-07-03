@@ -20,7 +20,7 @@ file tracks notable changes since the move to the monorepo.
 ### Fixed
 
 - **Backup progress and mobile layout.** Backup progress uses the full content
-  width with the standard dark card treatment, saving automatic settings no
+  width as one flat panel rather than a nested card, saving automatic settings no
   longer opens a blocking progress notification, retention controls share a
   consistent size, and narrow screens keep location names, addresses, empty
   drive states, and compact destructive actions readable without overlap.
@@ -31,6 +31,10 @@ file tracks notable changes since the move to the monorepo.
   Manual and custom automatic runs no longer force-scroll or place a blocking
   notification over navigation; their blue progress indicator stays at the top
   of the page and scrolls out of view normally.
+- **Backup-location removal.** Choosing to delete automatic checkpoints while
+  turning automatic backups off now also removes the stopped schedule
+  definitions. Unused network backup locations can then be forgotten, and
+  turning automatic backups on again starts with a clean setup.
 - **Interrupted backup progress.** StartOS now marks persisted in-progress
   backup activity as interrupted during startup, so an operation interrupted by
   a restart no longer leaves the backup progress card visible while idle.

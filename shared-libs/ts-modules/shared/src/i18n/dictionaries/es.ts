@@ -1018,4 +1018,6 @@ export default {
   1118: 'Desactivar y eliminar',
   1126: 'Pausar y eliminar',
   1127: 'Pausar copias de seguridad automáticas',
+  1128: 'No hay carpetas de red',
+  1129: 'Al eliminar los puntos de copia también se eliminan las programaciones automáticas, lo que permite olvidar las ubicaciones de copia sin usar.',
 } satisfies i18n

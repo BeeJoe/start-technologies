@@ -1410,6 +1410,9 @@ export default class AutomaticBackupsComponent implements OnInit {
             })
           }
         }
+        for (const job of this.jobs()) {
+          await this.api.deleteScheduledBackupJob({ id: job.id })
+        }
       }
     } catch (error: any) {
       this.errors.handleError(getErrorMessage(error))

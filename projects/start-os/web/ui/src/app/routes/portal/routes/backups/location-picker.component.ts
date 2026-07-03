@@ -72,13 +72,18 @@ type Location = MappedBackupTarget<CifsBackupTarget | DiskBackupTarget>
 
     :host {
       align-items: center;
+      width: 100%;
+      max-width: 48rem;
+      margin-inline: auto;
+      box-sizing: border-box;
     }
 
     .locations,
     .manage-location {
       width: 100%;
-      max-width: 48rem;
-      margin-inline: auto;
+      max-width: none;
+      margin-inline: 0;
+      box-sizing: border-box;
     }
 
     .manage-location {
@@ -147,8 +152,7 @@ type Location = MappedBackupTarget<CifsBackupTarget | DiskBackupTarget>
 
       .manual-or-restore.location-option,
       .manage-location {
-        justify-self: center;
-        margin-inline: auto;
+        justify-self: stretch;
       }
 
       .manual-or-restore > [tuiTitle] {

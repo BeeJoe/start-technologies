@@ -1018,4 +1018,6 @@ export default {
   1118: 'Wyłącz i usuń',
   1126: 'Wstrzymaj i usuń',
   1127: 'Wstrzymaj automatyczne kopie zapasowe',
+  1128: 'Brak folderów sieciowych',
+  1129: 'Usunięcie punktów kopii usuwa również automatyczne harmonogramy, dzięki czemu można zapomnieć nieużywane lokalizacje kopii zapasowych.',
 } satisfies i18n

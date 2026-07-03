@@ -98,9 +98,9 @@ import { BackupStatusComponent } from './status.component'
 
     .location {
       width: 10rem;
-      justify-self: end;
+      justify-self: start;
       overflow-wrap: anywhere;
-      text-align: right;
+      text-align: left;
     }
 
     :host-context(tui-root._mobile) {
