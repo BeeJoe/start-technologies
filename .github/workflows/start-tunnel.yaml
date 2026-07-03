@@ -42,8 +42,10 @@ on:
       - "package.json"
       - "package-lock.json"
       - "tsconfig.json"
+      - "tsconfig.lib.json"
       - "build/**"
       - "debian/**"
+      - "apt/**"
       - ".github/workflows/start-tunnel.yaml"
       - ".github/actions/setup-build/**"
   pull_request:
@@ -60,8 +62,10 @@ on:
       - "package.json"
       - "package-lock.json"
       - "tsconfig.json"
+      - "tsconfig.lib.json"
       - "build/**"
       - "debian/**"
+      - "apt/**"
       - ".github/workflows/start-tunnel.yaml"
       - ".github/actions/setup-build/**"
 
@@ -96,7 +100,9 @@ jobs:
         run: sudo mount -t tmpfs tmpfs .
       - uses: actions/checkout@v6
         with:
-          submodules: recursive
+          # The repo's only submodule (projects/start-wrt/openwrt) is multi-GB and only
+          # the start-wrt image build needs it — never clone it here.
+          submodules: false
       - uses: ./.github/actions/setup-build
         with:
           nodejs-version: ${{ env.NODEJS_VERSION }}

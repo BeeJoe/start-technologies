@@ -28,7 +28,8 @@ import { TitleDirective } from 'src/app/services/title.service'
         <p tuiSubtitle>{{ iface.description }}</p>
       </hgroup>
     </header>
-    <service-interface [value]="ui()" [isRunning]="true" />
+    <br />
+    <service-interface packageId="start-os" [value]="ui()" [isRunning]="true" />
   `,
   host: { class: 'g-subpage' },
   providers: [GatewayService],
@@ -48,15 +49,15 @@ export default class StartOsUiComponent {
   private readonly i18n = inject(i18nPipe)
 
   readonly iface: T.ServiceInterface = {
-    id: 'startos-ui',
+    id: 'admin-ui',
     name: 'StartOS UI',
     description: this.i18n.transform(
-      'The web user interface for your StartOS server, accessible from any browser.',
+      'Your personal StartOS web user interface.',
     )!,
     type: 'ui' as const,
     masked: false,
     addressInfo: {
-      hostId: 'startos-ui',
+      hostId: 'admin',
       internalPort: 80,
       scheme: 'http',
       sslScheme: 'https',

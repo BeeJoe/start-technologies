@@ -27,10 +27,6 @@ export const SYSTEM_UTILITIES: Record<
     icon: '@tui.activity',
     title: 'Metrics',
   },
-  logs: {
-    icon: '@tui.scroll-text',
-    title: 'Logs',
-  },
   system: {
     icon: '@tui.settings',
     title: 'System',
