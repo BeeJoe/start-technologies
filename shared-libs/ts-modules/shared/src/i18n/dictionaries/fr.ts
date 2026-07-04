@@ -1019,5 +1019,6 @@ export default {
   1126: 'Mettre en pause et supprimer',
   1127: 'Mettre en pause les sauvegardes automatiques',
   1128: 'Aucun dossier réseau',
-  1129: 'La suppression des points de sauvegarde supprime également les planifications automatiques, ce qui permet d’oublier les emplacements de sauvegarde inutilisés.',
+  1129: 'Les sauvegardes automatiques seront arrêtées. Les sauvegardes manuelles ne seront pas supprimées.',
+  1130: 'Supprimer les sauvegardes et planifications automatiques',
 } satisfies i18n

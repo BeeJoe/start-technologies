@@ -68,6 +68,7 @@ type Location = MappedBackupTarget<CifsBackupTarget | DiskBackupTarget>
     .locations {
       display: grid;
       gap: 0.5rem;
+      justify-items: center;
     }
 
     :host {
@@ -78,8 +79,7 @@ type Location = MappedBackupTarget<CifsBackupTarget | DiskBackupTarget>
       box-sizing: border-box;
     }
 
-    .locations,
-    .manage-location {
+    .locations {
       width: 100%;
       max-width: none;
       margin-inline: 0;
@@ -98,6 +98,15 @@ type Location = MappedBackupTarget<CifsBackupTarget | DiskBackupTarget>
       gap: 0.75rem;
       overflow: hidden;
       text-align: left;
+      box-sizing: border-box;
+    }
+
+    .location-option,
+    .manage-location {
+      width: 100%;
+      max-width: 40rem;
+      margin-inline: 0;
+      justify-self: center;
       box-sizing: border-box;
     }
 
@@ -150,9 +159,9 @@ type Location = MappedBackupTarget<CifsBackupTarget | DiskBackupTarget>
         padding-inline: 0.75rem;
       }
 
-      .manual-or-restore.location-option,
+      .location-option,
       .manage-location {
-        justify-self: stretch;
+        justify-self: center;
       }
 
       .manual-or-restore > [tuiTitle] {

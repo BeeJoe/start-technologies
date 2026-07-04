@@ -76,6 +76,7 @@ import { DataModel } from 'src/app/services/patch-db/data-model'
       align-items: center;
       gap: 0.5rem;
       margin-inline-start: auto;
+      margin-inline-end: 1rem;
     }
 
     .overall-loader,

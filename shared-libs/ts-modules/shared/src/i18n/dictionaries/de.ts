@@ -1019,5 +1019,6 @@ export default {
   1126: 'Pausieren und löschen',
   1127: 'Automatische Sicherungen pausieren',
   1128: 'Keine Netzwerkordner',
-  1129: 'Wenn Sie Prüfpunkte löschen, werden auch automatische Zeitpläne entfernt, sodass nicht verwendete Sicherungsorte vergessen werden können.',
+  1129: 'Automatische Sicherungen werden gestoppt. Manuelle Sicherungen werden nicht gelöscht.',
+  1130: 'Automatische Sicherungen und Zeitpläne löschen',
 } satisfies i18n

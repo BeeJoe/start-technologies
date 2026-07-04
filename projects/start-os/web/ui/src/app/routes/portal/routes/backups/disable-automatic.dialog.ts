@@ -22,7 +22,7 @@ export interface DisableAutomaticDecision {
   template: `
     <p>
       {{
-        'Turning off pauses schedules. Deleting checkpoints is optional and never deletes manual backups.'
+        'Automatic backups will stop. Manual backups will not be deleted.'
           | i18n
       }}
     </p>
@@ -31,16 +31,11 @@ export interface DisableAutomaticDecision {
       <input tuiCheckbox type="checkbox" [(ngModel)]="deleteCheckpoints" />
       <span tuiTitle>
         <b>
-          {{ 'Also permanently delete automatic backup checkpoints' | i18n }}
+          {{ 'Delete automatic backups and schedules' | i18n }}
         </b>
         <span tuiSubtitle>
-          {{ 'Automatic backup history' | i18n }}:
-          {{ context.data.checkpointCount }} · {{ context.data.reclaimable }}
-          <br />
-          {{
-            'Selecting checkpoint deletion also removes automatic schedules, allowing unused backup locations to be forgotten.'
-              | i18n
-          }}
+          {{ context.data.checkpointCount }} {{ 'Checkpoints' | i18n }} ·
+          {{ context.data.reclaimable }}
         </span>
       </span>
     </label>
@@ -57,7 +52,7 @@ export interface DisableAutomaticDecision {
       >
         {{
           (deleteCheckpoints
-            ? 'Turn off and remove automatic backups'
+            ? 'Turn off and delete'
             : 'Pause automatic backups'
           ) | i18n
         }}

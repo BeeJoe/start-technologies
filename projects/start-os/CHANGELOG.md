@@ -26,15 +26,18 @@ file tracks notable changes since the move to the monorepo.
   drive states, and compact destructive actions readable without overlap.
   Backup-location rows now consistently place the icon and name on the left,
   the address or device path on the right, and center the no-drive state.
-  Location choices also share the action button's centered width and keep long
-  location names horizontal on phones, including automatic-backup setup.
+  Empty network-folder content is centered inside its frame. Location choices
+  also share the action button's centered width and keep long location names
+  horizontal on phones, including automatic-backup setup. The overall progress
+  spinner and percentage align with each service's status.
   Manual and custom automatic runs no longer force-scroll or place a blocking
   notification over navigation; their blue progress indicator stays at the top
   of the page and scrolls out of view normally.
 - **Backup-location removal.** Choosing to delete automatic checkpoints while
   turning automatic backups off now also removes the stopped schedule
   definitions. Unused network backup locations can then be forgotten, and
-  turning automatic backups on again starts with a clean setup.
+  turning automatic backups on again starts with a clean setup. The confirmation
+  dialog now states this choice more directly.
 - **Interrupted backup progress.** StartOS now marks persisted in-progress
   backup activity as interrupted during startup, so an operation interrupted by
   a restart no longer leaves the backup progress card visible while idle.

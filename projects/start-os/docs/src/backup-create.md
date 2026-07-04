@@ -56,9 +56,10 @@ one.
 - **Restore from a backup** chooses a manual or automatic checkpoint.
 - **Manage backup locations** adds or repairs physical drives and network
   folders. Location details align with their table headings, and empty network
-  and physical-drive messages remain fully visible and centered on phones.
-  Manual, restore, and automatic location choices share the same centered edges
-  as the location-management action, while long names stay on one readable line.
+  and physical-drive messages remain fully visible and centered within their
+  frames on phones. Manual, restore, and automatic location choices use the
+  same centered width as the location-management action, while long names stay
+  on one readable line.
 - **Backup history** shows completed manual backups, automatic backups, and
   restores.
 
@@ -73,11 +74,11 @@ idle.
 
 Turning off automatic backups keeps the schedule settings and existing
 checkpoints by default. When you switch automatic backups off, the confirmation
-dialog offers **Also permanently delete automatic backup checkpoints** and
-changes the confirmation action to **Turn off and remove automatic backups**
-when selected. That option deletes the automatic checkpoints and schedule
-definitions, returning the card to first-time setup and allowing an unused
-network backup location to be forgotten. Manual checkpoints are not deleted.
+dialog offers **Delete automatic backups and schedules** and changes the
+confirmation action to **Turn off and delete** when selected. That option
+deletes the automatic checkpoints and schedule definitions, returning the card
+to first-time setup and allowing an unused network backup location to be
+forgotten. Manual checkpoints are not deleted.
 
 ## Automatic Backups
 

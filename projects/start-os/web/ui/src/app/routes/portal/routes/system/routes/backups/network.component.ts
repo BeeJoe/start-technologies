@@ -97,10 +97,12 @@ const ERROR =
           </td>
         </tr>
       } @empty {
-        <tr>
+        <tr class="empty-row">
           <td class="empty-state" colspan="4">
             <app-placeholder icon="@tui.folder-x">
-              {{ 'No network folders' | i18n }}
+              <span class="empty-label">
+                {{ 'No network folders' | i18n }}
+              </span>
             </app-placeholder>
           </td>
         </tr>
@@ -150,6 +152,33 @@ const ERROR =
       text-align: left;
     }
 
+    .empty-row {
+      width: 100%;
+    }
+
+    .empty-state {
+      text-align: center;
+    }
+
+    .empty-state app-placeholder {
+      width: 100%;
+      margin-inline: auto;
+      box-sizing: border-box;
+      padding: 0;
+      gap: 0.25rem;
+    }
+
+    .empty-label {
+      display: block;
+      width: 100%;
+      max-width: 100%;
+      min-height: 1.5rem;
+      flex-shrink: 0;
+      line-height: 1.5rem;
+      overflow-wrap: anywhere;
+      text-align: center;
+    }
+
     td:last-child {
       width: 3.5rem;
       white-space: nowrap;
@@ -172,6 +201,10 @@ const ERROR =
         width: 100%;
         min-width: 0;
         white-space: normal;
+      }
+
+      tr.empty-row {
+        grid-template-columns: minmax(0, 1fr);
       }
 
       td {
@@ -211,10 +244,11 @@ const ERROR =
         text-align: right;
       }
 
-      .empty-state {
-        grid-column: 1 / -1;
-        justify-self: center;
-        width: 100%;
+      .empty-row > td.empty-state {
+        grid-area: 1 / 1 / auto / -1;
+        justify-self: stretch;
+        width: auto;
+        margin: 0;
         overflow: visible;
         white-space: normal;
         text-align: center;

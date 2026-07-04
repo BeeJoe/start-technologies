@@ -212,6 +212,7 @@ assertRule(progress, progressFile, '.progress-status', {
   'align-items': 'center',
   gap: '0.5rem',
   'flex-shrink': '0',
+  'margin-inline-end': '1rem',
 })
 assertRule(progress, progressFile, '.overall-loader', {
   color: 'var(--tui-text-action)',
@@ -299,18 +300,22 @@ assertRule(location, locationFile, '.locations', {
   'margin-inline': '0',
   'box-sizing': 'border-box',
 })
-assertRule(location, locationFile, '.manage-location', {
-  width: '100%',
-  'max-width': 'none',
-  'margin-inline': '0',
-  'box-sizing': 'border-box',
-})
+assertRule(location, locationFile, '.locations', { 'justify-items': 'center' })
 assertRule(location, locationFile, ':host', {
   width: '100%',
   'max-width': '48rem',
   'margin-inline': 'auto',
   'box-sizing': 'border-box',
 })
+assertRule(location, locationFile, ':host', { 'justify-items': 'center' })
+for (const selector of ['.location-option', '.manage-location']) {
+  assertRule(location, locationFile, selector, {
+    width: '100%',
+    'max-width': '40rem',
+    'margin-inline': '0',
+    'justify-self': 'center',
+  })
+}
 assertRule(location, locationFile, '.manage-location', {
   'justify-content': 'flex-start',
 })
@@ -321,15 +326,15 @@ assertRule(location, locationFile, '.manual-or-restore.location-option', {
 assertRule(
   location,
   locationFile,
-  '.manual-or-restore.location-option',
-  { 'justify-self': 'stretch' },
+  '.location-option',
+  { 'justify-self': 'center' },
   phone,
 )
 assertRule(
   location,
   locationFile,
   '.manage-location',
-  { 'justify-self': 'stretch' },
+  { 'justify-self': 'center' },
   phone,
 )
 assertRule(
@@ -422,6 +427,26 @@ for (const [sheet, file] of [
     'overflow-wrap': 'anywhere',
   })
 }
+assertRule(network, networkFile, '.empty-row', {
+  width: '100%',
+})
+assertRule(network, networkFile, '.empty-state app-placeholder', {
+  width: '100%',
+  'margin-inline': 'auto',
+  'box-sizing': 'border-box',
+  padding: '0',
+  gap: '0.25rem',
+})
+assertRule(network, networkFile, '.empty-label', {
+  display: 'block',
+  width: '100%',
+  'max-width': '100%',
+  'min-height': '1.5rem',
+  'flex-shrink': '0',
+  'line-height': '1.5rem',
+  'overflow-wrap': 'anywhere',
+  'text-align': 'center',
+})
 
 assertRule(
   recover,
@@ -467,18 +492,24 @@ for (const [sheet, file] of [
     'text-align': 'left',
   })
 }
-for (const [sheet, file] of [
-  [network, networkFile],
-  [physical, physicalFile],
-]) {
-  assertRule(sheet, file, '.empty-state', {
-    'grid-column': '1 / -1',
-    'justify-self': 'center',
-    width: '100%',
-    'white-space': 'normal',
-    'text-align': 'center',
-  })
-}
+assertRule(physical, physicalFile, '.empty-state', {
+  'grid-column': '1 / -1',
+  'justify-self': 'center',
+  width: '100%',
+  'white-space': 'normal',
+  'text-align': 'center',
+})
+assertRule(network, networkFile, 'tr.empty-row', {
+  'grid-template-columns': 'minmax(0, 1fr)',
+})
+assertRule(network, networkFile, '.empty-row > td.empty-state', {
+  'grid-area': '1 / 1 / auto / -1',
+  'justify-self': 'stretch',
+  width: 'auto',
+  margin: '0',
+  'white-space': 'normal',
+  'text-align': 'center',
+})
 
 for (const [sheet, file, columns] of [
   [network, networkFile, 'auto minmax(0, 1fr) minmax(7rem, 45%) auto'],
@@ -562,9 +593,13 @@ assertSource(historyFile, [
 ])
 assertSource(disableDialogFile, [
   /tuiCheckbox/,
-  /['"]Also permanently delete automatic backup checkpoints['"]/,
+  /['"]Automatic backups will stop\. Manual backups will not be deleted\.['"]/,
+  /['"]Delete automatic backups and schedules['"]/,
   /deleteCheckpoints:\s*this\.deleteCheckpoints/,
-  /['"]Turn off and remove automatic backups['"]/,
+  /['"]Turn off and delete['"]/,
+])
+assertNotSource(disableDialogFile, [
+  /['"]Turning off pauses schedules\. Deleting checkpoints is optional and never deletes manual backups\.['"]/,
   /['"]Selecting checkpoint deletion also removes automatic schedules, allowing unused backup locations to be forgotten\.['"]/,
 ])
 assertNotSource(manualPageFile, [/'Last Backup'/, /<backup-navigation/])
@@ -589,7 +624,8 @@ assertSource(networkFile, [
   /\['Status', 'Name', 'Location', null\]/,
   /class="name"[\s\S]{0,180}class="location"/,
   /locationName\(target\.entry\)/,
-  /class="empty-state"[\s\S]{0,120}['"]No network folders['"]\s*\|\s*i18n/,
+  /class="empty-state"[\s\S]{0,180}class="empty-label"[\s\S]{0,80}['"]No network folders['"]\s*\|\s*i18n/,
+  /class="empty-row"/,
 ])
 assertSource(physicalFile, [
   /\['Status', 'Name', 'Capacity', 'Location', null\]/,

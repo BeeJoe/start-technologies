@@ -1019,5 +1019,6 @@ export default {
   1126: 'Pausar y eliminar',
   1127: 'Pausar copias de seguridad automáticas',
   1128: 'No hay carpetas de red',
-  1129: 'Al eliminar los puntos de copia también se eliminan las programaciones automáticas, lo que permite olvidar las ubicaciones de copia sin usar.',
+  1129: 'Las copias de seguridad automáticas se detendrán. Las copias manuales no se eliminarán.',
+  1130: 'Eliminar copias de seguridad automáticas y programaciones',
 } satisfies i18n
