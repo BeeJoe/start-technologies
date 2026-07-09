@@ -6,6 +6,7 @@ use ts_rs::TS;
 
 use crate::PackageId;
 use crate::context::CliContext;
+use crate::util::serde::HandlerExtSerde;
 #[allow(unused_imports)]
 use crate::prelude::*;
 
@@ -66,6 +67,13 @@ pub fn backup<C: Context>() -> ParentHandler<C> {
         .subcommand(
             "target",
             target::target::<C>().with_about("about.commands-backup-target"),
+        )
+        .subcommand(
+            "targets",
+            from_fn_async(target::list)
+                .with_display_serializable()
+                .with_about("about.list-existing-backup-targets")
+                .with_call_remote::<CliContext>(),
         )
         .subcommand("job", scheduled::job::<C>())
         .subcommand("activity", scheduled::activity::<C>())

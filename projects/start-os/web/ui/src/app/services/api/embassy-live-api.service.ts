@@ -464,7 +464,7 @@ export class LiveApiService extends ApiService {
   async getBackupTargets(params: {}): Promise<{
     [id: string]: T.BackupTarget
   }> {
-    return this.rpcRequest({ method: 'backup.target.list', params })
+    return this.rpcRequest({ method: 'backup.targets', params })
   }
 
   async addBackupTarget(
