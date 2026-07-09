@@ -1034,5 +1034,5 @@ export default {
   1127: 'Wstrzymaj automatyczne kopie zapasowe',
   1128: 'Brak folderów sieciowych',
   1129: 'Automatyczne kopie zapasowe zostaną zatrzymane. Ręczne kopie zapasowe nie zostaną usunięte.',
-  1130: 'Usuń automatyczne kopie zapasowe i harmonogramy',
+  1130: 'Usuń automatyczne kopie zapasowe',
 } satisfies i18n

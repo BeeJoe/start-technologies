@@ -29,7 +29,7 @@ import { BackupStatusComponent } from './status.component'
             <span [backupStatus]="target.hasAnyBackup" [physical]="true"></span>
           </td>
           <td class="name">{{ target.entry.logicalname }}</td>
-          <td>{{ driveName(target.entry) }}</td>
+          <td class="location">{{ driveName(target.entry) }}</td>
           <td>{{ formatCapacity(target.entry.capacity) }}</td>
           <td>
             @if (target.entry.available !== null) {
@@ -100,7 +100,8 @@ import { BackupStatusComponent } from './status.component'
       text-align: right;
     }
 
-    .name {
+    .name,
+    .location {
       justify-self: start;
       text-align: left;
     }

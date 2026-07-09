@@ -1034,5 +1034,5 @@ export default {
   1127: 'Automatische Sicherungen pausieren',
   1128: 'Keine Netzwerkordner',
   1129: 'Automatische Sicherungen werden gestoppt. Manuelle Sicherungen werden nicht gelöscht.',
-  1130: 'Automatische Sicherungen und Zeitpläne löschen',
+  1130: 'Automatische Sicherungen löschen',
 } satisfies i18n

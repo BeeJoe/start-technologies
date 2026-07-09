@@ -1034,5 +1034,5 @@ export default {
   1127: 'Mettre en pause les sauvegardes automatiques',
   1128: 'Aucun dossier réseau',
   1129: 'Les sauvegardes automatiques seront arrêtées. Les sauvegardes manuelles ne seront pas supprimées.',
-  1130: 'Supprimer les sauvegardes et planifications automatiques',
+  1130: 'Supprimer les sauvegardes automatiques',
 } satisfies i18n

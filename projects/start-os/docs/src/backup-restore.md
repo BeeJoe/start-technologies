@@ -16,7 +16,8 @@ This option should only be necessary if you accidentally uninstall a service.
     checkpoint for each service by default; use its checkpoint menu to choose a
     different manual or automatic version.
 1.  Click "Restore Selected". You may leave the Backups page while the restore
-    continues and return to check its progress.
+    continues, click the progress card to return to the main Services list, and
+    return to **Backup history** later to review the result.
 
 > [!TIP]
 > If you're restoring a backup taken from a different system architecture (x86, ARM, RISC-V) to the one you're restoring to, you may need to _reinstall_ services (not uninstall, since you will lose your data) from the marketplace after the restore completes to avoid running them more slowly in emulation.

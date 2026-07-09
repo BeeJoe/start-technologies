@@ -31,7 +31,7 @@ export interface DisableAutomaticDecision {
       <input tuiCheckbox type="checkbox" [(ngModel)]="deleteCheckpoints" />
       <span tuiTitle>
         <b>
-          {{ 'Delete automatic backups and schedules' | i18n }}
+          {{ 'Delete automatic backups' | i18n }}
         </b>
         <span tuiSubtitle>
           {{ context.data.checkpointCount }} {{ 'Checkpoints' | i18n }} ·
@@ -53,7 +53,7 @@ export interface DisableAutomaticDecision {
         {{
           (deleteCheckpoints
             ? 'Turn off and delete'
-            : 'Pause automatic backups'
+            : 'Turn off automatic backups'
           ) | i18n
         }}
       </button>

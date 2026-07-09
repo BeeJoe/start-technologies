@@ -1,6 +1,7 @@
 import { Component, computed, inject, OnInit, signal } from '@angular/core'
 import { toSignal } from '@angular/core/rxjs-interop'
 import { FormsModule } from '@angular/forms'
+import { Router } from '@angular/router'
 import {
   DialogService,
   DocsLinkDirective,
@@ -70,11 +71,19 @@ const WEEKDAYS = [
     </header>
 
     @if (manualRunning()) {
-      <section class="progress-prominent">
+      <section
+        class="progress-prominent"
+        role="button"
+        tabindex="0"
+        [attr.aria-label]="'Services' | i18n"
+        (click)="goToServices()"
+        (keydown.enter)="goToServices()"
+        (keydown.space)="$event.preventDefault(); goToServices()"
+      >
         <section backupProgress></section>
       </section>
     } @else if (operationActivity(); as activity) {
-      <section class="operation" tuiCell>
+      <button type="button" class="operation" tuiCell (click)="goToServices()">
         <tui-icon icon="@tui.loader-circle" />
         <span tuiTitle>
           <b>{{ operationTitle(activity) | i18n }}</b>
@@ -83,7 +92,7 @@ const WEEKDAYS = [
           </span>
         </span>
         <span tuiBadge appearance="info">{{ 'In progress' | i18n }}</span>
-      </section>
+      </button>
     }
 
     <section
@@ -437,10 +446,13 @@ const WEEKDAYS = [
       position: static;
       z-index: 1;
       width: 100%;
+      color: inherit;
+      font: inherit;
       background: color-mix(in hsl, var(--start9-base-1) 50%, transparent);
       border: 1px solid var(--tui-border-normal);
       border-radius: var(--tui-radius-l);
       box-sizing: border-box;
+      cursor: pointer;
     }
 
     .operation > tui-icon {
@@ -458,12 +470,22 @@ const WEEKDAYS = [
     .progress-prominent {
       position: static;
       z-index: 1;
+      display: block;
       width: 100%;
       padding: 0.75rem;
+      color: inherit;
+      font: inherit;
+      text-align: left;
       background: color-mix(in hsl, var(--start9-base-1) 50%, transparent);
       border: 1px solid var(--tui-border-normal);
       border-radius: var(--tui-radius-l);
       box-sizing: border-box;
+      cursor: pointer;
+    }
+
+    .operation:hover,
+    .progress-prominent:hover {
+      border-color: var(--tui-border-hover);
     }
 
     @keyframes backup-progress-spin {
@@ -557,6 +579,7 @@ export default class BackupsComponent implements OnInit {
   private readonly errors = inject(ErrorService)
   private readonly backupService = inject(BackupService)
   private readonly os = inject(OSService)
+  private readonly router = inject(Router)
   private readonly state = toSignal(
     inject<PatchDB<DataModel>>(PatchDB).watch$('scheduledBackups'),
   )
@@ -608,6 +631,10 @@ export default class BackupsComponent implements OnInit {
 
   openLocations() {
     this.expanded.set('locations')
+  }
+
+  goToServices() {
+    void this.router.navigate(['/services'])
   }
 
   automaticSummary(): string {

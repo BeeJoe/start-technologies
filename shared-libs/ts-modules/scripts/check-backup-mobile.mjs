@@ -594,9 +594,10 @@ assertSource(historyFile, [
 assertSource(disableDialogFile, [
   /tuiCheckbox/,
   /['"]Automatic backups will stop\. Manual backups will not be deleted\.['"]/,
-  /['"]Delete automatic backups and schedules['"]/,
+  /['"]Delete automatic backups['"]/,
   /deleteCheckpoints:\s*this\.deleteCheckpoints/,
   /['"]Turn off and delete['"]/,
+  /['"]Turn off automatic backups['"]/,
 ])
 assertNotSource(disableDialogFile, [
   /['"]Turning off pauses schedules\. Deleting checkpoints is optional and never deletes manual backups\.['"]/,
@@ -621,14 +622,13 @@ assertSource(homeFile, [
   /openLocations\(\)[\s\S]{0,100}this\.expanded\.set\('locations'\)/,
 ])
 assertSource(networkFile, [
-  /\['Status', 'Name', 'Location', null\]/,
-  /class="name"[\s\S]{0,180}class="location"/,
-  /locationName\(target\.entry\)/,
+  /\['Status', 'Name', 'Hostname', 'Path', 'Free', null\]/,
+  /class="name"[\s\S]{0,180}class="hostname"[\s\S]{0,180}class="location"[\s\S]{0,180}class="free"/,
   /class="empty-state"[\s\S]{0,180}class="empty-label"[\s\S]{0,80}['"]No network folders['"]\s*\|\s*i18n/,
   /class="empty-row"/,
 ])
 assertSource(physicalFile, [
-  /\['Status', 'Name', 'Capacity', 'Location', null\]/,
+  /\['Status', 'Logicalname', 'Name', 'Capacity', 'Free', null\]/,
   /class="name"[\s\S]{0,180}class="location"/,
   /class="empty-state"/,
   /&:first-child:not\(\.empty-state\)/,

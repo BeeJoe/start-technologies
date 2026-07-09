@@ -29,7 +29,7 @@ import { DataModel } from 'src/app/services/patch-db/data-model'
       @let pkg = pkgs()?.[phase.name];
       @let leaf = phase.progress | leafProgress;
       @let percent = leaf | installingProgress;
-      <div tuiCell>
+      <div tuiCell class="progress-row">
         <span tuiAvatar appearance="action-grayscale" [round]="false">
           @if (pkg) {
             <img alt="" [src]="pkg.icon" />
@@ -38,31 +38,33 @@ import { DataModel } from 'src/app/services/patch-db/data-model'
           }
         </span>
         <span tuiTitle>
-          <span class="title">
-            <span tuiFade>
-              {{ pkg ? (pkg | toManifest).title : ($any(phase.name) | i18n) }}
-            </span>
-            @if (leaf === true) {
-              <tui-icon icon="@tui.check" class="g-positive" />
-              {{ 'complete' | i18n }}
-            } @else if (leaf === null) {
-              <tui-icon icon="@tui.clock" />
-              {{ 'waiting' | i18n }}
-            } @else if (leaf === false) {
-              <tui-loader size="s" />
-              {{ 'backing up' | i18n }}
-            } @else {
-              <tui-loader size="s" />
-              {{ percent }}%
-            }
+          <span tuiFade>
+            {{ pkg ? (pkg | toManifest).title : ($any(phase.name) | i18n) }}
           </span>
+        </span>
+        <span class="phase-status">
+          @if (leaf === true) {
+            <tui-icon icon="@tui.check" class="g-positive" />
+            {{ 'complete' | i18n }}
+          } @else if (leaf === null) {
+            <tui-icon icon="@tui.clock" />
+            {{ 'waiting' | i18n }}
+          } @else if (leaf === false) {
+            <tui-loader size="s" />
+            {{ 'backing up' | i18n }}
+          } @else {
+            <tui-loader size="s" />
+            {{ percent }}%
+          }
         </span>
       </div>
     }
   `,
   styles: `
     :host {
-      max-width: 36rem;
+      display: grid;
+      gap: 0.5rem;
+      width: 100%;
       text-transform: capitalize;
     }
 
@@ -83,7 +85,7 @@ import { DataModel } from 'src/app/services/patch-db/data-model'
     }
 
     .overall-loader,
-    .title tui-loader {
+    .phase-status tui-loader {
       color: var(--tui-text-action);
     }
 
@@ -93,6 +95,7 @@ import { DataModel } from 'src/app/services/patch-db/data-model'
 
     [tuiTitle] {
       flex: 1;
+      min-width: 0;
       white-space: nowrap;
     }
 
@@ -100,12 +103,22 @@ import { DataModel } from 'src/app/services/patch-db/data-model'
       margin-inline-end: auto;
     }
 
-    .title {
-      display: flex;
-      flex-wrap: wrap;
+    .progress-row {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) minmax(4.75rem, auto);
+      column-gap: 0.75rem;
       align-items: center;
-      gap: 0.25rem;
       min-width: 0;
+    }
+
+    .phase-status {
+      display: inline-flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 0.25rem;
+      min-width: 4.75rem;
+      text-align: right;
+      white-space: nowrap;
     }
   `,
   imports: [

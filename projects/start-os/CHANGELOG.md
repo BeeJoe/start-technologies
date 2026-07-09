@@ -29,15 +29,23 @@ file tracks notable changes since the move to the monorepo.
   Empty network-folder content is centered inside its frame. Location choices
   also share the action button's centered width and keep long location names
   horizontal on phones, including automatic-backup setup. The overall progress
-  spinner and percentage align with each service's status.
+  spinner and percentage align with each service's status, and service progress
+  is right-aligned within the card.
   Manual and custom automatic runs no longer force-scroll or place a blocking
   notification over navigation; their blue progress indicator stays at the top
-  of the page and scrolls out of view normally.
+  of the page, scrolls out of view normally, links back to the main Services
+  list, and disappears when the operation completes or fails.
 - **Backup-location removal.** Choosing to delete automatic checkpoints while
   turning automatic backups off now also removes the stopped schedule
   definitions. Unused network backup locations can then be forgotten, and
   turning automatic backups on again starts with a clean setup. The confirmation
   dialog now states this choice more directly.
+- **Legacy backup target loading.** Backup target discovery no longer waits
+  indefinitely while measuring an old pre-v2 `StartOSBackups` folder on a slow
+  network share. StartOS now checks only whether this server's old backup folder
+  exists, reports free space separately, and still loads the backup sections so
+  the user can delete the old backup or choose another location when space is
+  tight.
 - **Interrupted backup progress.** StartOS now marks persisted in-progress
   backup activity as interrupted during startup, so an operation interrupted by
   a restart no longer leaves the backup progress card visible while idle.

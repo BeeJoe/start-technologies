@@ -30,7 +30,7 @@ Back up your server's data to a physical drive or a network folder.
 1. Backups taken from a specific system architecture (x86, ARM, RISC-V) are backed up for just that architecture. If restored to another architecture, they will likely need to be reinstalled to run efficiently.
 
 1. The backup format changed. New backups are written to a `StartOSBackupsV2` folder on the target, replacing the older `StartOSBackups` (V1) format. StartOS helps you clean up the obsolete V1 data:
-   - When you select a target that still holds a V1 backup for this server, StartOS warns you before backing up and shows how much free space remains on the target (see below).
+   - When you select a target that still holds a V1 backup for this server, StartOS warns you before backing up and shows how much free space remains on the target (see below). StartOS checks for the old folder without measuring all of its contents, so slow network folders do not prevent the backup page from loading.
    - After a backup completes, if the target still contains this server's V1 backup, StartOS raises a notification reminding you it is no longer needed.
    - On the `Create Backup` page, any target holding this server's V1 backup shows a **Delete old backup** button — whether or not a new (V2) backup exists yet. After you confirm, StartOS removes this server's old V1 backup to reclaim space; your current `StartOSBackupsV2` backup — and any backups belonging to other servers that share the target — are untouched. If this server has no current (V2) backup on that target, StartOS asks for an extra confirmation first, since deleting the old backup would leave this server with no backup there.
 
@@ -65,22 +65,23 @@ one.
 - **Backup history** shows completed manual backups, automatic backups, and
   restores.
 
-When a backup starts, its flat, single-panel progress display appears at the top
-of the page without moving your current view or blocking navigation. Scroll to
-the top to see the blue progress indicator and percentage, or leave the page
-while the operation continues. Completed operations remain available in
-**Backup history** instead of appearing as a separate completion message on the
-Backups page. If StartOS restarts during a backup, the interrupted activity is
-marked failed during startup and the progress card is hidden once the server is
-idle.
+When a backup or restore starts, its flat, single-panel progress display appears
+at the top of the page without moving your current view or blocking navigation.
+Scroll to the top to see the service status column, progress spinner, and
+percentage, click the progress card to return to the main Services list, or
+leave the page while the operation continues. Completed or failed operations
+remain available in **Backup history** instead of leaving a stale progress card
+on the Backups page. If StartOS restarts during a backup, the interrupted
+activity is marked failed during startup and the progress card is hidden once
+the server is idle.
 
 Turning off automatic backups keeps the schedule settings and existing
 checkpoints by default. When you switch automatic backups off, the confirmation
-dialog offers **Delete automatic backups and schedules** and changes the
-confirmation action to **Turn off and delete** when selected. That option
-deletes the automatic checkpoints and schedule definitions, returning the card
-to first-time setup and allowing an unused network backup location to be
-forgotten. Manual checkpoints are not deleted.
+dialog offers **Delete automatic backups** and changes the confirmation action
+to **Turn off and delete** when selected. That option deletes the automatic
+checkpoints and schedule definitions, returning the card to first-time setup and
+allowing an unused network backup location to be forgotten. Manual checkpoints
+are not deleted.
 
 ## Automatic Backups
 

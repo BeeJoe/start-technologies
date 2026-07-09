@@ -183,7 +183,8 @@ const ERROR =
     }
 
     .empty-state app-placeholder {
-      width: min(100%, 16rem);
+      width: 100%;
+      max-width: 16rem;
       margin-inline: auto;
       box-sizing: border-box;
       padding: 0;
