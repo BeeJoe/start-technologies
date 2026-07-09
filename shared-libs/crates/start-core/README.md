@@ -11,14 +11,14 @@ thin wrappers that select which entrypoints to enable from `start_core::bins`.
 
 This crate lives at `shared-libs/crates/start-core` and is the lib that all six product bins depend on:
 
-| Binary | Defined in | Notes |
-|--------|-----------|-------|
-| `startbox` / `startd` | `projects/start-os/src/bin/startbox.rs` | Main OS daemon |
-| `start-container` | `projects/start-os/src/bin/start-container.rs` | Runs inside package LXC containers |
-| `start-cli` | `projects/start-cli/src/main.rs` | CLI over the daemon's JSON-RPC API |
-| `registrybox` | `projects/start-registry/src/main.rs` | Package registry server |
-| `tunnelbox` | `projects/start-tunnel/src/main.rs` | StartTunnel VPN/forwarding server |
-| `startwrt` | `projects/start-wrt/backend/ctrl/src/bin/startwrt.rs` | StartWRT router OS daemon+CLI |
+| Binary                | Defined in                                            | Notes                              |
+| --------------------- | ----------------------------------------------------- | ---------------------------------- |
+| `startbox` / `startd` | `projects/start-os/src/bin/startbox.rs`               | Main OS daemon                     |
+| `start-container`     | `projects/start-os/src/bin/start-container.rs`        | Runs inside package LXC containers |
+| `start-cli`           | `projects/start-cli/src/main.rs`                      | CLI over the daemon's JSON-RPC API |
+| `registrybox`         | `projects/start-registry/src/main.rs`                 | Package registry server            |
+| `tunnelbox`           | `projects/start-tunnel/src/main.rs`                   | StartTunnel VPN/forwarding server  |
+| `startwrt`            | `projects/start-wrt/backend/ctrl/src/bin/startwrt.rs` | StartWRT router OS daemon+CLI      |
 
 Each wrapper builds a `start_core::bins::MultiExecutable`, enables the entrypoints it wants
 (`enable_startd`, `enable_start_cli`, `enable_start_container`, `enable_start_registry`,
@@ -38,8 +38,8 @@ Run from the repo root (the single Cargo workspace):
 
 ```bash
 cargo check -p start-core          # type-check the library
-make test-core                     # run the test suite (wraps run-tests.sh)
-make format-core                   # nightly rustfmt on this crate
+make start-core-test                     # run the test suite (wraps run-tests.sh)
+make start-core-format                   # nightly rustfmt on this crate
 ```
 
 To build a product binary, build its crate, e.g. `cargo build -p start-os --bin startbox`.

@@ -5,9 +5,9 @@ import {
   ErrorService,
   i18nPipe,
   StartOSDiskInfo,
+  TaskService,
 } from '@start9labs/shared'
 import { TuiButton } from '@taiga-ui/core'
-import { TuiNotificationMiddleService } from '@taiga-ui/kit'
 import { injectContext, PolymorpheusComponent } from '@taiga-ui/polymorpheus'
 import { TableComponent } from 'src/app/routes/portal/components/table.component'
 import { ApiService } from 'src/app/services/api/embassy-api.service'
@@ -66,7 +66,7 @@ import { RECOVER } from './recover.component'
 })
 export class BackupRestoreComponent implements OnInit {
   private readonly dialog = inject(DialogService)
-  private readonly loader = inject(TuiNotificationMiddleService)
+  private readonly tasks = inject(TaskService)
   private readonly api = inject(ApiService)
   private readonly errorService = inject(ErrorService)
   private readonly context = injectContext<BackupContext>()
@@ -94,17 +94,12 @@ export class BackupRestoreComponent implements OnInit {
         },
       })
       .pipe(verifyPassword(passwordHash, e => this.errorService.handleError(e)))
-      .subscribe(async password => await this.restore(serverId, password))
-  }
-
-  private async restore(serverId: string, password: string): Promise<void> {
-    const loader = this.loader.open('Decrypting drive').subscribe()
-    const params = { targetId: this.target.id, serverId, password }
-
-    try {
-      const [backupInfo, scheduledHistories] = await Promise.all([
-        this.api.getBackupInfo(params).catch(() => ({
-          version: '',
+      .subscribe(password =>
+        this.tasks.run(async () => {
+          const params = { targetId: this.target.id, serverId, password }
+          const [backupInfo, scheduledHistories] = await Promise.all([
+            this.api.getBackupInfo(params).catch(() => ({
+              version: '',
           timestamp: null,
           packageBackups: {},
         })),
@@ -114,10 +109,10 @@ export class BackupRestoreComponent implements OnInit {
             serverId,
             password,
           })
-          .catch(() => []),
-      ])
-      if (
-        !Object.keys(backupInfo.packageBackups).length &&
+              .catch(() => []),
+          ])
+          if (
+            !Object.keys(backupInfo.packageBackups).length &&
         !scheduledHistories.length
       ) {
         throw new Error('No restorable checkpoints were found')
@@ -130,13 +125,12 @@ export class BackupRestoreComponent implements OnInit {
         password,
       }
 
-      this.context.$implicit.complete()
-      this.dialog
-        .openComponent(RECOVER, { label: 'Select services', data })
-        .subscribe()
-    } finally {
-      loader.unsubscribe()
-    }
+          this.context.$implicit.complete()
+          this.dialog
+            .openComponent(RECOVER, { label: 'Select services', data })
+            .subscribe()
+        }, 'Decrypting drive'),
+      )
   }
 }
 

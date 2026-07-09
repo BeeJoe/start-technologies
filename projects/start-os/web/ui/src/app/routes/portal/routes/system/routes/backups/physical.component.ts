@@ -1,6 +1,6 @@
 import { Component, inject, output } from '@angular/core'
 import { ActivatedRoute } from '@angular/router'
-import { DialogService, i18nPipe } from '@start9labs/shared'
+import { ConvertBytesPipe, DialogService, i18nPipe } from '@start9labs/shared'
 import { TuiButton } from '@taiga-ui/core'
 import { PlaceholderComponent } from 'src/app/routes/portal/components/placeholder.component'
 import { TableComponent } from 'src/app/routes/portal/components/table.component'
@@ -16,7 +16,9 @@ import { BackupStatusComponent } from './status.component'
       {{ 'Physical Drives' | i18n }}
     </header>
 
-    <table [appTable]="['Status', 'Name', 'Capacity', 'Location', null]">
+    <table
+      [appTable]="['Status', 'Logicalname', 'Name', 'Capacity', 'Free', null]"
+    >
       @for (target of service.drives(); track $index) {
         <tr
           tabindex="0"
@@ -26,22 +28,28 @@ import { BackupStatusComponent } from './status.component'
           <td>
             <span [backupStatus]="target.hasAnyBackup" [physical]="true"></span>
           </td>
-          <td class="name">{{ driveName(target.entry) }}</td>
+          <td class="name">{{ target.entry.logicalname }}</td>
+          <td>{{ driveName(target.entry) }}</td>
           <td>{{ formatCapacity(target.entry.capacity) }}</td>
-          <td class="location">{{ target.entry.logicalname }}</td>
-          <td (click)="$event.stopPropagation()">
-            @if (
-              type === 'create' &&
-              target.hasAnyBackup &&
-              target.entry.legacyBackup
-            ) {
-              <backup-legacy-warning [id]="target.id" />
+          <td>
+            @if (target.entry.available !== null) {
+              {{ target.entry.available | convertBytes }}
+            } @else {
+              &mdash;
+            }
+          </td>
+          <td class="actions">
+            @if (type === 'create' && target.entry.legacyBackup) {
+              <backup-legacy-warning
+                [id]="target.id"
+                [hasCurrentBackup]="target.hasCurrentBackup"
+              />
             }
           </td>
         </tr>
       } @empty {
-        <tr>
-          <td class="empty-state" colspan="5">
+        <tr class="empty-row">
+          <td class="empty-state" colspan="6">
             <app-placeholder icon="@tui.save-off">
               {{ 'No drives detected' | i18n }}
               <button
@@ -85,7 +93,8 @@ import { BackupStatusComponent } from './status.component'
       width: 11rem;
     }
 
-    td:last-child {
+    td:last-child,
+    .actions {
       width: 3.5rem;
       white-space: nowrap;
       text-align: right;
@@ -96,11 +105,17 @@ import { BackupStatusComponent } from './status.component'
       text-align: left;
     }
 
-    .location {
-      width: 10rem;
-      justify-self: start;
-      overflow-wrap: anywhere;
-      text-align: left;
+    .empty-state {
+      display: grid;
+      place-items: center;
+      min-height: 7rem;
+      text-align: center;
+    }
+
+    .empty-state app-placeholder {
+      width: min(100%, 16rem);
+      margin-inline: auto;
+      box-sizing: border-box;
     }
 
     :host-context(tui-root._mobile) {
@@ -148,15 +163,10 @@ import { BackupStatusComponent } from './status.component'
         text-align: left;
       }
 
-      .location {
-        grid-area: 1 / 3 / 3 / 4;
-        justify-self: end;
-        max-width: 100%;
-        text-align: right;
-      }
-
       .empty-state {
+        display: grid;
         grid-column: 1 / -1;
+        place-items: center;
         justify-self: center;
         width: 100%;
         white-space: normal;
@@ -171,6 +181,7 @@ import { BackupStatusComponent } from './status.component'
     BackupStatusComponent,
     BackupLegacyWarningComponent,
     TableComponent,
+    ConvertBytesPipe,
     i18nPipe,
   ],
 })

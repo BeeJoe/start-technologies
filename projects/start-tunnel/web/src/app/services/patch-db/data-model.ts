@@ -2,7 +2,12 @@ import { T } from '@start9labs/start-core'
 
 export type TunnelData = Pick<
   T.Tunnel.TunnelDatabase,
-  'wg' | 'portForwards' | 'gateways' | 'dnsRecords'
+  | 'wg'
+  | 'portForwards'
+  | 'pinholes6'
+  | 'gateways'
+  | 'dnsRecords'
+  | 'httpRedirects'
 >
 
 export const mockTunnelData: TunnelData = {
@@ -43,6 +48,7 @@ export const mockTunnelData: TunnelData = {
         },
         dns: { type: 'default' },
         wanIp: '69.1.1.42',
+        ipv6: '2001:db8:59::/64',
       },
     },
   },
@@ -81,6 +87,23 @@ export const mockTunnelData: TunnelData = {
       },
     },
   },
+  pinholes6: {
+    // Client 10.59.0.2's GUA on the subnet's 2001:db8:59::/64 prefix.
+    '[2001:db8:59::a3b:2]:8443': {
+      label: 'Nextcloud',
+      enabled: true,
+      count: 1,
+      internalPort: null,
+      auto: false,
+    },
+    '[2001:db8:59::a3b:2]:443': {
+      label: 'PCP',
+      enabled: true,
+      count: 1,
+      internalPort: null,
+      auto: true,
+    },
+  },
   dnsRecords: [
     {
       name: 'home.example.com',
@@ -94,7 +117,7 @@ export const mockTunnelData: TunnelData = {
     eth0: {
       name: null,
       secure: null,
-      type: null,
+      type: 'inbound-outbound',
       ipInfo: {
         name: 'Wired Connection 1',
         scopeId: 1,
@@ -106,5 +129,8 @@ export const mockTunnelData: TunnelData = {
         dnsServers: [],
       },
     },
+  },
+  httpRedirects: {
+    disabled: [],
   },
 }

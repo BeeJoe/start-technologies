@@ -3,12 +3,7 @@ import { Component, inject } from '@angular/core'
 import { toSignal } from '@angular/core/rxjs-interop'
 import { FormsModule } from '@angular/forms'
 import { Router } from '@angular/router'
-import {
-  DialogService,
-  ErrorService,
-  i18nKey,
-  i18nPipe,
-} from '@start9labs/shared'
+import { i18nKey, i18nPipe, TaskService } from '@start9labs/shared'
 import { Version } from '@start9labs/start-core'
 import { TuiMapperPipe } from '@taiga-ui/cdk'
 import {
@@ -18,10 +13,10 @@ import {
   TuiGroup,
   TuiTitle,
 } from '@taiga-ui/core'
-import { TuiBlock, TuiNotificationMiddleService } from '@taiga-ui/kit'
+import { TuiBlock } from '@taiga-ui/kit'
 import { injectContext, PolymorpheusComponent } from '@taiga-ui/polymorpheus'
 import { PatchDB } from 'patch-db-client'
-import { filter, firstValueFrom, map, take } from 'rxjs'
+import { map, take } from 'rxjs'
 import { ApiService } from 'src/app/services/api/embassy-api.service'
 import { ConfigService } from 'src/app/services/config.service'
 import { DataModel } from 'src/app/services/patch-db/data-model'
@@ -202,10 +197,7 @@ import { RecoverCheckpoint, RecoverData, RecoverOption } from './backup.types'
 export class BackupsRecoverComponent {
   private readonly config = inject(ConfigService)
   private readonly api = inject(ApiService)
-  private readonly loader = inject(TuiNotificationMiddleService)
-  private readonly errorService = inject(ErrorService)
-  private readonly dialog = inject(DialogService)
-  private readonly i18n = inject(i18nPipe)
+  private readonly tasks = inject(TaskService)
   private readonly router = inject(Router)
   private readonly context =
     injectContext<TuiDialogContext<void, RecoverData>>()
@@ -421,24 +413,7 @@ export class BackupsRecoverComponent {
       }),
     )
     const { targetId, serverId, password } = this.context.data
-    const confirmed = await firstValueFrom(
-      this.dialog
-        .openConfirm({
-          label: this.i18n.transform('Restore selected'),
-          size: 's',
-          data: {
-            content: `${selected.map(option => option.title).join(', ')}. ${this.i18n.transform('You can leave this page. Progress will continue.')}`,
-            yes: this.i18n.transform('Restore'),
-            no: this.i18n.transform('Cancel'),
-          },
-        })
-        .pipe(filter(Boolean)),
-      { defaultValue: false },
-    )
-    if (!confirmed) return
-    const loader = this.loader.open('Initializing').subscribe()
-
-    try {
+    void this.tasks.run(async () => {
       await this.api.restoreBackupSelection({
         targetId,
         manualIds: ids,
@@ -448,12 +423,8 @@ export class BackupsRecoverComponent {
       })
 
       this.context.$implicit.complete()
-      this.router.navigate(['/system/backups'])
-    } catch (e: any) {
-      this.errorService.handleError(e)
-    } finally {
-      loader.unsubscribe()
-    }
+      void this.router.navigate(['services'])
+    }, 'Initializing')
   }
 }
 

@@ -6,7 +6,6 @@ use serde_json::Value;
 use crate::context::CliContext;
 use crate::context::config::ClientConfig;
 use crate::util::logger::LOGGER;
-use crate::version::{Current, VersionT};
 
 fn app() -> CliApp<CliContext, ClientConfig> {
     CliApp::new(
@@ -14,10 +13,7 @@ fn app() -> CliApp<CliContext, ClientConfig> {
         crate::main_api(),
     )
     .mutate_command(super::translate_cli)
-    .mutate_command(|cmd| {
-        cmd.name("start-cli")
-            .version(Current::default().semver().to_string())
-    })
+    .mutate_command(|cmd| cmd.name("start-cli").version(super::product_version()))
 }
 
 pub fn main(args: impl IntoIterator<Item = OsString>) {
@@ -45,7 +41,10 @@ pub fn main(args: impl IntoIterator<Item = OsString>) {
 #[test]
 fn export_manpage_start_cli() {
     // Pages live with the start-cli product; anchored to start-core's crate dir.
-    let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../../../projects/start-cli/man");
+    let dir = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../../projects/start-cli/man"
+    );
     std::fs::create_dir_all(dir).unwrap();
     clap_mangen::generate_to(app().into_command(), dir).unwrap();
 }

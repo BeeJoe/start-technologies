@@ -46,48 +46,56 @@ on:
       - master
       - next/*
     paths:
-      - "projects/start-os/**"
-      - "shared-libs/**"
-      - "projects/start-sdk/**"
-      - "Cargo.toml"
-      - "Cargo.lock"
-      - "angular.json"
-      - "package.json"
-      - "package-lock.json"
-      - "tsconfig.json"
-      - "tsconfig.lib.json"
-      - "build/**"
-      - "debian/**"
-      - "apt/**"
-      - ".github/workflows/startos-iso.yaml"
-      - ".github/actions/setup-build/**"
+      - 'projects/start-os/**'
+      - 'shared-libs/**'
+      - 'projects/start-sdk/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'angular.json'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'tsconfig.json'
+      - 'tsconfig.lib.json'
+      - 'build/**'
+      - 'debian/**'
+      - 'apt/**'
+      - '.github/workflows/startos-iso.yaml'
+      - '.github/actions/setup-build/**'
+      # Doc-only edits under the allowlisted project trees (e.g.
+      # projects/start-os/docs/**) shouldn't trigger a build.
+      - '!**/*.md'
   pull_request:
     branches:
       - master
       - next/*
     paths:
-      - "projects/start-os/**"
-      - "shared-libs/**"
-      - "projects/start-sdk/**"
-      - "Cargo.toml"
-      - "Cargo.lock"
-      - "angular.json"
-      - "package.json"
-      - "package-lock.json"
-      - "tsconfig.json"
-      - "tsconfig.lib.json"
-      - "build/**"
-      - "debian/**"
-      - "apt/**"
-      - ".github/workflows/startos-iso.yaml"
-      - ".github/actions/setup-build/**"
+      - 'projects/start-os/**'
+      - 'shared-libs/**'
+      - 'projects/start-sdk/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'angular.json'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'tsconfig.json'
+      - 'tsconfig.lib.json'
+      - 'build/**'
+      - 'debian/**'
+      - 'apt/**'
+      - '.github/workflows/startos-iso.yaml'
+      - '.github/actions/setup-build/**'
+      # Doc-only edits under the allowlisted project trees (e.g.
+      # projects/start-os/docs/**) shouldn't trigger a build.
+      - '!**/*.md'
 
+# The group is scoped by event so a master push can't cancel an in-flight
+# dispatched release build; dispatches queue behind each other, never cancel.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
 
 env:
-  NODEJS_VERSION: "24.17.0"
+  NODEJS_VERSION: '24.17.0'
   ENVIRONMENT: '${{ fromJson(format(''["{0}", ""]'', github.event.inputs.environment || ''dev''))[github.event.inputs.environment == ''NONE''] }}'
 
 jobs:
@@ -135,14 +143,10 @@ jobs:
         if: ${{ github.event.inputs.runner == 'fast' }}
         run: sudo mount -t tmpfs tmpfs .
       - uses: actions/checkout@v6
-        with:
-          # The repo's only submodule (projects/start-wrt/openwrt) is multi-GB and only
-          # the start-wrt image build needs it — never clone it here.
-          submodules: false
       - uses: ./.github/actions/setup-build
         with:
           nodejs-version: ${{ env.NODEJS_VERSION }}
-          setup-python: "true"
+          setup-python: 'true'
 
       - name: Make
         run: make ARCH=${{ matrix.arch }} compiled-${{ matrix.arch }}.tar
@@ -155,9 +159,46 @@ jobs:
           name: compiled-${{ matrix.arch }}.tar
           path: compiled-${{ matrix.arch }}.tar
           retention-days: 1
+
+  # On pull requests, only build the (expensive, ~2h with emulated riscv) image
+  # matrix when the change actually affects image assembly — packaging, image
+  # recipe, systemd units, apt, or shared build infra. Pure code/web/docs PRs are
+  # already covered by `compile` (the binaries) and the Automated Tests workflow,
+  # so they skip images here and get full image coverage on the push to master.
+  # On push/dispatch the guard below is bypassed and images always build.
+  changes:
+    name: Detect image-affecting changes
+    if: github.event_name == 'pull_request' && github.event.pull_request.draft != true
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    outputs:
+      image: ${{ steps.filter.outputs.image }}
+    steps:
+      - name: Check changed paths
+        id: filter
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          files="$(gh api --paginate \
+            "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files" \
+            --jq '.[].filename')"
+          matched="$(printf '%s\n' "$files" | grep -E '^(build/|debian/|apt/|projects/start-os/build/|projects/start-os/debian/|projects/start-os/[^/]+\.(service|slice)$|\.github/workflows/startos-iso\.yaml$|\.github/actions/setup-build/)' || true)"
+          if [ -n "$matched" ]; then
+            echo "Image-affecting files changed:"; printf '  %s\n' "$matched"
+            echo "image=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No image-affecting files changed; skipping image build on this PR."
+            echo "image=false" >> "$GITHUB_OUTPUT"
+          fi
+
   image:
     name: Build Image
-    needs: [compile]
+    needs: [compile, changes]
+    # Build on push/dispatch always; on PRs only when packaging/image inputs changed.
+    if: >-
+      !cancelled() && needs.compile.result == 'success'
+      && (github.event_name != 'pull_request' || needs.changes.outputs.image == 'true')
     strategy:
       fail-fast: false
       matrix:
@@ -248,10 +289,6 @@ jobs:
         uses: docker/setup-qemu-action@v4
 
       - uses: actions/checkout@v6
-        with:
-          # The repo's only submodule (projects/start-wrt/openwrt) is multi-GB and only
-          # the start-wrt image build needs it — never clone it here.
-          submodules: false
 
       - name: Download compiled artifacts
         uses: actions/download-artifact@v8
@@ -285,11 +322,11 @@ jobs:
       - run: git status
 
       - name: Run iso build
-        run: PLATFORM=${{ matrix.platform }} make startos-iso
+        run: PLATFORM=${{ matrix.platform }} make start-os-iso
         if: ${{ matrix.platform != 'raspberrypi' }}
 
       - name: Run img build
-        run: PLATFORM=${{ matrix.platform }} make startos-img
+        run: PLATFORM=${{ matrix.platform }} make start-os-img
         if: ${{ matrix.platform == 'raspberrypi' }}
 
       - uses: actions/upload-artifact@v7
@@ -354,21 +391,21 @@ jobs:
       - name: Download squashfs artifacts
         uses: actions/download-artifact@v8
         with:
-          pattern: "*.squashfs"
+          pattern: '*.squashfs'
           path: artifacts/
           merge-multiple: true
 
       - name: Download ISO artifacts
         uses: actions/download-artifact@v8
         with:
-          pattern: "*.iso"
+          pattern: '*.iso'
           path: artifacts/
           merge-multiple: true
 
       - name: Download IMG artifacts
         uses: actions/download-artifact@v8
         with:
-          pattern: "*.img"
+          pattern: '*.img'
           path: artifacts/
           merge-multiple: true
 

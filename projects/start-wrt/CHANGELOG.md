@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-beta.4]
+
+### Added
+
+- **`--version` flag.** `startwrt --version` now reports the StartWRT version (e.g.
+  `0.1.0-beta.4`); the CLI previously exposed no `--version`.
+
+### Changed
+
+- OpenWrt base upgraded **25.12.4 → 25.12.5** (`r33051-f5dae5ece4`), picking up
+  the upstream stable-branch fixes. All three Start9 build-infra patches apply
+  unchanged, and no upstream path collides with the Start9 overlay.
+
+- The OpenWrt image now builds from **pristine upstream OpenWrt** (the release
+  tarball pinned by sha256 in `build/openwrt-version`) with the Start9 delta
+  applied at build time from in-repo `openwrt-patches/` (3 build-infra patches)
+  and `openwrt-overlay/` (the SpacemiT K1 target + boot packages). The
+  `Start9Labs/openwrt` fork and the monorepo's last git submodule are retired;
+  cloning no longer needs `--recursive`, and the `openwrt/` build workspace
+  contains no git repo at all. The prepared tree is byte-identical to the
+  former fork (verified by git tree hash), so image contents are unchanged.
+
 ### Fixed
 
 - Changing the admin password now enforces the 12-character minimum. The
@@ -63,8 +85,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `openwrt` is now the monorepo's only git submodule; the embedded `start-os`
   submodule was removed.
 - Build orchestration moved from the standalone product `Makefile` to
-  `projects/start-wrt/build.mk` (included by the root `Makefile`): `make startwrt`,
-  `make startwrt-image`, `make startwrt-update`.
+  `projects/start-wrt/build.mk` (included by the root `Makefile`): `make start-wrt`,
+  `make start-wrt-image`, `make start-wrt-update`.
 - The Angular web UI is now a project (`start-wrt`) in the **root Angular workspace**
   instead of a standalone app. It shares the root `package.json`/`node_modules`/
   `tsconfig.json` and builds via `npm run build:wrt` (serve `npm run start:wrt`,
@@ -79,9 +101,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ~875 kB of unused shared code). This also shrinks the other apps' bundles.
 - Restored the release CI that the monorepo migration had dropped, then folded StartWRT
   into the monorepo-wide release tool: `start-wrt.yaml` again has a `deploy` job, but it
-  now *only* uploads the built images to S3 (`s3://startwrt-images`) — the CDN the registry
+  now _only_ uploads the built images to S3 (`s3://startwrt-images`) — the CDN the registry
   serves from. To match `startos-iso.yaml`, it is `workflow_dispatch`-gated on a `deploy:
-  release` input (rather than the old standalone workflow's `v*`-tag push) and reads the
+release` input (rather than the old standalone workflow's `v*`-tag push) and reads the
   version from `backend/ctrl/Cargo.toml` (the standalone workflow read the now-removed
   `web/package.json`). Tagging, cutting the GitHub release, and the registry publishing are
   now driven by the top-level `scripts/manage-release.sh` (a new `wrt` project kind alongside

@@ -48,6 +48,9 @@ import { DataModel } from 'src/app/services/patch-db/data-model'
             } @else if (leaf === null) {
               <tui-icon icon="@tui.clock" />
               {{ 'waiting' | i18n }}
+            } @else if (leaf === false) {
+              <tui-loader size="s" />
+              {{ 'backing up' | i18n }}
             } @else {
               <tui-loader size="s" />
               {{ percent }}%

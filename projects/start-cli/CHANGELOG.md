@@ -11,15 +11,48 @@ or the CLI's externally observable behavior.
 
 ## [Unreleased]
 
+## [1.0.1]
+
+- **`s9pk init-package` initializes a git repository in the new package.** Packages are
+  their own git repos — the template ships a `.gitignore` and GitHub Actions workflows —
+  so `init-package` now runs `git init` in the scaffold. No commit is made; your first
+  commit is yours.
+- **`s9pk pack` no longer requires a committed git repository.** It still stamps the
+  manifest with the repo's commit hash when one exists (suffixed `-modified` if the tree
+  is dirty), but a freshly scaffolded package — a `git init` with no commit yet, or a
+  non-git directory — now builds with the hash simply omitted, instead of failing with
+  `fatal: not a git repository`. The hash appears once you make your first commit. This
+  is what lets a brand-new package build immediately after `init-package`.
+- **`s9pk init-workspace` no longer fails when a `.startos` exists above the target.**
+  A leftover global `~/.startos` (or any enclosing workspace) used to trip a
+  "Cannot create a workspace inside an existing one" guard and block workspace creation
+  anywhere under it. Nesting is now allowed: `init-workspace` just creates the workspace,
+  paying no attention to outer ones. When building, signing, or reading config, start-cli
+  walks up from the current directory and uses the nearest `.startos/`, so a nested
+  workspace transparently overrides an outer one (conceptually a deep merge of every
+  `.startos/` on the path). The one refusal that remains is running **inside a package
+  repo** — a workspace holds package repos; it isn't one. (There is no automatic
+  migration from an older global `~/.startos`; copy `developer.key.pem` to a workspace's
+  `.startos/build-key` yourself to reuse a signing key.)
+- **Better "no workspace" errors when building/signing.** `s9pk pack` (and therefore
+  `make` / `make publish`) needs a workspace signing key; when none is found above the
+  cwd it now explains that packaging happens inside a workspace (which also brings the
+  AI guide) and points to `init-workspace`. If you're **inside a package repo**, the
+  error names the parent directory to run it in (`cd <parent> && start-cli s9pk
+init-workspace`), so an existing package repo is one command away from building. The
+  `init-workspace`-inside-a-package-repo refusal points at the same parent.
+- **`--version` now reports `start-cli`'s own version** (`1.0.1`) rather than the StartOS
+  platform version it was previously wired to.
+
 ## [1.0.0]
 
 - **`package start --force`.** `start-cli package start <id> --force` starts a service
   even if it has an unresolved critical task (the backend gate lives in `start-core`).
 - **Independent versioning.** `start-cli` now carries its own version (starting at
   `1.0.0`) in its `Cargo.toml`, decoupled from the StartOS release line.
-- **Debian package.** `start-cli` is now packaged as a `.deb` (`make cli-deb`), so it
+- **Debian package.** `start-cli` is now packaged as a `.deb` (`make start-cli-deb`), so it
   can be installed and updated via apt. The build version is read from the crate
-  manifest. `make install-cli` now stages the binary into `DESTDIR` for packaging; for
+  manifest. `make start-cli-install` now stages the binary into `DESTDIR` for packaging; for
   a local PATH install run `build-cli.sh --install`.
 
 ## [0.4.0-beta.10]

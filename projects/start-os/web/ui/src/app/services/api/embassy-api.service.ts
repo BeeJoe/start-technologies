@@ -18,11 +18,11 @@ import {
   PkgAddPrivateDomainReq,
   PkgAddPublicDomainReq,
   PkgBindingSetAddressEnabledReq,
-  PkgBindingSetGuaAccessReq,
+  PkgBindingSetGuaWanReq,
   PkgRemovePrivateDomainReq,
   PkgRemovePublicDomainReq,
   ServerBindingSetAddressEnabledReq,
-  ServerBindingSetGuaAccessReq,
+  ServerBindingSetGuaWanReq,
   ServerState,
   WebsocketConfig,
 } from './api.types'
@@ -131,9 +131,13 @@ export abstract class ApiService {
 
   abstract setDns(params: T.SetStaticDnsParams): Promise<null>
 
-  abstract queryDns(params: T.QueryDnsParams): Promise<string | null>
+  abstract queryDns(params: T.QueryDnsParams): Promise<T.QueryDnsRes>
 
   abstract checkPort(params: T.CheckPortParams): Promise<T.CheckPortRes>
+
+  abstract checkPortV6(
+    params: T.CheckPortParams,
+  ): Promise<T.CheckPortV6Res | null>
 
   abstract checkDns(params: T.CheckDnsParams): Promise<CheckDnsRes>
 
@@ -417,13 +421,11 @@ export abstract class ApiService {
     params: PkgBindingSetAddressEnabledReq,
   ): Promise<null>
 
-  abstract serverBindingSetGuaAccess(
-    params: ServerBindingSetGuaAccessReq,
+  abstract serverBindingSetGuaWan(
+    params: ServerBindingSetGuaWanReq,
   ): Promise<null>
 
-  abstract pkgBindingSetGuaAccess(
-    params: PkgBindingSetGuaAccessReq,
-  ): Promise<null>
+  abstract pkgBindingSetGuaWan(params: PkgBindingSetGuaWanReq): Promise<null>
 
   abstract pkgAddPublicDomain(
     params: PkgAddPublicDomainReq,

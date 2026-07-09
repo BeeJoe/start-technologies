@@ -9,7 +9,6 @@ import {
 } from '@angular/core'
 import { ActivatedRoute, RouterLink } from '@angular/router'
 import { DialogService, DocsLinkDirective, i18nPipe } from '@start9labs/shared'
-import { T } from '@start9labs/start-core'
 import { TuiButton, TuiLoader, TuiTitle } from '@taiga-ui/core'
 import { TuiHeader } from '@taiga-ui/layout'
 import { firstValueFrom } from 'rxjs'
@@ -137,7 +136,7 @@ export default class SystemBackupComponent implements OnInit {
     target: MappedBackupTarget<CifsBackupTarget | DiskBackupTarget>,
   ) {
     if (this.type() === 'create') {
-      if (!(await this.confirmLegacy(target.entry.legacyBackup))) return
+      if (!(await this.confirmLegacy(target.entry))) return
 
       this.dialog
         .openComponent(BACKUP, {
@@ -157,14 +156,16 @@ export default class SystemBackupComponent implements OnInit {
     }
   }
 
-  private confirmLegacy(legacy: T.LegacyBackupInfo | null): Promise<boolean> {
-    if (!legacy) return Promise.resolve(true)
+  private confirmLegacy(
+    entry: CifsBackupTarget | DiskBackupTarget,
+  ): Promise<boolean> {
+    if (!entry.legacyBackup) return Promise.resolve(true)
 
     return firstValueFrom(
       this.dialog.openComponent<boolean>(LEGACY_BACKUP, {
         label: 'Important!',
         size: 'm',
-        data: { fits: legacy.size <= legacy.available },
+        data: { available: entry.available },
       }),
       { defaultValue: false },
     )

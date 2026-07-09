@@ -1,9 +1,9 @@
 name: start-wrt
 
-# UNVALIDATED since the monorepo migration — no job has been run yet. The
-# `compile` job (riscv binary + embedded web) should be validated first; the
-# heavy `image` job (OpenWrt) follows; the `deploy` job (S3 upload +
-# beta-registry register) validates last. See projects/start-wrt/CONTRIBUTING.md.
+# CI-UNVALIDATED: the make targets these jobs wrap are proven locally (riscv
+# cross-build, image build, sysupgrade OTA), but no job here has been run yet.
+# Validate `compile` first, then `image` (build-image=true), then `deploy` (S3
+# upload + beta-registry register). See projects/start-wrt/CONTRIBUTING.md.
 
 on:
   workflow_call:
@@ -28,56 +28,62 @@ on:
       - master
       - next/*
     paths:
-      - "projects/start-wrt/**"
-      - "shared-libs/crates/**"
-      - "shared-libs/ts-modules/**"
-      - "Cargo.toml"
-      - "Cargo.lock"
-      - "angular.json"
-      - "package.json"
-      - "package-lock.json"
-      - "tsconfig.json"
-      - "tsconfig.lib.json"
-      - "build/**"
-      - ".github/workflows/start-wrt.yaml"
-      - ".github/actions/setup-build/**"
+      - 'projects/start-wrt/**'
+      - 'shared-libs/crates/**'
+      - 'shared-libs/ts-modules/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'angular.json'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'tsconfig.json'
+      - 'tsconfig.lib.json'
+      - 'build/**'
+      - '.github/workflows/start-wrt.yaml'
+      - '.github/actions/setup-build/**'
+      # Doc-only edits under the allowlisted project trees (e.g.
+      # projects/start-wrt/docs/**) shouldn't trigger a build.
+      - '!**/*.md'
   pull_request:
     branches:
       - master
       - next/*
     paths:
-      - "projects/start-wrt/**"
-      - "shared-libs/crates/**"
-      - "shared-libs/ts-modules/**"
-      - "Cargo.toml"
-      - "Cargo.lock"
-      - "angular.json"
-      - "package.json"
-      - "package-lock.json"
-      - "tsconfig.json"
-      - "tsconfig.lib.json"
-      - "build/**"
-      - ".github/workflows/start-wrt.yaml"
-      - ".github/actions/setup-build/**"
+      - 'projects/start-wrt/**'
+      - 'shared-libs/crates/**'
+      - 'shared-libs/ts-modules/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'angular.json'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'tsconfig.json'
+      - 'tsconfig.lib.json'
+      - 'build/**'
+      - '.github/workflows/start-wrt.yaml'
+      - '.github/actions/setup-build/**'
+      # Doc-only edits under the allowlisted project trees (e.g.
+      # projects/start-wrt/docs/**) shouldn't trigger a build.
+      - '!**/*.md'
 
+# The group is scoped by event so a master push can't cancel an in-flight
+# dispatched release build; dispatches queue behind each other, never cancel.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
 
 env:
-  NODEJS_VERSION: "24.17.0"
+  NODEJS_VERSION: '24.17.0'
 
 jobs:
   # Fast path: cross-compile the riscv64 binary (embeds the web UI). Does NOT
-  # need the multi-GB openwrt submodule.
+  # need the OpenWrt tree.
   compile:
     name: Build riscv64 binary
     if: github.event.pull_request.draft != true
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-        with:
-          submodules: false
       - uses: ./.github/actions/setup-build
         with:
           nodejs-version: ${{ env.NODEJS_VERSION }}
@@ -87,8 +93,8 @@ jobs:
       - name: Install riscv64 binutils
         run: sudo apt-get update && sudo apt-get install -y binutils-riscv64-linux-gnu
 
-      - name: Make startwrt
-        run: make startwrt
+      - name: Make start-wrt
+        run: make start-wrt
         env:
           SCCACHE_GHA_ENABLED: on
           SCCACHE_GHA_VERSION: 0
@@ -99,35 +105,54 @@ jobs:
           path: target/riscv64gc-unknown-linux-musl/release/startwrt
           retention-days: 14
 
-  # Heavy path: full flashable OpenWrt image. Gated to manual dispatch because it
-  # pulls the openwrt submodule and runs a multi-hour build. Also runs when
-  # deploying, since the `deploy` job needs the freshly built images.
+  # Heavy path: full flashable OpenWrt image. Gated to manual dispatch because
+  # it downloads the pinned upstream OpenWrt tarball (build/openwrt-version,
+  # patched from openwrt-patches/ + openwrt-overlay/) and runs a multi-hour
+  # build. Also runs when deploying, since the `deploy` job needs the freshly
+  # built images.
   image:
     name: Build OpenWrt image
     if: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.build-image == 'true' || github.event.inputs.deploy == 'release') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-        with:
-          submodules: recursive
       - uses: ./.github/actions/setup-build
         with:
           nodejs-version: ${{ env.NODEJS_VERSION }}
 
+      # Host deps for the OpenWrt build, restored from the old standalone
+      # repo's setup-build action (the monorepo's shared setup-build serves
+      # every product, so this install lives here instead). The riscv64
+      # binutils also serve build/verify-isa.sh, which runs in this job too:
+      # the image depends on the startwrt binary (build.mk: files/.staged),
+      # and at verify time the in-tree toolchain doesn't exist yet (the
+      # binary builds before `make -C openwrt`).
+      - name: Install OpenWrt build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential clang flex bison g++ gawk gcc-multilib \
+            g++-multilib gettext git libncurses-dev libssl-dev \
+            python3-setuptools rsync swig unzip \
+            zlib1g-dev file wget device-tree-compiler \
+            binutils-riscv64-linux-gnu
+
+      # Restored BEFORE openwrt-setup.sh runs — the script rebuilds openwrt/
+      # around the cached dl/ (which also caches the pinned source tarball).
       - name: Cache OpenWrt download directory
         uses: actions/cache@v4
         with:
           path: projects/start-wrt/openwrt/dl
-          # Bust the cache when either the feed set or the OpenWrt config
+          # Bust the cache when the upstream pin, feed set, or OpenWrt config
           # changes; restore-keys lets a partial (older) cache seed a fresh run.
-          key: openwrt-dl-${{ hashFiles('projects/start-wrt/build/feeds.conf', 'projects/start-wrt/build/openwrt.diffconfig') }}
+          key: openwrt-dl-${{ hashFiles('projects/start-wrt/build/openwrt-version', 'projects/start-wrt/build/feeds.conf', 'projects/start-wrt/build/openwrt.diffconfig') }}
           restore-keys: openwrt-dl-
 
-      - name: Setup OpenWrt (feeds, config, download)
-        run: make startwrt-openwrt-setup
+      - name: Setup OpenWrt (fetch pinned upstream, patch, feeds, config, download)
+        run: make start-wrt-openwrt-setup
 
       - name: Build image
-        run: make startwrt-image
+        run: make start-wrt-image
 
       - uses: actions/upload-artifact@v7
         with:
@@ -159,12 +184,11 @@ jobs:
     env:
       S3_BUCKET: s3://startwrt-images
       S3_CDN: https://startwrt-images.nyc3.cdn.digitaloceanspaces.com
-      REGISTRY: https://beta-startwrt-registry.start9.com
+      REGISTRY: https://startwrt-beta-registry.start9.com
       PLATFORM: spacemit,k1-x
     steps:
       - uses: actions/checkout@v6
         with:
-          submodules: false
           sparse-checkout: projects/start-wrt/backend/ctrl/Cargo.toml
           sparse-checkout-cone-mode: false
 

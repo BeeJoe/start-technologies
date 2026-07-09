@@ -26,8 +26,12 @@ use crate::{GatewayId, HOST_IP};
 
 pub const START9_BRIDGE_IFACE: &str = "lxcbr0";
 const EPHEMERAL_PORT_START: u16 = 49152;
-// vhost.rs:89 — not allowed: <=1024, >=32768, 5355, 5432, 9050, 6010, 9051, 5353
-const RESTRICTED_PORTS: &[u16] = &[5353, 5355, 5432, 6010, 9050, 9051];
+// Reserved by/for host daemons (mDNS 5353, LLMNR 5355, postgres 5432, X11
+// forwarding 6010). 9050/9051 are claimable on purpose: they were the 0.3.x
+// host tor daemon's reservation (gone in 0.4.x), and the tor service now binds
+// 9050 without exporting an interface so its SOCKS proxy sits at a stable
+// 10.0.3.1:9050 on the bridge — do not re-restrict them.
+const RESTRICTED_PORTS: &[u16] = &[5353, 5355, 5432, 6010];
 
 fn is_restricted(port: u16) -> bool {
     port <= 1024 || RESTRICTED_PORTS.contains(&port)
@@ -347,7 +351,12 @@ async fn nft_rules_with_comment(family: &str, chain: &str, comment: &str) -> Vec
         .await
         .lines()
         .filter_map(|line| {
-            let handle = line.rsplit_once("# handle ")?.1.trim().parse::<u32>().ok()?;
+            let handle = line
+                .rsplit_once("# handle ")?
+                .1
+                .trim()
+                .parse::<u32>()
+                .ok()?;
             let body = line.split_once(&needle)?.0.trim().to_owned();
             Some((handle, body))
         })
@@ -430,7 +439,11 @@ async fn nft_rule_family(
         // no window where the rule is missing or duplicated.
         let mut script = String::new();
         for (handle, _) in &existing {
-            writeln!(script, "delete rule {family} startos {chain} handle {handle}").unwrap();
+            writeln!(
+                script,
+                "delete rule {family} startos {chain} handle {handle}"
+            )
+            .unwrap();
         }
         if !undo {
             let verb = if prepend { "insert" } else { "add" };
@@ -660,8 +673,7 @@ impl InterfaceForwardEntry {
         // Only public (WAN-facing) forwards need this; private subnets are already
         // reachable. A `count > 1` range is one PCP PORT_SET request (RFC 7753),
         // skipped on gateways without it (UPnP/NAT-PMP can't map ranges).
-        let mut want =
-            BTreeMap::<(Ipv4Addr, u16), (u16, u16, Vec<(IpAddr, Option<u32>)>)>::new();
+        let mut want = BTreeMap::<(Ipv4Addr, u16), (u16, u16, Vec<(IpAddr, Option<u32>)>)>::new();
 
         for (gw_id, info) in ip_info.iter() {
             if let Some(ip_info) = &info.ip_info {
@@ -676,11 +688,13 @@ impl InterfaceForwardEntry {
                             if rc.strong_count() == 0 {
                                 continue;
                             }
+
+                            // The WAN is never secure: an insecure exposure is never public,
+                            // so it still serves the LAN but never the public internet.
+                            let public = reqs.public_gateways.contains(gw_id) && reqs.secure;
                             if !reqs.secure && !info.secure() {
                                 continue;
                             }
-
-                            let public = reqs.public_gateways.contains(gw_id);
                             let src_filter = if public {
                                 None
                             } else if reqs.private_ips.contains(&IpAddr::V4(ip)) {
@@ -729,7 +743,13 @@ impl InterfaceForwardEntry {
         }
         for ((ip, external), (count, internal, gateways)) in &want {
             if *count > 1 {
-                pmap.ensure_range(IpAddr::V4(*ip), *external, *internal, *count, gateways.clone());
+                pmap.ensure_range(
+                    IpAddr::V4(*ip),
+                    *external,
+                    *internal,
+                    *count,
+                    gateways.clone(),
+                );
             } else {
                 pmap.ensure(IpAddr::V4(*ip), *external, *internal, gateways.clone());
             }
@@ -1113,7 +1133,10 @@ mod tests {
         assert!(ports.try_alloc_range(40000, 100).is_ok());
         // All 100 ports should now be allocated
         for p in 40000..40100 {
-            assert!(ports.try_alloc(p, false).is_none(), "port {p} should be taken");
+            assert!(
+                ports.try_alloc(p, false).is_none(),
+                "port {p} should be taken"
+            );
         }
         assert!(ports.try_alloc(40100, false).is_some());
     }
@@ -1142,7 +1165,10 @@ mod tests {
         for p in 1020..1030 {
             // None of them are reserved either
             if !is_restricted(p) {
-                assert!(ports.try_alloc(p, false).is_some(), "port {p} unexpectedly taken");
+                assert!(
+                    ports.try_alloc(p, false).is_some(),
+                    "port {p} unexpectedly taken"
+                );
             }
         }
     }

@@ -35,34 +35,42 @@ on:
       - master
       - next/*
     paths:
-      - "projects/start-cli/**"
-      - "shared-libs/crates/**"
-      - "Cargo.toml"
-      - "Cargo.lock"
-      - "build/**"
-      - "debian/**"
-      - ".github/workflows/start-cli.yaml"
-      - ".github/actions/setup-build/**"
+      - 'projects/start-cli/**'
+      - 'shared-libs/crates/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'build/**'
+      - 'debian/**'
+      - '.github/workflows/start-cli.yaml'
+      - '.github/actions/setup-build/**'
+      # Doc-only edits shouldn't trigger a build. (start-cli has no docs/ subtree
+      # today, but this guards a README or future docs added under the allowlist.)
+      - '!**/*.md'
   pull_request:
     branches:
       - master
       - next/*
     paths:
-      - "projects/start-cli/**"
-      - "shared-libs/crates/**"
-      - "Cargo.toml"
-      - "Cargo.lock"
-      - "build/**"
-      - "debian/**"
-      - ".github/workflows/start-cli.yaml"
-      - ".github/actions/setup-build/**"
+      - 'projects/start-cli/**'
+      - 'shared-libs/crates/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'build/**'
+      - 'debian/**'
+      - '.github/workflows/start-cli.yaml'
+      - '.github/actions/setup-build/**'
+      # Doc-only edits shouldn't trigger a build. (start-cli has no docs/ subtree
+      # today, but this guards a README or future docs added under the allowlist.)
+      - '!**/*.md'
 
+# The group is scoped by event so a master push can't cancel an in-flight
+# dispatched release build; dispatches queue behind each other, never cancel.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
 
 env:
-  NODEJS_VERSION: "24.11.0"
+  NODEJS_VERSION: '24.11.0'
   ENVIRONMENT: '${{ fromJson(format(''["{0}", ""]'', github.event.inputs.environment || ''dev''))[github.event.inputs.environment == ''NONE''] }}'
 
 jobs:
@@ -78,10 +86,10 @@ jobs:
               "x86_64": ["x86_64-unknown-linux-musl"],
               "x86_64-apple": ["x86_64-apple-darwin"],
               "aarch64": ["aarch64-unknown-linux-musl"],
-              "x86_64-apple": ["aarch64-apple-darwin"],
+              "aarch64-apple": ["aarch64-apple-darwin"],
               "riscv64": ["riscv64gc-unknown-linux-musl"],
               "ALL": ["x86_64-unknown-linux-musl", "x86_64-apple-darwin", "aarch64-unknown-linux-musl", "aarch64-apple-darwin", "riscv64gc-unknown-linux-musl"]
-            }')[github.event.inputs.platform || 'ALL']
+            }')[github.event.inputs.arch || 'ALL']
           }}
     runs-on: ${{ fromJson('["ubuntu-latest", "ubuntu-24.04-32-cores"]')[github.event.inputs.runner == 'fast'] }}
     steps:
@@ -89,16 +97,12 @@ jobs:
         if: ${{ github.event.inputs.runner == 'fast' }}
         run: sudo mount -t tmpfs tmpfs .
       - uses: actions/checkout@v6
-        with:
-          # The repo's only submodule (projects/start-wrt/openwrt) is multi-GB and only
-          # the start-wrt image build needs it — never clone it here.
-          submodules: false
       - uses: ./.github/actions/setup-build
         with:
           nodejs-version: ${{ env.NODEJS_VERSION }}
 
       - name: Make
-        run: TARGET=${{ matrix.triple }} make cli
+        run: TARGET=${{ matrix.triple }} make start-cli
         env:
           PLATFORM: ${{ matrix.arch }}
           SCCACHE_GHA_ENABLED: on
@@ -112,7 +116,11 @@ jobs:
 
   deb:
     name: Build Debian Package
-    if: github.event.pull_request.draft != true
+    needs: [compile]
+    # Skip apple-only arch selections — macOS targets have no .deb. The matrix
+    # selector below still resolves to a valid (unused) value so evaluation never
+    # errors; this `if` is what actually prevents the job from running.
+    if: ${{ github.event.pull_request.draft != true && !contains(github.event.inputs.arch, 'apple') }}
     strategy:
       fail-fast: true
       matrix:
@@ -123,7 +131,7 @@ jobs:
               "aarch64": ["aarch64"],
               "riscv64": ["riscv64"],
               "ALL": ["x86_64", "aarch64", "riscv64"]
-            }')[github.event.inputs.platform || 'ALL']
+            }')[contains(github.event.inputs.arch, 'apple') && 'ALL' || github.event.inputs.arch || 'ALL']
           }}
     runs-on: ${{ fromJson('["ubuntu-latest", "ubuntu-24.04-32-cores"]')[github.event.inputs.runner == 'fast'] }}
     steps:
@@ -131,14 +139,41 @@ jobs:
         if: ${{ github.event.inputs.runner == 'fast' }}
         run: sudo mount -t tmpfs tmpfs .
       - uses: actions/checkout@v6
-        with:
-          submodules: recursive
       - uses: ./.github/actions/setup-build
         with:
           nodejs-version: ${{ env.NODEJS_VERSION }}
 
+      - name: Resolve musl target triple
+        id: triple
+        run: |
+          case "${{ matrix.arch }}" in
+            x86_64)  triple=x86_64-unknown-linux-musl ;;
+            aarch64) triple=aarch64-unknown-linux-musl ;;
+            riscv64) triple=riscv64gc-unknown-linux-musl ;;
+            *) echo "::error::unsupported arch ${{ matrix.arch }}"; exit 1 ;;
+          esac
+          echo "triple=$triple" >> "$GITHUB_OUTPUT"
+
+      - name: Download Build Binary
+        uses: actions/download-artifact@v8
+        with:
+          name: start-cli_${{ steps.triple.outputs.triple }}
+          path: target/${{ steps.triple.outputs.triple }}/release
+
+      - name: Stamp prebuilt binary as up-to-date
+        # Drop the compiled binary where `make start-cli-deb` expects it and mark it
+        # newer than its Make prerequisites (the generated env/git-hash stamp
+        # files + checked-out sources) so packaging skips a redundant recompile.
+        run: |
+          bin="target/${{ steps.triple.outputs.triple }}/release/start-cli"
+          chmod +x "$bin"
+          ./build/env/check-environment.sh >/dev/null
+          ./build/env/check-git-hash.sh >/dev/null
+          PLATFORM="${{ matrix.arch }}" ./build/env/check-platform.sh >/dev/null
+          touch "$bin"
+
       - name: Make
-        run: make cli-deb
+        run: make start-cli-deb
         env:
           PLATFORM: ${{ matrix.arch }}
           SCCACHE_GHA_ENABLED: on

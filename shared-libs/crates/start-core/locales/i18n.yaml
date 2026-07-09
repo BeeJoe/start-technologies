@@ -162,13 +162,6 @@ s9pk.init.invalid-package-name:
   fr_FR: "Impossible de dériver un ID de paquet valide à partir de « %{name} ». Utilisez un nom contenant des lettres ou des chiffres."
   pl_PL: "Nie można utworzyć prawidłowego identyfikatora pakietu z „%{name}”. Użyj nazwy zawierającej litery lub cyfry."
 
-s9pk.init.nested-workspace:
-  en_US: "Cannot create a workspace inside an existing one (found %{path})."
-  de_DE: "Ein Arbeitsbereich kann nicht innerhalb eines bestehenden erstellt werden (gefunden: %{path})."
-  es_ES: "No se puede crear un espacio de trabajo dentro de uno existente (se encontró %{path})."
-  fr_FR: "Impossible de créer un espace de travail à l'intérieur d'un autre (trouvé : %{path})."
-  pl_PL: "Nie można utworzyć obszaru roboczego wewnątrz istniejącego (znaleziono %{path})."
-
 s9pk.init.not-in-workspace:
   en_US: "Not inside a packaging workspace. Run `start-cli s9pk init-workspace` first."
   de_DE: "Nicht innerhalb eines Paketierungs-Arbeitsbereichs. Führe zuerst `start-cli s9pk init-workspace` aus."
@@ -203,6 +196,35 @@ s9pk.init.workspace-ready:
   es_ES: "Espacio de trabajo de empaquetado listo en %{path}. Siguiente: start-cli s9pk init-package \"<Nombre>\"."
   fr_FR: "Espace de travail d'empaquetage prêt à %{path}. Étape suivante : start-cli s9pk init-package \"<Nom>\"."
   pl_PL: "Obszar roboczy pakowania gotowy w %{path}. Następnie: start-cli s9pk init-package \"<Nazwa>\"."
+
+s9pk.init.in-package-repo:
+  en_US: "%{path} is a package repo, not a packaging workspace. A workspace is the directory that *contains* your package repos — run `start-cli s9pk init-workspace` in its parent (%{parent}) instead. Setup guide: %{docs}"
+  de_DE: "%{path} ist ein Paket-Repository, kein Paketierungs-Arbeitsbereich. Ein Arbeitsbereich ist das Verzeichnis, das deine Paket-Repositorys *enthält* – führe `start-cli s9pk init-workspace` stattdessen im übergeordneten Verzeichnis (%{parent}) aus. Einrichtungsanleitung: %{docs}"
+  es_ES: "%{path} es un repositorio de paquete, no un espacio de trabajo de empaquetado. Un espacio de trabajo es el directorio que *contiene* tus repositorios de paquetes: ejecuta `start-cli s9pk init-workspace` en su directorio superior (%{parent}). Guía de configuración: %{docs}"
+  fr_FR: "%{path} est un dépôt de paquet, pas un espace de travail d'empaquetage. Un espace de travail est le répertoire qui *contient* vos dépôts de paquets — exécutez `start-cli s9pk init-workspace` dans son répertoire parent (%{parent}). Guide de configuration : %{docs}"
+  pl_PL: "%{path} to repozytorium pakietu, a nie obszar roboczy pakowania. Obszar roboczy to katalog, który *zawiera* twoje repozytoria pakietów — uruchom `start-cli s9pk init-workspace` w jego katalogu nadrzędnym (%{parent}). Przewodnik konfiguracji: %{docs}"
+
+s9pk.init.no-workspace:
+  en_US: "No packaging workspace found. Building and signing happen inside a workspace, which also gives you the AI packaging guide (AGENTS.md/CLAUDE.md). Run `start-cli s9pk init-workspace` here or in a parent directory, then try again. Setup guide: %{docs}"
+  de_DE: "Kein Paketierungs-Arbeitsbereich gefunden. Bauen und Signieren finden in einem Arbeitsbereich statt, der dir auch den KI-Paketierungsleitfaden (AGENTS.md/CLAUDE.md) bereitstellt. Führe `start-cli s9pk init-workspace` hier oder in einem übergeordneten Verzeichnis aus und versuche es erneut. Einrichtungsanleitung: %{docs}"
+  es_ES: "No se encontró un espacio de trabajo de empaquetado. La compilación y la firma se realizan dentro de un espacio de trabajo, que también te proporciona la guía de empaquetado para IA (AGENTS.md/CLAUDE.md). Ejecuta `start-cli s9pk init-workspace` aquí o en un directorio superior y vuelve a intentarlo. Guía de configuración: %{docs}"
+  fr_FR: "Aucun espace de travail d'empaquetage trouvé. La construction et la signature se font dans un espace de travail, qui vous fournit aussi le guide d'empaquetage pour l'IA (AGENTS.md/CLAUDE.md). Exécutez `start-cli s9pk init-workspace` ici ou dans un répertoire parent, puis réessayez. Guide de configuration : %{docs}"
+  pl_PL: "Nie znaleziono obszaru roboczego pakowania. Budowanie i podpisywanie odbywają się w obszarze roboczym, który udostępnia też przewodnik pakowania dla AI (AGENTS.md/CLAUDE.md). Uruchom `start-cli s9pk init-workspace` tutaj lub w katalogu nadrzędnym, a następnie spróbuj ponownie. Przewodnik konfiguracji: %{docs}"
+
+s9pk.init.no-workspace-in-package-repo:
+  en_US: "No packaging workspace found. %{repo} is a package repo; a workspace is the directory that *contains* your package repos (and provides the AI packaging guide). Create one in its parent, then try again: `cd %{parent} && start-cli s9pk init-workspace`. Setup guide: %{docs}"
+  de_DE: "Kein Paketierungs-Arbeitsbereich gefunden. %{repo} ist ein Paket-Repository; ein Arbeitsbereich ist das Verzeichnis, das deine Paket-Repositorys *enthält* (und den KI-Paketierungsleitfaden bereitstellt). Erstelle einen im übergeordneten Verzeichnis und versuche es erneut: `cd %{parent} && start-cli s9pk init-workspace`. Einrichtungsanleitung: %{docs}"
+  es_ES: "No se encontró un espacio de trabajo de empaquetado. %{repo} es un repositorio de paquete; un espacio de trabajo es el directorio que *contiene* tus repositorios de paquetes (y proporciona la guía de empaquetado para IA). Crea uno en su directorio superior y vuelve a intentarlo: `cd %{parent} && start-cli s9pk init-workspace`. Guía de configuración: %{docs}"
+  fr_FR: "Aucun espace de travail d'empaquetage trouvé. %{repo} est un dépôt de paquet ; un espace de travail est le répertoire qui *contient* vos dépôts de paquets (et fournit le guide d'empaquetage pour l'IA). Créez-en un dans son répertoire parent, puis réessayez : `cd %{parent} && start-cli s9pk init-workspace`. Guide de configuration : %{docs}"
+  pl_PL: "Nie znaleziono obszaru roboczego pakowania. %{repo} to repozytorium pakietu; obszar roboczy to katalog, który *zawiera* twoje repozytoria pakietów (i udostępnia przewodnik pakowania dla AI). Utwórz jeden w jego katalogu nadrzędnym, a następnie spróbuj ponownie: `cd %{parent} && start-cli s9pk init-workspace`. Przewodnik konfiguracji: %{docs}"
+
+# s9pk/v2/pack.rs
+s9pk.pack.git-hash-omitted:
+  en_US: "No git commit found in %{path} — building without a commit hash in the manifest. Commit your work (or check that git is set up) to include it."
+  de_DE: "Kein Git-Commit in %{path} gefunden – der Build enthält keinen Commit-Hash im Manifest. Committe deine Änderungen (oder prüfe, ob git eingerichtet ist), um ihn aufzunehmen."
+  es_ES: "No se encontró ningún commit de git en %{path}; la compilación no incluye un hash de commit en el manifiesto. Haz un commit de tu trabajo (o comprueba que git esté configurado) para incluirlo."
+  fr_FR: "Aucun commit git trouvé dans %{path} — la construction n'inclut pas de hash de commit dans le manifeste. Faites un commit de votre travail (ou vérifiez que git est configuré) pour l'inclure."
+  pl_PL: "Nie znaleziono commita git w %{path} — kompilacja nie zawiera hasha commita w manifeście. Zatwierdź swoją pracę (lub sprawdź, czy git jest skonfigurowany), aby go dołączyć."
 
 # setup.rs
 setup.opening-data-drive:
@@ -3287,12 +3309,12 @@ help.arg.address:
   fr_FR: "Adresse réseau"
   pl_PL: "Adres sieciowy"
 
-help.arg.gua-access:
-  en_US: "IPv6 GUA exposure: disabled, lan, or lan-wan"
-  de_DE: "IPv6-GUA-Freigabe: disabled, lan oder lan-wan"
-  es_ES: "Exposición de GUA IPv6: disabled, lan o lan-wan"
-  fr_FR: "Exposition de la GUA IPv6 : disabled, lan ou lan-wan"
-  pl_PL: "Ekspozycja GUA IPv6: disabled, lan lub lan-wan"
+help.arg.gua-wan:
+  en_US: "Expose the IPv6 GUA to the WAN (false = LAN-only)"
+  de_DE: "IPv6-GUA zum WAN freigeben (false = nur LAN)"
+  es_ES: "Exponer la GUA IPv6 a la WAN (false = solo LAN)"
+  fr_FR: "Exposer la GUA IPv6 au WAN (false = LAN uniquement)"
+  pl_PL: "Udostępnij GUA IPv6 w sieci WAN (false = tylko LAN)"
 
 help.arg.allow-model-mismatch:
   en_US: "Allow database model mismatch"
@@ -4718,6 +4740,13 @@ about.add-new-backup-target:
   fr_FR: "Ajouter une nouvelle cible de sauvegarde"
   pl_PL: "Dodaj nowy cel kopii zapasowej"
 
+about.add-new-pinhole:
+  en_US: "Add a new IPv6 pinhole"
+  de_DE: "Ein neues IPv6-Pinhole hinzufügen"
+  es_ES: "Agregar un nuevo pinhole IPv6"
+  fr_FR: "Ajouter un nouveau pinhole IPv6"
+  pl_PL: "Dodaj nowy pinhole IPv6"
+
 about.add-new-port-forward:
   en_US: "Add a new port forward"
   de_DE: "Eine neue Portweiterleitung hinzufügen"
@@ -4920,6 +4949,13 @@ about.check-port-reachability:
   es_ES: "Comprobar si un puerto es accesible desde la WAN"
   fr_FR: "Vérifier si un port est accessible depuis le WAN"
   pl_PL: "Sprawdź, czy port jest osiągalny z WAN"
+
+about.check-port-v6-reachability:
+  en_US: "Check if a port is reachable over IPv6 (GUA firewall)"
+  de_DE: "Prüfen, ob ein Port über IPv6 erreichbar ist (GUA-Firewall)"
+  es_ES: "Comprobar si un puerto es accesible por IPv6 (firewall GUA)"
+  fr_FR: "Vérifier si un port est accessible via IPv6 (pare-feu GUA)"
+  pl_PL: "Sprawdź, czy port jest osiągalny przez IPv6 (zapora GUA)"
 
 about.check-update-startos:
   en_US: "Check a given registry for StartOS updates and update if available"
@@ -5179,6 +5215,34 @@ about.commands-packages:
   es_ES: "Comandos relacionados con paquetes"
   fr_FR: "Commandes liées aux paquets"
   pl_PL: "Polecenia związane z pakietami"
+
+about.commands-pinhole:
+  en_US: "Commands for managing IPv6 pinholes"
+  de_DE: "Befehle zur Verwaltung von IPv6-Pinholes"
+  es_ES: "Comandos para gestionar pinholes IPv6"
+  fr_FR: "Commandes pour gérer les pinholes IPv6"
+  pl_PL: "Polecenia do zarządzania pinholes IPv6"
+
+about.commands-http-redirect:
+  en_US: "Commands for managing HTTP→HTTPS redirects"
+  de_DE: "Befehle zur Verwaltung von HTTP→HTTPS-Weiterleitungen"
+  es_ES: "Comandos para gestionar redirecciones HTTP→HTTPS"
+  fr_FR: "Commandes pour gérer les redirections HTTP→HTTPS"
+  pl_PL: "Polecenia do zarządzania przekierowaniami HTTP→HTTPS"
+
+about.list-http-redirects:
+  en_US: "List the port-80 HTTP→HTTPS redirect status of every public IPv4"
+  de_DE: "Den HTTP→HTTPS-Weiterleitungsstatus (Port 80) jeder öffentlichen IPv4 auflisten"
+  es_ES: "Listar el estado de la redirección HTTP→HTTPS (puerto 80) de cada IPv4 pública"
+  fr_FR: "Lister l'état de la redirection HTTP→HTTPS (port 80) de chaque IPv4 publique"
+  pl_PL: "Wyświetl stan przekierowania HTTP→HTTPS (port 80) każdego publicznego adresu IPv4"
+
+about.enable-or-disable-http-redirect:
+  en_US: "Turn the port-80 HTTP→HTTPS redirect on or off for a public IPv4"
+  de_DE: "Die HTTP→HTTPS-Weiterleitung (Port 80) für eine öffentliche IPv4 ein- oder ausschalten"
+  es_ES: "Activar o desactivar la redirección HTTP→HTTPS (puerto 80) de una IPv4 pública"
+  fr_FR: "Activer ou désactiver la redirection HTTP→HTTPS (port 80) pour une IPv4 publique"
+  pl_PL: "Włącz lub wyłącz przekierowanie HTTP→HTTPS (port 80) dla publicznego adresu IPv4"
 
 about.commands-port-forward:
   en_US: "Commands for managing port forwards"
@@ -5536,6 +5600,13 @@ about.enable-kiosk-mode:
   es_ES: "Activar el modo kiosco"
   fr_FR: "Activer le mode kiosque"
   pl_PL: "Włącz tryb kiosku"
+
+about.enable-or-disable-pinhole:
+  en_US: "Enable or disable an IPv6 pinhole"
+  de_DE: "IPv6-Pinhole aktivieren oder deaktivieren"
+  es_ES: "Habilitar o deshabilitar un pinhole IPv6"
+  fr_FR: "Activer ou désactiver un pinhole IPv6"
+  pl_PL: "Włącz lub wyłącz pinhole IPv6"
 
 about.enable-or-disable-port-forward:
   en_US: "Enable or disable a port forward"
@@ -6181,6 +6252,13 @@ about.remove-signer:
   fr_FR: "Supprimer le signataire et toutes ses autorisations"
   pl_PL: "Usuń sygnatariusza i wszystkie jego autoryzacje"
 
+about.remove-pinhole:
+  en_US: "Remove IPv6 pinhole"
+  de_DE: "IPv6-Pinhole entfernen"
+  es_ES: "Eliminar pinhole IPv6"
+  fr_FR: "Supprimer le pinhole IPv6"
+  pl_PL: "Usuń pinhole IPv6"
+
 about.remove-port-forward:
   en_US: "Remove port forward"
   de_DE: "Portweiterleitung entfernen"
@@ -6342,12 +6420,12 @@ about.set-range-address-enabled-for-binding:
   fr_FR: "Définir une adresse de passerelle activée pour une liaison de plage de ports"
   pl_PL: "Ustaw adres bramy jako włączony dla powiązania zakresu portów"
 
-about.set-gua-access-for-binding:
-  en_US: "Set the LAN / LAN+WAN exposure of an IPv6 global-unicast address for a binding"
-  de_DE: "LAN-/LAN+WAN-Freigabe einer globalen IPv6-Unicast-Adresse für eine Bindung festlegen"
-  es_ES: "Establecer la exposición LAN / LAN+WAN de una dirección unicast global IPv6 para un vínculo"
-  fr_FR: "Définir l'exposition LAN / LAN+WAN d'une adresse unicast globale IPv6 pour une liaison"
-  pl_PL: "Ustaw ekspozycję LAN / LAN+WAN globalnego adresu unicast IPv6 dla powiązania"
+about.set-gua-wan-for-binding:
+  en_US: "Expose an IPv6 global-unicast address to the WAN (or revert it to LAN-only) for a binding"
+  de_DE: "Eine globale IPv6-Unicast-Adresse für eine Bindung zum WAN freigeben (oder auf nur LAN zurücksetzen)"
+  es_ES: "Exponer una dirección unicast global IPv6 a la WAN (o revertirla a solo LAN) para un vínculo"
+  fr_FR: "Exposer une adresse unicast globale IPv6 au WAN (ou la restreindre au LAN) pour une liaison"
+  pl_PL: "Udostępnij globalny adres unicast IPv6 w sieci WAN (lub przywróć tylko LAN) dla powiązania"
 
 about.set-country:
   en_US: "Set the country"
@@ -6454,6 +6532,13 @@ about.set-subnet-dns:
   es_ES: "Establecer DNS de subred"
   fr_FR: "Définir le DNS du sous-réseau"
   pl_PL: "Ustaw DNS podsieci"
+
+about.set-subnet-ipv6:
+  en_US: "Set the subnet's routed IPv6 prefix"
+  de_DE: "Das geroutete IPv6-Präfix des Subnetzes festlegen"
+  es_ES: "Establecer el prefijo IPv6 enrutado de la subred"
+  fr_FR: "Définir le préfixe IPv6 routé du sous-réseau"
+  pl_PL: "Ustaw routowany prefiks IPv6 podsieci"
 
 about.set-subnet-wan:
   en_US: "Assign the WAN IP a subnet's traffic uses"
@@ -6671,6 +6756,13 @@ about.update-firmware:
   es_ES: "Actualizar firmware"
   fr_FR: "Mettre à jour le firmware"
   pl_PL: "Zaktualizuj oprogramowanie układowe"
+
+about.update-pinhole-label:
+  en_US: "Update the label of an IPv6 pinhole"
+  de_DE: "Bezeichnung eines IPv6-Pinholes aktualisieren"
+  es_ES: "Actualizar la etiqueta de un pinhole IPv6"
+  fr_FR: "Mettre à jour le libellé d'un pinhole IPv6"
+  pl_PL: "Zaktualizuj etykietę pinhole IPv6"
 
 about.update-port-forward-label:
   en_US: "Update the label of a port forward"

@@ -1282,6 +1282,7 @@ For the full changelog, see https://github.com/bitcoin/bitcoin/blob/v27.0.0/doc/
       path: '/Desktop/startos-backups',
       username: 'TestUser',
       mountable: false,
+      available: null,
       startOs: {
         '1234-5678-9876-5432': {
           hostname: 'adjective-noun',
@@ -1293,7 +1294,7 @@ For the full changelog, see https://github.com/bitcoin/bitcoin/blob/v27.0.0/doc/
           wrappedKey: '',
         },
       },
-      legacyBackup: null,
+      legacyBackup: false,
     },
     // 'ftcvewdnkemfksdm': {
     //   type: 'disk',
@@ -1311,6 +1312,7 @@ For the full changelog, see https://github.com/bitcoin/bitcoin/blob/v27.0.0/doc/
       path: '/Desktop/startos-backups-2',
       username: 'TestUser',
       mountable: true,
+      available: 50000000000,
       startOs: {
         '1234-5678-9876-5432': {
           hostname: 'adjective-noun',
@@ -1322,7 +1324,7 @@ For the full changelog, see https://github.com/bitcoin/bitcoin/blob/v27.0.0/doc/
           wrappedKey: '',
         },
       },
-      legacyBackup: { size: 5000000000, available: 50000000000 },
+      legacyBackup: false,
     },
     powjefhjbnwhdva: {
       type: 'disk',
@@ -1334,6 +1336,7 @@ For the full changelog, see https://github.com/bitcoin/bitcoin/blob/v27.0.0/doc/
       vendor: 'SSK',
       guid: null,
       filesystem: null,
+      available: 1000000000,
       startOs: {
         '1234-5678-9876-5432': {
           hostname: 'adjective-noun',
@@ -1345,7 +1348,7 @@ For the full changelog, see https://github.com/bitcoin/bitcoin/blob/v27.0.0/doc/
           wrappedKey: '',
         },
       },
-      legacyBackup: { size: 5000000000000, available: 1000000000 },
+      legacyBackup: true,
     },
   }
 
@@ -2258,9 +2261,9 @@ For the full changelog, see https://github.com/bitcoin/bitcoin/blob/v27.0.0/doc/
               assignedSslPort: 443,
             },
             addresses: {
-              enabled: [],
+              enabled: ['[2001:db8:abcd::a3b:2]:1234'],
               disabled: [],
-              guaAccess: {},
+              guaWan: ['[2001:db8:abcd::a3b:2]:1234'],
               available: [
                 {
                   ssl: true,
@@ -2299,6 +2302,13 @@ For the full changelog, see https://github.com/bitcoin/bitcoin/blob/v27.0.0/doc/
                   hostname: 'fe80:cd00:0000:0cde:1257:0000:211e:1234',
                   port: 1234,
                   metadata: { kind: 'ipv6', gateway: 'wlan0', scopeId: 3 },
+                },
+                {
+                  ssl: true,
+                  public: true,
+                  hostname: '2001:db8:abcd::a3b:2',
+                  port: 1234,
+                  metadata: { kind: 'ipv6', gateway: 'eth0', scopeId: 0 },
                 },
               ],
             },
@@ -2343,7 +2353,7 @@ For the full changelog, see https://github.com/bitcoin/bitcoin/blob/v27.0.0/doc/
             addresses: {
               enabled: [],
               disabled: [],
-              guaAccess: {},
+              guaWan: [],
               available: [],
             },
             options: {
@@ -2387,7 +2397,7 @@ For the full changelog, see https://github.com/bitcoin/bitcoin/blob/v27.0.0/doc/
             addresses: {
               enabled: [],
               disabled: [],
-              guaAccess: {},
+              guaWan: [],
               available: [],
             },
             options: {

@@ -1,5 +1,6 @@
-import { DOCUMENT, Inject, Injectable } from '@angular/core'
+import { DOCUMENT, inject, Injectable } from '@angular/core'
 import { blake3 } from '@noble/hashes/blake3'
+import { GetPackageRes, GetPackagesRes } from '@start9labs/marketplace'
 import {
   FullKeyboard,
   HttpOptions,
@@ -10,7 +11,6 @@ import {
   SetLanguageParams,
 } from '@start9labs/shared'
 import { T } from '@start9labs/start-core'
-import { GetPackageRes, GetPackagesRes } from '@start9labs/marketplace'
 import { Dump, pathFromArray } from 'patch-db-client'
 import { filter, firstValueFrom, Observable } from 'rxjs'
 import { webSocket, WebSocketSubject } from 'rxjs/webSocket'
@@ -31,11 +31,11 @@ import {
   PkgAddPrivateDomainReq,
   PkgAddPublicDomainReq,
   PkgBindingSetAddressEnabledReq,
-  PkgBindingSetGuaAccessReq,
+  PkgBindingSetGuaWanReq,
   PkgRemovePrivateDomainReq,
   PkgRemovePublicDomainReq,
   ServerBindingSetAddressEnabledReq,
-  ServerBindingSetGuaAccessReq,
+  ServerBindingSetGuaWanReq,
   ServerState,
   WebsocketConfig,
 } from './api.types'
@@ -43,12 +43,12 @@ import { ApiService } from './embassy-api.service'
 
 @Injectable()
 export class LiveApiService extends ApiService {
-  constructor(
-    @Inject(DOCUMENT) private readonly document: Document,
-    private readonly http: HttpService,
-    private readonly auth: AuthService,
-    @Inject(PATCH_CACHE) private readonly cache$: Observable<Dump<DataModel>>,
-  ) {
+  private readonly document = inject(DOCUMENT)
+  private readonly http = inject(HttpService)
+  private readonly auth = inject(AuthService)
+  private readonly cache$ = inject<Observable<Dump<DataModel>>>(PATCH_CACHE)
+
+  constructor() {
     super()
 
     // @ts-ignore
@@ -276,7 +276,7 @@ export class LiveApiService extends ApiService {
     })
   }
 
-  async queryDns(params: T.QueryDnsParams): Promise<string | null> {
+  async queryDns(params: T.QueryDnsParams): Promise<T.QueryDnsRes> {
     return this.rpcRequest({
       method: 'net.dns.query',
       params,
@@ -286,6 +286,15 @@ export class LiveApiService extends ApiService {
   async checkPort(params: T.CheckPortParams): Promise<T.CheckPortRes> {
     return this.rpcRequest({
       method: 'net.gateway.check-port',
+      params,
+    })
+  }
+
+  async checkPortV6(
+    params: T.CheckPortParams,
+  ): Promise<T.CheckPortV6Res | null> {
+    return this.rpcRequest({
+      method: 'net.gateway.check-port-v6',
       params,
     })
   }
@@ -803,20 +812,18 @@ export class LiveApiService extends ApiService {
     })
   }
 
-  async serverBindingSetGuaAccess(
-    params: ServerBindingSetGuaAccessReq,
+  async serverBindingSetGuaWan(
+    params: ServerBindingSetGuaWanReq,
   ): Promise<null> {
     return this.rpcRequest({
-      method: 'server.host.binding.set-gua-access',
+      method: 'server.host.binding.set-gua-wan',
       params,
     })
   }
 
-  async pkgBindingSetGuaAccess(
-    params: PkgBindingSetGuaAccessReq,
-  ): Promise<null> {
+  async pkgBindingSetGuaWan(params: PkgBindingSetGuaWanReq): Promise<null> {
     return this.rpcRequest({
-      method: 'package.host.binding.set-gua-access',
+      method: 'package.host.binding.set-gua-wan',
       params,
     })
   }

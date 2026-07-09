@@ -78,6 +78,7 @@ export class MockApiService extends ApiService {
           clients: {},
           dns: { type: 'default' },
           wanIp: null,
+          ipv6: null,
         },
       },
     ]
@@ -476,6 +477,124 @@ export class MockApiService extends ApiService {
         { op: PatchOp.REMOVE, path: `/portForwards/${params.source}` },
       ])
     }
+
+    return null
+  }
+
+  async addPinhole(params: T.Tunnel.AddPinholeParams): Promise<null> {
+    await pauseFor(1000)
+
+    const key = `[${params.gua}]:${params.externalPort}`
+    const existing = mockTunnelData.pinholes6[key]
+    const value: T.Tunnel.Pinhole = {
+      label: params.label || null,
+      enabled: existing?.enabled ?? true,
+      count: params.count ?? 1,
+      internalPort: params.internalPort ?? null,
+      auto: false,
+    }
+    mockTunnelData.pinholes6[key] = value
+    this.mockRevision([
+      {
+        op: existing ? PatchOp.REPLACE : PatchOp.ADD,
+        path: `/pinholes6/${key}`,
+        value,
+      },
+    ])
+
+    return null
+  }
+
+  async updatePinholeLabel(
+    params: T.Tunnel.UpdatePinholeLabelParams,
+  ): Promise<null> {
+    await pauseFor(1000)
+
+    const key = `[${params.gua}]:${params.externalPort}`
+    const entry = mockTunnelData.pinholes6[key]
+    if (!entry) return null
+
+    entry.label = params.label
+    this.mockRevision([
+      {
+        op: PatchOp.REPLACE,
+        path: `/pinholes6/${key}/label`,
+        value: params.label,
+      },
+    ])
+
+    return null
+  }
+
+  async setPinholeEnabled(
+    params: T.Tunnel.SetPinholeEnabledParams,
+  ): Promise<null> {
+    await pauseFor(1000)
+
+    const key = `[${params.gua}]:${params.externalPort}`
+    const entry = mockTunnelData.pinholes6[key]
+    if (!entry) return null
+
+    entry.enabled = params.enabled
+    this.mockRevision([
+      {
+        op: PatchOp.REPLACE,
+        path: `/pinholes6/${key}/enabled`,
+        value: params.enabled,
+      },
+    ])
+
+    return null
+  }
+
+  async deletePinhole(params: T.Tunnel.RemovePinholeParams): Promise<null> {
+    await pauseFor(1000)
+
+    const key = `[${params.gua}]:${params.externalPort}`
+    if (!mockTunnelData.pinholes6[key]) return null
+
+    delete mockTunnelData.pinholes6[key]
+    this.mockRevision([{ op: PatchOp.REMOVE, path: `/pinholes6/${key}` }])
+
+    return null
+  }
+
+  async setHttpRedirectEnabled(
+    params: T.Tunnel.SetHttpRedirectEnabledParams,
+  ): Promise<null> {
+    await pauseFor(1000)
+
+    const disabled = new Set(mockTunnelData.httpRedirects.disabled)
+    if (params.enabled) {
+      disabled.delete(params.ip)
+    } else {
+      disabled.add(params.ip)
+    }
+    mockTunnelData.httpRedirects.disabled = [...disabled]
+
+    const patch: ReplaceOperation<string[]>[] = [
+      {
+        op: PatchOp.REPLACE,
+        path: `/httpRedirects/disabled`,
+        value: mockTunnelData.httpRedirects.disabled,
+      },
+    ]
+    this.mockRevision(patch)
+
+    return null
+  }
+
+  async setSubnetIpv6(params: T.Tunnel.SetSubnetIpv6Params): Promise<null> {
+    await pauseFor(1000)
+
+    const patch: ReplaceOperation<string | null>[] = [
+      {
+        op: PatchOp.REPLACE,
+        path: `/wg/subnets/${replaceSlashes(params.subnet)}/ipv6`,
+        value: params.prefix,
+      },
+    ]
+    this.mockRevision(patch)
 
     return null
   }

@@ -1,5 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet};
-use std::net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4};
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};
@@ -10,11 +10,13 @@ use http::HeaderMap;
 use imbl::OrdMap;
 use imbl_value::InternedString;
 use include_dir::Dir;
+use ipnet::{IpNet, Ipv6Net};
 use patch_db::PatchDb;
 use patch_db::json_ptr::ROOT;
 use rpc_toolkit::yajrc::RpcError;
 use rpc_toolkit::{CallRemote, Context, Empty, ParentHandler};
 use serde::{Deserialize, Serialize};
+use tokio::process::Command;
 use tokio::sync::broadcast::Sender;
 use tracing::instrument;
 use url::Url;
@@ -27,17 +29,18 @@ use crate::db::model::public::{NetworkInterfaceInfo, NetworkInterfaceType};
 use crate::middleware::auth::Auth;
 use crate::middleware::auth::local::LocalAuthContext;
 use crate::middleware::cors::Cors;
-use crate::net::forward::{PortForwardController, nft_comments_with_prefix, nft_rule};
+use crate::net::dns_update::rfc2136::{DnsInjector, InjectedRecord};
+use crate::net::forward::{PortForwardController, nft_comments_with_prefix, nft_rule, nft_rule_v6};
 use crate::net::static_server::{EMPTY_DIR, UiContext};
 use crate::prelude::*;
 use crate::rpc_continuations::{OpenAuthedContinuations, RpcContinuations};
 use crate::tunnel::TUNNEL_DEFAULT_LISTEN;
 use crate::tunnel::api::tunnel_api;
-use crate::net::dns_update::rfc2136::{DnsInjector, InjectedRecord};
 use crate::tunnel::db::{DnsRecordEntry, DnsRecords, PortForward, PortForwards, TunnelDatabase};
 use crate::tunnel::dns::DnsProxyController;
 use crate::tunnel::migrations::run_migrations;
 use crate::tunnel::wg::{WIREGUARD_INTERFACE_NAME, WgServer};
+use crate::util::Invoke;
 use crate::util::collections::OrdMapIterMut;
 use crate::util::io::read_file_to_string;
 use crate::util::sync::{SyncMutex, Watch};
@@ -130,6 +133,23 @@ fn dns_entry(r: &InjectedRecord) -> DnsRecordEntry {
     }
 }
 
+/// Add or remove a proxy-NDP entry so the tunnel host answers Neighbor
+/// Discovery for a client's on-link IPv6 on the WAN interface. Best-effort:
+/// failures are logged, not fatal (reconciled on the next resync).
+async fn neigh_proxy(add: bool, addr: Ipv6Addr, iface: &str) {
+    Command::new("ip")
+        .arg("-6")
+        .arg("neigh")
+        .arg(if add { "replace" } else { "del" })
+        .arg("proxy")
+        .arg(addr.to_string())
+        .arg("dev")
+        .arg(iface)
+        .invoke(ErrorKind::Network)
+        .await
+        .log_err();
+}
+
 pub struct TunnelContextSeed {
     pub listen: SocketAddr,
     pub db: TypedPatchDb<TunnelDatabase>,
@@ -148,9 +168,28 @@ pub struct TunnelContextSeed {
     /// Per-injector TSIG keys, read live so the injector can verify UPDATEs.
     pub dns_keys: Arc<SyncMutex<BTreeMap<IpAddr, [u8; 32]>>>,
     pub active_forwards: SyncMutex<BTreeMap<SocketAddrV4, Arc<()>>>,
+    /// In-memory leases for auto (PCP-created) forwards/pinholes/SNI routes,
+    /// reaped by [`crate::tunnel::forward::lease`] when a client stops renewing.
+    pub leases: SyncMutex<crate::tunnel::forward::lease::Leases>,
+    /// Wakes the lease reaper when a stamp may have moved the soonest expiry
+    /// earlier, so it can pull its next wake-up forward.
+    pub lease_wake: tokio::sync::Notify,
+    /// Notified after every `wg-quick` bounce: the PCP/IGD listeners are
+    /// `SO_BINDTODEVICE`-bound, which pins the ifindex at bind time, so a
+    /// recreated interface leaves them deaf until they rebind.
+    pub forward_rebind: tokio::sync::Notify,
     /// Serializes `resync_egress`; its read-DB → install → prune isn't atomic,
     /// so a concurrent reconcile could prune a rule another call just installed.
     pub egress_lock: tokio::sync::Mutex<()>,
+    /// Proxy-NDP entries we've installed (client GUA -> WAN interface), so a
+    /// resync can withdraw the ones that no longer apply. Only populated when a
+    /// client's /128 sits inside an on-link /64 (the shared-prefix case).
+    pub v6_proxy: SyncMutex<BTreeMap<Ipv6Addr, GatewayId>>,
+    /// Serializes `resync_v6` — same non-atomic read → diff → apply → overwrite
+    /// pattern as `egress_lock` guards for `resync_egress`, so two concurrent
+    /// config changes can't leave the tracked proxy map out of sync with the
+    /// kernel's neighbor table.
+    pub v6_lock: tokio::sync::Mutex<()>,
     pub shutdown: Sender<Option<bool>>,
 }
 
@@ -196,6 +235,17 @@ impl TunnelContext {
         let net_iface = Watch::new(net_iface);
         let forward = PortForwardController::new();
         nft_rule(
+            "forward",
+            "wg-forward",
+            false,
+            false,
+            &format!("iifname \"{WIREGUARD_INTERFACE_NAME}\" ct state new accept"),
+        )
+        .await?;
+        // Let clients originate IPv6 out through the tunnel (return traffic is
+        // covered by the v6 base-established rule). Inbound IPv6 to a client is a
+        // firewall pinhole, opened per-port via PCP / the manual pinhole API.
+        nft_rule_v6(
             "forward",
             "wg-forward",
             false,
@@ -274,7 +324,9 @@ impl TunnelContext {
                         .unwrap_or(32);
                     active_forwards.insert(
                         from,
-                        forward.add_forward_range(from, to, count, prefix, None).await?,
+                        forward
+                            .add_forward_range(from, to, count, prefix, None)
+                            .await?,
                     );
                 }
                 PortForward::Sni { routes } => {
@@ -313,16 +365,28 @@ impl TunnelContext {
             dns_allowed,
             dns_keys,
             active_forwards: SyncMutex::new(active_forwards),
+            leases: SyncMutex::new(BTreeMap::new()),
+            lease_wake: tokio::sync::Notify::new(),
+            forward_rebind: tokio::sync::Notify::new(),
             egress_lock: tokio::sync::Mutex::new(()),
+            v6_proxy: SyncMutex::new(BTreeMap::new()),
+            v6_lock: tokio::sync::Mutex::new(()),
             shutdown,
         }));
 
         ctx.resync_egress().await?;
+        ctx.resync_v6().await?;
+        crate::tunnel::forward::pinhole::seed_pinholes(&ctx).await?;
+        // Grant every restored auto entry a fresh lease so a client that never
+        // reconnects is reaped rather than lingering forever.
+        crate::tunnel::forward::lease::seed_from_db(&ctx).await?;
 
         // PCP (preferred) + UPnP IGD (fallback) let connected clients open their
-        // public ports automatically.
+        // public ports automatically; the reaper expires auto mappings whose
+        // client stops renewing.
         tokio::spawn(crate::tunnel::forward::pcp::run(ctx.clone()));
         tokio::spawn(crate::tunnel::forward::igd::run(ctx.clone()));
+        tokio::spawn(crate::tunnel::forward::lease::run(ctx.clone()));
 
         Ok(ctx)
     }
@@ -342,6 +406,14 @@ impl TunnelContext {
         }
         self.active_forwards
             .mutate(|pf| pf.retain(|k, _| keep.contains(k)));
+        // Drop leases for forwards whose target is no longer a known client.
+        use crate::tunnel::forward::lease::LeaseKey;
+        self.leases.mutate(|l| {
+            l.retain(|k, _| match k {
+                LeaseKey::Dnat(s) | LeaseKey::Sni { source: s, .. } => keep.contains(s),
+                LeaseKey::Pinhole(_) => true,
+            })
+        });
         self.forward.gc().await
     }
 
@@ -350,10 +422,82 @@ impl TunnelContext {
     /// must follow `server.sync()`.
     pub async fn sync_network(&self, server: &WgServer) -> Result<(), Error> {
         server.sync().await?;
+        self.forward_rebind.notify_waiters();
         self.dns_allowed.mutate(|s| *s = allowed_injectors(server));
         self.dns_keys.mutate(|m| *m = injector_keys(server));
-        self.dns_proxy.sync(server, self.dns_injector.clone()).await?;
-        self.resync_egress().await
+        self.dns_proxy
+            .sync(server, self.dns_injector.clone())
+            .await?;
+        self.resync_egress().await?;
+        self.resync_v6().await
+    }
+
+    /// Reconcile proxy-NDP for client IPv6 addresses. When a client's /128 sits
+    /// inside a /64 that a WAN interface holds *on-link* (Hetzner, Vultr), the
+    /// VPS gateway resolves that address via Neighbor Discovery on the WAN link,
+    /// so the tunnel host must answer for it (`proxy_ndp`) and then forward to
+    /// the client over WireGuard. A routed prefix is delivered to the host
+    /// without ND, so it needs no proxy entry.
+    pub async fn resync_v6(&self) -> Result<(), Error> {
+        let _guard = self.v6_lock.lock().await;
+        let server = self.db.peek().await.as_wg().de()?;
+        let any_v6 = server.subnets.0.values().any(|c| c.ipv6.is_some());
+        let mut desired: BTreeMap<Ipv6Addr, GatewayId> = BTreeMap::new();
+        if any_v6 {
+            Command::new("sysctl")
+                .arg("-w")
+                .arg("net.ipv6.conf.all.proxy_ndp=1")
+                .invoke(ErrorKind::Network)
+                .await
+                .log_err();
+            let onlink: Vec<(GatewayId, Ipv6Net)> = self.net_iface.peek(|ifaces| {
+                let mut v = Vec::new();
+                for (id, info) in ifaces.iter() {
+                    if id.as_str() == WIREGUARD_INTERFACE_NAME {
+                        continue;
+                    }
+                    let Some(ip) = info.ip_info.as_ref() else {
+                        continue;
+                    };
+                    if ip.device_type == Some(NetworkInterfaceType::Loopback) {
+                        continue;
+                    }
+                    for net in ip.subnets.iter() {
+                        if let IpNet::V6(n) = net {
+                            v.push((id.clone(), n.trunc()));
+                        }
+                    }
+                }
+                v
+            });
+            // For each subnet with a prefix, proxy-NDP every client's /128 that
+            // falls inside a WAN interface's on-link /64 (the delivery path for
+            // an on-link prefix; a routed prefix reaches the host without ND).
+            for (_, cfg) in &server.subnets.0 {
+                let Some(prefix) = cfg.ipv6 else {
+                    continue;
+                };
+                for (client_v4, _) in &cfg.clients.0 {
+                    let addr = crate::tunnel::wg6::host_v6(prefix, *client_v4);
+                    if let Some((iface, _)) = onlink.iter().find(|(_, n)| n.contains(&addr)) {
+                        desired.insert(addr, iface.clone());
+                    }
+                }
+            }
+        }
+        let current = self.v6_proxy.peek(|m| m.clone());
+        for (addr, iface) in &current {
+            if desired.get(addr) != Some(iface) {
+                neigh_proxy(false, *addr, iface.as_str()).await;
+            }
+        }
+        for (addr, iface) in &desired {
+            if current.get(addr) != Some(iface) {
+                neigh_proxy(true, *addr, iface.as_str()).await;
+            }
+        }
+        self.v6_proxy.mutate(|m| *m = desired);
+        Ok(())
     }
 
     /// Reconcile per-subnet and per-device egress NAT rules in `postrouting`:
@@ -449,15 +593,14 @@ impl TunnelContext {
                 }
                 PortForward::Sni { routes } => {
                     for (host, route) in routes {
-                        let ip = crate::tunnel::forward::igd::external_ipv4(self, *route.target.ip())
-                            .await
-                            .unwrap_or(*src.ip());
+                        let ip =
+                            crate::tunnel::forward::igd::external_ipv4(self, *route.target.ip())
+                                .await
+                                .unwrap_or(*src.ip());
                         let key = SocketAddrV4::new(ip, src.port());
-                        match want
-                            .entry(key)
-                            .or_insert_with(|| PortForward::Sni {
-                                routes: BTreeMap::new(),
-                            }) {
+                        match want.entry(key).or_insert_with(|| PortForward::Sni {
+                            routes: BTreeMap::new(),
+                        }) {
                             PortForward::Sni { routes } => {
                                 routes.insert(host.clone(), route.clone());
                             }
@@ -493,10 +636,13 @@ impl TunnelContext {
         }
         for ((src, host), target) in &new_sni {
             if old_sni.get(&(*src, host.clone())) != Some(target) {
-                if let Err(code) =
-                    self.sni
-                        .register(*src.ip(), src.port(), std::slice::from_ref(host), *target, None)
-                {
+                if let Err(code) = self.sni.register(
+                    *src.ip(),
+                    src.port(),
+                    std::slice::from_ref(host),
+                    *target,
+                    None,
+                ) {
                     tracing::warn!("failed to register SNI route {host} on {src}: code {code}");
                 }
             }

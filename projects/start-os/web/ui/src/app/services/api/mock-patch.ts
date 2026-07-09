@@ -49,7 +49,7 @@ export const mockPatchData: DataModel = {
             addresses: {
               enabled: [],
               disabled: [],
-              guaAccess: {},
+              guaWan: [],
               available: [
                 {
                   ssl: true,
@@ -160,7 +160,7 @@ export const mockPatchData: DataModel = {
         eth0: {
           name: null,
           secure: null,
-          type: null,
+          type: 'inbound-outbound',
           ipInfo: {
             name: 'Wired Connection 1',
             scopeId: 1,
@@ -175,7 +175,7 @@ export const mockPatchData: DataModel = {
         wlan0: {
           name: null,
           secure: null,
-          type: null,
+          type: 'inbound-outbound',
           ipInfo: {
             name: 'Wireless Connection 1',
             scopeId: 2,
@@ -467,9 +467,9 @@ export const mockPatchData: DataModel = {
                 assignedSslPort: 42443,
               },
               addresses: {
-                enabled: ['203.0.113.45:42443'],
+                enabled: ['203.0.113.45:42443', '[2001:db8:abcd::a3b:2]:1234'],
                 disabled: [],
-                guaAccess: {},
+                guaWan: ['[2001:db8:abcd::a3b:2]:1234'],
                 available: [
                   {
                     ssl: true,
@@ -561,6 +561,13 @@ export const mockPatchData: DataModel = {
                       info: null,
                     },
                   },
+                  {
+                    ssl: true,
+                    public: true,
+                    hostname: '2001:db8:abcd::a3b:2',
+                    port: 1234,
+                    metadata: { kind: 'ipv6', gateway: 'eth0', scopeId: 0 },
+                  },
                 ],
               },
               options: {
@@ -620,7 +627,7 @@ export const mockPatchData: DataModel = {
               addresses: {
                 enabled: ['203.0.113.45:49152'],
                 disabled: [],
-                guaAccess: {},
+                guaWan: [],
                 available: [
                   {
                     ssl: false,
@@ -715,7 +722,7 @@ export const mockPatchData: DataModel = {
               addresses: {
                 enabled: [],
                 disabled: [],
-                guaAccess: {},
+                guaWan: [],
                 available: [
                   {
                     ssl: false,
@@ -791,7 +798,7 @@ export const mockPatchData: DataModel = {
               addresses: {
                 enabled: [],
                 disabled: [],
-                guaAccess: {},
+                guaWan: [],
                 available: [],
               },
               options: {

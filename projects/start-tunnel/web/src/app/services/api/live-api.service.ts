@@ -1,17 +1,16 @@
-import { Injectable, DOCUMENT, inject } from '@angular/core'
+import { DOCUMENT, inject, Injectable } from '@angular/core'
 import {
   HttpService,
-  RPCOptions,
   isRpcError,
   RpcError,
-  ErrorService,
+  RPCOptions,
 } from '@start9labs/shared'
+import { T } from '@start9labs/start-core'
 import { filter, firstValueFrom, Observable } from 'rxjs'
 import { webSocket } from 'rxjs/webSocket'
-import { T } from '@start9labs/start-core'
-import { ApiService, SubscribeRes } from './api.service'
 import { AuthService } from '../auth.service'
 import { PATCH_CACHE } from '../patch-db/patch-db-source'
+import { ApiService, SubscribeRes } from './api.service'
 
 @Injectable({
   providedIn: 'root',
@@ -21,7 +20,6 @@ export class LiveApiService extends ApiService {
   private readonly document = inject(DOCUMENT)
   private readonly auth = inject(AuthService)
   private readonly cache$ = inject(PATCH_CACHE)
-  private readonly errorService = inject(ErrorService)
 
   constructor() {
     super()
@@ -146,6 +144,42 @@ export class LiveApiService extends ApiService {
     params: T.Tunnel.SetPortForwardEnabledParams,
   ): Promise<null> {
     return this.rpcRequest({ method: 'port-forward.set-enabled', params })
+  }
+
+  // pinholes (IPv6)
+
+  async addPinhole(params: T.Tunnel.AddPinholeParams): Promise<null> {
+    return this.rpcRequest({ method: 'pinhole.add', params })
+  }
+
+  async deletePinhole(params: T.Tunnel.RemovePinholeParams): Promise<null> {
+    return this.rpcRequest({ method: 'pinhole.remove', params })
+  }
+
+  async updatePinholeLabel(
+    params: T.Tunnel.UpdatePinholeLabelParams,
+  ): Promise<null> {
+    return this.rpcRequest({ method: 'pinhole.update-label', params })
+  }
+
+  async setPinholeEnabled(
+    params: T.Tunnel.SetPinholeEnabledParams,
+  ): Promise<null> {
+    return this.rpcRequest({ method: 'pinhole.set-enabled', params })
+  }
+
+  // http redirects
+
+  async setHttpRedirectEnabled(
+    params: T.Tunnel.SetHttpRedirectEnabledParams,
+  ): Promise<null> {
+    return this.rpcRequest({ method: 'http-redirect.set-enabled', params })
+  }
+
+  // ipv6
+
+  async setSubnetIpv6(params: T.Tunnel.SetSubnetIpv6Params): Promise<null> {
+    return this.rpcRequest({ method: 'subnet.set-ipv6', params })
   }
 
   // system

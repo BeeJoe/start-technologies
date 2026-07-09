@@ -48,7 +48,9 @@ fn build_listen_socket(
 /// ([`LISTEN_BACKLOG`]) instead of mio's hardcoded 128. Use everywhere we'd
 /// otherwise reach for `mio::net::TcpListener::bind`.
 pub fn bind_mio_listener(addr: SocketAddr) -> std::io::Result<mio::net::TcpListener> {
-    Ok(mio::net::TcpListener::from_std(build_listen_socket(addr, false)?))
+    Ok(mio::net::TcpListener::from_std(build_listen_socket(
+        addr, false,
+    )?))
 }
 
 /// Bind a `tokio::net::TcpListener` with an explicit listen backlog
@@ -187,6 +189,21 @@ pub async fn get_iface_ipv6_addr(iface: &str) -> Result<Option<(Ipv6Addr, Ipv6Ne
     .find(|ip| !ip.starts_with("fe80::"))
     .map(|s| Ok::<_, Error>((s.split("/").next().unwrap().parse()?, s.parse()?)))
     .transpose()?)
+}
+
+/// True iff the host has an IPv6 default route (`::/0`), i.e. some working IPv6
+/// egress. Used to reject delegating an IPv6 prefix on a box that can't route it.
+pub async fn has_ipv6_default_route() -> Result<bool, Error> {
+    let output = String::from_utf8(
+        Command::new("ip")
+            .arg("-6")
+            .arg("route")
+            .arg("show")
+            .arg("default")
+            .invoke(crate::ErrorKind::Network)
+            .await?,
+    )?;
+    Ok(!output.trim().is_empty())
 }
 
 pub async fn probe_iface_type(iface: &str) -> Option<NetworkInterfaceType> {

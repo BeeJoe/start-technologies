@@ -11,14 +11,14 @@ the monorepo and how a request flows through the system. For the product-level
 The `projects/start-tunnel/` directory is a thin product wrapper. The substance is in the
 shared `start-core` crate.
 
-| Concern                         | Location                                              |
-| ------------------------------- | ---------------------------------------------------- |
-| Binary entry point              | `projects/start-tunnel/src/main.rs`                  |
-| Daemon + CLI dispatch           | `shared-libs/crates/start-core/src/bins/tunnel.rs`        |
-| Tunnel module root              | `shared-libs/crates/start-core/src/tunnel/mod.rs`         |
-| Angular UI                      | `projects/start-tunnel/web/`                          |
-| systemd unit                    | `projects/start-tunnel/start-tunneld.service`        |
-| User & reference docs (mdbook)  | `projects/start-tunnel/docs/`                        |
+| Concern                        | Location                                           |
+| ------------------------------ | -------------------------------------------------- |
+| Binary entry point             | `projects/start-tunnel/src/main.rs`                |
+| Daemon + CLI dispatch          | `shared-libs/crates/start-core/src/bins/tunnel.rs` |
+| Tunnel module root             | `shared-libs/crates/start-core/src/tunnel/mod.rs`  |
+| Angular UI                     | `projects/start-tunnel/web/`                       |
+| systemd unit                   | `projects/start-tunnel/start-tunneld.service`      |
+| User & reference docs (mdbook) | `projects/start-tunnel/docs/`                      |
 
 `src/main.rs` embeds the compiled UI (`web/dist/static/start-tunnel`) via
 `include_dir!` into `start_core::tunnel::context::TUNNEL_UI_CELL`, then hands off to
@@ -99,20 +99,20 @@ daemon over the same JSON-RPC API.
 - `web/tsconfig.json` resolves `@start9labs/shared` and
   `@start9labs/marketplace` to `shared-libs/ts-modules/`.
 
-Build output: `npm run build:tunnel` (from the repo root; `make tunnel`
+Build output: `npm run build:tunnel` (from the repo root; `make start-tunnel`
 chains it) → `projects/start-tunnel/web/dist/raw/start-tunnel/` → compressed to
 `projects/start-tunnel/web/dist/static/start-tunnel/`
 (`shared-libs/ts-modules/compress-uis.sh`), which the Rust binary embeds.
 
 ## Build & packaging
 
-- `make tunnel` → `target/<arch>-unknown-linux-musl/<profile>/tunnelbox`
+- `make start-tunnel` → `target/<arch>-unknown-linux-musl/<profile>/tunnelbox`
   (depends on the prebuilt static UI).
-- `make tunnel-deb` → a Debian package declaring `wireguard-tools`, `iptables`,
+- `make start-tunnel-deb` → a Debian package declaring `wireguard-tools`, `iptables`,
   `nftables`, and `conntrack` as dependencies, installing the three symlinks and
   the systemd unit.
 - TS bindings for the tunnel API are generated into
-  `shared-libs/crates/start-core/bindings/tunnel/` (`make ts-bindings`).
+  `shared-libs/crates/start-core/bindings/tunnel/` (`make start-core-ts-bindings`).
 
 ## Further reading
 

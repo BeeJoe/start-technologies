@@ -1,13 +1,9 @@
 import { Component, computed, inject, input, signal } from '@angular/core'
 import { FormsModule } from '@angular/forms'
-import { ErrorService, i18nPipe } from '@start9labs/shared'
+import { i18nPipe, TaskService } from '@start9labs/shared'
 import { T } from '@start9labs/start-core'
-import { TuiButton, TuiIcon } from '@taiga-ui/core'
-import {
-  TuiBadge,
-  TuiNotificationMiddleService,
-  TuiSwitch,
-} from '@taiga-ui/kit'
+import { TuiButton, TuiDataList, TuiDropdown, TuiIcon } from '@taiga-ui/core'
+import { TuiBadge, TuiChevron, TuiSwitch } from '@taiga-ui/kit'
 import { ApiService } from 'src/app/services/api/embassy-api.service'
 import { GatewayAddress, MappedServiceInterface } from '../../interface.service'
 import { GatewayActionsComponent } from './actions.component'
@@ -22,40 +18,62 @@ import { DomainHealthService } from './domain-health.service'
   template: `
     @if (address(); as address) {
       <td>
-        @if (address.guaAccess !== null) {
-          <!-- An IPv6 GUA is reachable LAN-only or also from the WAN, so it gets
-               a Disabled / LAN / LAN+WAN tri-state instead of an on/off toggle. -->
-          <select
-            class="gua-access"
-            [disabled]="toggling()"
-            [ngModel]="address.guaAccess"
-            (ngModelChange)="onSetGuaAccess($event)"
-          >
-            <option value="disabled">{{ 'Disabled' | i18n }}</option>
-            <option value="lan">{{ 'LAN' | i18n }}</option>
-            <option value="lan-wan">{{ 'LAN+WAN' | i18n }}</option>
-          </select>
-        } @else {
-          <input
-            type="checkbox"
-            tuiSwitch
-            size="s"
-            [showIcons]="false"
-            [disabled]="
-              toggling() || address.hostnameInfo.metadata.kind === 'mdns'
-            "
-            [ngModel]="address.enabled"
-            (ngModelChange)="onToggleEnabled()"
-          />
-        }
+        <input
+          type="checkbox"
+          tuiSwitch
+          size="s"
+          [showIcons]="false"
+          [disabled]="
+            toggling() || address.hostnameInfo.metadata.kind === 'mdns'
+          "
+          [ngModel]="address.enabled"
+          (ngModelChange)="onToggleEnabled()"
+        />
       </td>
       <td class="access">
-        <tui-icon
-          [icon]="address.access === 'public' ? '@tui.globe' : '@tui.house'"
-        />
-        <span>
-          {{ (address.access === 'public' ? 'Public' : 'Local') | i18n }}
-        </span>
+        @if (address.gua) {
+          <!-- A GUA's Local vs Public is its WAN opt-in (the public flag), so
+               it shows like the other rows but as a dropdown to change it. -->
+          <button
+            tuiButton
+            tuiDropdown
+            tuiChevron
+            size="s"
+            appearance="secondary-grayscale"
+            [tuiAppearanceState]="guaOpen() ? 'hover' : null"
+            [tuiDropdownOpen]="guaOpen()"
+            (tuiDropdownOpenChange)="guaOpen.set($event)"
+            [disabled]="toggling()"
+            [iconStart]="
+              address.access === 'public' ? '@tui.globe' : '@tui.house'
+            "
+          >
+            {{ (address.access === 'public' ? 'Public' : 'Local') | i18n }}
+            <tui-data-list *tuiDropdown (click)="guaOpen.set(false)">
+              <button
+                tuiOption
+                iconStart="@tui.house"
+                (click)="onSetGuaWan(false)"
+              >
+                {{ 'Local' | i18n }}
+              </button>
+              <button
+                tuiOption
+                iconStart="@tui.globe"
+                (click)="onSetGuaWan(true)"
+              >
+                {{ 'Public' | i18n }}
+              </button>
+            </tui-data-list>
+          </button>
+        } @else {
+          <tui-icon
+            [icon]="address.access === 'public' ? '@tui.globe' : '@tui.house'"
+          />
+          <span>
+            {{ (address.access === 'public' ? 'Public' : 'Local') | i18n }}
+          </span>
+        }
       </td>
       <td class="type">
         <span
@@ -213,7 +231,7 @@ import { DomainHealthService } from './domain-health.service'
         font: var(--tui-typography-body-m);
         font-weight: bold;
         color: var(--tui-text-primary);
-        padding-inline-end: 0.5rem;
+        padding-inline: 0.5rem;
       }
 
       .cert-cell {
@@ -245,6 +263,9 @@ import { DomainHealthService } from './domain-health.service'
     GatewayActionsComponent,
     TuiBadge,
     TuiButton,
+    TuiChevron,
+    TuiDataList,
+    TuiDropdown,
     TuiIcon,
     TuiSwitch,
     FormsModule,
@@ -252,8 +273,7 @@ import { DomainHealthService } from './domain-health.service'
 })
 export class GatewayItemComponent {
   private readonly api = inject(ApiService)
-  private readonly errorService = inject(ErrorService)
-  private readonly loader = inject(TuiNotificationMiddleService)
+  private readonly tasks = inject(TaskService)
   private readonly domainHealth = inject(DomainHealthService)
 
   readonly address = input.required<GatewayAddress>()
@@ -264,6 +284,7 @@ export class GatewayItemComponent {
 
   readonly toggling = signal(false)
   readonly currentlyMasked = signal(true)
+  readonly guaOpen = signal(false)
   // The Certificate Authority column only shows when some address is SSL; kept
   // in sync with GatewayComponent's header (both derive from the same data).
   readonly showCert = computed(
@@ -303,19 +324,18 @@ export class GatewayItemComponent {
     const iface = this.value()
     if (!iface) return
 
-    this.toggling.set(true)
     const enabled = !addr.enabled
-    const loader = this.loader.open('Saving').subscribe()
+    const params = {
+      internalPort: iface.addressInfo.internalPort,
+      address: addr.hostnameInfo,
+      enabled,
+      package: this.packageId(),
+      host: iface.addressInfo.hostId,
+    }
 
-    try {
+    this.toggling.set(true)
+    await this.tasks.run(async () => {
       if (this.packageId()) {
-        const params = {
-          internalPort: iface.addressInfo.internalPort,
-          address: addr.hostnameInfo,
-          enabled,
-          package: this.packageId(),
-          host: iface.addressInfo.hostId,
-        }
         // A range spans >1 port and lives in a separate subtree, so it has its
         // own endpoint; a single-port binding is exactly 1.
         if (addr.count > 1) {
@@ -359,43 +379,34 @@ export class GatewayItemComponent {
           )
         }
       }
-    } catch (e: any) {
-      this.errorService.handleError(e)
-    } finally {
-      loader.unsubscribe()
-      this.toggling.set(false)
-    }
+    }, 'Saving')
+    this.toggling.set(false)
   }
 
-  async onSetGuaAccess(access: T.GuaAccess) {
+  async onSetGuaWan(wan: boolean) {
     const addr = this.address()
     const iface = this.value()
-    if (!iface) return
+    // Selecting the already-active option shouldn't re-save.
+    if (!iface || wan === (addr.access === 'public')) return
 
     this.toggling.set(true)
-    const loader = this.loader.open('Saving').subscribe()
-
-    try {
+    await this.tasks.run(async () => {
       if (this.packageId()) {
-        await this.api.pkgBindingSetGuaAccess({
+        await this.api.pkgBindingSetGuaWan({
           internalPort: iface.addressInfo.internalPort,
           address: addr.hostnameInfo,
-          access,
+          wan,
           package: this.packageId(),
           host: iface.addressInfo.hostId,
         })
       } else {
-        await this.api.serverBindingSetGuaAccess({
+        await this.api.serverBindingSetGuaWan({
           internalPort: 80,
           address: addr.hostnameInfo,
-          access,
+          wan,
         })
       }
-    } catch (e: any) {
-      this.errorService.handleError(e)
-    } finally {
-      loader.unsubscribe()
-      this.toggling.set(false)
-    }
+    }, 'Saving')
+    this.toggling.set(false)
   }
 }

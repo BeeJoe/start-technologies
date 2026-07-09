@@ -1,7 +1,7 @@
 import { Component, computed, inject, signal } from '@angular/core'
 import { toSignal } from '@angular/core/rxjs-interop'
 import { FormsModule } from '@angular/forms'
-import { ErrorService } from '@start9labs/shared'
+import { ErrorService, TaskService } from '@start9labs/shared'
 import { T } from '@start9labs/start-core'
 import { TuiResponsiveDialogService } from '@taiga-ui/addon-mobile'
 import {
@@ -12,12 +12,7 @@ import {
   TuiLoader,
   TuiTitle,
 } from '@taiga-ui/core'
-import {
-  TUI_CONFIRM,
-  TuiNotificationMiddleService,
-  TuiSkeleton,
-  TuiSwitch,
-} from '@taiga-ui/kit'
+import { TUI_CONFIRM, TuiSkeleton, TuiSwitch } from '@taiga-ui/kit'
 import { TuiCardLarge, TuiHeader } from '@taiga-ui/layout'
 import { PatchDB } from 'patch-db-client'
 import { filter, map } from 'rxjs'
@@ -31,7 +26,7 @@ import { ApiService } from 'src/app/services/api/api.service'
 import { TunnelData } from 'src/app/services/patch-db/data-model'
 import { DEVICES_ADD } from './add'
 import { DEVICES_CONFIG } from './config'
-import { MappedDevice } from './utils'
+import { deviceIpv6, MappedDevice } from './utils'
 
 @Component({
   template: `
@@ -50,10 +45,11 @@ import { MappedDevice } from './utils'
           <tr>
             <th>Name</th>
             <th>Subnet</th>
-            <th>LAN IP</th>
+            <th>LAN IPv4</th>
             <th>DNS Injection</th>
             <th>Auto Port Forward</th>
-            <th>WAN IP</th>
+            <th>WAN IPv4</th>
+            <th>IPv6</th>
             <th></th>
           </tr>
         </thead>
@@ -98,6 +94,7 @@ import { MappedDevice } from './utils'
                 </tui-loader>
               </td>
               <td>{{ device.wan }}</td>
+              <td>{{ device.ipv6 ?? '—' }}</td>
               <td [style.padding-inline-end.rem]="0.625">
                 <button
                   tuiIconButton
@@ -147,7 +144,7 @@ import { MappedDevice } from './utils'
             </tr>
           } @empty {
             <tr>
-              <td colspan="7">
+              <td colspan="8">
                 <app-placeholder icon="@tui.laptop">No servers</app-placeholder>
               </td>
             </tr>
@@ -171,8 +168,9 @@ import { MappedDevice } from './utils'
           <tr>
             <th>Name</th>
             <th>Subnet</th>
-            <th>LAN IP</th>
-            <th>WAN IP</th>
+            <th>LAN IPv4</th>
+            <th>WAN IPv4</th>
+            <th>IPv6</th>
             <th></th>
           </tr>
         </thead>
@@ -183,6 +181,7 @@ import { MappedDevice } from './utils'
               <td>{{ device.subnet.name }}</td>
               <td>{{ device.ip }}</td>
               <td>{{ device.wan }}</td>
+              <td>{{ device.ipv6 ?? '—' }}</td>
               <td [style.padding-inline-end.rem]="0.625">
                 <button
                   tuiIconButton
@@ -232,7 +231,7 @@ import { MappedDevice } from './utils'
             </tr>
           } @empty {
             <tr>
-              <td colspan="5">
+              <td colspan="6">
                 <app-placeholder icon="@tui.laptop">No clients</app-placeholder>
               </td>
             </tr>
@@ -266,7 +265,7 @@ import { MappedDevice } from './utils'
 export default class Devices {
   private readonly dialogs = inject(TuiResponsiveDialogService)
   private readonly api = inject(ApiService)
-  private readonly loading = inject(TuiNotificationMiddleService)
+  private readonly tasks = inject(TaskService)
   private readonly errorService = inject(ErrorService)
   private readonly patch = inject<PatchDB<TunnelData>>(PatchDB)
 
@@ -286,12 +285,15 @@ export default class Devices {
   protected readonly subnets = toSignal(
     this.patch.watch$('wg', 'subnets').pipe(
       map(subnets =>
-        Object.entries(subnets).map(([range, { name, clients, wanIp }]) => ({
-          range,
-          name,
-          clients,
-          wanIp,
-        })),
+        Object.entries(subnets).map(
+          ([range, { name, clients, wanIp, ipv6 }]) => ({
+            range,
+            name,
+            clients,
+            wanIp,
+            ipv6,
+          }),
+        ),
       ),
     ),
     { initialValue: null },
@@ -317,6 +319,7 @@ export default class Devices {
           allowAutoPortForward,
           wanIp,
           wan: wanLabel(wanIp, 'Subnet default', subnet.wanIp ?? defaultWan),
+          ipv6: deviceIpv6(subnet.ipv6, ip),
         }),
       ),
     )
@@ -359,36 +362,24 @@ export default class Devices {
   }
 
   async onConfig({ subnet, ip }: MappedDevice) {
-    const loader = this.loading.open('').subscribe()
-    try {
+    this.tasks.run(async () => {
       const data = await this.api.showDeviceConfig({ subnet: subnet.range, ip })
 
       this.dialogs
         .open(DEVICES_CONFIG, { data, closable: false, size: 'm' })
         .subscribe()
-    } catch (e: any) {
-      console.log(e)
-      this.errorService.handleError(e)
-    } finally {
-      loader.unsubscribe()
-    }
+    })
   }
 
   protected onDelete({ subnet, ip }: MappedDevice): void {
     this.dialogs
       .open(TUI_CONFIRM, { label: 'Are you sure?' })
       .pipe(filter(Boolean))
-      .subscribe(async () => {
-        const loader = this.loading.open('').subscribe()
-        try {
-          await this.api.deleteDevice({ subnet: subnet.range, ip })
-        } catch (e: any) {
-          this.errorService.handleError(e)
-          console.log(e)
-        } finally {
-          loader.unsubscribe()
-        }
-      })
+      .subscribe(() =>
+        this.tasks.run(
+          async () => await this.api.deleteDevice({ subnet: subnet.range, ip }),
+        ),
+      )
   }
 
   protected async onDnsInjection({
@@ -436,16 +427,11 @@ export default class Devices {
     this.dialogs
       .open(TUI_CONFIRM, { label: 'Are you sure?' })
       .pipe(filter(Boolean))
-      .subscribe(async () => {
-        const loader = this.loading.open('').subscribe()
-        try {
-          await this.api.setDeviceKind({ subnet: subnet.range, ip, kind })
-        } catch (e: any) {
-          this.errorService.handleError(e)
-          console.log(e)
-        } finally {
-          loader.unsubscribe()
-        }
-      })
+      .subscribe(() =>
+        this.tasks.run(
+          async () =>
+            await this.api.setDeviceKind({ subnet: subnet.range, ip, kind }),
+        ),
+      )
   }
 }

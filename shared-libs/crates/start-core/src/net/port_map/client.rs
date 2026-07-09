@@ -18,11 +18,12 @@ use std::time::Duration;
 use crab_nat::{InternetProtocol, PortMapping, PortMappingOptions, TimeoutConfig, pcp};
 use igd_next::aio::Gateway;
 use igd_next::aio::tokio::Tokio;
+use ipnet::IpNet;
 use tokio::net::UdpSocket;
 use tokio::sync::{mpsc, oneshot};
 use tokio::time::{Instant, interval, timeout};
 
-use crate::db::model::public::NetworkInterfaceInfo;
+use crate::db::model::public::{GatewayType, NetworkInterfaceInfo};
 use crate::net::port_map::pcp::capability::has_start9_capability;
 use crate::net::port_map::pcp::hostname::OPTION_HOSTNAME;
 use crate::net::port_map::pcp::portset::{OPTION_PORT_SET, PortSet};
@@ -31,8 +32,10 @@ use crate::net::port_map::upnp;
 use crate::net::utils::ipv6_is_link_local;
 use crate::prelude::*;
 
-/// Re-assert/renew every desired mapping on this cadence (well under the PCP
-/// lease, and enough to recover a UPnP mapping lost to a gateway reboot).
+/// Cadence for the refresh tick: re-assert UPnP and retry not-yet-active
+/// mappings, and check whether each active PCP mapping has crossed half its
+/// lease (the point it's renewed). Well under the PCP lease so a renewal that's
+/// come due is caught with ample margin before expiry.
 const REFRESH_INTERVAL: Duration = Duration::from_secs(180);
 /// Retry floor for a desired-but-not-active mapping, so a reconcile burst can't
 /// busy-loop a failing apply yet boot/tunnel-restart races still recover in
@@ -55,10 +58,20 @@ type MappingKey = (IpAddr, u16, Option<String>);
 
 /// Candidate PCP/NAT-PMP servers for a gateway interface: the NM default
 /// gateways (router) that fall on one of this interface's own subnets, plus the
-/// v6 link-local default gateway.
+/// v6 link-local default gateway. A StartTunnel gateway is on-link (routed by
+/// AllowedIPs, no next-hop), so NM reports no gateway — fall back per family to
+/// the tunnel server's address, the subnet's first host, where its PCP server
+/// listens.
 pub fn candidate_gateways(info: &NetworkInterfaceInfo) -> Vec<(IpAddr, Option<u32>)> {
-    let mut out: Vec<(IpAddr, Option<u32>)> = Vec::new();
-    let mut push = |ip: IpAddr, scope_id: Option<u32>| {
+    // Port mapping is inbound-only: an OutboundOnly gateway (e.g. a commercial
+    // VPN) exposes no PCP/NAT-PMP server we'd ever ask for a pinhole. Return no
+    // candidates so every port-map call site — this is the one they all funnel
+    // through — never attempts PCP against it.
+    if info.gateway_type == GatewayType::OutboundOnly {
+        return Vec::new();
+    }
+
+    fn push(out: &mut Vec<(IpAddr, Option<u32>)>, ip: IpAddr, scope_id: Option<u32>) {
         let bad = match ip {
             IpAddr::V4(v4) => v4.is_unspecified() || v4.is_loopback() || v4.is_broadcast(),
             IpAddr::V6(v6) => v6.is_unspecified() || v6.is_loopback(),
@@ -66,26 +79,71 @@ pub fn candidate_gateways(info: &NetworkInterfaceInfo) -> Vec<(IpAddr, Option<u3
         if !bad && !out.iter().any(|(g, _)| *g == ip) {
             out.push((ip, scope_id));
         }
+    }
+
+    let mut out: Vec<(IpAddr, Option<u32>)> = Vec::new();
+    let Some(ip_info) = &info.ip_info else {
+        return out;
     };
-    if let Some(ip_info) = &info.ip_info {
-        for ip in &ip_info.lan_ip {
-            // v4: the gateway must sit within one of our own subnets. v6: accept
-            // the link-local default gateway (fe80::, the common case) or one in
-            // our subnets.
-            match ip {
-                IpAddr::V4(_) => {
-                    if ip_info.subnets.iter().any(|s| s.contains(ip)) {
-                        push(*ip, None);
-                    }
+
+    for ip in &ip_info.lan_ip {
+        // The gateway must sit within one of our own subnets. A link-local v6
+        // gateway is never a PCP server we can reach — a StartTunnel peer owns
+        // none on the wg link, and its own fe80::/64 nominally "contains" any
+        // fe80::, so a subnet check can't distinguish it — so skip it. On a
+        // tunnel the host_v6-derived server fills the v6 slot below.
+        match ip {
+            IpAddr::V4(_) => {
+                if ip_info.subnets.iter().any(|s| s.contains(ip)) {
+                    push(&mut out, *ip, None);
                 }
-                IpAddr::V6(v6) => {
-                    if ipv6_is_link_local(*v6) || ip_info.subnets.iter().any(|s| s.contains(ip)) {
-                        push(*ip, Some(ip_info.scope_id));
-                    }
+            }
+            IpAddr::V6(v6) => {
+                if ipv6_is_link_local(*v6) {
+                    continue;
+                }
+                if ip_info.subnets.iter().any(|s| s.contains(ip)) {
+                    push(&mut out, *ip, Some(ip_info.scope_id));
                 }
             }
         }
     }
+
+    // StartTunnel fallback: the tunnel is on-link (routed by AllowedIPs, no
+    // next-hop) so NM reports no gateway and `lan_ip` is empty. The server's PCP
+    // listener is at the subnet's first host — `.1` for v4, and the v6 that host
+    // takes under the delegated prefix, which the client now carries on its own
+    // /prefix v6 so `host_v6` is exact. Fill a family only when NM gave none, so
+    // a real gateway always wins.
+    if info.gateway_type == GatewayType::InboundOutbound {
+        let have_v4 = out.iter().any(|(g, _)| g.is_ipv4());
+        let have_v6 = out.iter().any(|(g, _)| g.is_ipv6());
+        let server_v4 = ip_info.subnets.iter().find_map(|s| match s {
+            IpNet::V4(n) => n.hosts().next(),
+            IpNet::V6(_) => None,
+        });
+        if let Some(server_v4) = server_v4 {
+            if !have_v4 {
+                push(&mut out, IpAddr::V4(server_v4), None);
+            }
+            // Skip a bare /128 (a legacy config with no prefix): `host_v6` would
+            // resolve to the client's own address, not the server's.
+            if !have_v6 {
+                if let Some(prefix) = ip_info.subnets.iter().find_map(|s| match s {
+                    // Derive the server from the routed prefix, never the wg
+                    // iface's own fe80::/64 — that would yield a link-local server.
+                    IpNet::V6(n) if n.prefix_len() < 128 && !ipv6_is_link_local(n.network()) => {
+                        Some(*n)
+                    }
+                    _ => None,
+                }) {
+                    let server_v6 = crate::tunnel::wg6::host_v6(prefix, server_v4);
+                    push(&mut out, IpAddr::V6(server_v6), Some(ip_info.scope_id));
+                }
+            }
+        }
+    }
+
     out
 }
 
@@ -182,7 +240,14 @@ impl PortMapController {
         gateways: Vec<(IpAddr, Option<u32>)>,
         hostname: String,
     ) {
-        self.send_ensure(local_ip, external_port, internal_port, gateways, Some(hostname), 1);
+        self.send_ensure(
+            local_ip,
+            external_port,
+            internal_port,
+            gateways,
+            Some(hostname),
+            1,
+        );
     }
 
     /// Map `count` contiguous ports starting at `external_port` via the PCP
@@ -196,7 +261,14 @@ impl PortMapController {
         count: u16,
         gateways: Vec<(IpAddr, Option<u32>)>,
     ) {
-        self.send_ensure(local_ip, external_port, internal_port, gateways, None, count);
+        self.send_ensure(
+            local_ip,
+            external_port,
+            internal_port,
+            gateways,
+            None,
+            count,
+        );
     }
 
     fn send_ensure(
@@ -241,11 +313,7 @@ impl PortMapController {
     /// Gateway-assigned external IP if a mapping is active for
     /// `(local_ip, external_port)`, else `None`. `Some` means the port was
     /// forwarded automatically, so a remote reachability check can be skipped.
-    pub async fn mapped_external_ip(
-        &self,
-        local_ip: IpAddr,
-        external_port: u16,
-    ) -> Option<IpAddr> {
+    pub async fn mapped_external_ip(&self, local_ip: IpAddr, external_port: u16) -> Option<IpAddr> {
         let (resp, rx) = oneshot::channel();
         self.req
             .send(Command::ExternalIp {
@@ -308,13 +376,21 @@ impl State {
     async fn refresh(&mut self) {
         for key in self.desired.keys().cloned().collect::<Vec<_>>() {
             match self.active.get_mut(&key) {
-                Some(Active::Pcp(m)) => {
+                // expiration()/lifetime() reflect the gateway's last grant
+                // (crab_nat uses std::time::Instant), so renewal self-corrects if
+                // the gateway caps the lease below what we asked for, and the
+                // ticks before it's due are skipped.
+                Some(Active::Pcp(m))
+                    if renew_due(std::time::Instant::now(), m.expiration(), m.lifetime()) =>
+                {
                     if let Err(e) = m.renew().await {
                         tracing::debug!("PCP/NAT-PMP renew for {key:?} failed, re-mapping: {e}");
                         self.teardown(key.clone()).await;
                         self.apply(key).await;
                     }
                 }
+                // A PCP mapping not yet at its renewal point: leave it be.
+                Some(Active::Pcp(_)) => {}
                 // UPnP has no lease; re-assert in case a gateway reboot dropped
                 // it. `None` retries a prior failure.
                 Some(Active::Upnp { .. }) | None => {
@@ -326,9 +402,15 @@ impl State {
         self.upnp_cache
             .retain(|_, (_, at)| at.elapsed() < GATEWAY_CACHE_TTL);
         self.hostname_caps.retain(|_, (ok, at)| {
-            at.elapsed() < if *ok { GATEWAY_CACHE_TTL } else { RETRY_INTERVAL }
+            at.elapsed()
+                < if *ok {
+                    GATEWAY_CACHE_TTL
+                } else {
+                    RETRY_INTERVAL
+                }
         });
-        self.last_attempt.retain(|k, _| self.desired.contains_key(k));
+        self.last_attempt
+            .retain(|k, _| self.desired.contains_key(k));
     }
 
     async fn teardown(&mut self, key: MappingKey) {
@@ -378,7 +460,10 @@ impl State {
                 }
                 // Never hand a Private-Use OPTION_HOSTNAME to a gateway that
                 // hasn't confirmed it speaks the extension via ANNOUNCE.
-                if !self.gateway_supports_hostname(local_ip, *gw, *scope_id).await {
+                if !self
+                    .gateway_supports_hostname(local_ip, *gw, *scope_id)
+                    .await
+                {
                     tracing::debug!("PCP HOSTNAME skip {gw}: no ANNOUNCE confirmation of support");
                     continue;
                 }
@@ -400,7 +485,9 @@ impl State {
                     // confirms the binding took, independent of the ANNOUNCE marker.
                     Ok(m)
                         if m.external_port() == ext
-                            && m.response_options().iter().any(|o| o.code == OPTION_HOSTNAME) =>
+                            && m.response_options()
+                                .iter()
+                                .any(|o| o.code == OPTION_HOSTNAME) =>
                     {
                         tracing::debug!(
                             "PCP HOSTNAME mapped {external_port}->{local_ip}:{} {hostname} via {gw}",
@@ -516,7 +603,9 @@ impl State {
                     let _ = m.try_drop().await;
                 }
                 Err(e) => {
-                    tracing::debug!("PCP/NAT-PMP map {local_ip}:{external_port} via {gw} failed: {e}")
+                    tracing::debug!(
+                        "PCP/NAT-PMP map {local_ip}:{external_port} via {gw} failed: {e}"
+                    )
                 }
             }
         }
@@ -524,16 +613,21 @@ impl State {
         // Fall back to UPnP (IPv4 only).
         if let IpAddr::V4(local_v4) = local_ip {
             let added = match self.gateway_for(local_v4).await {
-                Some(gw) => match upnp::add_port(gw, external_port, local_v4, spec.internal_port).await {
-                    Ok(()) => {
-                        tracing::debug!("UPnP mapped {external_port}->{local_v4}:{}", spec.internal_port);
-                        true
+                Some(gw) => {
+                    match upnp::add_port(gw, external_port, local_v4, spec.internal_port).await {
+                        Ok(()) => {
+                            tracing::debug!(
+                                "UPnP mapped {external_port}->{local_v4}:{}",
+                                spec.internal_port
+                            );
+                            true
+                        }
+                        Err(e) => {
+                            tracing::debug!("UPnP map {local_v4}:{external_port} failed: {e}");
+                            false
+                        }
                     }
-                    Err(e) => {
-                        tracing::debug!("UPnP map {local_v4}:{external_port} failed: {e}");
-                        false
-                    }
-                },
+                }
                 None => false,
             };
             if added {
@@ -579,7 +673,11 @@ impl State {
         scope_id: Option<u32>,
     ) -> bool {
         if let Some((ok, at)) = self.hostname_caps.get(&gw) {
-            let ttl = if *ok { GATEWAY_CACHE_TTL } else { RETRY_INTERVAL };
+            let ttl = if *ok {
+                GATEWAY_CACHE_TTL
+            } else {
+                RETRY_INTERVAL
+            };
             if at.elapsed() < ttl {
                 return *ok;
             }
@@ -650,6 +748,16 @@ async fn probe_announce(local_ip: IpAddr, gw: IpAddr, scope_id: Option<u32>) -> 
     false
 }
 
+/// Whether a PCP mapping granted `lifetime` seconds and expiring at `expiration`
+/// is due for renewal at `now` — RFC 6887 §11.2.1: renew once half the granted
+/// lifetime has elapsed (i.e. remaining lifetime has dropped to ≤ half), well
+/// before expiry. Saturates so a tiny grant or an already-lapsed mapping renews
+/// immediately rather than underflowing the `Instant`.
+fn renew_due(now: std::time::Instant, expiration: std::time::Instant, lifetime: u32) -> bool {
+    let half = Duration::from_secs(u64::from(lifetime) / 2);
+    now >= expiration.checked_sub(half).unwrap_or(now)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -677,15 +785,39 @@ mod tests {
         state.ensure(a.clone(), spec()).await;
         state.ensure(b.clone(), spec()).await;
         assert!(state.desired.contains_key(&a));
-        assert!(state.desired.contains_key(&b), "adding b clobbered a's siblings");
+        assert!(
+            state.desired.contains_key(&b),
+            "adding b clobbered a's siblings"
+        );
 
         state.ensure(plain.clone(), spec()).await;
-        assert_eq!(state.desired.len(), 3, "plain mapping is a distinct identity");
+        assert_eq!(
+            state.desired.len(),
+            3,
+            "plain mapping is a distinct identity"
+        );
 
         state.remove(a.clone()).await;
         assert!(!state.desired.contains_key(&a));
         assert!(state.desired.contains_key(&b), "removing a dropped b");
         assert!(state.desired.contains_key(&plain));
+    }
+
+    // Renewal fires at half the granted lifetime, not before — so a healthy
+    // mapping renews with ~half its lease still to spare, well ahead of the
+    // gateway's reap.
+    #[test]
+    fn renew_due_at_half_life() {
+        let now = std::time::Instant::now();
+        let lt = 3600; // half-life = 1800s
+        let due = |remaining: u64| renew_due(now, now + Duration::from_secs(remaining), lt);
+        assert!(!due(3600), "fresh grant: not due");
+        assert!(!due(1801), "just before half-life: not due");
+        assert!(due(1800), "at half-life: due");
+        assert!(due(1), "near expiry: due");
+        // Already expired (or a degenerate tiny lease) renews immediately.
+        assert!(renew_due(now, now - Duration::from_secs(1), lt));
+        assert!(renew_due(now, now, 0));
     }
 
     // The client accepts only a SUCCESS ANNOUNCE reply carrying the exact marker.
@@ -707,5 +839,176 @@ mod tests {
         assert!(!announce_marker_ok(&not_success));
 
         assert!(!announce_marker_ok(&resp[..24]), "no marker option");
+    }
+
+    fn iface(subnets: &[&str], lan_ip: &[&str], gateway_type: GatewayType) -> NetworkInterfaceInfo {
+        use crate::db::model::public::IpInfo;
+        NetworkInterfaceInfo {
+            ip_info: Some(std::sync::Arc::new(IpInfo {
+                scope_id: 42,
+                subnets: subnets
+                    .iter()
+                    .map(|s| s.parse::<IpNet>().unwrap())
+                    .collect(),
+                lan_ip: lan_ip
+                    .iter()
+                    .map(|s| s.parse::<IpAddr>().unwrap())
+                    .collect(),
+                ..Default::default()
+            })),
+            gateway_type,
+            ..Default::default()
+        }
+    }
+
+    // A StartTunnel gateway has no NM gateway (on-link), so we fall back to the
+    // subnet's first host per family: v4 `.1` and the v6 that host maps to under
+    // the delegated /prefix the client now carries.
+    #[test]
+    fn tunnel_fallback_derives_server_v4_and_v6() {
+        let gws = candidate_gateways(&iface(
+            &["10.59.0.2/24", "2001:db8:abcd::a3b:2/64"],
+            &[],
+            GatewayType::InboundOutbound,
+        ));
+        assert!(gws.contains(&(Ipv4Addr::new(10, 59, 0, 1).into(), None)));
+        let server_v6: IpAddr = "2001:db8:abcd::a3b:1".parse().unwrap();
+        assert!(gws.iter().any(|(g, _)| *g == server_v6), "got {gws:?}");
+    }
+
+    // On a /124 the client carries its /128 at /124, so `host_v6` stays exact
+    // where a naive v4-bit XOR would corrupt the prefix.
+    #[test]
+    fn tunnel_fallback_v6_exact_on_a_small_prefix() {
+        let gws = candidate_gateways(&iface(
+            &["10.59.0.2/24", "2001:db8:abcd:1::f2/124"],
+            &[],
+            GatewayType::InboundOutbound,
+        ));
+        let server_v6: IpAddr = "2001:db8:abcd:1::f1".parse().unwrap();
+        assert!(gws.iter().any(|(g, _)| *g == server_v6), "got {gws:?}");
+    }
+
+    // A real NM gateway always wins; the fallback fills only the missing family.
+    #[test]
+    fn tunnel_fallback_is_per_family() {
+        let gws = candidate_gateways(&iface(
+            &["10.59.0.2/24", "2001:db8:abcd::a3b:2/64"],
+            &["10.59.0.1"], // NM has v4 but no v6
+            GatewayType::InboundOutbound,
+        ));
+        assert_eq!(gws.iter().filter(|(g, _)| g.is_ipv4()).count(), 1);
+        let server_v6: IpAddr = "2001:db8:abcd::a3b:1".parse().unwrap();
+        assert!(gws.iter().any(|(g, _)| *g == server_v6), "got {gws:?}");
+    }
+
+    // Gateway type is a two-state default of inbound-outbound, so the
+    // subnet-derived `.1` fallback now applies to any inbound-outbound gateway
+    // with no NM gateway — not only explicit StartTunnel ones.
+    #[test]
+    fn inbound_outbound_no_nm_gateway_derives_first_host() {
+        let gws = candidate_gateways(&iface(
+            &["192.168.1.5/24"],
+            &[],
+            GatewayType::InboundOutbound,
+        ));
+        assert!(gws.contains(&(Ipv4Addr::new(192, 168, 1, 1).into(), None)));
+    }
+
+    // A legacy /128 client (pre-/prefix config) can't derive the server v6, so
+    // the v6 fallback is skipped rather than resolving to the client's own addr.
+    #[test]
+    fn tunnel_fallback_skips_bare_128_v6() {
+        let gws = candidate_gateways(&iface(
+            &["10.59.0.2/24", "2001:db8:abcd::a3b:2/128"],
+            &[],
+            GatewayType::InboundOutbound,
+        ));
+        assert!(gws.contains(&(Ipv4Addr::new(10, 59, 0, 1).into(), None)));
+        assert!(
+            !gws.iter().any(|(g, _)| g.is_ipv6()),
+            "no v6 from a bare /128"
+        );
+    }
+
+    // NM can report a link-local v6 gateway for the wg connection, but the
+    // tunnel server owns no link-local on the wg link — it must be skipped so
+    // the subnet-derived server v6 fills the slot (else every v6 map times out).
+    #[test]
+    fn tunnel_skips_link_local_nm_gateway() {
+        let gws = candidate_gateways(&iface(
+            &["10.59.0.2/24", "2001:db8:abcd:1::f2/124"],
+            &["fe80::a3b:1"],
+            GatewayType::InboundOutbound,
+        ));
+        assert!(!gws.iter().any(|(g, _)| match g {
+            IpAddr::V6(v6) => ipv6_is_link_local(*v6),
+            _ => false,
+        }));
+        let server_v6: IpAddr = "2001:db8:abcd:1::f1".parse().unwrap();
+        assert!(gws.iter().any(|(g, _)| *g == server_v6), "got {gws:?}");
+    }
+
+    // A link-local v6 gateway is never a reachable PCP server, so it's skipped
+    // regardless of gateway_type — a home router still keeps its v4 gateway.
+    #[test]
+    fn link_local_v6_gateway_is_always_skipped() {
+        let gws = candidate_gateways(&iface(
+            &["192.168.1.5/24"],
+            &["192.168.1.1", "fe80::1"],
+            GatewayType::InboundOutbound,
+        ));
+        assert!(
+            !gws.iter()
+                .any(|(g, _)| matches!(g, IpAddr::V6(v6) if ipv6_is_link_local(*v6))),
+            "link-local v6 gateway must be skipped: {gws:?}"
+        );
+        assert!(gws.contains(&(Ipv4Addr::new(192, 168, 1, 1).into(), None)));
+    }
+
+    // Regression for the live-box timeout: the wg iface carries its own
+    // fe80::/64, so `subnets.contains(fe80::gw)` is true (every link-local shares
+    // that /64) and re-admitted the NM link-local gateway past #3417's guard —
+    // the gateway the tunnel server can't answer on. It must be rejected so the
+    // host_v6-derived server (`.1` of the routed prefix) fills the v6 slot.
+    #[test]
+    fn tunnel_rejects_link_local_gateway_even_when_a_subnet_contains_it() {
+        let gws = candidate_gateways(&iface(
+            &[
+                "10.59.0.2/24",
+                "2604:a880:4:1d0::a3b:2/64",
+                "fe80::1234:5678:9abc:def0/64",
+            ],
+            &["fe80::a3b:1"],
+            GatewayType::InboundOutbound,
+        ));
+        assert!(
+            !gws.iter().any(|(g, _)| match g {
+                IpAddr::V6(v6) => ipv6_is_link_local(*v6),
+                _ => false,
+            }),
+            "link-local gateway survived despite the fe80::/64 subnet: {gws:?}"
+        );
+        let server_v6: IpAddr = "2604:a880:4:1d0::a3b:1".parse().unwrap();
+        assert!(
+            gws.iter().any(|(g, _)| *g == server_v6),
+            "expected host_v6-derived server, got {gws:?}"
+        );
+        assert!(gws.contains(&(Ipv4Addr::new(10, 59, 0, 1).into(), None)));
+    }
+
+    // Port mapping is inbound-only: an OutboundOnly gateway is never a PCP target,
+    // so it yields no candidates regardless of what NM reports.
+    #[test]
+    fn outbound_only_gateway_has_no_candidates() {
+        let gws = candidate_gateways(&iface(
+            &["10.8.0.2/24", "2001:db8::2/64"],
+            &["10.8.0.1", "fe80::1"],
+            GatewayType::OutboundOnly,
+        ));
+        assert!(
+            gws.is_empty(),
+            "OutboundOnly must yield no candidates, got {gws:?}"
+        );
     }
 }

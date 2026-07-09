@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 #
 # manage-release.sh — drive a monorepo product through its release steps.
 #
@@ -10,7 +10,18 @@
 # git tag / GitHub release is <project>/v<version> (the slash namespaces each
 # product's tags; releases before July 2026 used <project>_v<version>).
 
+# mapfile, inherit_errexit, and safe empty-array expansion under `set -u` all
+# need bash >= 4.4; macOS's /bin/bash is 3.2, so fail fast before half-running.
+if [ -z "${BASH_VERSINFO:-}" ] || [ "${BASH_VERSINFO[0]}" -lt 4 ] \
+    || { [ "${BASH_VERSINFO[0]}" -eq 4 ] && [ "${BASH_VERSINFO[1]}" -lt 4 ]; }; then
+    >&2 echo "manage-release.sh requires bash >= 4.4 (macOS: brew install bash)"
+    exit 1
+fi
+
 set -euo pipefail
+# Without this, a failure inside $(release_notes) is silently swallowed and the
+# release is created with broken notes.
+shopt -s inherit_errexit
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -42,7 +53,7 @@ APT_COMPONENT="main"
 # slot) and a sysupgrade image (OTA update -> the `squashfs` slot; see
 # cmd_register for the hardlink trick that maps the .img.gz names onto those
 # slots). Override either registry per run.
-STARTWRT_SOURCE_REGISTRY="${STARTWRT_SOURCE_REGISTRY:-https://beta-startwrt-registry.start9.com}"
+STARTWRT_SOURCE_REGISTRY="${STARTWRT_SOURCE_REGISTRY:-https://startwrt-beta-registry.start9.com}"
 STARTWRT_TARGET_REGISTRY="${STARTWRT_TARGET_REGISTRY:-https://startwrt-registry.start9.com}"
 STARTWRT_S3_BUCKET="s3://startwrt-images"
 STARTWRT_S3_CDN="https://startwrt-images.nyc3.cdn.digitaloceanspaces.com"
@@ -153,8 +164,14 @@ parse_run_id() {
     fi
 }
 
+# The commit the tag will point at ($COMMIT, default HEAD), as a full sha.
+tag_commit_sha() { (cd "$REPO_ROOT" && git rev-parse --verify "${COMMIT:-HEAD}^{commit}"); }
+
 # Local staging dir: keeps the flat _v separator (the tag's / would nest dirs).
 release_dir() { echo "$HOME/Downloads/${PROJECT}_v${VERSION}"; }
+
+# Marker recording which commit the release dir's GHA artifacts were built from.
+gha_commit_file() { echo "$(release_dir)/.gha-commit"; }
 
 ensure_release_dir() {
     local dir
@@ -435,12 +452,25 @@ cmd_pre_check() {
         >&2 echo "  ✗ gh not authenticated (run: gh auth login)"
         errors=1
     fi
-    # os/cli/deb/wrt also sign their artifacts with the Start9 org key.
+    # os/cli/deb/wrt also sign their artifacts with the Start9 org key, and
+    # render checksum blocks into the release notes (see checksum_block).
     if [ "$KIND" != npm ]; then
         if gpg --list-secret-keys "$START9_GPG_KEY" >/dev/null 2>&1; then
             echo "  ✓ Start9 signing key ${START9_GPG_KEY} present"
         else
             >&2 echo "  ✗ Start9 GPG secret key ${START9_GPG_KEY} not in keyring (needed to sign)"
+            errors=1
+        fi
+        if command -v sha256sum >/dev/null 2>&1 || command -v shasum >/dev/null 2>&1; then
+            echo "  ✓ sha-256 tool available"
+        else
+            >&2 echo "  ✗ neither sha256sum nor shasum installed (needed for release-notes checksums)"
+            errors=1
+        fi
+        if command -v b3sum >/dev/null 2>&1; then
+            echo "  ✓ b3sum available"
+        else
+            >&2 echo "  ✗ b3sum not installed (needed for release-notes checksums; brew/cargo install b3sum)"
             errors=1
         fi
     fi
@@ -479,8 +509,20 @@ cmd_pull_gha() {
         exit 2
     fi
 
+    # The tag must point at the commit these artifacts were built from.
+    local run_sha tag_sha
+    run_sha=$(gh run view -R "$REPO" "$RUN_ID" --json headSha -q .headSha)
+    tag_sha=$(tag_commit_sha)
+    if [ "$run_sha" != "$tag_sha" ]; then
+        >&2 echo "Run ${RUN_ID} built commit ${run_sha},"
+        >&2 echo "but tag ${TAG} would be cut at ${COMMIT:-HEAD} (${tag_sha})."
+        >&2 echo "Pass the run for that commit, or set COMMIT=${run_sha}."
+        exit 1
+    fi
+
     ensure_release_dir
-    echo "Downloading ${PROJECT} artifacts from run ${RUN_ID}..."
+    echo "$run_sha" > "$(gha_commit_file)"
+    echo "Downloading ${PROJECT} artifacts from run ${RUN_ID} (commit ${run_sha})..."
 
     case "$KIND" in
         os)
@@ -513,6 +555,8 @@ cmd_pull_gha() {
 
 cmd_pull() {
     ensure_release_dir
+    # Released assets replace any GHA-pulled ones, so the marker no longer applies.
+    rm -f "$(gha_commit_file)"
     echo "Downloading released ${PROJECT} v${VERSION} from its official location..."
 
     case "$KIND" in
@@ -562,11 +606,22 @@ cmd_pull() {
 }
 
 cmd_tag() {
-    local commit="${COMMIT:-HEAD}"
+    local commit="${COMMIT:-HEAD}" tag_sha pulled_sha
+    tag_sha=$(tag_commit_sha)
+    # Refuse to tag a commit other than the one the pulled GHA assets were built from.
+    if [ -f "$(gha_commit_file)" ]; then
+        pulled_sha=$(cat "$(gha_commit_file)")
+        if [ "$pulled_sha" != "$tag_sha" ]; then
+            >&2 echo "Release dir assets were built from commit ${pulled_sha},"
+            >&2 echo "but tag ${TAG} would be cut at ${commit} (${tag_sha})."
+            >&2 echo "Re-run pull-gha with the matching run, or set COMMIT=${pulled_sha}."
+            exit 1
+        fi
+    fi
     if [ -n "$(cd "$REPO_ROOT" && git status --porcelain)" ]; then
         >&2 echo "Warning: working tree is dirty; tagging ${commit} anyway."
     fi
-    echo "Tagging ${TAG} at ${commit}..."
+    echo "Tagging ${TAG} at ${commit} (${tag_sha})..."
     (cd "$REPO_ROOT" && git tag ${FORCE:+-f} "$TAG" "$commit" && git push origin ${FORCE:+-f} "refs/tags/${TAG}")
 }
 
@@ -801,12 +856,17 @@ checksum_block() {
     echo
     echo "### SHA-256"
     echo '```'
-    sha256sum "$@" 2>/dev/null || true
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha256sum "$@"
+    else
+        # macOS ships shasum but not coreutils' sha256sum; same output format.
+        shasum -a 256 "$@"
+    fi
     echo '```'
     echo
     echo "### BLAKE-3"
     echo '```'
-    b3sum "$@" 2>/dev/null || true
+    b3sum "$@"
     echo '```'
 }
 
@@ -885,10 +945,13 @@ Subcommands:
   pre-check          Verify the changelog documents this version and that the
                      version is not already tagged/released.
   pull-gha           Download build artifacts from a GitHub Actions run.
+                     Fails unless the run built the commit being tagged
+                     (COMMIT, default HEAD).
                      (os/cli/deb/wrt; set RUN_ID or you'll be prompted.)
   pull               Download the released assets from their official location
                      (registry / apt repo / GitHub release / npm).
-  tag                Create and push the <project>/v<version> git tag.
+  tag                Create and push the <project>/v<version> git tag. Fails if
+                     pull-gha'd assets were built from a different commit.
   create-gh-release  Create (or update) the GitHub release with notes.
                      (all projects.)
   push               Upload artifacts to their destination (S3 for os, GitHub

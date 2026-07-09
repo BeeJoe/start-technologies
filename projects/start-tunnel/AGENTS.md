@@ -27,16 +27,16 @@ entry/CLI dispatch in `shared-libs/crates/start-core/src/bins/tunnel.rs`.
 
 Where to make changes:
 
-| You want to change…                  | Edit…                                                        |
-| ------------------------------------ | ----------------------------------------------------------- |
+| You want to change…                  | Edit…                                                            |
+| ------------------------------------ | ---------------------------------------------------------------- |
 | API methods / RPC commands           | `shared-libs/crates/start-core/src/tunnel/api.rs`                |
 | db schema / state model              | `shared-libs/crates/start-core/src/tunnel/db.rs` (+ a migration) |
 | WireGuard behavior                   | `shared-libs/crates/start-core/src/tunnel/wg.rs`                 |
-| Port forwarding (DNAT, SNI, IGD/PCP) | `shared-libs/crates/start-core/src/tunnel/forward/`             |
-| HTTPS / cert handling                | `shared-libs/crates/start-core/src/tunnel/web.rs`               |
-| daemon startup / shutdown            | `shared-libs/crates/start-core/src/bins/tunnel.rs`              |
-| the UI                               | `web/src/`                                                  |
-| user docs                            | `docs/src/`                                                 |
+| Port forwarding (DNAT, SNI, IGD/PCP) | `shared-libs/crates/start-core/src/tunnel/forward/`              |
+| HTTPS / cert handling                | `shared-libs/crates/start-core/src/tunnel/web.rs`                |
+| daemon startup / shutdown            | `shared-libs/crates/start-core/src/bins/tunnel.rs`               |
+| the UI                               | `web/src/`                                                       |
+| user docs                            | `docs/src/`                                                      |
 
 Almost all backend work happens in `start-core`, not here. The one tunnel-local
 Rust file is `src/main.rs`.
@@ -44,22 +44,23 @@ Rust file is `src/main.rs`.
 ## Build & test (run from the repo root)
 
 ```bash
-make tunnel                                   # build tunnelbox (UI + daemon)
+make start-tunnel                                   # build tunnelbox (UI + daemon)
 cargo build -p start-tunnel --bin tunnelbox   # cargo only (UI must be prebuilt)
 cargo check -p start-tunnel                    # fast type-check
-npm run build:tunnel                          # build just the Angular UI (no make target; make tunnel chains it)
-make tunnel-deb                                # build the .deb
-make test-core                                 # backend tests (tunnel logic lives in start-core)
+npm run build:tunnel                          # build just the Angular UI (no make target; make start-tunnel chains it)
+make start-tunnel-deb                                # build the .deb
+make start-core-test                                 # backend tests (tunnel logic lives in start-core)
 ```
 
 Notes:
+
 - `cargo check`/`cargo build` here only cover the linux target. The CI matrix
   also builds `*-apple-darwin` and `riscv64`/`aarch64` musl — platform-specific
   code (`libc`, resolv-conf, etc.) can pass locally and break darwin. cfg-gate
   platform-only paths; don't reimplement them cross-platform.
-- `make tunnel` needs the static UI at `web/dist/static/start-tunnel/index.html`;
+- `make start-tunnel` needs the static UI at `web/dist/static/start-tunnel/index.html`;
   the Makefile target chains the UI build → `compress-uis.sh` automatically.
-- TS bindings for the tunnel API regenerate via `make ts-bindings` into
+- TS bindings for the tunnel API regenerate via `make start-core-ts-bindings` into
   `shared-libs/crates/start-core/bindings/tunnel/`.
 
 ## Gotchas
@@ -75,7 +76,7 @@ Notes:
   numbered migration in `tunnel/migrations/` and registration in `mod.rs`.
 - **Runtime deps.** The daemon shells out to `wireguard-tools`, `iptables`,
   `nftables`, and `conntrack`; the `.deb` declares them. Adding a new external
-  tool means updating the `DEPENDS=` list in the Makefile `tunnel-deb` target.
+  tool means updating the `DEPENDS=` list in the Makefile `start-tunnel-deb` target.
 - **Port forwarding is Layer 3/4.** It rewrites IP headers (DNAT) and does not
   decrypt payloads — keep it that way; TLS terminates at the user's service.
 - **CLI and UI share `tunnel_api()`.** Add a method once in `api.rs`; both
@@ -89,12 +90,12 @@ Notes:
 ## Format
 
 ```bash
-make format-tunnel        # format the tunnel Rust crate
-make format-check-tunnel  # CI check (read-only)
+make start-tunnel-format        # format the tunnel Rust crate
+make start-tunnel-format-check  # CI check (read-only)
 ```
 
 The tunnel crate is Rust (edition 2024). The tunnel web app formats with the
-rest of the Angular workspace via `make format-web`.
+rest of the Angular workspace via `make web-format`.
 
 ## Docs are part of the change
 

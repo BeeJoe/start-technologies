@@ -6,16 +6,11 @@ import {
   Validators,
 } from '@angular/forms'
 import { WA_IS_MOBILE } from '@ng-web-apis/platform'
-import { ErrorService } from '@start9labs/shared'
+import { TaskService } from '@start9labs/shared'
 import { T } from '@start9labs/start-core'
 import { TuiAutoFocus, tuiMarkControlAsTouchedAndValidate } from '@taiga-ui/cdk'
 import { TuiButton, TuiDialogContext, TuiError, TuiInput } from '@taiga-ui/core'
-import {
-  TuiChevron,
-  TuiDataListWrapper,
-  TuiNotificationMiddleService,
-  TuiSelect,
-} from '@taiga-ui/kit'
+import { TuiChevron, TuiDataListWrapper, TuiSelect } from '@taiga-ui/kit'
 import { TuiForm } from '@taiga-ui/layout'
 import { injectContext, PolymorpheusComponent } from '@taiga-ui/polymorpheus'
 import {
@@ -39,6 +34,10 @@ const SERVER_PATTERN =
   '|\\[[0-9a-fA-F:]+\\](?::\\d{1,5})?' +
   '|[0-9a-fA-F:]+' +
   ')$'
+
+// A bare IPv6 prefix in CIDR form (addr/len 0-128; /64 is typical). Empty clears
+// it. The backend validates strictly and checks the server can actually route it.
+const IPV6_CIDR_PATTERN = '^[0-9a-fA-F:]+/(?:12[0-8]|1[01]\\d|[1-9]?\\d)$'
 
 const MODE_LABEL: Record<T.Tunnel.DnsMode, string> = {
   default: 'Default (VPS provider)',
@@ -159,6 +158,16 @@ const MODE_LABEL: Record<T.Tunnel.DnsMode, string> = {
         }
       </tui-textfield>
 
+      <tui-textfield>
+        <label tuiLabel>IPv6 Prefix</label>
+        <input
+          tuiInput
+          formControlName="ipv6"
+          placeholder="2001:db8:abcd::/64"
+        />
+      </tui-textfield>
+      <tui-error formControlName="ipv6" />
+
       <footer>
         <button tuiButton type="button" (click)="onSave()">Save</button>
       </footer>
@@ -178,8 +187,7 @@ const MODE_LABEL: Record<T.Tunnel.DnsMode, string> = {
 })
 export class SubnetsAdd {
   private readonly api = inject(ApiService)
-  private readonly loading = inject(TuiNotificationMiddleService)
-  private readonly errorService = inject(ErrorService)
+  private readonly tasks = inject(TaskService)
   private readonly fb = inject(NonNullableFormBuilder)
 
   protected readonly mobile = inject(WA_IS_MOBILE)
@@ -204,6 +212,10 @@ export class SubnetsAdd {
       ),
     ),
     wanIp: this.fb.control<WanItem>({ ip: this.context.data.wanIp }),
+    ipv6: this.fb.control(
+      this.context.data.ipv6 ?? '',
+      Validators.pattern(IPV6_CIDR_PATTERN),
+    ),
   })
 
   protected readonly mode = toSignal(this.form.controls.mode.valueChanges, {
@@ -250,11 +262,14 @@ export class SubnetsAdd {
       tuiMarkControlAsTouchedAndValidate(this.servers)
       return
     }
+    if (this.form.controls.ipv6.invalid) {
+      tuiMarkControlAsTouchedAndValidate(this.form.controls.ipv6)
+      return
+    }
 
-    const loader = this.loading.open('').subscribe()
     const { name, subnet } = this.form.getRawValue()
 
-    try {
+    this.tasks.run(async () => {
       editing
         ? await this.api.editSubnet({ subnet, name })
         : await this.api.addSubnet({ subnet, name })
@@ -275,12 +290,13 @@ export class SubnetsAdd {
       if (wanIp !== this.context.data.wanIp) {
         await this.api.setSubnetWan({ subnet, wanIp })
       }
-    } catch (e: any) {
-      this.errorService.handleError(e)
-    } finally {
-      loader.unsubscribe()
+
+      const ipv6 = this.form.controls.ipv6.value.trim() || null
+      if (ipv6 !== (this.context.data.ipv6 ?? null)) {
+        await this.api.setSubnetIpv6({ subnet, prefix: ipv6 })
+      }
       this.context.$implicit.complete()
-    }
+    })
   }
 
   // Avoid an unnecessary DNS proxy resync (which briefly rebinds every subnet's
@@ -322,4 +338,5 @@ interface Data {
   wanIp: string | null
   wanOptions: readonly string[]
   defaultWan: string | null
+  ipv6: string | null
 }

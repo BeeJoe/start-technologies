@@ -1,6 +1,6 @@
 {
   "name": "@start9labs/start-sdk",
-  "version": "2.0.1",
+  "version": "2.0.3",
   "description": "Software development kit to facilitate packaging services for StartOS",
   "main": "./lib/index.js",
   "types": "./lib/index.d.ts",
@@ -50,13 +50,6 @@
     "eslint",
     "typescript-eslint"
   ],
-  "prettier": {
-    "trailingComma": "all",
-    "tabWidth": 2,
-    "semi": false,
-    "singleQuote": true,
-    "arrowParens": "avoid"
-  },
   "devDependencies": {
     "@types/jest": "^30.0.0",
     "jest": "^30.0.0",

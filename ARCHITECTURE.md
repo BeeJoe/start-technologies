@@ -27,7 +27,7 @@ start-technologies/                # repo root (monorepo)
 │   └── start-registryd.service
 ├── projects/start-tunnel/         # tunnelbox bin + web/ (StartTunnel UI)
 │   └── start-tunneld.service
-├── projects/start-wrt/            # StartWRT router OS: startwrt bin + web/ (root Angular workspace) + openwrt submodule
+├── projects/start-wrt/            # StartWRT router OS: startwrt bin + web/ (root Angular workspace) + pinned-upstream openwrt image build
 ├── projects/start-sdk/                     # @start9labs/start-sdk (source in lib/) + Makefile/s9pk.mk + docs/
 ├── projects/brochure-marketplace/ # marketing/landing Angular app
 ├── shared-libs/
@@ -52,7 +52,7 @@ start-technologies/                # repo root (monorepo)
   - `start-cli` → `start-cli`
   - `start-registry` → `registrybox` (package registry)
   - `start-tunnel` → `tunnelbox` (VPN/tunnel server)
-  - `start-wrt` → `startwrt` (OpenWrt router OS daemon+CLI). Unlike the others this is a fuller backend of its own (UCI config, security profiles) that *reuses* `start-core`'s `net`/`util` modules (aliased as `startos`) rather than being a thin feature-toggle wrapper; its UI is an app in the root Angular workspace, and it ships as a flashable OpenWrt image, not a `.deb`/ISO.
+  - `start-wrt` → `startwrt` (OpenWrt router OS daemon+CLI). Unlike the others this is a fuller backend of its own (UCI config, security profiles) that _reuses_ `start-core`'s `net`/`util` modules (aliased as `startos`) rather than being a thin feature-toggle wrapper; its UI is an app in the root Angular workspace, and it ships as a flashable OpenWrt image, not a `.deb`/ISO.
 
 - **`shared-libs/ts-modules/`** — shared **TypeScript** modules consumed across products. The common thread is just that they are TS — the directory is not Angular-specific. It holds the two Angular 22 / Taiga UI 5 libraries `shared` (`@start9labs/shared`) and `marketplace` (`@start9labs/marketplace`), plus the non-Angular `start-core` (`@start9labs/start-core`: the SDK's core types/ABI/effects/OS bindings, mirroring the `start-core` Rust crate; consumed directly by web and bundled into the SDK). The single Angular workspace (root `angular.json`/`package.json`) defines seven projects whose roots point into product dirs: `ui` and `setup-wizard` (`projects/start-os/web/`), `start-tunnel` (`projects/start-tunnel/web/`), `start-wrt` (`projects/start-wrt/web/`), `brochure-marketplace` (`projects/brochure-marketplace/`), plus the two Angular libraries. Apps talk to the backend exclusively via JSON-RPC. See [shared-libs/ts-modules/ARCHITECTURE.md](shared-libs/ts-modules/ARCHITECTURE.md).
 
@@ -68,7 +68,7 @@ One root Cargo workspace (members: the product bin crates + every shared crate u
 
 ```
 Rust (shared-libs/crates/start-core)
-  → make ts-bindings: ts-rs export → shared-libs/crates/start-core/bindings/ → rsync to shared-libs/ts-modules/start-core/lib/osBindings/
+  → make start-core-ts-bindings: ts-rs export → shared-libs/crates/start-core/bindings/ → rsync to shared-libs/ts-modules/start-core/lib/osBindings/
     → start-core build (cd shared-libs/ts-modules/start-core && make dist) → dist/
       → shared-libs/ts-modules + web apps consume it (via @start9labs/start-core)
     → SDK build (cd projects/start-sdk && make bundle) → dist/ (bundles @start9labs/start-core)
@@ -77,19 +77,19 @@ Rust (shared-libs/crates/start-core)
 
 Key make targets along the chain:
 
-| Step | Command | What it does |
-|---|---|---|
-| 1 | `cargo check -p start-core` | Verify the backend lib compiles |
-| 2 | `make ts-bindings` | Export ts-rs types → rsync to `shared-libs/ts-modules/start-core/lib/osBindings/` |
-| 3 | `cd projects/start-sdk && make bundle` | Build the SDK `dist/` (builds `@start9labs/start-core` first and bundles it) |
-| 4 | `npm run check` | Type-check Angular projects (from the repo root) |
-| 5 | `cd projects/start-os/container-runtime && npm run check` | Type-check the runtime |
+| Step | Command                                                   | What it does                                                                      |
+| ---- | --------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| 1    | `cargo check -p start-core`                               | Verify the backend lib compiles                                                   |
+| 2    | `make start-core-ts-bindings`                             | Export ts-rs types → rsync to `shared-libs/ts-modules/start-core/lib/osBindings/` |
+| 3    | `cd projects/start-sdk && make bundle`                    | Build the SDK `dist/` (builds `@start9labs/start-core` first and bundles it)      |
+| 4    | `npm run check`                                           | Type-check Angular projects (from the repo root)                                  |
+| 5    | `cd projects/start-os/container-runtime && npm run check` | Type-check the runtime                                                            |
 
 **Important**: editing `shared-libs/ts-modules/start-core/lib/osBindings/*.ts` alone is NOT enough — rebuild start-core (and the SDK bundle, step 3) before web/container-runtime can see the change.
 
 ## Cross-layer verification
 
-When a change spans Rust, SDK, web, and container-runtime, verify in the order above (1→5). `make ts-bindings` runs the `start-core` export and rsyncs `shared-libs/crates/start-core/bindings/` → `shared-libs/ts-modules/start-core/lib/osBindings/`; the built `@start9labs/start-core` is what web references, and the SDK bundle (step 3) is what container-runtime references, not the source files.
+When a change spans Rust, SDK, web, and container-runtime, verify in the order above (1→5). `make start-core-ts-bindings` runs the `start-core` export and rsyncs `shared-libs/crates/start-core/bindings/` → `shared-libs/ts-modules/start-core/lib/osBindings/`; the built `@start9labs/start-core` is what web references, and the SDK bundle (step 3) is what container-runtime references, not the source files.
 
 ## Data flow: backend → frontend
 

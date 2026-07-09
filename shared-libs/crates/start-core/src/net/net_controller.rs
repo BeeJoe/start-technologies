@@ -3,8 +3,8 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV
 use std::sync::{Arc, Weak};
 
 use color_eyre::eyre::eyre;
-use ipnet::IpNet;
 use imbl_value::InternedString;
+use ipnet::IpNet;
 use nix::net::if_::if_nametoindex;
 use patch_db::json_ptr::JsonPointer;
 use tokio::process::Command;
@@ -15,7 +15,6 @@ use tokio_rustls::rustls::crypto::CryptoProvider;
 use tracing::instrument;
 
 use crate::db::model::Database;
-use crate::db::model::public::GatewayType;
 use crate::hostname::ServerHostname;
 use crate::net::dns::DnsController;
 use crate::net::dns_update::DnsUpdateController;
@@ -23,9 +22,7 @@ use crate::net::forward::{
     ForwardRequirements, InterfacePortForwardController, START9_BRIDGE_IFACE, nft_rule, nft_rule_v6,
 };
 use crate::net::gateway::NetworkInterfaceController;
-use crate::net::host::binding::{
-    AddSslOptions, BindId, BindOptions, UpstreamCertValidation,
-};
+use crate::net::host::binding::{AddSslOptions, BindId, BindOptions, UpstreamCertValidation};
 use crate::net::host::{Host, Hosts, host_for};
 use crate::net::port_map::{PortMapController, candidate_gateways};
 use crate::net::service_interface::{
@@ -132,15 +129,17 @@ impl NetController {
             dns: DnsController::init(db, &net_iface.watcher).await?,
             dns_update: DnsUpdateController::new(
                 net_iface.watcher.subscribe(),
-                Arc::new(|gw: GatewayId| -> std::pin::Pin<
-                    Box<dyn std::future::Future<Output = Result<Option<[u8; 32]>, ()>> + Send>,
-                > {
-                    Box::pin(async move {
-                        crate::net::gateway::wireguard_psk(gw.as_str())
-                            .await
-                            .map_err(|_| ())
-                    })
-                }),
+                Arc::new(
+                    |gw: GatewayId| -> std::pin::Pin<
+                        Box<dyn std::future::Future<Output = Result<Option<[u8; 32]>, ()>> + Send>,
+                    > {
+                        Box::pin(async move {
+                            crate::net::gateway::wireguard_psk(gw.as_str())
+                                .await
+                                .map_err(|_| ())
+                        })
+                    },
+                ),
             ),
             forward: InterfacePortForwardController::new(
                 net_iface.watcher.subscribe(),
@@ -296,16 +295,16 @@ struct HostBinds {
     forwards: BTreeMap<u16, (SocketAddrV4, u16, ForwardRequirements, Arc<()>)>,
     vhosts: BTreeMap<(Option<InternedString>, u16), (ProxyTarget, Arc<()>)>,
     private_dns: BTreeMap<InternedString, Arc<()>>,
-    /// Device LAN IPs for which we've asked the upstream gateway to map external
-    /// 80 -> 443 (the HTTP→HTTPS redirect — a pure PortMapController mapping with
-    /// no LAN forward, since StartOS serves 80/443 itself). Tracked so the
-    /// mapping is withdrawn when 443 stops being publicly exposed.
-    redirect_maps: BTreeSet<Ipv4Addr>,
     /// `(GUA, listener port)` upstream firewall pinholes requested for LAN+WAN
     /// GUAs. The host's own GUA is the listener (no DNAT), so this is a pure
     /// PortMapController pinhole. Tracked so it is withdrawn when a GUA leaves
     /// LAN+WAN or its binding goes away.
     gua_pinholes: BTreeSet<(Ipv6Addr, u16)>,
+    /// GUAs we asked the gateway for an 80->443 redirect pinhole on. Tracked so
+    /// the redirect is withdrawn when 443 stops being exposed on that GUA, or 80
+    /// becomes a real pinhole. There is no IPv4 analogue: over IPv4 the upstream
+    /// gateway (e.g. StartTunnel) serves the port-80 HTTP→HTTPS redirect itself.
+    gua_redirect_maps: BTreeSet<Ipv6Addr>,
     /// Non-SSL v6 forwards: `(host GUA, external port) -> (container v6, internal
     /// port, LAN source filter)`. A non-SSL GUA has no host terminator, so its
     /// port is DNAT'd to the container (see `forward6`); tracked so a stale
@@ -338,6 +337,9 @@ impl NetServiceData {
         let mut vhosts: BTreeMap<(Option<InternedString>, u16), ProxyTarget> = BTreeMap::new();
         let mut private_dns: BTreeMap<InternedString, BTreeSet<GatewayId>> = BTreeMap::new();
         let mut gua_pinholes: BTreeSet<(Ipv6Addr, u16)> = BTreeSet::new();
+        // Candidate v6 gateways per GUA, so the post-loop 80->443 redirect can
+        // reach the same gateways the GUA's pinholes used.
+        let mut gua_gateways: BTreeMap<Ipv6Addr, Vec<(IpAddr, Option<u32>)>> = BTreeMap::new();
         let mut gua_forwards: BTreeMap<(Ipv6Addr, u16), (Ipv6Addr, u16, Option<IpNet>)> =
             BTreeMap::new();
         let binds = self.binds.entry(id.clone()).or_default();
@@ -361,10 +363,15 @@ impl NetServiceData {
             // LAN+WAN GUAs: the host's own GUA is the listener (no DNAT), so
             // rather than a LAN forward we ask the upstream gateway(s) for a
             // firewall pinhole to the GUA:port (best-effort PCP/NAT-PMP).
-            for a in enabled_addresses.iter().filter(|a| bind.addresses.is_wan(a)) {
+            for a in enabled_addresses.iter().filter(|a| a.public) {
                 let Some(gua) = a.gua() else {
                     continue;
                 };
+                // The WAN is never secure: no upstream pinhole for an insecure exposure
+                // (add_ssl terminates TLS on the ssl port → a.ssl).
+                if !(a.ssl || bind.options.secure.is_some()) {
+                    continue;
+                }
                 let v6_gateways: Vec<(IpAddr, Option<u32>)> = a
                     .metadata
                     .gateways()
@@ -375,6 +382,9 @@ impl NetServiceData {
                 if v6_gateways.is_empty() {
                     continue;
                 }
+                gua_gateways
+                    .entry(*gua.ip())
+                    .or_insert_with(|| v6_gateways.clone());
                 if gua_pinholes.insert((*gua.ip(), gua.port())) {
                     ctrl.port_map.ensure(
                         IpAddr::V6(*gua.ip()),
@@ -423,7 +433,7 @@ impl NetServiceData {
                     // (a GUA set to LAN+WAN is WAN, so it lands in the public set).
                     let server_private_ips: BTreeSet<IpAddr> = enabled_addresses
                         .iter()
-                        .filter(|a| !bind.addresses.is_wan(a))
+                        .filter(|a| !a.public)
                         .flat_map(|a| a.metadata.gateways())
                         .filter_map(|gw| net_ifaces.get(gw).and_then(|info| info.ip_info.as_ref()))
                         .flat_map(|ip_info| ip_info.subnets.iter().map(|s| s.addr()))
@@ -433,7 +443,7 @@ impl NetServiceData {
                     // (public IPv4 WAN, or a GUA the operator set to LAN+WAN).
                     let server_public_gateways: BTreeSet<GatewayId> = enabled_addresses
                         .iter()
-                        .filter(|a| bind.addresses.is_wan(a) && a.metadata.is_ip())
+                        .filter(|a| a.public && a.metadata.is_ip())
                         .flat_map(|a| a.metadata.gateways())
                         .cloned()
                         .collect();
@@ -510,15 +520,19 @@ impl NetServiceData {
                 .map_or(true, |s| !(s.ssl && bind.options.add_ssl.is_some()))
             {
                 let external = bind.net.assigned_port.or_not_found("assigned lan port")?;
+                // Only addresses at this port drive its forward (ssl-port entries are the vhost's).
                 let fwd_public: BTreeSet<GatewayId> = enabled_addresses
                     .iter()
-                    .filter(|a| bind.addresses.is_wan(a))
+                    .filter(|a| a.public && a.port == Some(external))
                     .flat_map(|a| a.metadata.gateways())
                     .cloned()
                     .collect();
                 // Declare which address makes each gateway public, so a stray
                 // auto-port-map can be traced back to the exposure driving it.
-                for a in enabled_addresses.iter().filter(|a| bind.addresses.is_wan(a)) {
+                for a in enabled_addresses
+                    .iter()
+                    .filter(|a| a.public && a.port == Some(external))
+                {
                     tracing::debug!(
                         "port {external}: WAN address {} (ip={}) on gateway(s) {:?}",
                         a.hostname,
@@ -528,7 +542,7 @@ impl NetServiceData {
                 }
                 let fwd_private: BTreeSet<IpAddr> = enabled_addresses
                     .iter()
-                    .filter(|a| !bind.addresses.is_wan(a))
+                    .filter(|a| !a.public && a.port == Some(external))
                     .flat_map(|a| a.metadata.gateways())
                     .filter_map(|gw| net_ifaces.get(gw).and_then(|i| i.ip_info.as_ref()))
                     .flat_map(|ip| ip.subnets.iter().map(|s| s.addr()))
@@ -553,12 +567,27 @@ impl NetServiceData {
                 // can't determine rather than expose it unrestricted.
                 if let Some(container_v6) = self.ipv6 {
                     for a in enabled_addresses.iter() {
-                        let Some(gua) = a.gua() else {
+                        // SSL-port GUAs are the vhost listener's; DNAT only the non-SSL port.
+                        let Some(gua) = a.gua().filter(|g| g.port() == external) else {
                             continue;
                         };
-                        let src_filter = if bind.addresses.is_wan(a) {
+                        // Secure when StartOS terminates TLS (add_ssl → a.ssl) or the
+                        // underlying protocol is itself secure. The WAN is never secure, so an
+                        // insecure exposure that requested public serves the LAN instead.
+                        let secure_exposure = a.ssl || bind.options.secure.is_some();
+                        let src_filter = if a.public && secure_exposure {
                             None
                         } else {
+                            // LAN: insecure reaches it only over a secure gateway (IPv4 parity).
+                            if !secure_exposure
+                                && !a
+                                    .metadata
+                                    .gateways()
+                                    .filter_map(|gw| net_ifaces.get(gw))
+                                    .any(|info| info.secure())
+                            {
+                                continue;
+                            }
                             match a
                                 .metadata
                                 .gateways()
@@ -696,55 +725,80 @@ impl NetServiceData {
             );
         }
 
-        // Best-effort HTTP→HTTPS redirect: when something is publicly exposed on
-        // 443, ask the upstream gateway(s) to map external 80 -> the host's 443
-        // (PCP/NAT-PMP/UPnP) so plain http:// auto-redirects to https. This is a
-        // pure upstream port-map via PortMapController, NOT an nft LAN forward:
-        // StartOS already listens on 80/443 itself, so there is no container to
-        // DNAT to (unlike a service forward, this is the one case where external
-        // != internal). Best-effort; skipped if 80 is a real forward.
-        let mut redirect_ips: BTreeSet<Ipv4Addr> = BTreeSet::new();
-        if !forwards.contains_key(&80) {
-            let mut redirect_gateways: BTreeSet<GatewayId> = BTreeSet::new();
-            if let Some((_, _, reqs)) = forwards.get(&443) {
-                redirect_gateways.extend(reqs.public_gateways.iter().cloned());
+        // No IPv4 HTTP→HTTPS redirect map is requested: the upstream gateway
+        // (e.g. StartTunnel) serves the port-80 redirect itself. The IPv6
+        // 80->443 redirect pinhole below is still requested — over IPv6 the
+        // gateway has no port-80 listener of its own to do it.
+
+        // Public domains are DualStack: the domain vhost already binds and
+        // SNI-routes on each gateway's GUA, but the upstream firewall must be
+        // opened for it. Request a GUA pinhole per public domain port — without
+        // exposing the bare GUA (never added to gua_wan), so SNI at our vhost
+        // disambiguates domain traffic from bare-IP traffic. Unlike the v4
+        // SNI-demux (hostname_maps) this needs no gateway-side demux: every host
+        // has its own GUA, so there is nothing to share.
+        for ((maybe_host, external), target) in vhosts.iter() {
+            if maybe_host.is_none() || target.public.is_empty() {
+                continue;
             }
-            for ((_, port), target) in &vhosts {
-                if *port == 443 {
-                    redirect_gateways.extend(target.public.iter().cloned());
-                }
-            }
-            for gw_id in &redirect_gateways {
+            for gw_id in &target.public {
                 let Some(info) = net_ifaces.get(gw_id) else {
                     continue;
                 };
                 let Some(ip_info) = &info.ip_info else {
                     continue;
                 };
-                let gws = candidate_gateways(info);
-                if gws.is_empty() {
+                let v6_gateways: Vec<(IpAddr, Option<u32>)> = candidate_gateways(info)
+                    .into_iter()
+                    .filter(|(g, _)| g.is_ipv6())
+                    .collect();
+                if v6_gateways.is_empty() {
                     continue;
                 }
-                for subnet in ip_info.subnets.iter() {
-                    if let IpAddr::V4(ip) = subnet.addr() {
-                        if redirect_ips.insert(ip) {
-                            ctrl.port_map.ensure(IpAddr::V4(ip), 80, 443, gws.clone());
-                        }
+                for subnet in &ip_info.subnets {
+                    let IpAddr::V6(gua) = subnet.addr() else {
+                        continue;
+                    };
+                    if crate::net::utils::ipv6_is_local(gua) {
+                        continue;
+                    }
+                    gua_gateways
+                        .entry(gua)
+                        .or_insert_with(|| v6_gateways.clone());
+                    if gua_pinholes.insert((gua, *external)) {
+                        ctrl.port_map.ensure(
+                            IpAddr::V6(gua),
+                            *external,
+                            *external,
+                            v6_gateways.clone(),
+                        );
                     }
                 }
             }
         }
-        // Withdraw redirect maps that no longer apply (443 unexposed, or 80 became
-        // a real forward).
-        let stale: Vec<Ipv4Addr> = binds
-            .redirect_maps
-            .difference(&redirect_ips)
+
+        // v6 HTTP→HTTPS redirect: for a GUA exposing 443, ask the gateway for an
+        // 80->443 redirect pinhole. Skipped when 80 is already a real pinhole on
+        // that GUA. (No IPv4 equivalent — the gateway redirects port 80 itself.)
+        let mut gua_redirects: BTreeSet<Ipv6Addr> = BTreeSet::new();
+        for (gua_ip, gws) in &gua_gateways {
+            if gua_pinholes.contains(&(*gua_ip, 443))
+                && !gua_pinholes.contains(&(*gua_ip, 80))
+                && gua_redirects.insert(*gua_ip)
+            {
+                ctrl.port_map
+                    .ensure(IpAddr::V6(*gua_ip), 80, 443, gws.clone());
+            }
+        }
+        let stale_redirects: Vec<Ipv6Addr> = binds
+            .gua_redirect_maps
+            .difference(&gua_redirects)
             .copied()
             .collect();
-        for ip in stale {
-            ctrl.port_map.remove(IpAddr::V4(ip), 80);
+        for ip in stale_redirects {
+            ctrl.port_map.remove(IpAddr::V6(ip), 80);
         }
-        binds.redirect_maps = redirect_ips;
+        binds.gua_redirect_maps = gua_redirects;
 
         // Withdraw GUA pinholes that no longer apply (GUA left LAN+WAN, or the
         // binding went away).
@@ -859,10 +913,9 @@ impl NetServiceData {
                 let Some(info) = net_ifaces.get(gw_id) else {
                     continue;
                 };
-                if matches!(info.gateway_type, Some(GatewayType::OutboundOnly)) {
+                let Some(ip_info) = &info.ip_info else {
                     continue;
-                }
-                let Some(ip_info) = &info.ip_info else { continue };
+                };
                 let gateways = candidate_gateways(info);
                 if gateways.is_empty() {
                     continue;
@@ -1179,11 +1232,7 @@ impl NetService {
                     .de()?;
                 let hostname = ServerHostname::load(db.as_public().as_server_info())?;
                 let mut ports = db.as_private().as_available_ports().de()?;
-                let host = host_for(
-                    db,
-                    pkg_id.as_ref().unwrap_or(&PackageId::start_os()),
-                    &id,
-                )?;
+                let host = host_for(db, pkg_id.as_ref().unwrap_or(&PackageId::start_os()), &id)?;
                 host.add_binding(&mut ports, internal_port, options)?;
                 host.update_addresses(&hostname, &gateways, &ports)?;
                 db.as_private_mut().as_available_ports_mut().ser(&ports)?;
@@ -1214,11 +1263,7 @@ impl NetService {
                     .de()?;
                 let hostname = ServerHostname::load(db.as_public().as_server_info())?;
                 let mut ports = db.as_private().as_available_ports().de()?;
-                let host = host_for(
-                    db,
-                    pkg_id.as_ref().unwrap_or(&PackageId::start_os()),
-                    &id,
-                )?;
+                let host = host_for(db, pkg_id.as_ref().unwrap_or(&PackageId::start_os()), &id)?;
                 host.add_binding_range(
                     &mut ports,
                     internal_start_port,

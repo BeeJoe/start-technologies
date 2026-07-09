@@ -1,25 +1,27 @@
-use std::net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4};
 use std::str::FromStr;
 
 use clap::{Parser, ValueEnum};
 use hickory_server::proto::rr::{Name, RecordType};
 use imbl_value::InternedString;
-use ipnet::Ipv4Net;
+use ipnet::{IpNet, Ipv4Net, Ipv6Net};
 use rpc_toolkit::{Context, Empty, HandlerArgs, HandlerExt, ParentHandler, from_fn_async};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 use crate::context::CliContext;
 use crate::db::model::public::NetworkInterfaceType;
-use crate::net::forward::nft_rule;
 use crate::net::dns_update::rfc2136::InjectedRecord;
+use crate::net::forward::nft_rule;
+use crate::net::port_map::server::GatewayBackend;
 use crate::prelude::*;
 use crate::tunnel::context::TunnelContext;
-use crate::net::port_map::server::GatewayBackend;
 use crate::tunnel::db::{DnsRecordEntry, PortForward};
+use crate::tunnel::forward::pinhole;
 use crate::tunnel::wg::{
     DnsConfig, WIREGUARD_INTERFACE_NAME, WgClientKind, WgConfig, WgSubnetClients, WgSubnetConfig,
 };
+use crate::tunnel::wg6;
 use crate::util::serde::{HandlerExtSerde, display_serializable};
 
 pub fn tunnel_api<C: Context>() -> ParentHandler<C> {
@@ -84,6 +86,63 @@ pub fn tunnel_api<C: Context>() -> ParentHandler<C> {
                         .with_call_remote::<CliContext>(),
                 )
                 .with_about("about.commands-port-forward"),
+        )
+        .subcommand(
+            "pinhole",
+            ParentHandler::<C>::new()
+                .subcommand(
+                    "add",
+                    from_fn_async(add_pinhole)
+                        .with_metadata("sync_db", Value::Bool(true))
+                        .no_display()
+                        .with_about("about.add-new-pinhole")
+                        .with_call_remote::<CliContext>(),
+                )
+                .subcommand(
+                    "remove",
+                    from_fn_async(remove_pinhole)
+                        .with_metadata("sync_db", Value::Bool(true))
+                        .no_display()
+                        .with_about("about.remove-pinhole")
+                        .with_call_remote::<CliContext>(),
+                )
+                .subcommand(
+                    "update-label",
+                    from_fn_async(update_pinhole_label)
+                        .with_metadata("sync_db", Value::Bool(true))
+                        .no_display()
+                        .with_about("about.update-pinhole-label")
+                        .with_call_remote::<CliContext>(),
+                )
+                .subcommand(
+                    "set-enabled",
+                    from_fn_async(set_pinhole_enabled)
+                        .with_metadata("sync_db", Value::Bool(true))
+                        .no_display()
+                        .with_about("about.enable-or-disable-pinhole")
+                        .with_call_remote::<CliContext>(),
+                )
+                .with_about("about.commands-pinhole"),
+        )
+        .subcommand(
+            "http-redirect",
+            ParentHandler::<C>::new()
+                .subcommand(
+                    "list",
+                    from_fn_async(list_http_redirects)
+                        .with_display_serializable()
+                        .with_about("about.list-http-redirects")
+                        .with_call_remote::<CliContext>(),
+                )
+                .subcommand(
+                    "set-enabled",
+                    from_fn_async(set_http_redirect_enabled)
+                        .with_metadata("sync_db", Value::Bool(true))
+                        .no_display()
+                        .with_about("about.enable-or-disable-http-redirect")
+                        .with_call_remote::<CliContext>(),
+                )
+                .with_about("about.commands-http-redirect"),
         )
         .subcommand(
             "restart",
@@ -161,6 +220,14 @@ pub fn subnet_api<C: Context>() -> ParentHandler<C, SubnetParams> {
                 .with_metadata("sync_db", Value::Bool(true))
                 .no_display()
                 .with_about("about.set-subnet-wan")
+                .with_call_remote::<CliContext>(),
+        )
+        .subcommand(
+            "set-ipv6",
+            from_fn_async(set_subnet_ipv6)
+                .with_metadata("sync_db", Value::Bool(true))
+                .no_display()
+                .with_about("about.set-subnet-ipv6")
                 .with_call_remote::<CliContext>(),
         )
 }
@@ -330,6 +397,11 @@ pub async fn set_auto_port_forward(
         })
         .await
         .result?;
+    // Turning auto-forwarding off retires the device's existing automatic
+    // forwards immediately, rather than waiting for their leases to lapse.
+    if !enabled {
+        crate::tunnel::forward::clear_for_peer(&ctx, ip, true).await?;
+    }
     Ok(())
 }
 
@@ -392,6 +464,11 @@ pub async fn set_device_kind(
             s.remove(&IpAddr::V4(ip));
         }
     });
+    // A device demoted to client no longer hosts anything, so drop every forward
+    // it held (manual included), not just the automatic ones.
+    if !autoconfig {
+        crate::tunnel::forward::clear_for_peer(&ctx, ip, false).await?;
+    }
     Ok(())
 }
 
@@ -728,6 +805,128 @@ pub async fn set_subnet_wan(
 #[derive(Deserialize, Serialize, Parser, TS)]
 #[group(skip)]
 #[serde(rename_all = "camelCase")]
+pub struct SetSubnetIpv6Params {
+    #[ts(type = "string")]
+    subnet: Ipv4Net,
+    /// The routed IPv6 prefix delegated to this subnet (e.g. a /64 from Hetzner,
+    /// a /56 from Linode). `null` disables IPv6 on the subnet.
+    #[arg(long)]
+    #[ts(type = "string | null")]
+    prefix: Option<Ipv6Net>,
+}
+
+/// Set (or, with `null`, clear) the routed IPv6 prefix delegated to a subnet.
+/// Every host on the subnet (the server and each client) is assigned one global
+/// `/128` out of it, and the WireGuard configs are re-rendered to carry them.
+/// Validates that the server can actually route the prefix before persisting.
+pub async fn set_subnet_ipv6(
+    ctx: TunnelContext,
+    SetSubnetIpv6Params { subnet, prefix }: SetSubnetIpv6Params,
+) -> Result<(), Error> {
+    let prefix = prefix
+        .map(|p| {
+            let net = p.trunc();
+            let addr = net.network();
+            if addr.is_loopback()
+                || addr.is_unspecified()
+                || addr.is_multicast()
+                || addr.is_unicast_link_local()
+            {
+                return Err(Error::new(
+                    eyre!("{net} is not a usable routed prefix"),
+                    ErrorKind::InvalidRequest,
+                ));
+            }
+            Ok(net)
+        })
+        .transpose()?;
+
+    if let Some(net) = prefix {
+        // A delegated prefix is useless without working IPv6 egress: clients
+        // would get a full-tunnel `::/0` that blackholes. Reject at set-time
+        // (before mutating the DB) rather than silently handing out dead IPv6.
+        if !crate::net::utils::has_ipv6_default_route().await? {
+            return Err(Error::new(
+                eyre!(
+                    "this tunnel server has no IPv6 connectivity (no IPv6 default route); configure IPv6 on the server before delegating an IPv6 prefix"
+                ),
+                ErrorKind::Network,
+            ));
+        }
+
+        // On-link prefixes are delivered via proxy-NDP (see `resync_v6`). A
+        // prefix that is not on-link may still be a valid provider-routed
+        // delegation (a /56 or /64 the VPS routes to this host), which we can't
+        // verify locally — warn instead of rejecting, so we don't false-reject
+        // valid routed delegations.
+        let on_link = ctx.net_iface.peek(|ifaces| {
+            for (id, info) in ifaces.iter() {
+                if id.as_str() == WIREGUARD_INTERFACE_NAME {
+                    continue;
+                }
+                let Some(ip) = info.ip_info.as_ref() else {
+                    continue;
+                };
+                if ip.device_type == Some(NetworkInterfaceType::Loopback) {
+                    continue;
+                }
+                for subnet in ip.subnets.iter() {
+                    if let IpNet::V6(n) = subnet {
+                        // Only a global address on the WAN link makes the prefix
+                        // reachable on-link; exclude link-local / ULA / loopback.
+                        if crate::net::utils::ipv6_is_local(n.addr()) {
+                            continue;
+                        }
+                        let n = n.trunc();
+                        if n.contains(&net) || net.contains(&n) {
+                            return true;
+                        }
+                    }
+                }
+            }
+            false
+        });
+        if !on_link {
+            tracing::warn!(
+                "prefix {net} is not on-link on any WAN interface; ensure your provider routes it to this host, otherwise clients will have no IPv6"
+            );
+        }
+    }
+
+    ctx.db
+        .mutate(|db| {
+            let subnet_model = db
+                .as_wg_mut()
+                .as_subnets_mut()
+                .as_idx_mut(&subnet)
+                .or_not_found(&subnet)?;
+            // Reject a prefix too small to give every host on the subnet (the
+            // server `.1` and each device) a distinct IPv6 — inside the mutate so
+            // a concurrent add can't slip a colliding device in between the check
+            // and the write.
+            if let Some(net) = prefix {
+                let clients = subnet_model.as_clients().de()?;
+                let hosts = std::iter::once(subnet.addr()).chain(clients.0.into_keys());
+                if let Some((a, b, addr)) = wg6::first_v6_collision(net, hosts) {
+                    return Err(Error::new(
+                        eyre!(
+                            "prefix {net} is too small: {a} and {b} would both get IPv6 {addr}; give them IPs whose low bits differ, or use a larger prefix"
+                        ),
+                        ErrorKind::InvalidRequest,
+                    ));
+                }
+            }
+            subnet_model.as_ipv6_mut().ser(&prefix)
+        })
+        .await
+        .result?;
+    let server = ctx.db.peek().await.as_wg().de()?;
+    ctx.sync_network(&server).await
+}
+
+#[derive(Deserialize, Serialize, Parser, TS)]
+#[group(skip)]
+#[serde(rename_all = "camelCase")]
 pub struct SetDeviceWanParams {
     #[ts(type = "string")]
     subnet: Ipv4Net,
@@ -742,11 +941,7 @@ pub struct SetDeviceWanParams {
 /// `null` falls back to the subnet rule / masquerade.
 pub async fn set_device_wan(
     ctx: TunnelContext,
-    SetDeviceWanParams {
-        subnet,
-        ip,
-        wan_ip,
-    }: SetDeviceWanParams,
+    SetDeviceWanParams { subnet, ip, wan_ip }: SetDeviceWanParams,
 ) -> Result<(), Error> {
     ctx.db
         .mutate(|db| {
@@ -793,18 +988,38 @@ pub async fn add_device(
     let server = ctx
         .db
         .mutate(|db| {
-            db.as_wg_mut()
+            let subnet_model = db
+                .as_wg_mut()
                 .as_subnets_mut()
                 .as_idx_mut(&subnet)
-                .or_not_found(&subnet)?
+                .or_not_found(&subnet)?;
+            // The subnet's IPv6 prefix (if any) — every host gets a /128 out of
+            // it, so a new device must not map to one already taken.
+            let prefix = subnet_model.as_ipv6().de()?;
+            subnet_model
                 .as_clients_mut()
                 .mutate(|WgSubnetClients(clients)| {
+                    let server_v4 = subnet.addr();
                     let ip = if let Some(ip) = ip {
                         ip
                     } else {
+                        // Auto-assign the first free IP that also has a free IPv6
+                        // (a small prefix can exhaust IPv6 before IPv4).
                         subnet
                             .hosts()
-                            .find(|ip| !clients.contains_key(ip) && *ip != subnet.addr())
+                            .find(|ip| {
+                                !clients.contains_key(ip)
+                                    && *ip != server_v4
+                                    && prefix.map_or(true, |p| {
+                                        wg6::v6_conflict(
+                                            p,
+                                            *ip,
+                                            std::iter::once(server_v4)
+                                                .chain(clients.keys().copied()),
+                                        )
+                                        .is_none()
+                                    })
+                            })
                             .ok_or_else(|| {
                                 Error::new(
                                     eyre!("no available ips in subnet"),
@@ -816,7 +1031,7 @@ pub async fn add_device(
                     if ip.octets()[3] == 0 || ip.octets()[3] == 255 {
                         return Err(Error::new(eyre!("invalid ip"), ErrorKind::InvalidRequest));
                     }
-                    if ip == subnet.addr() {
+                    if ip == server_v4 {
                         return Err(Error::new(eyre!("invalid ip"), ErrorKind::InvalidRequest));
                     }
                     if !subnet.contains(&ip) {
@@ -824,6 +1039,25 @@ pub async fn add_device(
                             eyre!("ip not in subnet"),
                             ErrorKind::InvalidRequest,
                         ));
+                    }
+                    // No two hosts may share an IPv6 address.
+                    if let Some(p) = prefix {
+                        let existing = std::iter::once(server_v4)
+                            .chain(clients.keys().copied().filter(|c| *c != ip));
+                        if let Some(conflict) = wg6::v6_conflict(p, ip, existing) {
+                            let addr = wg6::host_v6(p, ip);
+                            let with = if conflict == server_v4 {
+                                "the tunnel itself".to_string()
+                            } else {
+                                format!("device {conflict}")
+                            };
+                            return Err(Error::new(
+                                eyre!(
+                                    "device {ip} would take IPv6 {addr}, which collides with {with}; choose an IP whose low bits differ, or use a larger IPv6 prefix"
+                                ),
+                                ErrorKind::InvalidRequest,
+                            ));
+                        }
                     }
                     let client = clients
                         .entry(ip)
@@ -853,6 +1087,10 @@ pub async fn remove_device(
     ctx: TunnelContext,
     RemoveDeviceParams { subnet, ip }: RemoveDeviceParams,
 ) -> Result<(), Error> {
+    // Tear down the device's exposure (v4 forwards, SNI routes, v6 pinholes, and
+    // their leases) before it's gone. `gc_forwards` below reclaims v4/SNI for any
+    // departed client, but not v6 pinholes, so clear them here.
+    crate::tunnel::forward::clear_for_peer(&ctx, ip, false).await?;
     let (server, (keep, dropped_sni)) = ctx
         .db
         .mutate(|db| {
@@ -901,8 +1139,6 @@ pub struct ShowConfigParams {
     subnet: Ipv4Net,
     #[ts(type = "string")]
     ip: Ipv4Addr,
-    #[ts(type = "string | null")]
-    wan_addr: Option<IpAddr>,
     #[serde(rename = "__ConnectInfo_local_addr")]
     #[arg(skip)]
     #[ts(skip)]
@@ -914,28 +1150,30 @@ pub async fn show_config(
     ShowConfigParams {
         subnet,
         ip,
-        wan_addr,
         local_addr,
     }: ShowConfigParams,
 ) -> Result<String, Error> {
     let peek = ctx.db.peek().await;
     let wg = peek.as_wg();
-    let client = wg
-        .as_subnets()
-        .as_idx(&subnet)
-        .or_not_found(&subnet)?
+    let subnet_model = wg.as_subnets().as_idx(&subnet).or_not_found(&subnet)?;
+    let subnet_v6 = subnet_model.as_ipv6().de()?;
+    let client = subnet_model
         .as_clients()
         .as_idx(&ip)
         .or_not_found(&ip)?
         .de()?;
-    let wan_addr = if let Some(wan_addr) = wan_addr.or(local_addr.map(|a| a.ip())).filter(|ip| {
+    let wan_ip = if let Some(ip) = client.wan_ip {
+        IpAddr::V4(ip)
+    } else if let Some(ip) = subnet_model.as_wan_ip().de()? {
+        IpAddr::V4(ip)
+    } else if let Some(ip) = local_addr.map(|a| a.ip()).filter(|ip| {
         !ip.is_loopback()
             && !match ip {
                 IpAddr::V4(ipv4) => ipv4.is_private() || ipv4.is_link_local(),
                 IpAddr::V6(ipv6) => ipv6.is_unique_local() || ipv6.is_unicast_link_local(),
             }
     }) {
-        wan_addr
+        ip
     } else if let Some(webserver) = peek.as_webserver().as_listen().de()? {
         webserver.ip()
     } else {
@@ -955,7 +1193,9 @@ pub async fn show_config(
             ip,
             subnet,
             wg.as_key().de()?.verifying_key(),
-            (wan_addr, wg.as_port().de()?).into(),
+            (wan_ip, wg.as_port().de()?).into(),
+            subnet_v6
+                .map(|p| Ipv6Net::new_assert(crate::tunnel::wg6::host_v6(p, ip), p.prefix_len())),
         )
         .to_string())
 }
@@ -1009,6 +1249,28 @@ pub async fn add_forward(
         )
     })?;
     let source = SocketAddrV4::new(external_ip, external_port);
+
+    // Port 80 is owned by the HTTP→HTTPS redirect (default on per public IPv4).
+    // The redirect and a port-80 forward are mutually exclusive — reject rather
+    // than silently override, so the user disables the redirect first. The
+    // redirect is active on this IP (and thus conflicts) only when it's a public
+    // IPv4 the user hasn't turned off.
+    let covers_80 =
+        external_port <= 80 && 80 <= external_port.saturating_add(count.saturating_sub(1));
+    if covers_80 {
+        let peek = ctx.db.peek().await;
+        let disabled = peek.as_http_redirects().de()?.disabled;
+        let public = crate::tunnel::redirect::public_ipv4s(&peek.as_gateways().de()?);
+        if public.contains(&external_ip) && !disabled.contains(&external_ip) {
+            return Err(Error::new(
+                eyre!(
+                    "port 80 on {external_ip} is used by the HTTP→HTTPS redirect; disable it first (Settings → HTTP Redirect, or `http-redirect set-enabled {external_ip}`)"
+                ),
+                ErrorKind::InvalidRequest,
+            ));
+        }
+    }
+
     if !sni.is_empty() {
         if count > 1 {
             return Err(Error::new(
@@ -1016,7 +1278,7 @@ pub async fn add_forward(
                 ErrorKind::InvalidRequest,
             ));
         }
-        ctx.add_sni_forward(source, target, &sni, None)
+        ctx.persist_sni_forward(source, target, &sni, None, false, label)
             .await
             .map_err(|code| {
                 Error::new(
@@ -1239,7 +1501,10 @@ pub struct SetPortForwardEnabledParams {
 /// Carries what the db.mutate selected so the dataplane action runs after it.
 enum ForwardToggle {
     Dnat(SocketAddrV4),
-    Sni { hostname: String, target: SocketAddrV4 },
+    Sni {
+        hostname: String,
+        target: SocketAddrV4,
+    },
 }
 
 pub async fn set_forward_enabled(
@@ -1326,6 +1591,205 @@ pub async fn set_forward_enabled(
     }
 
     Ok(())
+}
+
+#[derive(Deserialize, Serialize, Parser, TS)]
+#[group(skip)]
+#[serde(rename_all = "camelCase")]
+pub struct AddPinholeParams {
+    /// The client's global IPv6 (GUA) to expose. Must be an address this tunnel
+    /// delegates to a client — its subnet needs an IPv6 prefix.
+    #[ts(type = "string")]
+    gua: Ipv6Addr,
+    /// External port opened on the GUA.
+    external_port: u16,
+    /// Destination port on the GUA. Omit for a pure pinhole (no NAT, internal ==
+    /// external); set a different value for a port remap (e.g. 80 -> 443).
+    #[arg(long)]
+    #[serde(default)]
+    #[ts(optional)]
+    internal_port: Option<u16>,
+    #[arg(long)]
+    label: Option<String>,
+    /// Number of contiguous ports, counting up from external/internal. Default 1.
+    #[arg(long)]
+    #[serde(default)]
+    #[ts(optional)]
+    count: Option<u16>,
+}
+
+pub async fn add_pinhole(
+    ctx: TunnelContext,
+    AddPinholeParams {
+        gua,
+        external_port,
+        internal_port,
+        label,
+        count,
+    }: AddPinholeParams,
+) -> Result<(), Error> {
+    let count = count.unwrap_or(1);
+    if count == 0 {
+        return Err(Error::new(
+            eyre!("count must be at least 1"),
+            ErrorKind::InvalidRequest,
+        ));
+    }
+    let internal = internal_port.unwrap_or(external_port);
+    if external_port == 0 || internal == 0 {
+        return Err(Error::new(
+            eyre!("ports must be non-zero"),
+            ErrorKind::InvalidRequest,
+        ));
+    }
+    if external_port.checked_add(count - 1).is_none() || internal.checked_add(count - 1).is_none() {
+        return Err(Error::new(
+            eyre!("port range of {count} exceeds 65535"),
+            ErrorKind::InvalidRequest,
+        ));
+    }
+    if !pinhole::is_known_gua(&ctx, gua).await {
+        return Err(Error::new(
+            eyre!("{gua} is not a client address on any IPv6-enabled subnet"),
+            ErrorKind::InvalidRequest,
+        ));
+    }
+    pinhole::add_pinhole(&ctx, gua, external_port, internal, count, label, false).await
+}
+
+#[derive(Deserialize, Serialize, Parser, TS)]
+#[group(skip)]
+#[serde(rename_all = "camelCase")]
+pub struct RemovePinholeParams {
+    #[ts(type = "string")]
+    gua: Ipv6Addr,
+    external_port: u16,
+}
+
+pub async fn remove_pinhole(
+    ctx: TunnelContext,
+    RemovePinholeParams { gua, external_port }: RemovePinholeParams,
+) -> Result<(), Error> {
+    pinhole::remove_pinhole(&ctx, gua, external_port).await;
+    Ok(())
+}
+
+#[derive(Deserialize, Serialize, Parser, TS)]
+#[group(skip)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdatePinholeLabelParams {
+    #[ts(type = "string")]
+    gua: Ipv6Addr,
+    external_port: u16,
+    label: Option<String>,
+}
+
+pub async fn update_pinhole_label(
+    ctx: TunnelContext,
+    UpdatePinholeLabelParams {
+        gua,
+        external_port,
+        label,
+    }: UpdatePinholeLabelParams,
+) -> Result<(), Error> {
+    pinhole::set_pinhole_label(&ctx, gua, external_port, label).await
+}
+
+#[derive(Deserialize, Serialize, Parser, TS)]
+#[group(skip)]
+#[serde(rename_all = "camelCase")]
+pub struct SetPinholeEnabledParams {
+    #[ts(type = "string")]
+    gua: Ipv6Addr,
+    external_port: u16,
+    #[arg(long)]
+    enabled: bool,
+}
+
+pub async fn set_pinhole_enabled(
+    ctx: TunnelContext,
+    SetPinholeEnabledParams {
+        gua,
+        external_port,
+        enabled,
+    }: SetPinholeEnabledParams,
+) -> Result<(), Error> {
+    pinhole::set_pinhole_enabled(&ctx, gua, external_port, enabled).await
+}
+
+#[derive(Deserialize, Serialize, Parser, TS)]
+#[group(skip)]
+#[serde(rename_all = "camelCase")]
+pub struct SetHttpRedirectEnabledParams {
+    /// The public IPv4 whose default-on port-80 HTTP→HTTPS redirect to toggle.
+    #[ts(type = "string")]
+    ip: Ipv4Addr,
+    #[arg(long)]
+    enabled: bool,
+}
+
+/// Turn the port-80 HTTP→HTTPS redirect on or off for one public IPv4. The
+/// listener set is reconciled reactively from the db, so the dataplane follows
+/// this write without a restart.
+pub async fn set_http_redirect_enabled(
+    ctx: TunnelContext,
+    SetHttpRedirectEnabledParams { ip, enabled }: SetHttpRedirectEnabledParams,
+) -> Result<(), Error> {
+    // The redirect and a port-80 forward are mutually exclusive: refuse to
+    // enable the redirect while port 80 is forwarded, so the two are never both
+    // active. The user deletes the forward first.
+    if enabled {
+        let forwards = ctx.db.peek().await.as_port_forwards().de()?;
+        if forwards.occupied(SocketAddrV4::new(ip, crate::tunnel::redirect::HTTP_PORT)) {
+            return Err(Error::new(
+                eyre!(
+                    "port 80 on {ip} is forwarded; delete that port forward before enabling the HTTP→HTTPS redirect"
+                ),
+                ErrorKind::InvalidRequest,
+            ));
+        }
+    }
+    ctx.db
+        .mutate(|db| {
+            db.as_http_redirects_mut().mutate(|redirects| {
+                if enabled {
+                    redirects.disabled.remove(&ip);
+                } else {
+                    redirects.disabled.insert(ip);
+                }
+                Ok(())
+            })
+        })
+        .await
+        .result
+}
+
+#[derive(Deserialize, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct HttpRedirectStatus {
+    #[ts(type = "string")]
+    ip: Ipv4Addr,
+    /// Whether the redirect is on for this IP (default true).
+    enabled: bool,
+    /// Whether a port-forward already occupies port 80 on this IP, in which case
+    /// the redirect yields and does not bind.
+    forwarded: bool,
+}
+
+/// The port-80 HTTP→HTTPS redirect status of every public IPv4 this host holds.
+pub async fn list_http_redirects(ctx: TunnelContext) -> Result<Vec<HttpRedirectStatus>, Error> {
+    let peek = ctx.db.peek().await;
+    let disabled = peek.as_http_redirects().de()?.disabled;
+    let forwards = peek.as_port_forwards().de()?;
+    let gateways = peek.as_gateways().de()?;
+    Ok(crate::tunnel::redirect::public_ipv4s(&gateways)
+        .into_iter()
+        .map(|ip| HttpRedirectStatus {
+            enabled: !disabled.contains(&ip),
+            forwarded: forwards.occupied(SocketAddrV4::new(ip, crate::tunnel::redirect::HTTP_PORT)),
+            ip,
+        })
+        .collect())
 }
 
 #[cfg(test)]

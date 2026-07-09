@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::ffi::OsString;
 use std::net::SocketAddr;
 use std::process::Command;
@@ -6,6 +7,7 @@ use std::time::Duration;
 
 use clap::Parser;
 use futures::FutureExt;
+use patch_db::json_ptr::ROOT;
 use rpc_toolkit::CliApp;
 use rust_i18n::t;
 use tokio::net::TcpListener;
@@ -23,7 +25,6 @@ use crate::tunnel::tunnel_router;
 use crate::tunnel::web::TunnelCertHandler;
 use crate::util::future::NonDetachingJoinHandle;
 use crate::util::logger::LOGGER;
-use crate::version::{Current, VersionT};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 enum WebserverListener {
@@ -111,6 +112,26 @@ async fn inner_main(config: &TunnelConfig) -> Result<Option<bool>, Error> {
         })
         .into();
 
+        // Reconcile the per-IPv4 HTTP→HTTPS redirect listeners on every db
+        // revision: the reactive analogue of the `/webserver` HTTPS block above.
+        let redirect_ctx = ctx.clone();
+        let redirect_thread: NonDetachingJoinHandle<()> = tokio::spawn(async move {
+            let mut listeners: BTreeMap<SocketAddr, NonDetachingJoinHandle<()>> = BTreeMap::new();
+            let mut sub = redirect_ctx.db.subscribe(ROOT.to_owned()).await;
+            loop {
+                if let Err(e) =
+                    crate::tunnel::redirect::reconcile(&redirect_ctx, &mut listeners).await
+                {
+                    tracing::error!("error reconciling http redirects: {e}");
+                    tracing::debug!("{e:?}");
+                }
+                if sub.recv().await.is_none() {
+                    break;
+                }
+            }
+        })
+        .into();
+
         let mut shutdown_recv = ctx.shutdown.subscribe();
 
         let sig_handler_ctx = ctx;
@@ -149,6 +170,7 @@ async fn inner_main(config: &TunnelConfig) -> Result<Option<bool>, Error> {
 
         sig_handler.wait_for_abort().await.with_kind(ErrorKind::Unknown)?;
         https_thread.wait_for_abort().await.with_kind(ErrorKind::Unknown)?;
+        redirect_thread.wait_for_abort().await.with_kind(ErrorKind::Unknown)?;
 
         Ok::<_, Error>(server)
     }
@@ -194,10 +216,7 @@ fn app() -> CliApp<CliContext, ClientConfig> {
         crate::tunnel::api::tunnel_api(),
     )
     .mutate_command(super::translate_cli)
-    .mutate_command(|cmd| {
-        cmd.name("start-tunnel")
-            .version(Current::default().semver().to_string())
-    })
+    .mutate_command(|cmd| cmd.name("start-tunnel").version(super::product_version()))
 }
 
 pub fn cli(args: impl IntoIterator<Item = OsString>) {
@@ -225,7 +244,10 @@ pub fn cli(args: impl IntoIterator<Item = OsString>) {
 #[test]
 fn export_manpage_start_tunnel() {
     // Pages live with the start-tunnel product; anchored to start-core's crate dir.
-    let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../../../projects/start-tunnel/man");
+    let dir = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../../projects/start-tunnel/man"
+    );
     std::fs::create_dir_all(dir).unwrap();
     clap_mangen::generate_to(app().into_command(), dir).unwrap();
 }

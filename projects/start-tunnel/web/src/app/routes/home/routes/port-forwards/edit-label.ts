@@ -4,10 +4,9 @@ import {
   ReactiveFormsModule,
   Validators,
 } from '@angular/forms'
-import { ErrorService } from '@start9labs/shared'
+import { TaskService } from '@start9labs/shared'
 import { T } from '@start9labs/start-core'
 import { TuiButton, TuiDialogContext, TuiError, TuiInput } from '@taiga-ui/core'
-import { TuiNotificationMiddleService } from '@taiga-ui/kit'
 import { TuiForm } from '@taiga-ui/layout'
 import { injectContext, PolymorpheusComponent } from '@taiga-ui/polymorpheus'
 import { ApiService } from 'src/app/services/api/api.service'
@@ -16,6 +15,8 @@ export interface EditLabelData {
   readonly source: string
   readonly label: T.Tunnel.SniRoute['label']
   readonly hostname: string | null
+  // Set for a v6 pinhole row — relabel the pinhole instead of a v4 forward.
+  readonly pinhole?: { readonly gua: string; readonly externalPort: number }
 }
 
 @Component({
@@ -37,8 +38,7 @@ export interface EditLabelData {
 })
 export class PortForwardsEditLabel {
   private readonly api = inject(ApiService)
-  private readonly loading = inject(TuiNotificationMiddleService)
-  private readonly errorService = inject(ErrorService)
+  private readonly tasks = inject(TaskService)
 
   protected readonly context =
     injectContext<TuiDialogContext<void, EditLabelData>>()
@@ -48,21 +48,18 @@ export class PortForwardsEditLabel {
   })
 
   protected async onSave() {
-    const loader = this.loading.open('').subscribe()
+    const { pinhole, source, hostname } = this.context.data
+    const label = this.form.getRawValue().label
 
-    try {
-      await this.api.updateForwardLabel({
-        source: this.context.data.source,
-        label: this.form.getRawValue().label,
-        hostname: this.context.data.hostname,
-      })
-    } catch (e: any) {
-      console.error(e)
-      this.errorService.handleError(e)
-    } finally {
-      loader.unsubscribe()
+    this.tasks.run(async () => {
+      if (pinhole) {
+        const { gua, externalPort } = pinhole
+        await this.api.updatePinholeLabel({ gua, externalPort, label })
+      } else {
+        await this.api.updateForwardLabel({ source, label, hostname })
+      }
       this.context.$implicit.complete()
-    }
+    })
   }
 }
 

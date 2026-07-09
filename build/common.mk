@@ -1,5 +1,10 @@
-ls-files = $(shell git ls-files --cached --others --exclude-standard $1) 
+ls-files = $(shell git ls-files --cached --others --exclude-standard $1)
 PROFILE = release
+
+# rustfmt runs in a container pinned to a specific nightly (our rustfmt.toml uses
+# nightly-only options); prettier and taplo are pinned via npm and run natively.
+# Set FMT_NATIVE=1 to run rustfmt on the host instead.
+FMT := ./build/fmt/run-fmt.sh
 
 PLATFORM_FILE := $(shell ./build/env/check-platform.sh)
 ENVIRONMENT_FILE := $(shell ./build/env/check-environment.sh)
@@ -14,7 +19,7 @@ TUNNEL_BASENAME := $(shell PROJECT=start-tunnel PLATFORM=$(ARCH) ./build/env/bas
 CLI_BASENAME := $(shell PROJECT=start-cli PLATFORM=$(ARCH) ./build/env/basename.sh)
 # start-core path-depends on these first-party sibling crates (start-core/Cargo.toml
 # + their transitive path deps); they must be prereqs of every Rust bin or a
-# shared-crate edit leaves `make startos`/`cli`/`registry`/`tunnel` shipping a
+# shared-crate edit leaves `make start-os`/`start-cli`/`start-registry`/`start-tunnel` shipping a
 # stale binary. patch-db is globbed separately below.
 CORE_SRC := $(call ls-files, shared-libs/crates/start-core) \
 	$(call ls-files, shared-libs/crates/exver) \

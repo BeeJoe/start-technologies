@@ -1,4 +1,4 @@
-import { Injectable } from '@angular/core'
+import { inject, Injectable } from '@angular/core'
 import { GetPackageRes, GetPackagesRes } from '@start9labs/marketplace'
 import {
   FullKeyboard,
@@ -43,11 +43,11 @@ import {
   PkgAddPrivateDomainReq,
   PkgAddPublicDomainReq,
   PkgBindingSetAddressEnabledReq,
-  PkgBindingSetGuaAccessReq,
+  PkgBindingSetGuaWanReq,
   PkgRemovePrivateDomainReq,
   PkgRemovePublicDomainReq,
   ServerBindingSetAddressEnabledReq,
-  ServerBindingSetGuaAccessReq,
+  ServerBindingSetGuaWanReq,
   ServerState,
   WebsocketConfig,
 } from './api.types'
@@ -104,14 +104,10 @@ export class MockApiService extends ApiService {
   private scheduledBackupJobs: T.BackupJob[] = []
   sequence = 0
 
-  constructor(private readonly auth: AuthService) {
+  constructor() {
     super()
-    this.auth.isVerified$
-      .pipe(
-        tap(() => {
-          this.sequence = 0
-        }),
-      )
+    inject(AuthService)
+      .isVerified$.pipe(tap(() => (this.sequence = 0)))
       .subscribe()
   }
 
@@ -548,10 +544,10 @@ export class MockApiService extends ApiService {
     return null
   }
 
-  async queryDns(params: T.QueryDnsParams): Promise<string | null> {
+  async queryDns(params: T.QueryDnsParams): Promise<T.QueryDnsRes> {
     await pauseFor(2000)
 
-    return null
+    return { ipv4: null, ipv6: null }
   }
 
   async checkPort(params: T.CheckPortParams): Promise<T.CheckPortRes> {
@@ -563,6 +559,18 @@ export class MockApiService extends ApiService {
       openExternally: true,
       openInternally: false,
       hairpinning: true,
+    }
+  }
+
+  async checkPortV6(
+    params: T.CheckPortParams,
+  ): Promise<T.CheckPortV6Res | null> {
+    await pauseFor(2000)
+
+    return {
+      ip: '::',
+      openExternally: true,
+      openInternally: false,
     }
   }
 
@@ -874,8 +882,9 @@ export class MockApiService extends ApiService {
         path: path.replace(/\\/g, '/'),
         username,
         mountable: true,
+        available: 50000000000,
         startOs: {},
-        legacyBackup: null,
+        legacyBackup: false,
       },
     }
   }
@@ -903,7 +912,7 @@ export class MockApiService extends ApiService {
   async deleteLegacyBackup(params: T.DeleteLegacyParams): Promise<null> {
     await pauseFor(2000)
     const target = Mock.BackupTargets[params.targetId]
-    if (target) target.legacyBackup = null
+    if (target) target.legacyBackup = false
     return null
   }
 
@@ -1783,7 +1792,7 @@ export class MockApiService extends ApiService {
     this.mockRevision(patch)
 
     return {
-      dns: null,
+      dns: { ipv4: null, ipv6: null },
       port: {
         ip: '0.0.0.0',
         port: 443,
@@ -1791,6 +1800,7 @@ export class MockApiService extends ApiService {
         openInternally: false,
         hairpinning: false,
       },
+      portV6: null,
     }
   }
 
@@ -1879,24 +1889,22 @@ export class MockApiService extends ApiService {
     return null
   }
 
-  async serverBindingSetGuaAccess(
-    params: ServerBindingSetGuaAccessReq,
+  async serverBindingSetGuaWan(
+    params: ServerBindingSetGuaWanReq,
   ): Promise<null> {
     await pauseFor(2000)
 
     const basePath = `/serverInfo/network/host/bindings/${params.internalPort}/addresses`
-    this.mockSetGuaAccess(basePath, params.address, params.access)
+    this.mockSetGuaWan(basePath, params.address, params.wan)
 
     return null
   }
 
-  async pkgBindingSetGuaAccess(
-    params: PkgBindingSetGuaAccessReq,
-  ): Promise<null> {
+  async pkgBindingSetGuaWan(params: PkgBindingSetGuaWanReq): Promise<null> {
     await pauseFor(2000)
 
     const basePath = `${this.mockHostPath(params.package, params.host)}/bindings/${params.internalPort}/addresses`
-    this.mockSetGuaAccess(basePath, params.address, params.access)
+    this.mockSetGuaWan(basePath, params.address, params.wan)
 
     return null
   }
@@ -1929,7 +1937,7 @@ export class MockApiService extends ApiService {
     this.mockRevision(patch)
 
     return {
-      dns: null,
+      dns: { ipv4: null, ipv6: null },
       port: {
         ip: '0.0.0.0',
         port: 443,
@@ -1937,6 +1945,7 @@ export class MockApiService extends ApiService {
         openInternally: false,
         hairpinning: false,
       },
+      portV6: null,
     }
   }
 
@@ -2393,28 +2402,42 @@ export class MockApiService extends ApiService {
     }
   }
 
-  private mockSetGuaAccess(
+  // Mirrors the backend set_gua_wan: update the gua_wan set, carry the row's
+  // on/off state into `enabled`, and re-project `public` onto the available
+  // entry (what update_addresses does server-side).
+  private mockSetGuaWan(
     basePath: string,
     h: T.HostnameInfo,
-    access: T.GuaAccess,
+    wan: boolean,
   ): void {
     if (h.metadata.kind !== 'ipv6' || h.port === null) return
 
     const key = `[${h.hostname}]:${h.port}`
     const current = this.mockData(basePath) as T.DerivedAddressInfo
-    const guaAccess = { ...(current.guaAccess ?? {}) }
-
-    // LAN is the default, so it clears the entry.
-    if (access === 'lan') {
-      delete guaAccess[key]
-    } else {
-      guaAccess[key] = access
+    const guaWan = current.guaWan.filter(k => k !== key)
+    let enabled = current.enabled.filter(k => k !== key)
+    if (wan) {
+      guaWan.push(key)
+      const off = current.disabled.some(
+        ([hostname, port]) => hostname === h.hostname && port === h.port,
+      )
+      if (!off) enabled = [...enabled, key]
     }
+    const available = current.available.map(a =>
+      a.hostname === h.hostname && a.port === h.port
+        ? { ...a, public: wan }
+        : a,
+    )
 
-    current.guaAccess = guaAccess
-    this.mockRevision([
-      { op: PatchOp.ADD, path: `${basePath}/guaAccess`, value: guaAccess },
-    ])
+    current.guaWan = guaWan
+    current.enabled = enabled
+    current.available = available
+    const patch: Operation<any>[] = [
+      { op: PatchOp.ADD, path: `${basePath}/guaWan`, value: guaWan },
+      { op: PatchOp.ADD, path: `${basePath}/enabled`, value: enabled },
+      { op: PatchOp.ADD, path: `${basePath}/available`, value: available },
+    ]
+    this.mockRevision(patch)
   }
 
   private mockData(path: string): any {

@@ -14,7 +14,6 @@ use crate::prelude::*;
 use crate::registry::context::{RegistryConfig, RegistryContext};
 use crate::registry::registry_router;
 use crate::util::logger::LOGGER;
-use crate::version::{Current, VersionT};
 
 #[instrument(skip_all)]
 async fn inner_main(config: &RegistryConfig) -> Result<(), Error> {
@@ -100,10 +99,7 @@ fn app() -> CliApp<CliContext, ClientConfig> {
         crate::registry::registry_api(),
     )
     .mutate_command(super::translate_cli)
-    .mutate_command(|cmd| {
-        cmd.name("start-registry")
-            .version(Current::default().semver().to_string())
-    })
+    .mutate_command(|cmd| cmd.name("start-registry").version(super::product_version()))
 }
 
 pub fn cli(args: impl IntoIterator<Item = OsString>) {
@@ -131,7 +127,10 @@ pub fn cli(args: impl IntoIterator<Item = OsString>) {
 #[test]
 fn export_manpage_start_registry() {
     // Pages live with the start-registry product; anchored to start-core's crate dir.
-    let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../../../projects/start-registry/man");
+    let dir = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../../projects/start-registry/man"
+    );
     std::fs::create_dir_all(dir).unwrap();
     clap_mangen::generate_to(app().into_command(), dir).unwrap();
 }

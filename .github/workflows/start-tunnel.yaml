@@ -33,48 +33,56 @@ on:
       - master
       - next/*
     paths:
-      - "projects/start-tunnel/**"
-      - "shared-libs/crates/**"
-      - "shared-libs/ts-modules/**"
-      - "Cargo.toml"
-      - "Cargo.lock"
-      - "angular.json"
-      - "package.json"
-      - "package-lock.json"
-      - "tsconfig.json"
-      - "tsconfig.lib.json"
-      - "build/**"
-      - "debian/**"
-      - "apt/**"
-      - ".github/workflows/start-tunnel.yaml"
-      - ".github/actions/setup-build/**"
+      - 'projects/start-tunnel/**'
+      - 'shared-libs/crates/**'
+      - 'shared-libs/ts-modules/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'angular.json'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'tsconfig.json'
+      - 'tsconfig.lib.json'
+      - 'build/**'
+      - 'debian/**'
+      - 'apt/**'
+      - '.github/workflows/start-tunnel.yaml'
+      - '.github/actions/setup-build/**'
+      # Doc-only edits under the allowlisted project trees (e.g.
+      # projects/start-tunnel/docs/**) shouldn't trigger a build.
+      - '!**/*.md'
   pull_request:
     branches:
       - master
       - next/*
     paths:
-      - "projects/start-tunnel/**"
-      - "shared-libs/crates/**"
-      - "shared-libs/ts-modules/**"
-      - "Cargo.toml"
-      - "Cargo.lock"
-      - "angular.json"
-      - "package.json"
-      - "package-lock.json"
-      - "tsconfig.json"
-      - "tsconfig.lib.json"
-      - "build/**"
-      - "debian/**"
-      - "apt/**"
-      - ".github/workflows/start-tunnel.yaml"
-      - ".github/actions/setup-build/**"
+      - 'projects/start-tunnel/**'
+      - 'shared-libs/crates/**'
+      - 'shared-libs/ts-modules/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'angular.json'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'tsconfig.json'
+      - 'tsconfig.lib.json'
+      - 'build/**'
+      - 'debian/**'
+      - 'apt/**'
+      - '.github/workflows/start-tunnel.yaml'
+      - '.github/actions/setup-build/**'
+      # Doc-only edits under the allowlisted project trees (e.g.
+      # projects/start-tunnel/docs/**) shouldn't trigger a build.
+      - '!**/*.md'
 
+# The group is scoped by event so a master push can't cancel an in-flight
+# dispatched release build; dispatches queue behind each other, never cancel.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
 
 env:
-  NODEJS_VERSION: "24.17.0"
+  NODEJS_VERSION: '24.17.0'
   ENVIRONMENT: '${{ fromJson(format(''["{0}", ""]'', github.event.inputs.environment || ''dev''))[github.event.inputs.environment == ''NONE''] }}'
 
 jobs:
@@ -99,16 +107,12 @@ jobs:
         if: ${{ github.event.inputs.runner == 'fast' }}
         run: sudo mount -t tmpfs tmpfs .
       - uses: actions/checkout@v6
-        with:
-          # The repo's only submodule (projects/start-wrt/openwrt) is multi-GB and only
-          # the start-wrt image build needs it — never clone it here.
-          submodules: false
       - uses: ./.github/actions/setup-build
         with:
           nodejs-version: ${{ env.NODEJS_VERSION }}
 
       - name: Make
-        run: make tunnel-deb
+        run: make start-tunnel-deb
         env:
           PLATFORM: ${{ matrix.arch }}
           SCCACHE_GHA_ENABLED: on

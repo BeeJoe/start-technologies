@@ -1,5 +1,6 @@
 import { Component, inject } from '@angular/core'
 import { toSignal } from '@angular/core/rxjs-interop'
+import { TaskService } from '@start9labs/shared'
 import { T, utils } from '@start9labs/start-core'
 import { TuiResponsiveDialogService } from '@taiga-ui/addon-mobile'
 import {
@@ -9,11 +10,7 @@ import {
   TuiIcon,
   TuiTitle,
 } from '@taiga-ui/core'
-import {
-  TUI_CONFIRM,
-  TuiNotificationMiddleService,
-  TuiSkeleton,
-} from '@taiga-ui/kit'
+import { TUI_CONFIRM, TuiSkeleton } from '@taiga-ui/kit'
 import { TuiCardLarge, TuiHeader } from '@taiga-ui/layout'
 import { PatchDB } from 'patch-db-client'
 import { filter, map } from 'rxjs'
@@ -42,9 +39,10 @@ import { SUBNETS_ADD } from './add'
         <thead>
           <tr>
             <th>Name</th>
-            <th>IP Range</th>
+            <th>IPv4 Range</th>
             <th>DNS</th>
-            <th>WAN IP</th>
+            <th>WAN IPv4</th>
+            <th>IPv6 Prefix</th>
             <th></th>
           </tr>
         </thead>
@@ -57,6 +55,7 @@ import { SUBNETS_ADD } from './add'
               <td>
                 {{ wanLabel(subnet.wanIp, 'System default', defaultWan()) }}
               </td>
+              <td>{{ subnet.ipv6 ?? '—' }}</td>
               <td [style.padding-inline-end.rem]="0.625">
                 <button
                   tuiIconButton
@@ -92,7 +91,7 @@ import { SUBNETS_ADD } from './add'
             </tr>
           } @empty {
             <tr>
-              <td colspan="5">
+              <td colspan="6">
                 <app-placeholder icon="@tui.network">
                   No subnets
                 </app-placeholder>
@@ -125,7 +124,7 @@ import { SUBNETS_ADD } from './add'
 export default class Subnets {
   private readonly dialogs = inject(TuiResponsiveDialogService)
   private readonly api = inject(ApiService)
-  private readonly loading = inject(TuiNotificationMiddleService)
+  private readonly tasks = inject(TaskService)
   private readonly patch = inject<PatchDB<TunnelData>>(PatchDB)
 
   protected readonly wanLabel = wanLabel
@@ -151,6 +150,7 @@ export default class Subnets {
           clients: info.clients,
           dnsLabel: dnsLabel(info.dns, info.clients),
           wanIp: info.wanIp,
+          ipv6: info.ipv6,
         })),
       ),
     ),
@@ -170,12 +170,20 @@ export default class Subnets {
           wanIp: null,
           wanOptions: this.wans(),
           defaultWan: this.defaultWan(),
+          ipv6: null,
         },
       })
       .subscribe()
   }
 
-  protected onEdit({ range, name, dns, clients, wanIp }: MappedSubnet): void {
+  protected onEdit({
+    range,
+    name,
+    dns,
+    clients,
+    wanIp,
+    ipv6,
+  }: MappedSubnet): void {
     const devices = Object.entries(clients).map(([ip, client]) => ({
       ip,
       name: client.name,
@@ -197,6 +205,7 @@ export default class Subnets {
           wanIp,
           wanOptions: this.wans(),
           defaultWan: this.defaultWan(),
+          ipv6,
         },
       })
       .subscribe()
@@ -206,18 +215,14 @@ export default class Subnets {
     this.dialogs
       .open(TUI_CONFIRM, { label: 'Are you sure?' })
       .pipe(filter(Boolean))
-      .subscribe(async () => {
-        const subnet = this.subnets()?.[index]?.range || ''
-        const loader = this.loading.open('').subscribe()
-
-        try {
-          await this.api.deleteSubnet({ subnet })
-        } catch (e) {
-          console.log(e)
-        } finally {
-          loader.unsubscribe()
-        }
-      })
+      .subscribe(() =>
+        this.tasks.run(
+          async () =>
+            await this.api.deleteSubnet({
+              subnet: this.subnets()?.[index]?.range || '',
+            }),
+        ),
+      )
   }
 
   private getNext(): string {
@@ -248,6 +253,7 @@ type MappedSubnet = {
   clients: T.Tunnel.WgSubnetClients
   dnsLabel: string
   wanIp: string | null
+  ipv6: string | null
 }
 
 function dnsLabel(

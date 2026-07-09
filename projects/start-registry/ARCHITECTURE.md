@@ -19,7 +19,7 @@ MultiExecutable::default()
     .execute()
 ```
 
-`MultiExecutable::execute` inspects `argv[0]` (and `argv[1]`) to choose which entry point to run, so the single compiled `registrybox` behaves as either binary depending on the name it's launched under. Installation (root `Makefile` `install-registry`) places the binary at `/usr/bin/start-registrybox` and symlinks `start-registryd` and `start-registry` to it.
+`MultiExecutable::execute` inspects `argv[0]` (and `argv[1]`) to choose which entry point to run, so the single compiled `registrybox` behaves as either binary depending on the name it's launched under. Installation (root `Makefile` `start-registry-install`) places the binary at `/usr/bin/start-registrybox` and symlinks `start-registryd` and `start-registry` to it.
 
 The dispatch table also responds to `--contents` (lists the embedded sub-binaries), which the packaging tooling uses.
 
@@ -45,15 +45,15 @@ Defined in `shared-libs/crates/start-core/src/registry/mod.rs`:
 
 Subcommands (same module), each available over RPC and to the `start-registry` CLI via `with_call_remote`:
 
-| Command | Module | Purpose |
-|---------|--------|---------|
-| `index` | `mod::get_full_index` | full combined index (name, icon, packages, OS, signers) |
-| `info` | `registry/info.rs` | set/get registry info and categories |
-| `os` | `registry/os/` | OS version index + asset (image) management |
-| `package` | `registry/package/` | add/get/list packages, versions, assets |
-| `admin` | `registry/admin.rs` | manage admins and signers |
-| `db` | `registry/db.rs` | dump/inspect the registry database |
-| `metrics` | `registry/metrics.rs` | download/user metrics summaries (admin-only) |
+| Command   | Module                | Purpose                                                 |
+| --------- | --------------------- | ------------------------------------------------------- |
+| `index`   | `mod::get_full_index` | full combined index (name, icon, packages, OS, signers) |
+| `info`    | `registry/info.rs`    | set/get registry info and categories                    |
+| `os`      | `registry/os/`        | OS version index + asset (image) management             |
+| `package` | `registry/package/`   | add/get/list packages, versions, assets                 |
+| `admin`   | `registry/admin.rs`   | manage admins and signers                               |
+| `db`      | `registry/db.rs`      | dump/inspect the registry database                      |
+| `metrics` | `registry/metrics.rs` | download/user metrics summaries (admin-only)            |
 
 ## Data model
 
