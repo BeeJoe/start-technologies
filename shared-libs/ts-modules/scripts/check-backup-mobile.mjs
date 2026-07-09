@@ -636,8 +636,11 @@ assertRule(network, networkFile, '.mobile-location-line', {
   'word-break': 'normal',
 })
 assertRule(network, networkFile, '.mobile-address', {
+  flex: '1 1 auto',
+  'min-width': '0',
+  'max-width': '100%',
   'overflow-wrap': 'normal',
-  'white-space': 'nowrap',
+  'white-space': 'normal',
   'word-break': 'normal',
 })
 assertRule(network, networkFile, '.hostname', { display: 'none' })

@@ -27,8 +27,8 @@ file tracks notable changes since the move to the monorepo.
   Backup-location rows now consistently place the icon and name on the left,
   the address or device path on the right, and center the no-drive state.
   Manage-backup network locations keep the location name and address together
-  on mobile, wrapping between whole words or fields instead of splitting names
-  or IP addresses.
+  on mobile, wrapping at safe boundaries instead of clipping addresses or
+  splitting names and IP addresses.
   Empty network-folder content is centered inside its frame. Location choices
   also share the action button's centered width and keep long location names
   horizontal on phones, including automatic-backup setup. The overall progress

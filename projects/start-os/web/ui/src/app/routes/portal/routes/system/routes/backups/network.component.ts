@@ -311,9 +311,12 @@ const ERROR =
       }
 
       .mobile-address {
+        flex: 1 1 auto;
+        min-width: 0;
+        max-width: 100%;
         color: var(--tui-text-secondary);
         overflow-wrap: normal;
-        white-space: nowrap;
+        white-space: normal;
         word-break: normal;
       }
 
