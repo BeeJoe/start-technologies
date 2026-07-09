@@ -69,11 +69,12 @@ When a backup or restore starts, its flat, single-panel progress display appears
 at the top of the page without moving your current view or blocking navigation.
 Scroll to the top to see the service status column, progress spinner, and
 percentage, click the progress card to return to the main Services list, or
-leave the page while the operation continues. Completed or failed operations
-remain available in **Backup history** instead of leaving a stale progress card
-on the Backups page. If StartOS restarts during a backup, the interrupted
-activity is marked failed during startup and the progress card is hidden once
-the server is idle.
+leave the page while the operation continues. Completed or failed operations,
+including backups that stop because the target does not have enough room, remain
+available in **Backup history** instead of leaving a stale progress card on the
+Backups page. If StartOS restarts during a backup, the interrupted activity is
+marked failed during startup and the progress card is hidden once the server is
+idle.
 
 Turning off automatic backups keeps the schedule settings and existing
 checkpoints by default. When you switch automatic backups off, the confirmation

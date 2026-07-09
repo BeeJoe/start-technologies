@@ -94,7 +94,7 @@ import { DataModel } from 'src/app/services/patch-db/data-model'
     }
 
     [tuiTitle] {
-      flex: 1;
+      grid-area: title;
       min-width: 0;
       white-space: nowrap;
     }
@@ -105,18 +105,29 @@ import { DataModel } from 'src/app/services/patch-db/data-model'
 
     .progress-row {
       display: grid;
-      grid-template-columns: auto minmax(0, 1fr) minmax(4.75rem, auto);
+      grid-template-areas:
+        'icon title'
+        'icon status';
+      grid-template-columns: auto minmax(0, 1fr);
       column-gap: 0.75rem;
+      row-gap: 0.125rem;
       align-items: center;
       min-width: 0;
     }
 
+    .progress-row [tuiAvatar] {
+      grid-area: icon;
+    }
+
     .phase-status {
+      grid-area: status;
       display: inline-flex;
       align-items: center;
       justify-content: flex-end;
       gap: 0.25rem;
+      justify-self: end;
       min-width: 4.75rem;
+      max-width: 100%;
       text-align: right;
       white-space: nowrap;
     }

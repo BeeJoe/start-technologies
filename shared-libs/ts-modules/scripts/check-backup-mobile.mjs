@@ -149,6 +149,7 @@ const backupServiceFile =
   'projects/start-os/web/ui/src/app/routes/portal/routes/system/routes/backups/backup.service.ts'
 const liveApiFile =
   'projects/start-os/web/ui/src/app/services/api/embassy-live-api.service.ts'
+const osServiceFile = 'projects/start-os/web/ui/src/app/services/os.service.ts'
 const dataModelFile =
   'projects/start-os/web/ui/src/app/services/patch-db/data-model.ts'
 const backendBackupFile = 'shared-libs/crates/start-core/src/backup/mod.rs'
@@ -216,6 +217,21 @@ assertRule(progress, progressFile, '.progress-status', {
 })
 assertRule(progress, progressFile, '.overall-loader', {
   color: 'var(--tui-text-action)',
+})
+assertRule(progress, progressFile, '.progress-row', {
+  'grid-template-areas': "'icon title'\n        'icon status'",
+  'grid-template-columns': 'auto minmax(0, 1fr)',
+  'row-gap': '0.125rem',
+})
+assertRule(progress, progressFile, '[tuiTitle]', {
+  'grid-area': 'title',
+  'white-space': 'nowrap',
+})
+assertRule(progress, progressFile, '.phase-status', {
+  'grid-area': 'status',
+  'justify-self': 'end',
+  'max-width': '100%',
+  'white-space': 'nowrap',
 })
 
 assertRule(
@@ -663,6 +679,14 @@ assertSource(progressFile, [
   /class="overall-loader"/,
 ])
 assertNotSource(progressFile, [/host:\s*\{\s*class:\s*['"]g-card['"]\s*\}/])
+assertSource(osServiceFile, [
+  /map\(status => isBackupProgressActive\(status\.backupProgress\)\)/,
+  /export function isBackupProgressActive/,
+  /progress\.phases\.some/,
+])
+assertNotSource(osServiceFile, [
+  /leafProgress\(status\.backupProgress\.overall\)\s*!==\s*true/,
+])
 assertSource(backupServiceFile, [
   /formatCifsLocation[\s\S]{0,180}target\.hostname[\s\S]{0,80}share/,
 ])

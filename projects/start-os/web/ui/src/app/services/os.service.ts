@@ -34,11 +34,7 @@ export class OSService {
   )
 
   readonly backingUp$ = this.statusInfo$.pipe(
-    map(
-      status =>
-        !!status.backupProgress &&
-        leafProgress(status.backupProgress.overall) !== true,
-    ),
+    map(status => isBackupProgressActive(status.backupProgress)),
     distinctUntilChanged(),
   )
 
@@ -69,4 +65,19 @@ export class OSService {
         : false,
     )
   }
+}
+
+export function isBackupProgressActive(
+  progress: T.ServerStatus['backupProgress'],
+): boolean {
+  if (!progress) return false
+
+  const overall = leafProgress(progress.overall)
+  if (overall === true) return false
+  if (overall && typeof overall === 'object') return true
+
+  return progress.phases.some(phase => {
+    const phaseProgress = leafProgress(phase.progress)
+    return phaseProgress !== null && phaseProgress !== true
+  })
 }

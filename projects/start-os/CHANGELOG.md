@@ -37,7 +37,10 @@ file tracks notable changes since the move to the monorepo.
   Manual and custom automatic runs no longer force-scroll or place a blocking
   notification over navigation; their blue progress indicator stays at the top
   of the page, scrolls out of view normally, links back to the main Services
-  list, and disappears when the operation completes or fails.
+  list, and disappears when the operation completes, fails, or leaves only an
+  empty stale progress shell after an early target-space failure. Long service
+  names no longer overlap their backup status; the status wraps to the next
+  right-aligned line inside the progress card.
 - **Backup-location removal.** Choosing to delete automatic checkpoints while
   turning automatic backups off now also removes the stopped schedule
   definitions. Unused network backup locations can then be forgotten, and
