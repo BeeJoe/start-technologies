@@ -16,7 +16,11 @@ import { CifsBackupTarget } from 'src/app/services/api/api.types'
 import { ApiService } from 'src/app/services/api/embassy-api.service'
 import { FormDialogService } from 'src/app/services/form-dialog.service'
 import { configBuilderToSpec } from 'src/app/utils/configBuilderToSpec'
-import { BackupService, MappedBackupTarget } from './backup.service'
+import {
+  BackupService,
+  formatCifsLocation,
+  MappedBackupTarget,
+} from './backup.service'
 import { BackupLegacyWarningComponent } from './legacy-warning.component'
 import { BackupStatusComponent } from './status.component'
 
@@ -60,7 +64,17 @@ const ERROR =
               </span>
             }
           </td>
-          <td class="name">{{ target.entry.path.split('/').pop() }}</td>
+          <td class="name">
+            <span class="desktop-name">
+              {{ target.entry.path.split('/').pop() }}
+            </span>
+            <span class="mobile-location-line">
+              <b>{{ target.entry.path.split('/').pop() }}</b>
+              <span class="mobile-address">
+                {{ formatCifsLocation(target.entry) }}
+              </span>
+            </span>
+          </td>
           <td class="hostname">{{ target.entry.hostname }}</td>
           <td class="location">{{ target.entry.path }}</td>
           <td class="free">
@@ -167,6 +181,10 @@ const ERROR =
       overflow-wrap: anywhere;
     }
 
+    .mobile-location-line {
+      display: none;
+    }
+
     .free {
       white-space: nowrap;
     }
@@ -226,7 +244,7 @@ const ERROR =
       }
 
       tr {
-        grid-template-columns: auto minmax(0, 1fr) minmax(7rem, 45%) auto;
+        grid-template-columns: auto minmax(0, 1fr) auto;
         width: 100%;
         min-width: 0;
         white-space: normal;
@@ -250,7 +268,7 @@ const ERROR =
         }
 
         &:last-child {
-          grid-area: 1 / 4;
+          grid-area: 1 / 3;
           align-self: center;
           justify-self: end;
         }
@@ -259,32 +277,53 @@ const ERROR =
       .name {
         color: var(--tui-text-primary);
         font: var(--tui-typography-body-m);
-        font-weight: bold;
         grid-column: 2;
         justify-self: start;
         max-width: 100%;
+        overflow-wrap: normal;
         text-align: left;
+        word-break: normal;
       }
 
-      .location {
-        grid-area: 1 / 3 / 3 / 4;
-        justify-self: end;
-        max-width: 100%;
-        text-align: right;
-      }
-
+      .desktop-name,
       .hostname,
+      .location {
+        display: none;
+      }
+
+      .mobile-location-line {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        column-gap: 0.5rem;
+        row-gap: 0;
+        min-width: 0;
+        max-width: 100%;
+        overflow-wrap: normal;
+        white-space: normal;
+        word-break: normal;
+      }
+
+      .mobile-location-line b {
+        font-weight: bold;
+        overflow-wrap: normal;
+        word-break: normal;
+      }
+
+      .mobile-address {
+        color: var(--tui-text-secondary);
+        overflow-wrap: normal;
+        white-space: nowrap;
+        word-break: normal;
+      }
+
       .free {
         grid-column: 2;
         max-width: 100%;
       }
 
-      .hostname {
-        grid-row: 2;
-      }
-
       .free {
-        grid-row: 3;
+        grid-row: 2;
       }
 
       .empty-row > td.empty-state {
@@ -322,6 +361,7 @@ export class BackupNetworkComponent {
   private readonly i18n = inject(i18nPipe)
 
   protected readonly type = inject(ActivatedRoute).snapshot.data['type']
+  protected readonly formatCifsLocation = formatCifsLocation
 
   readonly service = inject(BackupService)
   readonly networkFolders = output<MappedBackupTarget<CifsBackupTarget>>()

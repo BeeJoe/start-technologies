@@ -512,7 +512,7 @@ assertRule(network, networkFile, '.empty-row > td.empty-state', {
 })
 
 for (const [sheet, file, columns] of [
-  [network, networkFile, 'auto minmax(0, 1fr) minmax(7rem, 45%) auto'],
+  [network, networkFile, 'auto minmax(0, 1fr) auto'],
   [physical, physicalFile, 'auto minmax(0, 1fr) minmax(7rem, 45%)'],
 ]) {
   assertRule(
@@ -623,10 +623,25 @@ assertSource(homeFile, [
 ])
 assertSource(networkFile, [
   /\['Status', 'Name', 'Hostname', 'Path', 'Free', null\]/,
-  /class="name"[\s\S]{0,180}class="hostname"[\s\S]{0,180}class="location"[\s\S]{0,180}class="free"/,
+  /class="name"[\s\S]{0,500}class="hostname"[\s\S]{0,180}class="location"[\s\S]{0,180}class="free"/,
+  /class="mobile-location-line"[\s\S]{0,220}formatCifsLocation\(target\.entry\)/,
   /class="empty-state"[\s\S]{0,180}class="empty-label"[\s\S]{0,80}['"]No network folders['"]\s*\|\s*i18n/,
   /class="empty-row"/,
 ])
+assertRule(network, networkFile, '.mobile-location-line', {
+  display: 'flex',
+  'flex-wrap': 'wrap',
+  'overflow-wrap': 'normal',
+  'white-space': 'normal',
+  'word-break': 'normal',
+})
+assertRule(network, networkFile, '.mobile-address', {
+  'overflow-wrap': 'normal',
+  'white-space': 'nowrap',
+  'word-break': 'normal',
+})
+assertRule(network, networkFile, '.hostname', { display: 'none' })
+assertRule(network, networkFile, '.location', { display: 'none' })
 assertSource(physicalFile, [
   /\['Status', 'Logicalname', 'Name', 'Capacity', 'Free', null\]/,
   /class="name"[\s\S]{0,180}class="location"/,
