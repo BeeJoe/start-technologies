@@ -1035,4 +1035,5 @@ export default {
   1128: 'Brak folderów sieciowych',
   1129: 'Automatyczne kopie zapasowe zostaną zatrzymane. Ręczne kopie zapasowe nie zostaną usunięte.',
   1130: 'Usuń automatyczne kopie zapasowe',
+  1145: 'Kopia zapasowa lub przywracanie jest już w toku.',
 } satisfies i18n

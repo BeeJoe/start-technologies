@@ -6,9 +6,9 @@ use ts_rs::TS;
 
 use crate::PackageId;
 use crate::context::CliContext;
-use crate::util::serde::HandlerExtSerde;
 #[allow(unused_imports)]
 use crate::prelude::*;
+use crate::util::serde::HandlerExtSerde;
 
 pub mod backup_bulk;
 pub mod os;
@@ -52,6 +52,21 @@ pub struct PackageBackupReport {
 pub struct PackageBackupOutput {
     #[ts(type = "number | null")]
     pub changed_bytes: Option<u64>,
+}
+
+pub(crate) fn try_backup_coordinator(
+    coordinator: std::sync::Arc<tokio::sync::Mutex<()>>,
+) -> Result<tokio::sync::OwnedMutexGuard<()>, Error> {
+    coordinator
+        .try_lock_owned()
+        .map_err(|_| backup_in_progress_error())
+}
+
+pub(crate) fn backup_in_progress_error() -> Error {
+    Error::new(
+        eyre!("{}", t!("backup.bulk.already-backing-up")),
+        ErrorKind::InvalidRequest,
+    )
 }
 
 // #[command(subcommands(backup_bulk::backup_all, target::target))]
@@ -99,4 +114,17 @@ pub fn package_backup<C: Context>() -> ParentHandler<C> {
             "restore-selection",
             from_fn_async(restore::restore_selection_rpc).no_cli(),
         )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn backup_coordinator_rejects_a_second_request() {
+        let coordinator = std::sync::Arc::new(tokio::sync::Mutex::new(()));
+        let _first = try_backup_coordinator(coordinator.clone()).unwrap();
+
+        assert!(try_backup_coordinator(coordinator).is_err());
+    }
 }

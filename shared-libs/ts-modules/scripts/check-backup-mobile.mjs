@@ -43,6 +43,20 @@ function insideContainer(rule, query) {
   return false
 }
 
+function insideRule(rule, selector) {
+  let parent = rule.parent
+  while (parent) {
+    if (
+      parent.type === 'rule' &&
+      parent.selectors?.map(value => value.trim()).includes(selector)
+    ) {
+      return true
+    }
+    parent = parent.parent
+  }
+  return false
+}
+
 function assertRule(sheet, file, selector, expected, media = null) {
   let matched = false
   sheet.walkRules(rule => {
@@ -86,6 +100,27 @@ function assertContainerRule(sheet, file, selector, expected, container) {
   if (!matched) {
     throw new Error(
       `${file}: ${selector} inside @container ${container} must include ${JSON.stringify(expected)}`,
+    )
+  }
+}
+
+function assertNestedRule(sheet, file, ancestor, selector, expected) {
+  let matched = false
+  sheet.walkRules(rule => {
+    const selectors = rule.selectors?.map(value => value.trim()) || []
+    if (!selectors.includes(selector) || !insideRule(rule, ancestor)) return
+    const actual = declarations(rule)
+    if (
+      Object.entries(expected).every(
+        ([property, value]) => actual[property] === value,
+      )
+    ) {
+      matched = true
+    }
+  })
+  if (!matched) {
+    throw new Error(
+      `${file}: ${selector} inside ${ancestor} must include ${JSON.stringify(expected)}`,
     )
   }
 }
@@ -153,10 +188,15 @@ const osServiceFile = 'projects/start-os/web/ui/src/app/services/os.service.ts'
 const dataModelFile =
   'projects/start-os/web/ui/src/app/services/patch-db/data-model.ts'
 const backendBackupFile = 'shared-libs/crates/start-core/src/backup/mod.rs'
+const backendBackupBulkFile =
+  'shared-libs/crates/start-core/src/backup/backup_bulk.rs'
+const backendRestoreFile = 'shared-libs/crates/start-core/src/backup/restore.rs'
 const backendScheduledRpcFile =
   'shared-libs/crates/start-core/src/backup/scheduled/rpc.rs'
 const backendScheduledRunnerFile =
   'shared-libs/crates/start-core/src/backup/scheduled/runner.rs'
+const backendScheduledSchedulerFile =
+  'shared-libs/crates/start-core/src/backup/scheduled/scheduler.rs'
 const globalStylesFile = 'projects/start-os/web/ui/src/styles.scss'
 const systemFile =
   'projects/start-os/web/ui/src/app/routes/portal/routes/system/system.component.ts'
@@ -508,24 +548,73 @@ for (const [sheet, file] of [
     'text-align': 'left',
   })
 }
-assertRule(physical, physicalFile, '.empty-state', {
-  'grid-column': '1 / -1',
-  'justify-self': 'center',
-  width: '100%',
-  'white-space': 'normal',
-  'text-align': 'center',
+for (const [sheet, file] of [
+  [network, networkFile],
+  [physical, physicalFile],
+]) {
+  assertRule(sheet, file, 'td:first-child:not(.empty-state)', {
+    width: '11rem',
+  })
+}
+assertRule(network, networkFile, 'td:last-child:not(.empty-state)', {
+  width: '3.5rem',
+  'white-space': 'nowrap',
+  'text-align': 'right',
 })
-assertRule(network, networkFile, 'tr.empty-row', {
-  'grid-template-columns': 'minmax(0, 1fr)',
+assertRule(physical, physicalFile, 'td:last-child:not(.empty-state)', {
+  width: '3.5rem',
+  'white-space': 'nowrap',
+  'text-align': 'right',
 })
-assertRule(network, networkFile, '.empty-row > td.empty-state', {
-  'grid-area': '1 / 1 / auto / -1',
-  'justify-self': 'stretch',
-  width: 'auto',
-  margin: '0',
-  'white-space': 'normal',
-  'text-align': 'center',
-})
+for (const [sheet, file] of [
+  [network, networkFile],
+  [physical, physicalFile],
+]) {
+  assertRule(sheet, file, '.empty-state', {
+    display: 'table-cell',
+    height: '7rem',
+    'vertical-align': 'middle',
+    'text-align': 'center',
+  })
+}
+assertNestedRule(
+  physical,
+  physicalFile,
+  ':host-context(tui-root._mobile)',
+  '.empty-state',
+  {
+    display: 'grid',
+    'grid-column': '1 / -1',
+    'justify-self': 'center',
+    width: '100%',
+    'white-space': 'normal',
+    'text-align': 'center',
+  },
+)
+assertNestedRule(
+  network,
+  networkFile,
+  ':host-context(tui-root._mobile)',
+  'tr.empty-row',
+  {
+    'grid-template-columns': 'minmax(0, 1fr)',
+  },
+)
+assertNestedRule(
+  network,
+  networkFile,
+  ':host-context(tui-root._mobile)',
+  '.empty-row > td.empty-state',
+  {
+    display: 'grid',
+    'grid-area': '1 / 1 / auto / -1',
+    'justify-self': 'stretch',
+    width: 'auto',
+    margin: '0',
+    'white-space': 'normal',
+    'text-align': 'center',
+  },
+)
 
 for (const [sheet, file, columns] of [
   [network, networkFile, 'auto minmax(0, 1fr) auto'],
@@ -563,8 +652,11 @@ assertSource(homeFile, [
   /<backup-locations[\s\S]*['"]Backup history['"][\s\S]*<backup-history/,
   /class="card-heading automatic-heading"[\s\S]*class="card-actions"[\s\S]*class="expand-toggle"/,
   /parseBackupSchedule\(primary\.schedule\)/,
-  /activity => activity\.state === 'running'/,
+  /const latest = this\.activities\(\)\[0\][\s\S]{0,100}latest\?\.state === 'running' \? latest : null/,
   /\[showIcons\]="false"/,
+  /@if \(operationActivity\(\); as activity\)\s*\{\s*@if \(manualRunning\(\)\)/,
+  /\[operationActive\]="progressActive\(\)"/,
+  /readonly progressActive = computed\(\s*\(\) => !!this\.operationActivity\(\)/,
 ])
 assertNotSource(homeFile, [
   /<backup-navigation/,
@@ -578,6 +670,8 @@ assertNotSource(homeFile, [
   /scrollIntoView/,
   /position:\s*sticky/,
   /progress-prominent::before/,
+  /@if \(manualRunning\(\)\)[\s\S]{0,450}@else if \(operationActivity\(\); as activity\)/,
+  /this\.activities\(\)\.find\(activity => activity\.state === 'running'\)/,
 ])
 assertSource(routesFile, [
   /path: 'manage',[\s\S]{0,80}redirectTo: ''/,
@@ -644,21 +738,35 @@ assertSource(networkFile, [
   /class="empty-state"[\s\S]{0,180}class="empty-label"[\s\S]{0,80}['"]No network folders['"]\s*\|\s*i18n/,
   /class="empty-row"/,
 ])
-assertRule(network, networkFile, '.mobile-location-line', {
-  display: 'flex',
-  'flex-wrap': 'wrap',
-  'overflow-wrap': 'normal',
-  'white-space': 'normal',
-  'word-break': 'normal',
-})
-assertRule(network, networkFile, '.mobile-address', {
-  flex: '1 1 auto',
-  'min-width': '0',
-  'max-width': '100%',
-  'overflow-wrap': 'normal',
-  'white-space': 'normal',
-  'word-break': 'normal',
-})
+assertNestedRule(
+  network,
+  networkFile,
+  ':host-context(tui-root._mobile)',
+  '.mobile-location-line',
+  {
+    display: 'flex',
+    'flex-wrap': 'wrap',
+    width: '100%',
+    'box-sizing': 'border-box',
+    'overflow-wrap': 'normal',
+    'white-space': 'normal',
+    'word-break': 'normal',
+  },
+)
+assertNestedRule(
+  network,
+  networkFile,
+  ':host-context(tui-root._mobile)',
+  '.mobile-address',
+  {
+    flex: '0 0 auto',
+    'min-width': 'min-content',
+    'max-width': '100%',
+    'overflow-wrap': 'normal',
+    'white-space': 'normal',
+    'word-break': 'normal',
+  },
+)
 assertRule(network, networkFile, '.hostname', { display: 'none' })
 assertRule(network, networkFile, '.location', { display: 'none' })
 assertSource(physicalFile, [
@@ -666,6 +774,11 @@ assertSource(physicalFile, [
   /class="name"[\s\S]{0,180}class="location"/,
   /class="empty-state"/,
   /&:first-child:not\(\.empty-state\)/,
+])
+assertSource(manualPageFile, [
+  /@if \(busy\(\)\)[\s\S]{0,180}class="backup-busy"[\s\S]{0,120}role="status"[\s\S]{0,180}['"]A backup or restore is already in progress\.['"]\s*\|\s*i18n/,
+  /readonly operationActive = input<boolean>\(\)/,
+  /this\.operationActive\(\) \?\? this\.progressActive\(\)/,
 ])
 assertNotSource(advancedFile, [
   /showHistory/,
@@ -715,6 +828,19 @@ assertSource(backendBackupFile, [
   /subcommand\("job", scheduled::job::<C>\(\)\)/,
   /subcommand\("history", scheduled::history::<C>\(\)\)/,
   /"restore-selection"[\s\S]{0,180}restore_selection_rpc/,
+  /fn try_backup_coordinator[\s\S]{0,240}try_lock_owned\(\)[\s\S]{0,200}backup_in_progress_error/,
+  /fn backup_coordinator_rejects_a_second_request/,
+])
+assertSource(backendBackupBulkFile, [
+  /try_backup_coordinator\(ctx\.backup_coordinator\.clone\(\)\)\?[\s\S]{0,180}reconcile_interrupted_backup_state\(&ctx\)\.await\?/,
+])
+assertNotSource(backendBackupBulkFile, [
+  /backing_up\.transpose_ref\(\)\.is_some\(\)/,
+])
+assertSource(backendRestoreFile, [
+  /let operation_coordinator =[\s\S]{0,120}try_backup_coordinator\(ctx\.backup_coordinator\.clone\(\)\)\?[\s\S]{0,180}reconcile_interrupted_backup_state\(&ctx\)\.await\?/,
+  /spawn_restore_activity\(ctx, activity\.id, tasks, operation_coordinator\)/,
+  /operation_coordinator: OwnedMutexGuard<\(\)>[\s\S]{0,120}async move \{[\s\S]{0,100}let _operation_coordinator = operation_coordinator/,
 ])
 assertSource(backendScheduledRpcFile, [
   /"create", from_fn_async\(create\)/,
@@ -727,6 +853,32 @@ assertNotSource(backendScheduledRunnerFile, [
   /notify\([\s\S]{0,350}job\.id\.to_string\(\)/,
   /notify\([\s\S]{0,350}job\.target_id\.to_string\(\)/,
   /notify\([\s\S]{0,350}\btarget_key\s*,?\s*\)/,
+])
+assertSource(backendScheduledRunnerFile, [
+  /let coordinator = crate::backup::try_backup_coordinator\(ctx\.backup_coordinator\.clone\(\)\)\?[\s\S]{0,120}run_job_with_coordinator\(ctx, job_id, trigger, coordinator\)\.await/,
+  /fn run_job_with_coordinator[\s\S]{0,240}reconcile_interrupted_backup_state\(&ctx\)\.await\?[\s\S]{0,120}run_job_inner/,
+])
+assertSource(backendScheduledSchedulerFile, [
+  /pub\(crate\) async fn reconcile_interrupted_backup_state/,
+  /fn reconcile_if_idle[\s\S]{0,260}try_scheduler_slot\(ctx\.backup_coordinator\.clone\(\)\)[\s\S]{0,180}reconcile_interrupted_backup_state\(ctx\)\.await\?/,
+  /\.filter\(\|\(_, activity\)\| activity\.state == BackupRunState::Running\)/,
+  /fn older_interrupted_activity_does_not_regress_newer_job_result/,
+  /fn running_restore_is_reconciled_after_the_coordinator_is_acquired/,
+  /interrupted\.sort_by\(\|left, right\| left\.cmp\(right\)\)/,
+  /attempted < activity\.started_at\)[\s\S]{0,300}consecutive_failures[\s\S]{0,180}last_result = Some\(BackupRunState::Failed\)/,
+  /assert_eq!\(job\.status\.consecutive_failures, 2\)/,
+  /as_backup_progress_mut\(\)[\s\S]{0,80}ser\(&None\)/,
+  /fn dispatch_due_jobs[\s\S]{0,600}if !has_due_job[\s\S]{0,220}try_scheduler_slot\(ctx\.backup_coordinator\.clone\(\)\)[\s\S]{0,420}claim_oldest_due_job/,
+  /fn oldest_due_job[\s\S]{0,700}\.min_by\([\s\S]{0,240}left_at[\s\S]{0,160}left_id/,
+  /fn scheduler_claims_only_the_oldest_due_job/,
+  /fn busy_scheduler_slot_leaves_due_jobs_unchanged/,
+  /run_job_with_coordinator\([\s\S]{0,160}coordinator[\s\S]{0,80}\.await/,
+])
+assertNotSource(backendScheduledSchedulerFile, [
+  /automatic_only/,
+  /reconcile_interrupted_automatic_activities/,
+  /let due_jobs =/,
+  /due\.push\(/,
 ])
 assertSource(globalStylesFile, [
   /\.backup-page,[\s\S]*\.backup-settings[\s\S]*select\s*\{[\s\S]*appearance:\s*none[\s\S]*min-height:\s*3\.5rem[\s\S]*font:\s*var\(--tui-typography-body-l\)[\s\S]*background-color:\s*var\(--tui-background-neutral-1\)[\s\S]*background-image:/,

@@ -1035,4 +1035,5 @@ export default {
   1128: 'Keine Netzwerkordner',
   1129: 'Automatische Sicherungen werden gestoppt. Manuelle Sicherungen werden nicht gelöscht.',
   1130: 'Automatische Sicherungen löschen',
+  1145: 'Eine Sicherung oder Wiederherstellung wird bereits ausgeführt.',
 } satisfies i18n

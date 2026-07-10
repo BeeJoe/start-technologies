@@ -6,6 +6,7 @@ use std::time::{Duration, Instant};
 use chrono::Utc;
 use color_eyre::eyre::eyre;
 use imbl_value::InternedString;
+use tokio::sync::OwnedMutexGuard;
 
 use super::{
     BackupJob, BackupJobId, BackupJobPause, BackupRun, BackupRunState, BackupRunTrigger,
@@ -63,7 +64,17 @@ pub async fn run_job(
     job_id: BackupJobId,
     trigger: BackupRunTrigger,
 ) -> Result<BackupRun, Error> {
-    let _coordinator = ctx.backup_coordinator.clone().lock_owned().await;
+    let coordinator = crate::backup::try_backup_coordinator(ctx.backup_coordinator.clone())?;
+    run_job_with_coordinator(ctx, job_id, trigger, coordinator).await
+}
+
+pub(super) async fn run_job_with_coordinator(
+    ctx: RpcContext,
+    job_id: BackupJobId,
+    trigger: BackupRunTrigger,
+    _coordinator: OwnedMutexGuard<()>,
+) -> Result<BackupRun, Error> {
+    super::reconcile_interrupted_backup_state(&ctx).await?;
     let result = run_job_inner(&ctx, &job_id, trigger).await;
     ctx.db
         .mutate(|db| {

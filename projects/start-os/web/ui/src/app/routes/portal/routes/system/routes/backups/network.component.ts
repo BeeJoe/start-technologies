@@ -160,7 +160,7 @@ const ERROR =
       table-layout: fixed;
     }
 
-    td:first-child {
+    td:first-child:not(.empty-state) {
       width: 11rem;
     }
 
@@ -194,9 +194,9 @@ const ERROR =
     }
 
     .empty-state {
-      display: grid;
-      place-items: center;
-      min-height: 7rem;
+      display: table-cell;
+      height: 7rem;
+      vertical-align: middle;
       text-align: center;
     }
 
@@ -220,7 +220,7 @@ const ERROR =
       text-align: center;
     }
 
-    td:last-child {
+    td:last-child:not(.empty-state) {
       width: 3.5rem;
       white-space: nowrap;
       text-align: right;
@@ -297,8 +297,10 @@ const ERROR =
         align-items: baseline;
         column-gap: 0.5rem;
         row-gap: 0;
+        width: 100%;
         min-width: 0;
         max-width: 100%;
+        box-sizing: border-box;
         overflow-wrap: normal;
         white-space: normal;
         word-break: normal;
@@ -311,8 +313,8 @@ const ERROR =
       }
 
       .mobile-address {
-        flex: 1 1 auto;
-        min-width: 0;
+        flex: 0 0 auto;
+        min-width: min-content;
         max-width: 100%;
         color: var(--tui-text-secondary);
         overflow-wrap: normal;

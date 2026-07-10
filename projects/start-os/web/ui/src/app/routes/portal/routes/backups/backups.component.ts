@@ -70,29 +70,36 @@ const WEEKDAYS = [
       </div>
     </header>
 
-    @if (manualRunning()) {
-      <section
-        class="progress-prominent"
-        role="button"
-        tabindex="0"
-        [attr.aria-label]="'Services' | i18n"
-        (click)="goToServices()"
-        (keydown.enter)="goToServices()"
-        (keydown.space)="$event.preventDefault(); goToServices()"
-      >
-        <section backupProgress></section>
-      </section>
-    } @else if (operationActivity(); as activity) {
-      <button type="button" class="operation" tuiCell (click)="goToServices()">
-        <tui-icon icon="@tui.loader-circle" />
-        <span tuiTitle>
-          <b>{{ operationTitle(activity) | i18n }}</b>
-          <span tuiSubtitle>
-            {{ 'You can leave this page. Progress will continue.' | i18n }}
+    @if (operationActivity(); as activity) {
+      @if (manualRunning()) {
+        <section
+          class="progress-prominent"
+          role="button"
+          tabindex="0"
+          [attr.aria-label]="'Services' | i18n"
+          (click)="goToServices()"
+          (keydown.enter)="goToServices()"
+          (keydown.space)="$event.preventDefault(); goToServices()"
+        >
+          <section backupProgress></section>
+        </section>
+      } @else {
+        <button
+          type="button"
+          class="operation"
+          tuiCell
+          (click)="goToServices()"
+        >
+          <tui-icon icon="@tui.loader-circle" />
+          <span tuiTitle>
+            <b>{{ operationTitle(activity) | i18n }}</b>
+            <span tuiSubtitle>
+              {{ 'You can leave this page. Progress will continue.' | i18n }}
+            </span>
           </span>
-        </span>
-        <span tuiBadge appearance="info">{{ 'In progress' | i18n }}</span>
-      </button>
+          <span tuiBadge appearance="info">{{ 'In progress' | i18n }}</span>
+        </button>
+      }
     }
 
     <section
@@ -202,6 +209,7 @@ const WEEKDAYS = [
           <system-backup
             mode="create"
             [embedded]="true"
+            [operationActive]="progressActive()"
             (manageLocations)="openLocations()"
           />
         </div>
@@ -237,6 +245,7 @@ const WEEKDAYS = [
           <system-backup
             mode="restore"
             [embedded]="true"
+            [operationActive]="progressActive()"
             (manageLocations)="openLocations()"
           />
         </div>
@@ -602,13 +611,11 @@ export default class BackupsComponent implements OnInit {
       b.startedAt.localeCompare(a.startedAt),
     ),
   )
-  readonly operationActivity = computed(
-    () =>
-      this.activities().find(activity => activity.state === 'running') || null,
-  )
-  readonly progressActive = computed(
-    () => this.manualRunning() || !!this.operationActivity(),
-  )
+  readonly operationActivity = computed(() => {
+    const latest = this.activities()[0]
+    return latest?.state === 'running' ? latest : null
+  })
+  readonly progressActive = computed(() => !!this.operationActivity())
   readonly automaticOn = computed(() =>
     this.jobs().some(job => job.enabled && !job.pause),
   )

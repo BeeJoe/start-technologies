@@ -58,10 +58,12 @@ one.
 - **Restore from a backup** chooses a manual or automatic checkpoint.
 - **Manage backup locations** adds or repairs physical drives and network
   folders. Location details align with their table headings, and empty network
-  and physical-drive messages remain fully visible and centered within their
-  frames on phones. Manual, restore, and automatic location choices use the
-  same centered width as the location-management action, while long names stay
-  on one readable line.
+  and physical-drive messages remain fully visible and centered across their
+  frames on desktop and phones. On narrow screens, a network location's full
+  address moves intact to the next line when needed instead of being clipped or
+  splitting its hostname. Manual, restore, and automatic location choices use
+  the same centered width as the location-management action, while long names
+  stay on one readable line.
 - **Backup history** shows completed manual backups, automatic backups, and
   restores.
 
@@ -72,9 +74,15 @@ percentage, click the progress card to return to the main Services list, or
 leave the page while the operation continues. Completed or failed operations,
 including backups that stop because the target does not have enough room, remain
 available in **Backup history** instead of leaving a stale progress card on the
-Backups page. If StartOS restarts during a backup, the interrupted activity is
-marked failed during startup and the progress card is hidden once the server is
-idle.
+Backups page. The newest activity determines whether progress is active, so an
+older interrupted record cannot keep the card visible after a newer attempt has
+failed. StartOS reconciles interrupted activity during startup, while the backup
+system is idle, and before the next backup or restore. While a backup or restore
+is genuinely active, expanding **Create a manual backup** shows a busy message
+rather than an empty panel or another location picker. Scheduled jobs wait for
+the active operation without advancing their schedule, while a second manual
+backup, automatic backup, or restore request is rejected instead of being queued
+to run afterward.
 
 Turning off automatic backups keeps the schedule settings and existing
 checkpoints by default. When you switch automatic backups off, the confirmation

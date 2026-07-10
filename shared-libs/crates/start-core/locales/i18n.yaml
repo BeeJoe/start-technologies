@@ -1365,11 +1365,11 @@ init.initializing:
 
 # backup/backup_bulk.rs
 backup.activity.interrupted:
-  en_US: "Backup ended before completion because StartOS restarted"
-  de_DE: "Die Sicherung wurde vor dem Abschluss beendet, weil StartOS neu gestartet wurde"
-  es_ES: "La copia de seguridad terminó antes de completarse porque StartOS se reinició"
-  fr_FR: "La sauvegarde s'est terminée avant d'être achevée car StartOS a redémarré"
-  pl_PL: "Kopia zapasowa zakończyła się przed ukończeniem, ponieważ StartOS został ponownie uruchomiony"
+  en_US: "Backup or restore ended before completion"
+  de_DE: "Die Sicherung oder Wiederherstellung wurde vor dem Abschluss beendet"
+  es_ES: "La copia de seguridad o restauración terminó antes de completarse"
+  fr_FR: "La sauvegarde ou la restauration s'est terminée avant d'être achevée"
+  pl_PL: "Tworzenie lub przywracanie kopii zapasowej zakończyło się przed ukończeniem"
 
 backup.activity.manual-interrupted:
   en_US: "Manual backup ended before completion"
@@ -1435,11 +1435,11 @@ backup.bulk.failed-message:
   pl_PL: "Twoja kopia zapasowa nie została ukończona."
 
 backup.bulk.already-backing-up:
-  en_US: "Server is already backing up!"
-  de_DE: "Server führt bereits eine Sicherung durch!"
-  es_ES: "¡El servidor ya está realizando una copia de seguridad!"
-  fr_FR: "Le serveur est déjà en cours de sauvegarde !"
-  pl_PL: "Serwer już wykonuje kopię zapasową!"
+  en_US: "A backup or restore is already in progress."
+  de_DE: "Eine Sicherung oder Wiederherstellung wird bereits ausgeführt."
+  es_ES: "Ya hay una copia de seguridad o restauración en curso."
+  fr_FR: "Une sauvegarde ou une restauration est déjà en cours."
+  pl_PL: "Kopia zapasowa lub przywracanie jest już w toku."
 
 backup.bulk.leaked-reference:
   en_US: "leaked reference to BackupMountGuard"

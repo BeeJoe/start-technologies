@@ -27,20 +27,23 @@ file tracks notable changes since the move to the monorepo.
   Backup-location rows now consistently place the icon and name on the left,
   the address or device path on the right, and center the no-drive state.
   Manage-backup network locations keep the location name and address together
-  on mobile, wrapping at safe boundaries instead of clipping addresses or
-  splitting names and IP addresses.
-  Empty network-folder content is centered inside its frame. Location choices
-  also share the action button's centered width and keep long location names
-  horizontal on phones, including automatic-backup setup. The overall progress
-  spinner and percentage align with each service's status, and service progress
-  is right-aligned within the card.
+  on mobile, moving the complete address to the next line when necessary
+  instead of shrinking and clipping it or splitting names and IP addresses.
+  Empty network-folder and no-drive content is centered across the full table
+  frame on desktop and mobile. Location choices also share the action button's
+  centered width and keep long location names horizontal on phones, including
+  automatic-backup setup. The overall progress spinner and percentage align
+  with each service's status, and service progress is right-aligned within the
+  card.
   Manual and custom automatic runs no longer force-scroll or place a blocking
   notification over navigation; their blue progress indicator stays at the top
   of the page, scrolls out of view normally, links back to the main Services
   list, and disappears when the operation completes, fails, or leaves only an
   empty stale progress shell after an early target-space failure. Long service
   names no longer overlap their backup status; the status wraps to the next
-  right-aligned line inside the progress card.
+  right-aligned line inside the progress card. While another backup or restore
+  is running, the manual-backup card now shows a clear busy state instead of
+  expanding to an empty panel.
 - **Backup-location removal.** Choosing to delete automatic checkpoints while
   turning automatic backups off now also removes the stopped schedule
   definitions. Unused network backup locations can then be forgotten, and
@@ -53,8 +56,15 @@ file tracks notable changes since the move to the monorepo.
   the user can delete the old backup or choose another location when space is
   tight.
 - **Interrupted backup progress.** StartOS now marks persisted in-progress
-  backup activity as interrupted during startup, so an operation interrupted by
-  a restart no longer leaves the backup progress card visible while idle.
+  backup or restore activity as interrupted during startup, while the backup
+  system is idle, and before each new operation. A newer terminal attempt now
+  takes precedence over an older orphaned activity, so an insufficient-space
+  failure cannot leave the backup progress card visible or keep backup controls
+  busy while idle.
+- **Concurrent backup and restore requests.** StartOS now serializes scheduled
+  jobs and rejects a second manual backup, automatic backup, or restore request
+  while another operation owns the backup coordinator, rather than queuing it
+  to begin unexpectedly after the first operation finishes.
 - **Automatic backup failure notifications.** Scheduled-backup warnings show
   the backup location's user-facing name without exposing internal job or
   target identifiers through a meaningless **View details** action.

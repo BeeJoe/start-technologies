@@ -1,4 +1,3 @@
-import { AsyncPipe } from '@angular/common'
 import {
   Component,
   computed,
@@ -7,9 +6,10 @@ import {
   OnInit,
   output,
 } from '@angular/core'
+import { toSignal } from '@angular/core/rxjs-interop'
 import { ActivatedRoute, RouterLink } from '@angular/router'
 import { DialogService, DocsLinkDirective, i18nPipe } from '@start9labs/shared'
-import { TuiButton, TuiLoader, TuiTitle } from '@taiga-ui/core'
+import { TuiButton, TuiLoader, TuiNotification, TuiTitle } from '@taiga-ui/core'
 import { TuiHeader } from '@taiga-ui/layout'
 import { firstValueFrom } from 'rxjs'
 import {
@@ -67,8 +67,17 @@ import { BACKUP_RESTORE } from './restore.component'
       </header>
     }
 
-    @if (type() === 'create' && (os.backingUp$ | async)) {
-      @if (!embedded()) {
+    @if (busy()) {
+      @if (embedded()) {
+        <div
+          tuiNotification
+          class="backup-busy"
+          appearance="info"
+          role="status"
+        >
+          {{ 'A backup or restore is already in progress.' | i18n }}
+        </div>
+      } @else {
         <section backupProgress></section>
       }
     } @else {
@@ -103,10 +112,10 @@ import { BACKUP_RESTORE } from './restore.component'
   `,
   host: { class: 'backup-page' },
   imports: [
-    AsyncPipe,
     RouterLink,
     TuiButton,
     TuiLoader,
+    TuiNotification,
     TuiHeader,
     TuiTitle,
     TitleDirective,
@@ -119,6 +128,7 @@ import { BACKUP_RESTORE } from './restore.component'
 export default class SystemBackupComponent implements OnInit {
   readonly mode = input<'create' | 'restore'>()
   readonly embedded = input(false)
+  readonly operationActive = input<boolean>()
   readonly manageLocations = output<void>()
   readonly dialog = inject(DialogService)
   private readonly route = inject(ActivatedRoute)
@@ -127,7 +137,13 @@ export default class SystemBackupComponent implements OnInit {
       this.mode() || (this.route.snapshot.data['type'] as 'create' | 'restore'),
   )
   readonly service = inject(BackupService)
-  readonly os = inject(OSService)
+  private readonly os = inject(OSService)
+  private readonly progressActive = toSignal(this.os.backingUp$, {
+    initialValue: false,
+  })
+  protected readonly busy = computed(
+    () => this.operationActive() ?? this.progressActive(),
+  )
   ngOnInit() {
     this.service.getBackupTargets()
   }

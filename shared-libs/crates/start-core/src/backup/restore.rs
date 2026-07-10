@@ -6,7 +6,7 @@ use clap::Parser;
 use futures::{StreamExt, stream};
 use patch_db::json_ptr::ROOT;
 use serde::{Deserialize, Serialize};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, OwnedMutexGuard};
 use tracing::instrument;
 use ts_rs::TS;
 
@@ -114,6 +114,10 @@ pub async fn restore_selection_rpc(
         ));
     }
 
+    let operation_coordinator =
+        crate::backup::try_backup_coordinator(ctx.backup_coordinator.clone())?;
+    crate::backup::scheduled::reconcile_interrupted_backup_state(&ctx).await?;
+
     let db = ctx.db.peek().await;
     let server_id = match server_id {
         Some(server_id) => server_id,
@@ -187,7 +191,7 @@ pub async fn restore_selection_rpc(
         .mutate(|db| insert_activity(db, &activity))
         .await
         .result?;
-    spawn_restore_activity(ctx, activity.id, tasks);
+    spawn_restore_activity(ctx, activity.id, tasks, operation_coordinator);
     Ok(())
 }
 
@@ -263,8 +267,10 @@ fn spawn_restore_activity(
     ctx: RpcContext,
     activity_id: super::scheduled::BackupActivityId,
     tasks: BTreeMap<PackageId, DownloadInstallFuture>,
+    operation_coordinator: OwnedMutexGuard<()>,
 ) {
     tokio::spawn(async move {
+        let _operation_coordinator = operation_coordinator;
         let reports = Arc::new(Mutex::new(BTreeMap::new()));
         stream::iter(tasks)
             .for_each_concurrent(5, |(id, result)| {

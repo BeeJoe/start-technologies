@@ -16,8 +16,10 @@ mod scheduler;
 mod storage;
 
 pub use activity::activity;
-pub(crate) use activity::{complete as complete_activity, from_run as activity_from_run};
-pub(crate) use activity::{insert as insert_activity, running as running_activity};
+pub(crate) use activity::{
+    complete as complete_activity, from_run as activity_from_run, insert as insert_activity,
+    running as running_activity,
+};
 pub use credential::*;
 pub use model::*;
 pub use retention::*;
@@ -25,5 +27,6 @@ pub use review::*;
 pub use rpc::{history, job, policy};
 pub use runner::run_job;
 pub use schedule::*;
+pub(crate) use scheduler::reconcile_interrupted_backup_state;
 pub use scheduler::start_scheduler;
 pub use storage::*;

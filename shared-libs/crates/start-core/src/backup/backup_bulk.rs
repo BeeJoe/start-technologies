@@ -223,7 +223,8 @@ pub async fn backup_all(
         password,
     }: BackupParams,
 ) -> Result<(), Error> {
-    let backup_coordinator = ctx.backup_coordinator.clone().lock_owned().await;
+    let backup_coordinator = crate::backup::try_backup_coordinator(ctx.backup_coordinator.clone())?;
+    crate::backup::scheduled::reconcile_interrupted_backup_state(&ctx).await?;
     let old_password_decrypted = old_password
         .as_ref()
         .unwrap_or(&password)
@@ -298,12 +299,6 @@ fn assure_backing_up<'a>(
         .as_server_info_mut()
         .as_status_info_mut()
         .as_backup_progress_mut();
-    if backing_up.transpose_ref().is_some() {
-        return Err(Error::new(
-            eyre!("{}", t!("backup.bulk.already-backing-up")),
-            ErrorKind::InvalidRequest,
-        ));
-    }
     let _ = packages;
     backing_up.ser(&Some(FullProgress::new()))?;
     Ok(())

@@ -1036,4 +1036,5 @@ export const ENGLISH: Record<string, number> = {
   'No network folders': 1128,
   'Automatic backups will stop. Manual backups will not be deleted.': 1129,
   'Delete automatic backups': 1130,
+  'A backup or restore is already in progress.': 1145,
 }

@@ -89,11 +89,11 @@ import { BackupStatusComponent } from './status.component'
       table-layout: fixed;
     }
 
-    td:first-child {
+    td:first-child:not(.empty-state) {
       width: 11rem;
     }
 
-    td:last-child,
+    td:last-child:not(.empty-state),
     .actions {
       width: 3.5rem;
       white-space: nowrap;
@@ -107,9 +107,9 @@ import { BackupStatusComponent } from './status.component'
     }
 
     .empty-state {
-      display: grid;
-      place-items: center;
-      min-height: 7rem;
+      display: table-cell;
+      height: 7rem;
+      vertical-align: middle;
       text-align: center;
     }
 

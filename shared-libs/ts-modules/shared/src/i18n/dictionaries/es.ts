@@ -1035,4 +1035,5 @@ export default {
   1128: 'No hay carpetas de red',
   1129: 'Las copias de seguridad automáticas se detendrán. Las copias manuales no se eliminarán.',
   1130: 'Eliminar copias de seguridad automáticas',
+  1145: 'Ya hay una copia de seguridad o restauración en curso.',
 } satisfies i18n
