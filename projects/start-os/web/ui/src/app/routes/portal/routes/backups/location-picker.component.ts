@@ -38,9 +38,9 @@ type Location = MappedBackupTarget<CifsBackupTarget | DiskBackupTarget>
           <span tuiTitle>
             <b>{{ target.name }}</b>
             <span tuiSubtitle>
-              {{ target.detail }}
+              <span class="target-detail">{{ target.detail }}</span>
               @if (!target.available) {
-                — {{ target.reason | i18n }}
+                <span class="target-reason">— {{ target.reason | i18n }}</span>
               }
             </span>
           </span>
@@ -184,11 +184,26 @@ type Location = MappedBackupTarget<CifsBackupTarget | DiskBackupTarget>
       }
 
       .manual-or-restore > [tuiTitle] [tuiSubtitle] {
-        flex: 0 0 auto;
+        display: flex;
+        flex: 0 1 auto;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        min-width: 0;
         max-width: 100%;
         margin-inline-start: auto;
         overflow-wrap: normal;
+        white-space: normal;
+        word-break: normal;
+      }
+
+      .manual-or-restore > [tuiTitle] .target-detail {
         white-space: nowrap;
+        word-break: normal;
+      }
+
+      .manual-or-restore > [tuiTitle] .target-reason {
+        overflow-wrap: normal;
+        white-space: normal;
         word-break: normal;
       }
     }

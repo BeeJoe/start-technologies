@@ -427,11 +427,33 @@ assertRule(
   locationFile,
   '.manual-or-restore > [tuiTitle] [tuiSubtitle]',
   {
-    flex: '0 0 auto',
+    display: 'flex',
+    flex: '0 1 auto',
+    'flex-wrap': 'wrap',
+    'justify-content': 'flex-end',
+    'min-width': '0',
     'max-width': '100%',
     'margin-inline-start': 'auto',
     'overflow-wrap': 'normal',
-    'white-space': 'nowrap',
+    'white-space': 'normal',
+    'word-break': 'normal',
+  },
+  phone,
+)
+assertRule(
+  location,
+  locationFile,
+  '.manual-or-restore > [tuiTitle] .target-detail',
+  { 'white-space': 'nowrap', 'word-break': 'normal' },
+  phone,
+)
+assertRule(
+  location,
+  locationFile,
+  '.manual-or-restore > [tuiTitle] .target-reason',
+  {
+    'overflow-wrap': 'normal',
+    'white-space': 'normal',
     'word-break': 'normal',
   },
   phone,
@@ -739,6 +761,8 @@ assertSource(locationFile, [
   /\[class\.manual-or-restore\]="mode\(\) !== 'automatic'"/,
   /<span tuiTitle>[\s\S]{0,100}<b>\{\{ target\.name \}\}<\/b>[\s\S]{0,160}<span tuiSubtitle>[\s\S]{0,100}target\.detail/,
   /formatCifsLocation\(location\.entry\)/,
+  /class="target-detail"[\s\S]{0,120}target\.detail/,
+  /class="target-reason"[\s\S]{0,160}target\.reason\s*\|\s*i18n/,
 ])
 assertNotSource(locationFile, [
   /routerLink="\/system\/backups\/locations"/,
