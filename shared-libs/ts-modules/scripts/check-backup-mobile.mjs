@@ -399,6 +399,7 @@ assertRule(
   '.manual-or-restore > [tuiTitle]',
   {
     display: 'flex',
+    'flex-direction': 'row',
     'flex-wrap': 'wrap',
     'column-gap': '0.5rem',
     'row-gap': '0',
