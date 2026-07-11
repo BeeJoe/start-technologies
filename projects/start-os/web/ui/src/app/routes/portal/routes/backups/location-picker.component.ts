@@ -165,18 +165,30 @@ type Location = MappedBackupTarget<CifsBackupTarget | DiskBackupTarget>
       }
 
       .manual-or-restore > [tuiTitle] {
-        grid-template-columns: minmax(6rem, 1fr) minmax(5rem, 40%);
-        gap: 0.5rem;
+        display: flex;
+        flex-wrap: wrap;
+        column-gap: 0.5rem;
+        row-gap: 0;
+        min-width: 0;
       }
 
       .location-option > [tuiTitle] > b {
         display: block;
+        flex: 1 1 auto;
         min-width: 0;
         max-width: 100%;
-        overflow: hidden;
         overflow-wrap: normal;
-        text-overflow: ellipsis;
+        white-space: normal;
+        word-break: normal;
+      }
+
+      .manual-or-restore > [tuiTitle] [tuiSubtitle] {
+        flex: 0 0 auto;
+        max-width: 100%;
+        margin-inline-start: auto;
+        overflow-wrap: normal;
         white-space: nowrap;
+        word-break: normal;
       }
     }
   `,

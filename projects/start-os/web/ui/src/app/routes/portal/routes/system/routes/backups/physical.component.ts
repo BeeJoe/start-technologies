@@ -167,6 +167,8 @@ import { BackupStatusComponent } from './status.component'
       .empty-state {
         display: grid;
         grid-column: 1 / -1;
+        height: auto;
+        min-height: 7rem;
         place-items: center;
         justify-self: center;
         width: 100%;

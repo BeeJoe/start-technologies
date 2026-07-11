@@ -274,11 +274,12 @@ const ERROR =
         }
       }
 
-      .name {
+      td.name {
+        width: auto;
         color: var(--tui-text-primary);
         font: var(--tui-typography-body-m);
         grid-column: 2;
-        justify-self: start;
+        justify-self: stretch;
         max-width: 100%;
         overflow-wrap: normal;
         text-align: left;

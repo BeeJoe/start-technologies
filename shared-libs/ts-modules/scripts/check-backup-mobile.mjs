@@ -398,7 +398,11 @@ assertRule(
   locationFile,
   '.manual-or-restore > [tuiTitle]',
   {
-    'grid-template-columns': 'minmax(6rem, 1fr) minmax(5rem, 40%)',
+    display: 'flex',
+    'flex-wrap': 'wrap',
+    'column-gap': '0.5rem',
+    'row-gap': '0',
+    'min-width': '0',
   },
   phone,
 )
@@ -408,12 +412,26 @@ assertRule(
   '.location-option > [tuiTitle] > b',
   {
     display: 'block',
+    flex: '1 1 auto',
     'min-width': '0',
     'max-width': '100%',
     'overflow-wrap': 'normal',
+    'white-space': 'normal',
+    'word-break': 'normal',
+  },
+  phone,
+)
+assertRule(
+  location,
+  locationFile,
+  '.manual-or-restore > [tuiTitle] [tuiSubtitle]',
+  {
+    flex: '0 0 auto',
+    'max-width': '100%',
+    'margin-inline-start': 'auto',
+    'overflow-wrap': 'normal',
     'white-space': 'nowrap',
-    overflow: 'hidden',
-    'text-overflow': 'ellipsis',
+    'word-break': 'normal',
   },
   phone,
 )
@@ -742,6 +760,20 @@ assertNestedRule(
   network,
   networkFile,
   ':host-context(tui-root._mobile)',
+  'td.name',
+  {
+    width: 'auto',
+    'justify-self': 'stretch',
+    'max-width': '100%',
+    'overflow-wrap': 'normal',
+    'text-align': 'left',
+    'word-break': 'normal',
+  },
+)
+assertNestedRule(
+  network,
+  networkFile,
+  ':host-context(tui-root._mobile)',
   '.mobile-location-line',
   {
     display: 'flex',
@@ -775,6 +807,19 @@ assertSource(physicalFile, [
   /class="empty-state"/,
   /&:first-child:not\(\.empty-state\)/,
 ])
+assertNestedRule(
+  physical,
+  physicalFile,
+  ':host-context(tui-root._mobile)',
+  '.empty-state',
+  {
+    height: 'auto',
+    'min-height': '7rem',
+    'place-items': 'center',
+    'justify-self': 'center',
+    width: '100%',
+  },
+)
 assertSource(manualPageFile, [
   /@if \(busy\(\)\)[\s\S]{0,180}class="backup-busy"[\s\S]{0,120}role="status"[\s\S]{0,180}['"]A backup or restore is already in progress\.['"]\s*\|\s*i18n/,
   /readonly operationActive = input<boolean>\(\)/,
