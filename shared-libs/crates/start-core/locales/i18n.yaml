@@ -1689,6 +1689,27 @@ backup.scheduled.invalid-cron-field:
   fr_FR: "Champ cron invalide : %{field}"
   pl_PL: "Nieprawidłowe pole cron: %{field}"
 
+backup.scheduled.invalid-checkpoint-selection:
+  en_US: "Checkpoint selection must use PACKAGE_ID=SNAPSHOT_ID"
+  de_DE: "Die Prüfpunkt-Auswahl muss PACKAGE_ID=SNAPSHOT_ID verwenden"
+  es_ES: "La selección del punto debe usar PACKAGE_ID=SNAPSHOT_ID"
+  fr_FR: "La sélection du point doit utiliser PACKAGE_ID=SNAPSHOT_ID"
+  pl_PL: "Wybór punktu musi używać formatu PACKAGE_ID=SNAPSHOT_ID"
+
+backup.scheduled.invalid-retention-override:
+  en_US: "Per-service retention must use PACKAGE_ID=INTERVAL:COVERAGE"
+  de_DE: "Die dienstbezogene Aufbewahrung muss PACKAGE_ID=INTERVAL:COVERAGE verwenden"
+  es_ES: "La retención por servicio debe usar PACKAGE_ID=INTERVAL:COVERAGE"
+  fr_FR: "La rétention par service doit utiliser PACKAGE_ID=INTERVAL:COVERAGE"
+  pl_PL: "Retencja usługi musi używać formatu PACKAGE_ID=INTERVAL:COVERAGE"
+
+backup.scheduled.invalid-review-decision:
+  en_US: "Decision must use JOB_ID=add or JOB_ID=skip"
+  de_DE: "Die Entscheidung muss JOB_ID=add oder JOB_ID=skip verwenden"
+  es_ES: "La decisión debe usar JOB_ID=add o JOB_ID=skip"
+  fr_FR: "La décision doit utiliser JOB_ID=add ou JOB_ID=skip"
+  pl_PL: "Decyzja musi używać formatu JOB_ID=add lub JOB_ID=skip"
+
 backup.scheduled.invalid-retention-tiers:
   en_US: "Retention tiers must have progressively coarser intervals and increasing coverage"
   de_DE: "Aufbewahrungsstufen müssen zunehmend gröbere Intervalle und größere Zeiträume haben"
@@ -4199,6 +4220,132 @@ help.arg.asset-url:
   fr_FR: "URL de la ressource"
   pl_PL: "URL zasobu"
 
+help.arg.automatic-backup-all-services:
+  en_US: "Back up every current and future service"
+  de_DE: "Alle aktuellen und zukünftigen Dienste sichern"
+  es_ES: "Respaldar todos los servicios actuales y futuros"
+  fr_FR: "Sauvegarder tous les services actuels et futurs"
+  pl_PL: "Twórz kopie wszystkich obecnych i przyszłych usług"
+
+help.arg.automatic-backup-checkpoint-selection:
+  en_US: "Checkpoint as PACKAGE_ID=SNAPSHOT_ID; repeat for multiple services"
+  de_DE: "Prüfpunkt als PACKAGE_ID=SNAPSHOT_ID; für mehrere Dienste wiederholen"
+  es_ES: "Punto como PACKAGE_ID=SNAPSHOT_ID; repetir para varios servicios"
+  fr_FR: "Point au format PACKAGE_ID=SNAPSHOT_ID ; répéter pour plusieurs services"
+  pl_PL: "Punkt jako PACKAGE_ID=SNAPSHOT_ID; powtórz dla wielu usług"
+
+help.arg.automatic-backup-confirm-removal:
+  en_US: "Checkpoint ID reported by preview-change; repeat for every removal"
+  de_DE: "Von preview-change gemeldete Prüfpunkt-ID; für jede Löschung wiederholen"
+  es_ES: "ID de punto indicado por preview-change; repetir para cada eliminación"
+  fr_FR: "ID de point indiqué par preview-change ; répéter pour chaque suppression"
+  pl_PL: "Identyfikator punktu podany przez preview-change; powtórz dla każdego usunięcia"
+
+help.arg.automatic-backup-cron:
+  en_US: "Five-field cron schedule (minute, hour, day of month, month, weekday)"
+  de_DE: "Cron-Zeitplan mit fünf Feldern (Minute, Stunde, Monatstag, Monat, Wochentag)"
+  es_ES: "Programación cron de cinco campos (minuto, hora, día del mes, mes, día de la semana)"
+  fr_FR: "Planification cron à cinq champs (minute, heure, jour du mois, mois, jour de semaine)"
+  pl_PL: "Pięciopolowy harmonogram cron (minuta, godzina, dzień miesiąca, miesiąc, dzień tygodnia)"
+
+help.arg.automatic-backup-disabled:
+  en_US: "Create the automatic backup job paused"
+  de_DE: "Automatischen Sicherungsauftrag pausiert erstellen"
+  es_ES: "Crear la tarea de copia automática en pausa"
+  fr_FR: "Créer la tâche de sauvegarde automatique en pause"
+  pl_PL: "Utwórz wstrzymane zadanie automatycznej kopii"
+
+help.arg.automatic-backup-excluded-package-ids:
+  en_US: "Package IDs to exclude from current and future services"
+  de_DE: "Paket-IDs, die von aktuellen und zukünftigen Diensten ausgeschlossen werden"
+  es_ES: "IDs de paquetes que se excluirán de los servicios actuales y futuros"
+  fr_FR: "IDs de paquets à exclure des services actuels et futurs"
+  pl_PL: "Identyfikatory pakietów wykluczonych z obecnych i przyszłych usług"
+
+help.arg.automatic-backup-job-id:
+  en_US: "Automatic backup job identifier"
+  de_DE: "Kennung des automatischen Sicherungsauftrags"
+  es_ES: "Identificador de la tarea de copia automática"
+  fr_FR: "Identifiant de la tâche de sauvegarde automatique"
+  pl_PL: "Identyfikator zadania automatycznej kopii"
+
+help.arg.automatic-backup-job-name:
+  en_US: "Human-readable automatic backup job name"
+  de_DE: "Lesbarer Name des automatischen Sicherungsauftrags"
+  es_ES: "Nombre legible de la tarea de copia automática"
+  fr_FR: "Nom lisible de la tâche de sauvegarde automatique"
+  pl_PL: "Czytelna nazwa zadania automatycznej kopii"
+
+help.arg.automatic-backup-latest-only:
+  en_US: "Keep only the latest automatic checkpoint"
+  de_DE: "Nur den neuesten automatischen Prüfpunkt behalten"
+  es_ES: "Conservar solo el punto automático más reciente"
+  fr_FR: "Ne conserver que le dernier point automatique"
+  pl_PL: "Zachowaj tylko najnowszy automatyczny punkt"
+
+help.arg.automatic-backup-package-ids:
+  en_US: "Package IDs to include in the automatic backup"
+  de_DE: "Paket-IDs für die automatische Sicherung"
+  es_ES: "IDs de paquetes que se incluirán en la copia automática"
+  fr_FR: "IDs de paquets à inclure dans la sauvegarde automatique"
+  pl_PL: "Identyfikatory pakietów uwzględnionych w automatycznej kopii"
+
+help.arg.automatic-backup-retention-tier:
+  en_US: "Retention tier INTERVAL:COVERAGE; accepts s, m, h, d, or w and may repeat"
+  de_DE: "Aufbewahrungsstufe INTERVAL:COVERAGE; s, m, h, d oder w; wiederholbar"
+  es_ES: "Nivel de retención INTERVAL:COVERAGE; admite s, m, h, d o w y se puede repetir"
+  fr_FR: "Niveau de rétention INTERVAL:COVERAGE ; accepte s, m, h, d ou w et peut être répété"
+  pl_PL: "Poziom retencji INTERVAL:COVERAGE; obsługuje s, m, h, d lub w i może się powtarzać"
+
+help.arg.automatic-backup-review-decision:
+  en_US: "Decision as JOB_ID=add or JOB_ID=skip; repeat for every affected job"
+  de_DE: "Entscheidung als JOB_ID=add oder JOB_ID=skip; für jeden Auftrag wiederholen"
+  es_ES: "Decisión como JOB_ID=add o JOB_ID=skip; repetir para cada tarea afectada"
+  fr_FR: "Décision au format JOB_ID=add ou JOB_ID=skip ; répéter pour chaque tâche concernée"
+  pl_PL: "Decyzja jako JOB_ID=add lub JOB_ID=skip; powtórz dla każdego zadania"
+
+help.arg.automatic-backup-service-latest-only:
+  en_US: "Service package IDs that should keep only their latest checkpoint"
+  de_DE: "Dienst-Paket-IDs, die nur ihren neuesten Prüfpunkt behalten sollen"
+  es_ES: "IDs de servicios que conservarán solo su punto más reciente"
+  fr_FR: "IDs de services qui ne conserveront que leur dernier point"
+  pl_PL: "Identyfikatory usług zachowujących tylko najnowszy punkt"
+
+help.arg.automatic-backup-service-retention-tier:
+  en_US: "Per-service tier PACKAGE_ID=INTERVAL:COVERAGE; may repeat"
+  de_DE: "Dienstbezogene Stufe PACKAGE_ID=INTERVAL:COVERAGE; wiederholbar"
+  es_ES: "Nivel por servicio PACKAGE_ID=INTERVAL:COVERAGE; se puede repetir"
+  fr_FR: "Niveau par service PACKAGE_ID=INTERVAL:COVERAGE ; peut être répété"
+  pl_PL: "Poziom usługi PACKAGE_ID=INTERVAL:COVERAGE; może się powtarzać"
+
+help.arg.automatic-backup-snapshot-ids:
+  en_US: "Automatic checkpoint IDs to delete"
+  de_DE: "Zu löschende automatische Prüfpunkt-IDs"
+  es_ES: "IDs de puntos automáticos que se eliminarán"
+  fr_FR: "IDs des points automatiques à supprimer"
+  pl_PL: "Identyfikatory automatycznych punktów do usunięcia"
+
+help.arg.automatic-backup-timezone:
+  en_US: "IANA timezone for the automatic backup schedule"
+  de_DE: "IANA-Zeitzone für den automatischen Sicherungszeitplan"
+  es_ES: "Zona horaria IANA para la programación de copias automáticas"
+  fr_FR: "Fuseau horaire IANA de la planification des sauvegardes automatiques"
+  pl_PL: "Strefa czasowa IANA harmonogramu automatycznych kopii"
+
+help.arg.automatic-backup-use-default-retention:
+  en_US: "Service package IDs that should use the job's default retention"
+  de_DE: "Dienst-Paket-IDs, die die Standardaufbewahrung des Auftrags verwenden sollen"
+  es_ES: "IDs de servicios que usarán la retención predeterminada de la tarea"
+  fr_FR: "IDs de services qui utiliseront la rétention par défaut de la tâche"
+  pl_PL: "Identyfikatory usług używających domyślnej retencji zadania"
+
+help.arg.automatic-backup-wait-for-schedule:
+  en_US: "Wait for the next scheduled time instead of running on the new target now"
+  de_DE: "Auf den nächsten Termin warten, statt jetzt am neuen Ziel zu starten"
+  es_ES: "Esperar a la próxima hora programada en vez de ejecutar ahora en el destino nuevo"
+  fr_FR: "Attendre la prochaine heure planifiée au lieu d'exécuter maintenant sur la nouvelle cible"
+  pl_PL: "Poczekaj na następny termin zamiast uruchamiać teraz w nowym miejscu"
+
 help.arg.backup-password:
   en_US: "Password for backup encryption"
   de_DE: "Passwort für Backup-Verschlüsselung"
@@ -4698,6 +4845,13 @@ about.add-asset-registry:
   fr_FR: "Ajouter un actif au registre"
   pl_PL: "Dodaj zasób do rejestru"
 
+about.add-automatic-backup-job:
+  en_US: "Add an automatic backup job"
+  de_DE: "Automatischen Sicherungsauftrag hinzufügen"
+  es_ES: "Añadir una tarea de copia de seguridad automática"
+  fr_FR: "Ajouter une tâche de sauvegarde automatique"
+  pl_PL: "Dodaj zadanie automatycznej kopii zapasowej"
+
 about.add-category-registry:
   en_US: "Add a category to the registry"
   de_DE: "Eine Kategorie zum Registry hinzufügen"
@@ -4915,6 +5069,13 @@ about.apply-available-update:
   fr_FR: "Appliquer la mise à jour disponible"
   pl_PL: "Zastosuj dostępną aktualizację"
 
+about.apply-backup-retention-policy:
+  en_US: "Apply an automatic backup retention policy"
+  de_DE: "Aufbewahrungsrichtlinie für automatische Sicherungen anwenden"
+  es_ES: "Aplicar una política de retención de copias de seguridad automáticas"
+  fr_FR: "Appliquer une politique de rétention des sauvegardes automatiques"
+  pl_PL: "Zastosuj zasady przechowywania automatycznych kopii zapasowych"
+
 about.calculate-blake3-hash-for-file:
   en_US: "Calculate blake3 hash for a file"
   de_DE: "Blake3-Hash für eine Datei berechnen"
@@ -5062,12 +5223,47 @@ about.commands-authorized-keys:
   fr_FR: "Commandes pour gérer les clés autorisées"
   pl_PL: "Polecenia do zarządzania autoryzowanymi kluczami"
 
+about.commands-automatic-backup-jobs:
+  en_US: "Commands to manage automatic backup jobs"
+  de_DE: "Befehle zum Verwalten automatischer Sicherungsaufträge"
+  es_ES: "Comandos para gestionar tareas de copias de seguridad automáticas"
+  fr_FR: "Commandes pour gérer les tâches de sauvegarde automatique"
+  pl_PL: "Polecenia do zarządzania zadaniami automatycznych kopii zapasowych"
+
 about.commands-backup:
-  en_US: "Commands related to backup creation and backup targets"
-  de_DE: "Befehle zur Backup-Erstellung und Backup-Zielen"
-  es_ES: "Comandos relacionados con la creación de respaldos y destinos de respaldo"
-  fr_FR: "Commandes liées à la création de sauvegardes et aux cibles de sauvegarde"
-  pl_PL: "Polecenia związane z tworzeniem kopii zapasowych i celami kopii zapasowych"
+  en_US: "Commands to create, schedule, inspect, and restore backups"
+  de_DE: "Befehle zum Erstellen, Planen, Prüfen und Wiederherstellen von Sicherungen"
+  es_ES: "Comandos para crear, programar, consultar y restaurar copias de seguridad"
+  fr_FR: "Commandes pour créer, planifier, consulter et restaurer des sauvegardes"
+  pl_PL: "Polecenia do tworzenia, planowania, sprawdzania i przywracania kopii zapasowych"
+
+about.commands-backup-activity:
+  en_US: "Commands to inspect backup and restore activity"
+  de_DE: "Befehle zum Prüfen von Sicherungs- und Wiederherstellungsaktivitäten"
+  es_ES: "Comandos para consultar la actividad de copias y restauraciones"
+  fr_FR: "Commandes pour consulter l’activité des sauvegardes et restaurations"
+  pl_PL: "Polecenia do sprawdzania aktywności kopii i przywracania"
+
+about.commands-backup-history:
+  en_US: "Commands to inspect automatic backup checkpoint history"
+  de_DE: "Befehle zum Prüfen des Verlaufs automatischer Sicherungspunkte"
+  es_ES: "Comandos para consultar el historial de puntos de copias automáticas"
+  fr_FR: "Commandes pour consulter l’historique des points de sauvegarde automatique"
+  pl_PL: "Polecenia do sprawdzania historii punktów automatycznych kopii"
+
+about.commands-backup-policy:
+  en_US: "Commands to preview and apply automatic backup retention policies"
+  de_DE: "Befehle zur Vorschau und Anwendung von Aufbewahrungsrichtlinien für automatische Sicherungen"
+  es_ES: "Comandos para previsualizar y aplicar políticas de retención de copias de seguridad automáticas"
+  fr_FR: "Commandes pour prévisualiser et appliquer les politiques de rétention des sauvegardes automatiques"
+  pl_PL: "Polecenia do podglądu i stosowania zasad przechowywania automatycznych kopii zapasowych"
+
+about.commands-backup-review:
+  en_US: "Commands to resolve automatic backup decisions for new services"
+  de_DE: "Befehle zum Abschließen automatischer Sicherungsentscheidungen für neue Dienste"
+  es_ES: "Comandos para resolver decisiones de copias automáticas para servicios nuevos"
+  fr_FR: "Commandes pour résoudre les décisions de sauvegarde automatique des nouveaux services"
+  pl_PL: "Polecenia do rozstrzygania decyzji o automatycznych kopiach nowych usług"
 
 about.commands-backup-target:
   en_US: "Commands related to a backup target"
@@ -5370,12 +5566,33 @@ about.create-developer-key:
   fr_FR: "Créer une nouvelle clé de développeur"
   pl_PL: "Utwórz nowy klucz deweloperski"
 
+about.delete-archived-backup-checkpoints:
+  en_US: "Delete selected archived automatic backup checkpoints"
+  de_DE: "Ausgewählte archivierte automatische Sicherungspunkte löschen"
+  es_ES: "Eliminar los puntos archivados seleccionados de copias automáticas"
+  fr_FR: "Supprimer les points archivés sélectionnés des sauvegardes automatiques"
+  pl_PL: "Usuń wybrane zarchiwizowane punkty automatycznych kopii zapasowych"
+
+about.delete-automatic-backup-job:
+  en_US: "Delete an automatic backup job"
+  de_DE: "Automatischen Sicherungsauftrag löschen"
+  es_ES: "Eliminar una tarea de copia de seguridad automática"
+  fr_FR: "Supprimer une tâche de sauvegarde automatique"
+  pl_PL: "Usuń zadanie automatycznej kopii zapasowej"
+
 about.delete-legacy-backup:
   en_US: "Delete the legacy (V1) backup from a backup target"
   de_DE: "Die alte (V1) Sicherung von einem Sicherungsziel löschen"
   es_ES: "Eliminar la copia de seguridad heredada (V1) de un destino de copia de seguridad"
   fr_FR: "Supprimer la sauvegarde héritée (V1) d'une cible de sauvegarde"
   pl_PL: "Usuń starą kopię zapasową (V1) z celu kopii zapasowej"
+
+about.disable-automatic-backup-job:
+  en_US: "Disable an automatic backup job without deleting its checkpoints"
+  de_DE: "Automatischen Sicherungsauftrag deaktivieren, ohne seine Sicherungspunkte zu löschen"
+  es_ES: "Desactivar una tarea de copia automática sin eliminar sus puntos"
+  fr_FR: "Désactiver une tâche de sauvegarde automatique sans supprimer ses points"
+  pl_PL: "Wyłącz zadanie automatycznej kopii bez usuwania jego punktów"
 
 about.disable-kiosk-mode:
   en_US: "Disable kiosk mode"
@@ -5390,6 +5607,13 @@ about.disable-webserver:
   es_ES: "Desactivar el servidor web"
   fr_FR: "Désactiver le serveur web"
   pl_PL: "Wyłącz serwer internetowy"
+
+about.discover-automatic-backup-history:
+  en_US: "Discover automatic backup history stored on a backup target"
+  de_DE: "Automatischen Sicherungsverlauf auf einem Sicherungsziel ermitteln"
+  es_ES: "Descubrir el historial de copias automáticas almacenado en un destino"
+  fr_FR: "Découvrir l’historique des sauvegardes automatiques stocké sur une cible"
+  pl_PL: "Odkryj historię automatycznych kopii zapisaną w lokalizacji kopii"
 
 about.display-all-auth-sessions:
   en_US: "Display all auth sessions"
@@ -5573,6 +5797,13 @@ about.echo-message:
   fr_FR: "Renvoyer un message"
   pl_PL: "Odzew wiadomości"
 
+about.edit-automatic-backup-job:
+  en_US: "Edit an automatic backup job"
+  de_DE: "Automatischen Sicherungsauftrag bearbeiten"
+  es_ES: "Editar una tarea de copia de seguridad automática"
+  fr_FR: "Modifier une tâche de sauvegarde automatique"
+  pl_PL: "Edytuj zadanie automatycznej kopii zapasowej"
+
 about.edit-s9pk-manifest:
   en_US: "Edit s9pk manifest"
   de_DE: "s9pk-Manifest bearbeiten"
@@ -5586,6 +5817,13 @@ about.edit-signer:
   es_ES: "Editar información del firmante"
   fr_FR: "Modifier les informations du signataire"
   pl_PL: "Edytuj informacje o podpisującym"
+
+about.enable-automatic-backup-job:
+  en_US: "Enable an automatic backup job"
+  de_DE: "Automatischen Sicherungsauftrag aktivieren"
+  es_ES: "Activar una tarea de copia de seguridad automática"
+  fr_FR: "Activer une tâche de sauvegarde automatique"
+  pl_PL: "Włącz zadanie automatycznej kopii zapasowej"
 
 about.enable-disable-wifi:
   en_US: "Enable or disable wifi"
@@ -5628,6 +5866,13 @@ about.enable-zram:
   es_ES: "Activar ZRAM"
   fr_FR: "Activer ZRAM"
   pl_PL: "Włącz ZRAM"
+
+about.estimate-backup-capacity:
+  en_US: "Estimate automatic backup storage requirements"
+  de_DE: "Speicherbedarf automatischer Sicherungen schätzen"
+  es_ES: "Estimar los requisitos de almacenamiento de las copias de seguridad automáticas"
+  fr_FR: "Estimer les besoins de stockage des sauvegardes automatiques"
+  pl_PL: "Oszacuj wymagania dotyczące miejsca dla automatycznych kopii zapasowych"
 
 about.execute-commands-container:
   en_US: "Execute commands in container"
@@ -5818,12 +6063,40 @@ about.list-authorized-keys:
   fr_FR: "Lister les clés autorisées"
   pl_PL: "Wyświetl autoryzowane klucze"
 
+about.list-automatic-backup-history:
+  en_US: "List automatic backup checkpoint history"
+  de_DE: "Verlauf automatischer Sicherungspunkte auflisten"
+  es_ES: "Listar el historial de puntos de copias automáticas"
+  fr_FR: "Lister l’historique des points de sauvegarde automatique"
+  pl_PL: "Wyświetl historię punktów automatycznych kopii zapasowych"
+
+about.list-automatic-backup-jobs:
+  en_US: "List automatic backup jobs"
+  de_DE: "Automatische Sicherungsaufträge auflisten"
+  es_ES: "Listar tareas de copias de seguridad automáticas"
+  fr_FR: "Lister les tâches de sauvegarde automatique"
+  pl_PL: "Wyświetl zadania automatycznych kopii zapasowych"
+
 about.list-available-wifi-networks:
   en_US: "List available wifi networks"
   de_DE: "Verfügbare WLAN-Netzwerke auflisten"
   es_ES: "Listar redes wifi disponibles"
   fr_FR: "Lister les réseaux wifi disponibles"
   pl_PL: "Wyświetl dostępne sieci wifi"
+
+about.list-backup-activity:
+  en_US: "List manual backup, automatic backup, and restore activity"
+  de_DE: "Manuelle Sicherungen, automatische Sicherungen und Wiederherstellungen auflisten"
+  es_ES: "Listar la actividad de copias manuales, automáticas y restauraciones"
+  fr_FR: "Lister l’activité des sauvegardes manuelles, automatiques et des restaurations"
+  pl_PL: "Wyświetl aktywność ręcznych i automatycznych kopii oraz przywracania"
+
+about.list-backup-service-reviews:
+  en_US: "List pending automatic backup decisions for newly installed services"
+  de_DE: "Ausstehende Entscheidungen zu automatischen Sicherungen neuer Dienste auflisten"
+  es_ES: "Listar decisiones pendientes de copias automáticas para servicios nuevos"
+  fr_FR: "Lister les décisions de sauvegarde automatique en attente pour les nouveaux services"
+  pl_PL: "Wyświetl oczekujące decyzje o automatycznych kopiach nowych usług"
 
 about.list-bindings-for-host:
   en_US: "List bindings for a host"
@@ -6091,6 +6364,13 @@ about.persist-new-notification:
   fr_FR: "Persister une nouvelle notification"
   pl_PL: "Utrwal nowe powiadomienie"
 
+about.preview-backup-retention-change:
+  en_US: "Preview an automatic backup retention policy change"
+  de_DE: "Änderung einer Aufbewahrungsrichtlinie für automatische Sicherungen in der Vorschau anzeigen"
+  es_ES: "Previsualizar un cambio en la política de retención de copias de seguridad automáticas"
+  fr_FR: "Prévisualiser une modification de la politique de rétention des sauvegardes automatiques"
+  pl_PL: "Wyświetl podgląd zmiany zasad przechowywania automatycznych kopii zapasowych"
+
 about.promote-or-demote-device-kind:
   en_US: "Promote a device to a server or demote it to a client"
   de_DE: "Ein Gerät zu einem Server hochstufen oder zu einem Client herabstufen"
@@ -6125,6 +6405,13 @@ about.select-s9pk-for-device:
   es_ES: "Seleccionar el s9pk más compatible para un dispositivo destino"
   fr_FR: "Sélectionner le meilleur s9pk compatible pour un appareil cible"
   pl_PL: "Wybierz najlepiej kompatybilny s9pk dla urządzenia docelowego"
+
+about.reassign-automatic-backup-target:
+  en_US: "Move an automatic backup job to another target"
+  de_DE: "Automatischen Sicherungsauftrag auf ein anderes Ziel verschieben"
+  es_ES: "Mover una tarea de copia automática a otro destino"
+  fr_FR: "Déplacer une tâche de sauvegarde automatique vers une autre cible"
+  pl_PL: "Przenieś zadanie automatycznej kopii do innej lokalizacji"
 
 about.rebuild-service-container:
   en_US: "Rebuild service container"
@@ -6364,6 +6651,13 @@ about.uninitialize-webserver:
   fr_FR: "Désinitialiser le serveur web"
   pl_PL: "Zdezinicjalizuj serwer internetowy"
 
+about.resolve-backup-service-review:
+  en_US: "Resolve automatic backup decisions for a newly installed service"
+  de_DE: "Entscheidungen zur automatischen Sicherung eines neuen Dienstes abschließen"
+  es_ES: "Resolver decisiones de copia automática para un servicio recién instalado"
+  fr_FR: "Résoudre les décisions de sauvegarde automatique pour un nouveau service"
+  pl_PL: "Rozstrzygnij decyzje o automatycznej kopii nowo zainstalowanej usługi"
+
 about.restart-server:
   en_US: "Restart the server"
   de_DE: "Den Server neu starten"
@@ -6385,12 +6679,33 @@ about.restart-tunnel:
   fr_FR: "Redémarrer le serveur tunnel"
   pl_PL: "Uruchom ponownie serwer tunelu"
 
+about.restore-automatic-backup-checkpoints:
+  en_US: "Restore services from selected automatic backup checkpoints"
+  de_DE: "Dienste aus ausgewählten automatischen Sicherungspunkten wiederherstellen"
+  es_ES: "Restaurar servicios desde puntos seleccionados de copias automáticas"
+  fr_FR: "Restaurer des services depuis des points de sauvegarde automatique sélectionnés"
+  pl_PL: "Przywróć usługi z wybranych punktów automatycznych kopii zapasowych"
+
 about.restore-packages-from-backup:
   en_US: "Restore packages from backup"
   de_DE: "Pakete aus Backup wiederherstellen"
   es_ES: "Restaurar paquetes desde copia de seguridad"
   fr_FR: "Restaurer les packages depuis la sauvegarde"
   pl_PL: "Przywróć pakiety z kopii zapasowej"
+
+about.retry-automatic-backup-target:
+  en_US: "Reconnect an automatic backup target and resume its jobs"
+  de_DE: "Automatisches Sicherungsziel erneut verbinden und seine Aufträge fortsetzen"
+  es_ES: "Volver a conectar un destino de copias automáticas y reanudar sus tareas"
+  fr_FR: "Reconnecter une cible de sauvegarde automatique et reprendre ses tâches"
+  pl_PL: "Połącz ponownie lokalizację automatycznych kopii i wznów jej zadania"
+
+about.run-automatic-backup-job-now:
+  en_US: "Run an automatic backup job now"
+  de_DE: "Automatischen Sicherungsauftrag jetzt ausführen"
+  es_ES: "Ejecutar ahora una tarea de copia de seguridad automática"
+  fr_FR: "Exécuter maintenant une tâche de sauvegarde automatique"
+  pl_PL: "Uruchom teraz zadanie automatycznej kopii zapasowej"
 
 about.run-service-action:
   en_US: "Run a service action"

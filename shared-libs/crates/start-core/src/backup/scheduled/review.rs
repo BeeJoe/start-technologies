@@ -18,6 +18,14 @@ pub fn review<C: Context>() -> ParentHandler<C> {
             "list",
             from_fn_async(list)
                 .with_display_serializable()
+                .with_about("about.list-backup-service-reviews")
+                .with_call_remote::<crate::context::CliContext>(),
+        )
+        .subcommand(
+            "decide",
+            from_fn_async(super::rpc::resolve_review_cli)
+                .no_display()
+                .with_about("about.resolve-backup-service-review")
                 .with_call_remote::<crate::context::CliContext>(),
         )
         .subcommand("resolve", from_fn_async(resolve).no_cli())

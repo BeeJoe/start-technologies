@@ -1036,4 +1036,12 @@ export default {
   1129: 'Automatische Sicherungen werden gestoppt. Manuelle Sicherungen werden nicht gelöscht.',
   1130: 'Automatische Sicherungen löschen',
   1145: 'Eine Sicherung oder Wiederherstellung wird bereits ausgeführt.',
+  1146: 'Stunde',
+  1147: 'Stunden',
+  1148: 'Tag',
+  1149: 'Tage',
+  1150: 'Woche',
+  1151: 'Wochen',
+  1152: 'Monat',
+  1153: 'Monate',
 } satisfies i18n

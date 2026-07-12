@@ -895,8 +895,8 @@ assertSource(liveApiFile, [
   /restoreBackupSelection[\s\S]{0,260}method:\s*'package\.backup\.restore-selection'/,
 ])
 assertSource(backendBackupFile, [
-  /subcommand\("job", scheduled::job::<C>\(\)\)/,
-  /subcommand\("history", scheduled::history::<C>\(\)\)/,
+  /subcommand\([\s\S]{0,80}"job"[\s\S]{0,160}scheduled::job::<C>\(\)/,
+  /subcommand\([\s\S]{0,80}"history"[\s\S]{0,160}scheduled::history::<C>\(\)/,
   /"restore-selection"[\s\S]{0,180}restore_selection_rpc/,
   /fn try_backup_coordinator[\s\S]{0,240}try_lock_owned\(\)[\s\S]{0,200}backup_in_progress_error/,
   /fn backup_coordinator_rejects_a_second_request/,
@@ -927,6 +927,8 @@ assertNotSource(backendScheduledRunnerFile, [
 assertSource(backendScheduledRunnerFile, [
   /let coordinator = crate::backup::try_backup_coordinator\(ctx\.backup_coordinator\.clone\(\)\)\?[\s\S]{0,120}run_job_with_coordinator\(ctx, job_id, trigger, coordinator\)\.await/,
   /fn run_job_with_coordinator[\s\S]{0,240}reconcile_interrupted_backup_state\(&ctx\)\.await\?[\s\S]{0,120}run_job_inner/,
+  /tracing::info!\([\s\S]{0,320}job_id = %job\.id[\s\S]{0,160}job_name = %job\.name[\s\S]{0,160}target = %target_name[\s\S]{0,240}service_count = package_ids\.len\(\)[\s\S]{0,120}"automatic backup started"/,
+  /tracing::info!\([\s\S]{0,320}run_id = %run\.id[\s\S]{0,240}state = \?run\.state[\s\S]{0,240}failed_service_count[\s\S]{0,240}"automatic backup completed"/,
 ])
 assertSource(backendScheduledSchedulerFile, [
   /pub\(crate\) async fn reconcile_interrupted_backup_state/,
@@ -943,6 +945,7 @@ assertSource(backendScheduledSchedulerFile, [
   /fn scheduler_claims_only_the_oldest_due_job/,
   /fn busy_scheduler_slot_leaves_due_jobs_unchanged/,
   /run_job_with_coordinator\([\s\S]{0,160}coordinator[\s\S]{0,80}\.await/,
+  /tracing::error!\([\s\S]{0,180}job_id = %log_job_id[\s\S]{0,120}\?trigger[\s\S]{0,120}error = %error[\s\S]{0,120}"automatic backup run failed"/,
 ])
 assertNotSource(backendScheduledSchedulerFile, [
   /automatic_only/,

@@ -33,11 +33,17 @@ pub async fn start_scheduler(ctx: &RpcContext) -> Result<(), Error> {
 
         loop {
             if let Err(error) = reconcile_if_idle(&scheduler_ctx).await {
-                tracing::error!("interrupted backup reconciliation failed: {error}");
-                tracing::debug!("{error:?}");
+                tracing::error!(
+                    error = %error,
+                    "interrupted backup reconciliation failed"
+                );
+                tracing::debug!(
+                    error = ?error,
+                    "interrupted backup reconciliation failure details"
+                );
             }
             if let Err(error) = dispatch_due_jobs(&scheduler_ctx).await {
-                tracing::error!("scheduled backup dispatcher failed: {error}");
+                tracing::error!(error = %error, "automatic backup dispatcher failed");
                 tracing::debug!("{error:?}");
             }
             tokio::time::sleep(Duration::from_secs(30)).await;
@@ -184,11 +190,22 @@ async fn dispatch_due_jobs(ctx: &RpcContext) -> Result<(), Error> {
     if let Some((job_id, trigger)) = due_job {
         let run_ctx = ctx.clone();
         tokio::spawn(async move {
+            let log_job_id = job_id.clone();
             if let Err(error) =
                 super::runner::run_job_with_coordinator(run_ctx, job_id, trigger, coordinator).await
             {
-                tracing::error!("scheduled backup run failed: {error}");
-                tracing::debug!("{error:?}");
+                tracing::error!(
+                    job_id = %log_job_id,
+                    ?trigger,
+                    error = %error,
+                    "automatic backup run failed"
+                );
+                tracing::debug!(
+                    job_id = %log_job_id,
+                    ?trigger,
+                    error = ?error,
+                    "automatic backup run failure details"
+                );
             }
         });
     }

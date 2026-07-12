@@ -84,6 +84,10 @@ the active operation without advancing their schedule, while a second manual
 backup, automatic backup, or restore request is rejected instead of being queued
 to run afterward.
 
+Whenever a backup workflow asks for a master password, select the eye icon in
+the password field to show or hide what you typed. This applies to manual
+backups, restores, automatic-backup setup, and target repair or reassignment.
+
 Turning off automatic backups keeps the schedule settings and existing
 checkpoints by default. When you switch automatic backups off, the confirmation
 dialog offers **Delete automatic backups** and changes the confirmation action
@@ -94,45 +98,14 @@ are not deleted.
 
 ## Automatic Backups
 
-Automatic backups run on a schedule without requiring you to return to the
-Backups page. To set them up, expand **Automatic backups**, choose a backup
-location, and then choose the schedule and services to protect. StartOS asks for
-your master password during setup so it can unlock the encrypted backup. Your
-password is not stored.
+Automatic backups protect selected services on hourly, daily, weekly, or
+advanced schedules. They support future-service selection, version history,
+capacity estimates, archived checkpoints, target recovery, and per-service
+restore choices while keeping the latest manual checkpoint separate.
 
-The default schedule runs once each day at the exact time shown. You can switch
-to hourly or weekly backups, choose another exact time, or add more schedules
-under **Advanced schedules**. Times follow the timezone detected from the device
-where the schedule is created. The collapsed **Automatic backups** card shows
-the primary schedule at a glance. **Advanced schedules** focuses on schedule
-configuration; service checkpoints remain in the separate **Backup history**
-card.
-
-All current services are selected by default. Use the checkboxes to exclude
-individual services, or use **Toggle all** to change the full selection. Unless
-you choose a fixed selection, services installed later are included
-automatically. StartOS will ask you to review a new service before starting it
-when an existing selective schedule does not include it.
-
-Each automatic run stops a selected service, backs it up, and starts it again if
-it was running beforehand. Other services remain available. You can leave the
-Backups page while settings save or while a run or restore is in progress. Use
-**Run now** inside the expanded card when you want the primary schedule to run
-immediately.
-
-By default, StartOS keeps the latest automatic checkpoint for each service and
-backup location. **Keep additional versions** retains older checkpoints at the
-interval and duration you choose. Every retained version is a full copy, and a
-run also needs temporary staging space, so additional versions can use
-substantially more storage—especially on network folders and slower drives. A
-manual checkpoint remains separate from automatic history.
-
-Use **Backup history** to review completed automatic and manual backups and
-restores. When restoring, each service defaults to its newest checkpoint, but
-you can choose a different manual or automatic checkpoint. Turning automatic
-backups off preserves the schedule and checkpoints unless you select the
-permanent-delete option in the confirmation dialog; that option also removes
-the automatic schedules so they can be recreated cleanly later.
+See [Automatic Backups](./backup-automatic.md) for setup, schedules, storage and
+retention, activity history, failure recovery, notifications, OS logs, and
+command-line administration.
 
 ## Physical Drive
 

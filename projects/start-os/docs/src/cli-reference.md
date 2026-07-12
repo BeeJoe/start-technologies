@@ -301,7 +301,16 @@ Clear a pending service task.
 
 ### `start-cli package backup restore <TARGET_ID> <PASSWORD> [IDS...]`
 
-Restore one or more packages from a backup.
+Restore one or more packages from the target's manual checkpoint.
+
+### `start-cli package backup restore-checkpoint <TARGET_ID> <PACKAGE_ID=SNAPSHOT_ID>...`
+
+Restore one or more services from selected automatic checkpoints. Obtain the
+snapshot IDs from `start-cli backup history list` or `backup history discover`.
+
+- `--server-id <ID>` — Source StartOS server ID; defaults to this server
+- `--password <PASS>` — Master password; required when this server has no saved
+  credential for the target
 
 ### Service Host Management
 
@@ -346,7 +355,10 @@ Enable or disable a specific address binding for a service.
 
 ## Backups
 
-Create backups and manage backup targets (network shares).
+Create manual backups; manage automatic jobs, checkpoint history, and retention;
+restore checkpoints; and manage backup targets. Commands that return records
+accept the standard `--format` option. Use `start-cli backup -h` and the
+committed man pages for the complete generated command surface.
 
 ### `start-cli backup create <TARGET_ID> <PASSWORD>`
 
@@ -355,38 +367,159 @@ Create a backup of all or selected packages.
 - `--old-password <PASS>` — Previous backup password (for re-encryption)
 - `--package-ids <IDS>` — Limit to specific packages
 
-### `start-cli backup target list`
+### `start-cli backup estimate-capacity <TARGET_ID>`
+
+Estimate per-service automatic-backup storage and next-run staging requirements
+before creating a job. With no service filters it includes every currently
+installed service; with no retention tiers it estimates latest-only retention.
+The result separates live data, retained and archived checkpoints, staging
+headroom, and the conservative projected peak. A job created without filters
+also includes services installed in the future, whose size cannot yet be
+estimated.
+
+- `--package-ids <IDS>` — Include only comma-separated package IDs
+- `--exclude-package-ids <IDS>` — Include current and future services except
+  these comma-separated IDs
+- `--keep-tier <INTERVAL:COVERAGE>` — Estimate a retention tier; accepts the
+  same repeatable duration syntax as `backup job add`
+- `--service-keep-tier <PACKAGE_ID=INTERVAL:COVERAGE>` — Estimate a retention
+  tier for one service; repeat the option to add more tiers or services
+- `--service-latest-only <PACKAGE_ID>` — Estimate latest-checkpoint-only
+  retention for one or more comma-separated service IDs
+
+### Automatic backup jobs
+
+#### `start-cli backup job list`
+
+List automatic backup jobs, their IDs, schedules, target state, and next-run
+status.
+
+#### `start-cli backup job add <NAME> <TARGET_ID> <PASSWORD>`
+
+Create an automatic backup job. It defaults to all current and future services,
+daily at 03:00 UTC, and latest-checkpoint-only retention.
+
+- `--cron <CRON>` — Five-field cron schedule. For example, `15 * * * *` runs at
+  15 minutes past every hour.
+- `--timezone <ZONE>` — IANA timezone; defaults to `UTC`
+- `--package-ids <IDS>` — Include only comma-separated package IDs
+- `--exclude-package-ids <IDS>` — Include current and future services except
+  these comma-separated IDs
+- `--keep-tier <INTERVAL:COVERAGE>` — Retain versions at this interval for this
+  coverage. Repeat for multiple tiers; suffixes are `s`, `m`, `h`, `d`, and `w`.
+  For example, `--keep-tier 1h:1d --keep-tier 1d:1w` retains hourly versions for
+  one day and daily versions for one week.
+- `--service-keep-tier <PACKAGE_ID=INTERVAL:COVERAGE>` — Override retention for
+  one service. Repeat it to build multiple tiers or configure more services.
+- `--service-latest-only <PACKAGE_ID>` — Override one or more comma-separated
+  services to retain only their latest checkpoint.
+- `--disabled` — Create the job paused
+
+Run `start-cli backup job run-now <ID>` after creating the job when you want the
+first backup immediately.
+
+#### `start-cli backup job edit <ID>`
+
+Update only the supplied job settings. Schedule flags, service-selection flags,
+and repeated `--keep-tier` values use the same forms as `job add`.
+
+- `--name <NAME>` — Change the display name
+- `--all-services` — Include every current and future service
+- `--latest-only` — Replace tiered retention with the newest checkpoint only
+- `--service-keep-tier <PACKAGE_ID=INTERVAL:COVERAGE>` — Add or replace a
+  service-specific retention policy; repeat for multiple tiers
+- `--service-latest-only <PACKAGE_ID>` — Set comma-separated services to
+  latest-checkpoint-only retention
+- `--use-default-retention <PACKAGE_ID>` — Remove service-specific overrides
+  from comma-separated services so they inherit the job default
+
+#### Job state and target recovery
+
+- `start-cli backup job enable <ID>` — Resume an automatic job
+- `start-cli backup job disable <ID>` — Pause an automatic job
+- `start-cli backup job delete <ID>` — Delete the job definition
+- `start-cli backup job run-now <ID>` — Run the job immediately
+- `start-cli backup job retry-target <TARGET_ID> <PASSWORD>` — Reconnect a
+  target and resume its paused jobs
+- `start-cli backup job reassign-target <ID> <TARGET_ID> <PASSWORD>` — Move a
+  job to another target. Pass `--wait-for-schedule` to avoid an immediate run.
+
+### Activity and checkpoint history
+
+- `start-cli backup activity list` — List manual backup, automatic backup, and
+  restore activity
+- `start-cli backup history list` — List automatic checkpoint history known to
+  this server
+- `start-cli backup history discover <TARGET_ID> <SERVER_ID> <PASSWORD>` — Read
+  automatic history directly from an encrypted target
+- `start-cli backup history delete-archived` — Delete selected archived
+  checkpoint IDs for a target and package. Active checkpoints are rejected; use
+  the command's `-h` output for positional argument details.
+
+### Retention policies
+
+Preview every retention change before applying it:
+
+```sh
+start-cli backup policy preview-change cifs-0 bitcoind --keep-tier 1h:1d --keep-tier 1d:1w
+```
+
+Then apply the identical policy and repeat `--confirm-removal` for every
+checkpoint ID listed in the preview:
+
+```sh
+start-cli backup policy apply cifs-0 bitcoind --keep-tier 1h:1d --keep-tier 1d:1w \
+  --confirm-removal <CHECKPOINT_ID>
+```
+
+Use `--latest-only` instead of `--keep-tier` to retain only the newest automatic
+checkpoint. Apply fails if the confirmation set differs from a fresh preview,
+which prevents stale or unintended deletion.
+
+### New-service reviews
+
+- `start-cli backup review list` — List newly installed services awaiting a
+  decision for selective automatic jobs
+- `start-cli backup review decide <PACKAGE_ID> --decision <JOB_ID=add|skip>` —
+  Add or skip the service for an affected job. Repeat `--decision` for every
+  listed job.
+
+### Backup targets
+
+#### `start-cli backup target list`
 
 List configured backup targets.
 
 - `--format` — Output format
 
-### `start-cli backup target info <TARGET_ID> <SERVER_ID> <PASSWORD>`
+`start-cli backup targets` is a direct list-only shortcut.
+
+#### `start-cli backup target info <TARGET_ID> <SERVER_ID> <PASSWORD>`
 
 Display backup information for a target.
 
 - `--format` — Output format
 
-### `start-cli backup target mount <TARGET_ID> <PASSWORD>`
+#### `start-cli backup target mount <TARGET_ID> <PASSWORD>`
 
 Mount a backup target.
 
 - `--server-id <ID>` — Server identifier
 - `--allow-partial` — Leave media mounted even if backupfs fails
 
-### `start-cli backup target umount [TARGET_ID]`
+#### `start-cli backup target umount [TARGET_ID]`
 
 Unmount a backup target.
 
-### `start-cli backup target cifs add <HOSTNAME> <PATH> <USERNAME> [PASSWORD]`
+#### `start-cli backup target cifs add <HOSTNAME> <PATH> <USERNAME> [PASSWORD]`
 
 Add a new CIFS/SMB network share as a backup target.
 
-### `start-cli backup target cifs update <ID> <HOSTNAME> <PATH> <USERNAME> [PASSWORD]`
+#### `start-cli backup target cifs update <ID> <HOSTNAME> <PATH> <USERNAME> [PASSWORD]`
 
 Update an existing CIFS backup target.
 
-### `start-cli backup target cifs remove <ID>`
+#### `start-cli backup target cifs remove <ID>`
 
 Remove a CIFS backup target.
 

@@ -24,7 +24,7 @@ pub use credential::*;
 pub use model::*;
 pub use retention::*;
 pub use review::*;
-pub use rpc::{history, job, policy};
+pub use rpc::{estimate_capacity_cli, history, job, policy, restore_automatic_checkpoint_cli};
 pub use runner::run_job;
 pub use schedule::*;
 pub(crate) use scheduler::reconcile_interrupted_backup_state;

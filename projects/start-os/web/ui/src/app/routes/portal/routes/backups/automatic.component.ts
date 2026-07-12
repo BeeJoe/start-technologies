@@ -29,7 +29,7 @@ import {
   TuiNotification,
   TuiTitle,
 } from '@taiga-ui/core'
-import { TuiBadge, TuiBlock, TuiSwitch } from '@taiga-ui/kit'
+import { TuiBadge, TuiBlock, TuiPassword, TuiSwitch } from '@taiga-ui/kit'
 import { PatchDB } from 'patch-db-client'
 import { firstValueFrom } from 'rxjs'
 import { ApiService } from 'src/app/services/api/embassy-api.service'
@@ -40,8 +40,12 @@ import {
   formatCifsLocation,
 } from '../system/routes/backups/backup.service'
 import {
+  BackupRetentionInterval,
   BackupScheduleFrequency,
   parseBackupSchedule,
+  retentionIntervalFromSeconds,
+  retentionIntervalSeconds,
+  retentionPeriodLabel,
   serializeBackupSchedule,
 } from '../system/routes/backups/scheduled.utils'
 import { ScheduledBackupsComponent } from '../system/routes/backups/scheduled.component'
@@ -68,7 +72,7 @@ interface AutomaticEditor {
   includeFuture: boolean
   legacySelection: boolean
   keepAdditional: boolean
-  interval: 'day' | 'week' | 'month'
+  interval: BackupRetentionInterval
   duration: number
   password: string
   firstBackupNow: boolean
@@ -308,6 +312,7 @@ interface AutomaticEditor {
             <div class="retention-rule">
               <span>{{ 'Keep one backup every' | i18n }}</span>
               <select [(ngModel)]="editor.interval">
+                <option value="hour">{{ 'Hour' | i18n }}</option>
                 <option value="day">{{ 'Day' | i18n }}</option>
                 <option value="week">{{ 'Week' | i18n }}</option>
                 <option value="month">{{ 'Month' | i18n }}</option>
@@ -319,7 +324,7 @@ interface AutomaticEditor {
                 max="365"
                 [(ngModel)]="editor.duration"
               />
-              <span>{{ 'periods' | i18n }}</span>
+              <span>{{ retentionPeriod() | i18n }}</span>
             </div>
             <div tuiNotification appearance="warning">
               {{
@@ -385,16 +390,6 @@ interface AutomaticEditor {
             </div>
           }
 
-          <tui-textfield>
-            <label tuiLabel>{{ 'Master Password' | i18n }}</label>
-            <input
-              tuiInput
-              type="password"
-              autocomplete="off"
-              [(ngModel)]="editor.password"
-            />
-          </tui-textfield>
-
           <label class="checkbox-row first-backup">
             <input
               tuiCheckbox
@@ -408,6 +403,18 @@ interface AutomaticEditor {
               </span>
             </span>
           </label>
+
+          <tui-textfield>
+            <label tuiLabel>{{ 'Master Password' | i18n }}</label>
+            <input
+              tuiInput
+              type="password"
+              autocomplete="off"
+              [(ngModel)]="editor.password"
+              (keyup.enter)="createAutomaticBackup()"
+            />
+            <tui-icon tuiPassword />
+          </tui-textfield>
         </section>
       }
 
@@ -614,6 +621,7 @@ interface AutomaticEditor {
               <div class="retention-rule">
                 <span>{{ 'Keep one backup every' | i18n }}</span>
                 <select [(ngModel)]="editor.interval">
+                  <option value="hour">{{ 'Hour' | i18n }}</option>
                   <option value="day">{{ 'Day' | i18n }}</option>
                   <option value="week">{{ 'Week' | i18n }}</option>
                   <option value="month">{{ 'Month' | i18n }}</option>
@@ -625,7 +633,7 @@ interface AutomaticEditor {
                   max="365"
                   [(ngModel)]="editor.duration"
                 />
-                <span>{{ 'periods' | i18n }}</span>
+                <span>{{ retentionPeriod() | i18n }}</span>
               </div>
               <p class="helper">
                 {{
@@ -962,6 +970,7 @@ interface AutomaticEditor {
     TuiIcon,
     TuiInput,
     TuiNotification,
+    TuiPassword,
     TuiSwitch,
     TuiTitle,
     TitleDirective,
@@ -975,6 +984,7 @@ export default class AutomaticBackupsComponent implements OnInit {
   private readonly backupService = inject(BackupService)
   private readonly dialogs = inject(DialogService)
   private readonly errors = inject(ErrorService)
+  private readonly i18n = inject(i18nPipe)
   private readonly router = inject(Router)
   private readonly patch = inject<PatchDB<DataModel>>(PatchDB)
   private readonly packageData = toSignal(this.patch.watch$('packageData'))
@@ -1128,7 +1138,7 @@ export default class AutomaticBackupsComponent implements OnInit {
       )
     }
     const tier = job.defaultRetention.tiers[0]
-    const interval = this.intervalFromSeconds(tier?.intervalSeconds)
+    const interval = retentionIntervalFromSeconds(tier?.intervalSeconds)
     return {
       ...this.defaultEditor(),
       ...schedule,
@@ -1204,7 +1214,15 @@ export default class AutomaticBackupsComponent implements OnInit {
   }
 
   retentionSummary(): string {
-    return `Keep one backup every ${this.editor.interval} for ${this.editor.duration} periods`
+    const every = this.i18n.transform('Keep one backup every')
+    const interval = this.i18n.transform(this.editor.interval)
+    const forLabel = this.i18n.transform('for')
+    const period = this.i18n.transform(this.retentionPeriod())
+    return `${every} ${interval} ${forLabel} ${this.editor.duration} ${period}`
+  }
+
+  retentionPeriod() {
+    return retentionPeriodLabel(this.editor.interval, this.editor.duration)
   }
 
   selectedServiceSummary(): string {
@@ -1241,7 +1259,7 @@ export default class AutomaticBackupsComponent implements OnInit {
 
   private policy(): T.RetentionPolicy {
     if (!this.editor.keepAdditional) return { tiers: [] }
-    const intervalSeconds = this.intervalSeconds(this.editor.interval)
+    const intervalSeconds = retentionIntervalSeconds(this.editor.interval)
     return {
       tiers: [
         {
@@ -1299,7 +1317,7 @@ export default class AutomaticBackupsComponent implements OnInit {
   }
 
   async createAutomaticBackup() {
-    if (!this.canSaveSetup()) return
+    if (!this.canSaveSetup() || this.saving()) return
     this.saving.set(true)
     try {
       const job = await this.api.createScheduledBackupJob({
@@ -1432,17 +1450,5 @@ export default class AutomaticBackupsComponent implements OnInit {
       unit += 1
     }
     return `${amount.toFixed(unit ? 1 : 0)} ${units[unit]}`
-  }
-
-  private intervalSeconds(interval: AutomaticEditor['interval']): number {
-    if (interval === 'week') return 7 * 24 * 60 * 60
-    if (interval === 'month') return 30 * 24 * 60 * 60
-    return 24 * 60 * 60
-  }
-
-  private intervalFromSeconds(seconds?: number): AutomaticEditor['interval'] {
-    if (!seconds || seconds < 7 * 24 * 60 * 60) return 'day'
-    if (seconds < 30 * 24 * 60 * 60) return 'week'
-    return 'month'
   }
 }

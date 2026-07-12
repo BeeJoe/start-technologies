@@ -20,6 +20,7 @@ pub fn activity<C: Context>() -> ParentHandler<C> {
         "list",
         from_fn_async(list)
             .with_display_serializable()
+            .with_about("about.list-backup-activity")
             .with_call_remote::<crate::context::CliContext>(),
     )
 }

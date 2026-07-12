@@ -33,12 +33,21 @@ pub fn job<C: Context>() -> ParentHandler<C> {
             "list",
             from_fn_async(list)
                 .with_display_serializable()
+                .with_about("about.list-automatic-backup-jobs")
                 .with_call_remote::<crate::context::CliContext>(),
         )
         .subcommand(
             "add",
             from_fn_async(add_cli)
                 .with_display_serializable()
+                .with_about("about.add-automatic-backup-job")
+                .with_call_remote::<crate::context::CliContext>(),
+        )
+        .subcommand(
+            "edit",
+            from_fn_async(edit_cli)
+                .with_display_serializable()
+                .with_about("about.edit-automatic-backup-job")
                 .with_call_remote::<crate::context::CliContext>(),
         )
         .subcommand("create", from_fn_async(create).no_cli())
@@ -48,28 +57,44 @@ pub fn job<C: Context>() -> ParentHandler<C> {
             "enable",
             from_fn_async(enable_cli)
                 .with_display_serializable()
+                .with_about("about.enable-automatic-backup-job")
                 .with_call_remote::<crate::context::CliContext>(),
         )
         .subcommand(
             "disable",
             from_fn_async(disable_cli)
                 .with_display_serializable()
+                .with_about("about.disable-automatic-backup-job")
                 .with_call_remote::<crate::context::CliContext>(),
         )
         .subcommand(
             "delete",
             from_fn_async(delete)
                 .no_display()
+                .with_about("about.delete-automatic-backup-job")
                 .with_call_remote::<crate::context::CliContext>(),
         )
         .subcommand(
             "run-now",
             from_fn_async(run_now)
                 .with_display_serializable()
+                .with_about("about.run-automatic-backup-job-now")
                 .with_call_remote::<crate::context::CliContext>(),
         )
-        .subcommand("retry-target", from_fn_async(retry_target).no_cli())
-        .subcommand("reassign-target", from_fn_async(reassign_target).no_cli())
+        .subcommand(
+            "retry-target",
+            from_fn_async(retry_target)
+                .with_display_serializable()
+                .with_about("about.retry-automatic-backup-target")
+                .with_call_remote::<crate::context::CliContext>(),
+        )
+        .subcommand(
+            "reassign-target",
+            from_fn_async(reassign_target)
+                .with_display_serializable()
+                .with_about("about.reassign-automatic-backup-target")
+                .with_call_remote::<crate::context::CliContext>(),
+        )
 }
 
 pub fn history<C: Context>() -> ParentHandler<C> {
@@ -78,12 +103,26 @@ pub fn history<C: Context>() -> ParentHandler<C> {
             "list",
             from_fn_async(list_histories)
                 .with_display_serializable()
+                .with_about("about.list-automatic-backup-history")
                 .with_call_remote::<crate::context::CliContext>(),
         )
-        .subcommand("discover", from_fn_async(discover_histories).no_cli())
+        .subcommand(
+            "discover",
+            from_fn_async(discover_histories)
+                .with_display_serializable()
+                .with_about("about.discover-automatic-backup-history")
+                .with_call_remote::<crate::context::CliContext>(),
+        )
         .subcommand(
             "delete-archived-snapshots",
             from_fn_async(delete_archived_snapshots).no_cli(),
+        )
+        .subcommand(
+            "delete-archived",
+            from_fn_async(delete_archived_snapshots_cli)
+                .with_display_serializable()
+                .with_about("about.delete-archived-backup-checkpoints")
+                .with_call_remote::<crate::context::CliContext>(),
         )
 }
 
@@ -92,6 +131,20 @@ pub fn policy<C: Context>() -> ParentHandler<C> {
         .subcommand("estimate", from_fn_async(estimate_capacity).no_cli())
         .subcommand("preview", from_fn_async(preview_policy_change).no_cli())
         .subcommand("update", from_fn_async(update_policy).no_cli())
+        .subcommand(
+            "preview-change",
+            from_fn_async(preview_policy_change_cli)
+                .with_display_serializable()
+                .with_about("about.preview-backup-retention-change")
+                .with_call_remote::<crate::context::CliContext>(),
+        )
+        .subcommand(
+            "apply",
+            from_fn_async(apply_retention_policy_cli)
+                .with_display_serializable()
+                .with_about("about.apply-backup-retention-policy")
+                .with_call_remote::<crate::context::CliContext>(),
+        )
 }
 
 #[derive(Deserialize, Serialize, TS)]
@@ -102,6 +155,56 @@ pub struct EstimateBackupCapacityParams {
     pub services: BackupServiceScope,
     pub default_retention: RetentionPolicy,
     pub retention_overrides: BTreeMap<PackageId, RetentionPolicy>,
+}
+
+#[derive(Deserialize, Serialize, Parser)]
+#[group(skip)]
+#[serde(rename_all = "camelCase")]
+#[command(rename_all = "kebab-case")]
+pub struct EstimateBackupCapacityCliParams {
+    /// Backup target to estimate.
+    #[arg(help = "help.arg.backup-target-id")]
+    pub target_id: BackupTargetId,
+    /// Estimate only these service package IDs. Accepts comma-separated values.
+    #[arg(
+        long,
+        value_delimiter = ',',
+        conflicts_with = "exclude_package_ids",
+        help = "help.arg.automatic-backup-package-ids"
+    )]
+    pub package_ids: Vec<PackageId>,
+    /// Estimate every current and future service except these package IDs.
+    #[arg(
+        long,
+        value_delimiter = ',',
+        conflicts_with = "package_ids",
+        help = "help.arg.automatic-backup-excluded-package-ids"
+    )]
+    pub exclude_package_ids: Vec<PackageId>,
+    /// Retention tier INTERVAL:COVERAGE; accepts s, m, h, d, or w suffixes and may repeat.
+    #[arg(
+        long = "keep-tier",
+        value_name = "INTERVAL:COVERAGE",
+        value_parser = parse_retention_tier,
+        help = "help.arg.automatic-backup-retention-tier"
+    )]
+    pub retention_tiers: Vec<RetentionTier>,
+    /// Per-service retention tier PACKAGE_ID=INTERVAL:COVERAGE; may repeat.
+    #[arg(
+        long = "service-keep-tier",
+        value_name = "PACKAGE_ID=INTERVAL:COVERAGE",
+        value_parser = parse_retention_override_tier,
+        help = "help.arg.automatic-backup-service-retention-tier"
+    )]
+    pub retention_override_tiers: Vec<(PackageId, RetentionTier)>,
+    /// Service package IDs that should keep only their latest checkpoint.
+    #[arg(
+        long = "service-latest-only",
+        value_name = "PACKAGE_ID",
+        value_delimiter = ',',
+        help = "help.arg.automatic-backup-service-latest-only"
+    )]
+    pub latest_only_overrides: Vec<PackageId>,
 }
 
 #[derive(Deserialize, Serialize, TS)]
@@ -241,6 +344,43 @@ pub async fn estimate_capacity(
     Ok(estimates)
 }
 
+pub async fn estimate_capacity_cli(
+    ctx: RpcContext,
+    EstimateBackupCapacityCliParams {
+        target_id,
+        package_ids,
+        exclude_package_ids,
+        retention_tiers,
+        retention_override_tiers,
+        latest_only_overrides,
+    }: EstimateBackupCapacityCliParams,
+) -> Result<Vec<BackupServiceCapacityEstimate>, Error> {
+    let services = if !package_ids.is_empty() {
+        BackupServiceScope::Selected {
+            package_ids: package_ids.into_iter().collect(),
+        }
+    } else {
+        BackupServiceScope::AllExcept {
+            excluded_package_ids: exclude_package_ids.into_iter().collect(),
+        }
+    };
+    estimate_capacity(
+        ctx,
+        EstimateBackupCapacityParams {
+            target_id,
+            services,
+            default_retention: RetentionPolicy {
+                tiers: retention_tiers,
+            },
+            retention_overrides: retention_overrides_from_cli(
+                retention_override_tiers,
+                latest_only_overrides,
+            )?,
+        },
+    )
+    .await
+}
+
 pub async fn list(ctx: RpcContext) -> Result<Vec<BackupJob>, Error> {
     Ok(ctx
         .db
@@ -268,12 +408,20 @@ pub async fn list_histories(ctx: RpcContext) -> Result<Vec<ServiceTargetHistory>
         .collect()
 }
 
-#[derive(Deserialize, Serialize, TS)]
+#[derive(Deserialize, Serialize, Parser, TS)]
+#[group(skip)]
 #[ts(export)]
 #[serde(rename_all = "camelCase")]
+#[command(rename_all = "kebab-case")]
 pub struct DiscoverScheduledBackupsParams {
+    /// Backup target containing the automatic checkpoints.
+    #[arg(help = "help.arg.backup-target-id")]
     pub target_id: BackupTargetId,
+    /// Source StartOS server ID stored on the backup target.
+    #[arg(help = "help.arg.server-id")]
     pub server_id: String,
+    /// Master password that encrypted the source server's checkpoints.
+    #[arg(help = "help.arg.backup-password")]
     pub password: String,
 }
 
@@ -324,6 +472,41 @@ pub struct DeleteArchivedSnapshotsParams {
     pub target_id: BackupTargetId,
     pub package_id: PackageId,
     pub snapshot_ids: BTreeSet<ServiceSnapshotId>,
+}
+
+#[derive(Deserialize, Serialize, Parser)]
+#[group(skip)]
+#[serde(rename_all = "camelCase")]
+#[command(rename_all = "kebab-case")]
+pub struct DeleteArchivedSnapshotsCliParams {
+    /// Backup target containing the archived checkpoints.
+    #[arg(help = "help.arg.backup-target-id")]
+    pub target_id: BackupTargetId,
+    /// Service package ID whose archived checkpoints should be deleted.
+    #[arg(help = "help.arg.package-id")]
+    pub package_id: PackageId,
+    /// Automatic checkpoint IDs to delete.
+    #[arg(required = true, help = "help.arg.automatic-backup-snapshot-ids")]
+    pub snapshot_ids: Vec<ServiceSnapshotId>,
+}
+
+pub async fn delete_archived_snapshots_cli(
+    ctx: RpcContext,
+    DeleteArchivedSnapshotsCliParams {
+        target_id,
+        package_id,
+        snapshot_ids,
+    }: DeleteArchivedSnapshotsCliParams,
+) -> Result<ServiceTargetHistory, Error> {
+    delete_archived_snapshots(
+        ctx,
+        DeleteArchivedSnapshotsParams {
+            target_id,
+            package_id,
+            snapshot_ids: snapshot_ids.into_iter().collect(),
+        },
+    )
+    .await
 }
 
 pub async fn delete_archived_snapshots(
@@ -388,11 +571,17 @@ pub async fn delete_archived_snapshots(
     Ok(history)
 }
 
-#[derive(Deserialize, Serialize, TS)]
+#[derive(Deserialize, Serialize, Parser, TS)]
+#[group(skip)]
 #[ts(export)]
 #[serde(rename_all = "camelCase")]
+#[command(rename_all = "kebab-case")]
 pub struct RetryBackupTargetParams {
+    /// Backup target to reconnect and resume.
+    #[arg(help = "help.arg.backup-target-id")]
     pub target_id: BackupTargetId,
+    /// Current master password.
+    #[arg(help = "help.arg.backup-password")]
     pub password: PasswordType,
 }
 
@@ -485,13 +674,23 @@ pub async fn retry_target(
     Ok(jobs)
 }
 
-#[derive(Deserialize, Serialize, TS)]
+#[derive(Deserialize, Serialize, Parser, TS)]
+#[group(skip)]
 #[ts(export)]
 #[serde(rename_all = "camelCase")]
+#[command(rename_all = "kebab-case")]
 pub struct ReassignBackupTargetParams {
+    /// Automatic backup job ID to move.
+    #[arg(help = "help.arg.automatic-backup-job-id")]
     pub id: BackupJobId,
+    /// New backup target ID.
+    #[arg(help = "help.arg.backup-target-id")]
     pub target_id: BackupTargetId,
+    /// Current master password.
+    #[arg(help = "help.arg.backup-password")]
     pub password: PasswordType,
+    /// Wait for the next scheduled time instead of running on the new target now.
+    #[arg(long, help = "help.arg.automatic-backup-wait-for-schedule")]
     #[serde(default)]
     pub wait_for_schedule: bool,
 }
@@ -596,6 +795,56 @@ pub async fn preview_policy_change(
     policy_preview(&db, &params)
 }
 
+#[derive(Deserialize, Serialize, Parser)]
+#[group(skip)]
+#[serde(rename_all = "camelCase")]
+#[command(rename_all = "kebab-case")]
+pub struct PreviewRetentionPolicyCliParams {
+    /// Backup target containing the automatic checkpoints.
+    #[arg(help = "help.arg.backup-target-id")]
+    pub target_id: BackupTargetId,
+    /// Service package ID whose automatic checkpoints should use this policy.
+    #[arg(help = "help.arg.package-id")]
+    pub package_id: PackageId,
+    /// Retention tier INTERVAL:COVERAGE; accepts s, m, h, d, or w suffixes and may repeat.
+    #[arg(
+        long = "keep-tier",
+        value_name = "INTERVAL:COVERAGE",
+        value_parser = parse_retention_tier,
+        required_unless_present = "latest_only",
+        conflicts_with = "latest_only",
+        help = "help.arg.automatic-backup-retention-tier"
+    )]
+    pub retention_tiers: Vec<RetentionTier>,
+    /// Keep only the latest automatic checkpoint.
+    #[arg(
+        long,
+        required_unless_present = "retention_tiers",
+        help = "help.arg.automatic-backup-latest-only"
+    )]
+    pub latest_only: bool,
+}
+
+pub async fn preview_policy_change_cli(
+    ctx: RpcContext,
+    PreviewRetentionPolicyCliParams {
+        target_id,
+        package_id,
+        retention_tiers,
+        latest_only,
+    }: PreviewRetentionPolicyCliParams,
+) -> Result<RetentionPolicyChangePreview, Error> {
+    preview_policy_change(
+        ctx,
+        PreviewRetentionPolicyParams {
+            target_id,
+            package_id,
+            policy: retention_policy_from_cli(retention_tiers, latest_only)?,
+        },
+    )
+    .await
+}
+
 #[derive(Deserialize, Serialize, TS)]
 #[ts(export)]
 #[serde(rename_all = "camelCase")]
@@ -604,6 +853,82 @@ pub struct UpdateRetentionPolicyParams {
     pub package_id: PackageId,
     pub policy: RetentionPolicy,
     pub confirmed_removals: BTreeSet<ServiceSnapshotId>,
+}
+
+#[derive(Deserialize, Serialize, Parser)]
+#[group(skip)]
+#[serde(rename_all = "camelCase")]
+#[command(rename_all = "kebab-case")]
+pub struct ApplyRetentionPolicyCliParams {
+    /// Backup target containing the automatic checkpoints.
+    #[arg(help = "help.arg.backup-target-id")]
+    pub target_id: BackupTargetId,
+    /// Service package ID whose automatic checkpoints should use this policy.
+    #[arg(help = "help.arg.package-id")]
+    pub package_id: PackageId,
+    /// Retention tier INTERVAL:COVERAGE; accepts s, m, h, d, or w suffixes and may repeat.
+    #[arg(
+        long = "keep-tier",
+        value_name = "INTERVAL:COVERAGE",
+        value_parser = parse_retention_tier,
+        required_unless_present = "latest_only",
+        conflicts_with = "latest_only",
+        help = "help.arg.automatic-backup-retention-tier"
+    )]
+    pub retention_tiers: Vec<RetentionTier>,
+    /// Keep only the latest automatic checkpoint.
+    #[arg(
+        long,
+        required_unless_present = "retention_tiers",
+        help = "help.arg.automatic-backup-latest-only"
+    )]
+    pub latest_only: bool,
+    /// Checkpoint ID reported as removed by preview-change. Repeat for every reported ID.
+    #[arg(
+        long = "confirm-removal",
+        value_name = "CHECKPOINT_ID",
+        help = "help.arg.automatic-backup-confirm-removal"
+    )]
+    pub confirmed_removals: Vec<ServiceSnapshotId>,
+}
+
+pub async fn apply_retention_policy_cli(
+    ctx: RpcContext,
+    ApplyRetentionPolicyCliParams {
+        target_id,
+        package_id,
+        retention_tiers,
+        latest_only,
+        confirmed_removals,
+    }: ApplyRetentionPolicyCliParams,
+) -> Result<ServiceTargetHistory, Error> {
+    update_policy(
+        ctx,
+        UpdateRetentionPolicyParams {
+            target_id,
+            package_id,
+            policy: retention_policy_from_cli(retention_tiers, latest_only)?,
+            confirmed_removals: confirmed_removals.into_iter().collect(),
+        },
+    )
+    .await
+}
+
+fn retention_policy_from_cli(
+    retention_tiers: Vec<RetentionTier>,
+    latest_only: bool,
+) -> Result<RetentionPolicy, Error> {
+    if latest_only != retention_tiers.is_empty() {
+        return Err(Error::new(
+            eyre!("{}", t!("backup.scheduled.invalid-retention-tiers")),
+            ErrorKind::InvalidRequest,
+        ));
+    }
+    let policy = RetentionPolicy {
+        tiers: retention_tiers,
+    };
+    policy.validate()?;
+    Ok(policy)
 }
 
 pub async fn update_policy(
@@ -732,28 +1057,70 @@ pub struct CreateBackupJobParams {
 #[command(rename_all = "kebab-case")]
 pub struct AddBackupJobCliParams {
     /// Display name for the automatic backup job.
+    #[arg(help = "help.arg.automatic-backup-job-name")]
     pub name: String,
     /// Backup target identifier, such as cifs-0 or disk-/dev/sda1.
+    #[arg(help = "help.arg.backup-target-id")]
     pub target_id: BackupTargetId,
     /// Master password used to initialize the encrypted automatic backup store.
+    #[arg(help = "help.arg.backup-password")]
     pub password: PasswordType,
     /// Five-field cron expression (minute, hour, day of month, month, weekday).
-    #[arg(long, default_value = "0 3 * * *")]
+    #[arg(
+        long,
+        default_value = "0 3 * * *",
+        help = "help.arg.automatic-backup-cron"
+    )]
     pub cron: String,
     /// IANA timezone for the schedule.
-    #[arg(long, default_value = "UTC")]
+    #[arg(
+        long,
+        default_value = "UTC",
+        help = "help.arg.automatic-backup-timezone"
+    )]
     pub timezone: String,
     /// Back up only these service package IDs. Accepts comma-separated values.
-    #[arg(long, value_delimiter = ',', conflicts_with = "exclude_package_ids")]
+    #[arg(
+        long,
+        value_delimiter = ',',
+        conflicts_with = "exclude_package_ids",
+        help = "help.arg.automatic-backup-package-ids"
+    )]
     pub package_ids: Vec<PackageId>,
     /// Back up every current and future service except these package IDs.
-    #[arg(long, value_delimiter = ',', conflicts_with = "package_ids")]
+    #[arg(
+        long,
+        value_delimiter = ',',
+        conflicts_with = "package_ids",
+        help = "help.arg.automatic-backup-excluded-package-ids"
+    )]
     pub exclude_package_ids: Vec<PackageId>,
     /// Retention tier INTERVAL:COVERAGE; accepts s, m, h, d, or w suffixes and may repeat.
-    #[arg(long = "keep-tier", value_name = "INTERVAL:COVERAGE", value_parser = parse_retention_tier)]
+    #[arg(
+        long = "keep-tier",
+        value_name = "INTERVAL:COVERAGE",
+        value_parser = parse_retention_tier,
+        help = "help.arg.automatic-backup-retention-tier"
+    )]
     pub retention_tiers: Vec<RetentionTier>,
+    /// Per-service retention tier PACKAGE_ID=INTERVAL:COVERAGE; may repeat.
+    #[arg(
+        long = "service-keep-tier",
+        value_name = "PACKAGE_ID=INTERVAL:COVERAGE",
+        value_parser = parse_retention_override_tier,
+        help = "help.arg.automatic-backup-service-retention-tier"
+    )]
+    pub retention_override_tiers: Vec<(PackageId, RetentionTier)>,
+    /// Service package IDs that should keep only their latest checkpoint.
+    #[arg(
+        long = "service-latest-only",
+        value_name = "PACKAGE_ID",
+        value_delimiter = ',',
+        help = "help.arg.automatic-backup-service-latest-only"
+    )]
+    pub latest_only_overrides: Vec<PackageId>,
     /// Create the job paused instead of scheduling its first run.
-    #[arg(long)]
+    #[arg(long, help = "help.arg.automatic-backup-disabled")]
     pub disabled: bool,
 }
 
@@ -768,6 +1135,8 @@ pub async fn add_cli(
         package_ids,
         exclude_package_ids,
         retention_tiers,
+        retention_override_tiers,
+        latest_only_overrides,
         disabled,
     }: AddBackupJobCliParams,
 ) -> Result<BackupJob, Error> {
@@ -790,9 +1159,181 @@ pub async fn add_cli(
             default_retention: RetentionPolicy {
                 tiers: retention_tiers,
             },
-            retention_overrides: BTreeMap::new(),
+            retention_overrides: retention_overrides_from_cli(
+                retention_override_tiers,
+                latest_only_overrides,
+            )?,
             password,
             enabled: !disabled,
+        },
+    )
+    .await
+}
+
+/// Update only the automatic backup job settings supplied on the command line.
+#[derive(Deserialize, Serialize, Parser)]
+#[group(skip)]
+#[serde(rename_all = "camelCase")]
+#[command(rename_all = "kebab-case")]
+pub struct EditBackupJobCliParams {
+    /// Automatic backup job ID.
+    #[arg(help = "help.arg.automatic-backup-job-id")]
+    pub id: BackupJobId,
+    /// New display name.
+    #[arg(long, help = "help.arg.automatic-backup-job-name")]
+    pub name: Option<String>,
+    /// New five-field cron expression (minute, hour, day of month, month, weekday).
+    #[arg(long, help = "help.arg.automatic-backup-cron")]
+    pub cron: Option<String>,
+    /// New IANA timezone for the schedule.
+    #[arg(long, help = "help.arg.automatic-backup-timezone")]
+    pub timezone: Option<String>,
+    /// Back up every current and future service.
+    #[arg(
+        long,
+        conflicts_with_all = ["package_ids", "exclude_package_ids"],
+        help = "help.arg.automatic-backup-all-services"
+    )]
+    pub all_services: bool,
+    /// Back up only these service package IDs. Accepts comma-separated values.
+    #[arg(
+        long,
+        value_delimiter = ',',
+        conflicts_with_all = ["all_services", "exclude_package_ids"],
+        help = "help.arg.automatic-backup-package-ids"
+    )]
+    pub package_ids: Vec<PackageId>,
+    /// Back up every current and future service except these package IDs.
+    #[arg(
+        long,
+        value_delimiter = ',',
+        conflicts_with_all = ["all_services", "package_ids"],
+        help = "help.arg.automatic-backup-excluded-package-ids"
+    )]
+    pub exclude_package_ids: Vec<PackageId>,
+    /// Retention tier INTERVAL:COVERAGE; accepts s, m, h, d, or w suffixes and may repeat.
+    #[arg(
+        long = "keep-tier",
+        value_name = "INTERVAL:COVERAGE",
+        value_parser = parse_retention_tier,
+        conflicts_with = "latest_only",
+        help = "help.arg.automatic-backup-retention-tier"
+    )]
+    pub retention_tiers: Vec<RetentionTier>,
+    /// Keep only the latest automatic checkpoint.
+    #[arg(long, help = "help.arg.automatic-backup-latest-only")]
+    pub latest_only: bool,
+    /// Set per-service retention tier PACKAGE_ID=INTERVAL:COVERAGE; may repeat.
+    #[arg(
+        long = "service-keep-tier",
+        value_name = "PACKAGE_ID=INTERVAL:COVERAGE",
+        value_parser = parse_retention_override_tier,
+        help = "help.arg.automatic-backup-service-retention-tier"
+    )]
+    pub retention_override_tiers: Vec<(PackageId, RetentionTier)>,
+    /// Set these service package IDs to latest-checkpoint-only retention.
+    #[arg(
+        long = "service-latest-only",
+        value_name = "PACKAGE_ID",
+        value_delimiter = ',',
+        help = "help.arg.automatic-backup-service-latest-only"
+    )]
+    pub latest_only_overrides: Vec<PackageId>,
+    /// Remove per-service overrides so these packages use the job default.
+    #[arg(
+        long = "use-default-retention",
+        value_name = "PACKAGE_ID",
+        value_delimiter = ',',
+        help = "help.arg.automatic-backup-use-default-retention"
+    )]
+    pub default_retention_packages: Vec<PackageId>,
+}
+
+pub async fn edit_cli(
+    ctx: RpcContext,
+    EditBackupJobCliParams {
+        id,
+        name,
+        cron,
+        timezone,
+        all_services,
+        package_ids,
+        exclude_package_ids,
+        retention_tiers,
+        latest_only,
+        retention_override_tiers,
+        latest_only_overrides,
+        default_retention_packages,
+    }: EditBackupJobCliParams,
+) -> Result<BackupJob, Error> {
+    let job: BackupJob = ctx
+        .db
+        .peek()
+        .await
+        .as_public()
+        .as_scheduled_backups()
+        .as_jobs()
+        .as_idx(&id)
+        .or_not_found(&id)?
+        .de()?;
+    let services = if all_services {
+        BackupServiceScope::All
+    } else if !package_ids.is_empty() {
+        BackupServiceScope::Selected {
+            package_ids: package_ids.into_iter().collect(),
+        }
+    } else if !exclude_package_ids.is_empty() {
+        BackupServiceScope::AllExcept {
+            excluded_package_ids: exclude_package_ids.into_iter().collect(),
+        }
+    } else {
+        job.services.clone()
+    };
+    let schedule = if cron.is_some() || timezone.is_some() {
+        Schedule::new(
+            cron.unwrap_or_else(|| job.schedule.cron.clone()),
+            timezone.unwrap_or_else(|| job.schedule.timezone.clone()),
+        )?
+    } else {
+        job.schedule.clone()
+    };
+    let default_retention = if latest_only {
+        RetentionPolicy::latest_only()
+    } else if !retention_tiers.is_empty() {
+        RetentionPolicy {
+            tiers: retention_tiers,
+        }
+    } else {
+        job.default_retention.clone()
+    };
+
+    let mut retention_overrides = job.retention_overrides;
+    let override_updates =
+        retention_overrides_from_cli(retention_override_tiers, latest_only_overrides)?;
+    let default_retention_packages: BTreeSet<_> = default_retention_packages.into_iter().collect();
+    if override_updates
+        .keys()
+        .any(|package_id| default_retention_packages.contains(package_id))
+    {
+        return Err(Error::new(
+            eyre!("{}", t!("backup.scheduled.invalid-retention-tiers")),
+            ErrorKind::InvalidRequest,
+        ));
+    }
+    for package_id in default_retention_packages {
+        retention_overrides.remove(&package_id);
+    }
+    retention_overrides.extend(override_updates);
+
+    update(
+        ctx,
+        UpdateBackupJobParams {
+            id,
+            name: name.unwrap_or(job.name),
+            services,
+            schedule,
+            default_retention,
+            retention_overrides,
         },
     )
     .await
@@ -812,6 +1353,41 @@ fn parse_retention_tier(value: &str) -> Result<RetentionTier, String> {
     .validate()
     .map_err(|error| error.to_string())?;
     Ok(tier)
+}
+
+fn parse_retention_override_tier(value: &str) -> Result<(PackageId, RetentionTier), String> {
+    let (package_id, tier) = value
+        .split_once('=')
+        .ok_or_else(|| t!("backup.scheduled.invalid-retention-override").to_string())?;
+    Ok((
+        package_id
+            .parse()
+            .map_err(|error: crate::id::InvalidId| error.to_string())?,
+        parse_retention_tier(tier)?,
+    ))
+}
+
+fn retention_overrides_from_cli(
+    retention_override_tiers: Vec<(PackageId, RetentionTier)>,
+    latest_only_overrides: Vec<PackageId>,
+) -> Result<BTreeMap<PackageId, RetentionPolicy>, Error> {
+    let mut overrides: BTreeMap<PackageId, RetentionPolicy> = BTreeMap::new();
+    for (package_id, tier) in retention_override_tiers {
+        overrides.entry(package_id).or_default().tiers.push(tier);
+    }
+    for package_id in latest_only_overrides {
+        if overrides.contains_key(&package_id) {
+            return Err(Error::new(
+                eyre!("{}", t!("backup.scheduled.invalid-retention-tiers")),
+                ErrorKind::InvalidRequest,
+            ));
+        }
+        overrides.insert(package_id, RetentionPolicy::latest_only());
+    }
+    for policy in overrides.values() {
+        policy.validate()?;
+    }
+    Ok(overrides)
 }
 
 fn parse_duration_seconds(value: &str) -> Result<u64, String> {
@@ -839,6 +1415,116 @@ fn parse_duration_seconds(value: &str) -> Result<u64, String> {
         .checked_mul(multiplier)
         .filter(|seconds| *seconds > 0)
         .ok_or_else(|| format!("invalid duration: {value}"))
+}
+
+pub fn parse_checkpoint_selection(value: &str) -> Result<(PackageId, ServiceSnapshotId), String> {
+    let (package_id, snapshot_id) = value
+        .split_once('=')
+        .ok_or_else(|| t!("backup.scheduled.invalid-checkpoint-selection").to_string())?;
+    Ok((
+        package_id
+            .parse()
+            .map_err(|error: crate::id::InvalidId| error.to_string())?,
+        snapshot_id
+            .parse()
+            .map_err(|error: Error| error.to_string())?,
+    ))
+}
+
+pub fn parse_review_decision(value: &str) -> Result<(BackupJobId, bool), String> {
+    let (job_id, decision) = value
+        .split_once('=')
+        .ok_or_else(|| t!("backup.scheduled.invalid-review-decision").to_string())?;
+    let add = match decision {
+        "add" => true,
+        "skip" => false,
+        _ => {
+            return Err(t!("backup.scheduled.invalid-review-decision").to_string());
+        }
+    };
+    Ok((
+        job_id.parse().map_err(|error: Error| error.to_string())?,
+        add,
+    ))
+}
+
+#[derive(Deserialize, Serialize, Parser)]
+#[group(skip)]
+#[serde(rename_all = "camelCase")]
+#[command(rename_all = "kebab-case")]
+pub struct ResolveBackupReviewCliParams {
+    /// Newly installed service package ID awaiting a backup decision.
+    #[arg(help = "help.arg.package-id")]
+    pub package_id: PackageId,
+    /// Decision for an affected job, as JOB_ID=add or JOB_ID=skip. Repeat for every job.
+    #[arg(
+        long = "decision",
+        required = true,
+        value_parser = parse_review_decision,
+        help = "help.arg.automatic-backup-review-decision"
+    )]
+    pub decisions: Vec<(BackupJobId, bool)>,
+}
+
+pub async fn resolve_review_cli(
+    ctx: RpcContext,
+    ResolveBackupReviewCliParams {
+        package_id,
+        decisions,
+    }: ResolveBackupReviewCliParams,
+) -> Result<(), Error> {
+    super::review::resolve(
+        ctx,
+        super::review::ResolveNewServiceBackupReviewParams {
+            package_id,
+            decisions: decisions.into_iter().collect(),
+        },
+    )
+    .await
+}
+
+#[derive(Deserialize, Serialize, Parser)]
+#[group(skip)]
+#[serde(rename_all = "camelCase")]
+#[command(rename_all = "kebab-case")]
+pub struct RestoreAutomaticCheckpointCliParams {
+    /// Backup target containing the automatic checkpoints.
+    #[arg(help = "help.arg.backup-target-id")]
+    pub target_id: BackupTargetId,
+    /// Checkpoint selection as PACKAGE_ID=SNAPSHOT_ID. Repeat to restore multiple services.
+    #[arg(
+        required = true,
+        value_parser = parse_checkpoint_selection,
+        help = "help.arg.automatic-backup-checkpoint-selection"
+    )]
+    pub checkpoints: Vec<(PackageId, ServiceSnapshotId)>,
+    /// Source StartOS server ID. Defaults to this server.
+    #[arg(long, help = "help.arg.server-id")]
+    pub server_id: Option<String>,
+    /// Master password, required when this server has no saved target credential.
+    #[arg(long, help = "help.arg.backup-password")]
+    pub password: Option<String>,
+}
+
+pub async fn restore_automatic_checkpoint_cli(
+    ctx: RpcContext,
+    RestoreAutomaticCheckpointCliParams {
+        target_id,
+        checkpoints,
+        server_id,
+        password,
+    }: RestoreAutomaticCheckpointCliParams,
+) -> Result<(), Error> {
+    crate::backup::restore::restore_scheduled_packages_rpc(
+        ctx,
+        crate::backup::restore::RestoreScheduledPackagesParams {
+            target_id,
+            snapshots: checkpoints.into_iter().collect(),
+            server_id,
+            password,
+        },
+    )
+    .await
 }
 
 pub async fn create(
@@ -1085,6 +1771,7 @@ pub async fn set_enabled(
 #[command(rename_all = "kebab-case")]
 pub struct DeleteBackupJobParams {
     /// Automatic backup job ID.
+    #[arg(help = "help.arg.automatic-backup-job-id")]
     pub id: BackupJobId,
 }
 
@@ -1095,6 +1782,7 @@ pub struct DeleteBackupJobParams {
 #[command(rename_all = "kebab-case")]
 pub struct RunBackupJobNowParams {
     /// Automatic backup job ID.
+    #[arg(help = "help.arg.automatic-backup-job-id")]
     pub id: BackupJobId,
 }
 
@@ -1104,6 +1792,7 @@ pub struct RunBackupJobNowParams {
 #[command(rename_all = "kebab-case")]
 pub struct BackupJobIdCliParams {
     /// Automatic backup job ID.
+    #[arg(help = "help.arg.automatic-backup-job-id")]
     pub id: BackupJobId,
 }
 
@@ -1496,5 +2185,126 @@ mod cli_tests {
         assert!(parse_retention_tier("1d").is_err());
         assert!(parse_retention_tier("1w:1d").is_err());
         assert!(parse_retention_tier("0d:1d").is_err());
+    }
+
+    #[test]
+    fn edit_job_cli_distinguishes_omitted_and_explicit_settings() {
+        let id = BackupJobId::new().to_string();
+        let params = EditBackupJobCliParams::try_parse_from([
+            "test",
+            id.as_str(),
+            "--cron",
+            "15 * * * *",
+            "--all-services",
+            "--latest-only",
+            "--service-keep-tier",
+            "bitcoind=1h:1d",
+            "--service-latest-only",
+            "lnd",
+            "--use-default-retention",
+            "electrs",
+        ])
+        .unwrap();
+
+        assert_eq!(params.id.to_string(), id);
+        assert_eq!(params.cron.as_deref(), Some("15 * * * *"));
+        assert!(params.all_services);
+        assert!(params.latest_only);
+        assert!(params.retention_tiers.is_empty());
+        assert_eq!(params.retention_override_tiers.len(), 1);
+        assert_eq!(params.latest_only_overrides.len(), 1);
+        assert_eq!(params.default_retention_packages.len(), 1);
+    }
+
+    #[test]
+    fn policy_cli_requires_an_explicit_retention_policy() {
+        let target = "cifs-0";
+        let package = "bitcoind";
+        assert!(
+            PreviewRetentionPolicyCliParams::try_parse_from(["test", target, package]).is_err()
+        );
+
+        let params = PreviewRetentionPolicyCliParams::try_parse_from([
+            "test",
+            target,
+            package,
+            "--keep-tier",
+            "1h:1d",
+            "--keep-tier",
+            "1d:1w",
+        ])
+        .unwrap();
+        assert_eq!(params.retention_tiers.len(), 2);
+        assert!(!params.latest_only);
+
+        let params = ApplyRetentionPolicyCliParams::try_parse_from([
+            "test",
+            target,
+            package,
+            "--latest-only",
+            "--confirm-removal",
+            ServiceSnapshotId::new().to_string().as_str(),
+        ])
+        .unwrap();
+        assert!(params.latest_only);
+        assert_eq!(params.confirmed_removals.len(), 1);
+    }
+
+    #[test]
+    fn capacity_estimate_cli_accepts_service_scope_and_retention() {
+        let params = EstimateBackupCapacityCliParams::try_parse_from([
+            "test",
+            "cifs-0",
+            "--package-ids",
+            "bitcoind,lnd",
+            "--keep-tier",
+            "1h:1d",
+            "--service-latest-only",
+            "lnd",
+        ])
+        .unwrap();
+
+        assert_eq!(params.package_ids.len(), 2);
+        assert!(params.exclude_package_ids.is_empty());
+        assert_eq!(params.retention_tiers.len(), 1);
+        assert_eq!(params.latest_only_overrides.len(), 1);
+    }
+
+    #[test]
+    fn retention_override_cli_groups_tiers_and_rejects_conflicts() {
+        let first = parse_retention_override_tier("bitcoind=1h:1d").unwrap();
+        let second = parse_retention_override_tier("bitcoind=1d:1w").unwrap();
+        let lnd: PackageId = "lnd".parse().unwrap();
+        let overrides =
+            retention_overrides_from_cli(vec![first.clone(), second], vec![lnd.clone()]).unwrap();
+
+        assert_eq!(overrides[&first.0].tiers.len(), 2);
+        assert_eq!(overrides[&lnd], RetentionPolicy::latest_only());
+        assert!(
+            retention_overrides_from_cli(vec![first], vec!["bitcoind".parse().unwrap()]).is_err()
+        );
+    }
+
+    #[test]
+    fn checkpoint_selection_accepts_package_and_snapshot_ids() {
+        let snapshot_id = ServiceSnapshotId::new();
+        let (package_id, parsed_snapshot) =
+            parse_checkpoint_selection(&format!("bitcoind={snapshot_id}")).unwrap();
+
+        assert_eq!(package_id, "bitcoind".parse().unwrap());
+        assert_eq!(parsed_snapshot, snapshot_id);
+    }
+
+    #[test]
+    fn review_decision_accepts_add_and_skip_actions() {
+        let job_id = BackupJobId::new();
+        assert_eq!(
+            parse_review_decision(&format!("{job_id}=add")).unwrap(),
+            (job_id.clone(), true)
+        );
+        assert_eq!(
+            parse_review_decision(&format!("{job_id}=skip")).unwrap(),
+            (job_id, false)
+        );
     }
 }

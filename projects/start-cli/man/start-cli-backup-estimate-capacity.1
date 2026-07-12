@@ -1,0 +1,34 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH start-cli-backup-estimate-capacity 1  "estimate-capacity "
+.SH NAME
+start\-cli\-backup\-estimate\-capacity \- Estimate automatic backup storage requirements
+.SH SYNOPSIS
+\fBstart\-cli backup estimate\-capacity\fR [\fB\-\-package\-ids\fR] [\fB\-\-exclude\-package\-ids\fR] [\fB\-\-keep\-tier\fR] [\fB\-\-service\-keep\-tier\fR] [\fB\-\-service\-latest\-only\fR] [\fB\-\-format\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fITARGET_ID\fR>
+.SH DESCRIPTION
+Estimate automatic backup storage requirements
+.SH OPTIONS
+.TP
+\fB\-\-package\-ids\fR \fI<PACKAGE_IDS>\fR
+Package IDs to include in the automatic backup
+.TP
+\fB\-\-exclude\-package\-ids\fR \fI<EXCLUDE_PACKAGE_IDS>\fR
+Package IDs to exclude from current and future services
+.TP
+\fB\-\-keep\-tier\fR \fI<INTERVAL:COVERAGE>\fR
+Retention tier INTERVAL:COVERAGE; accepts s, m, h, d, or w and may repeat
+.TP
+\fB\-\-service\-keep\-tier\fR \fI<PACKAGE_ID=INTERVAL:COVERAGE>\fR
+Per\-service tier PACKAGE_ID=INTERVAL:COVERAGE; may repeat
+.TP
+\fB\-\-service\-latest\-only\fR \fI<PACKAGE_ID>\fR
+Service package IDs that should keep only their latest checkpoint
+.TP
+\fB\-\-format\fR
+
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help
+.TP
+<\fITARGET_ID\fR>
+Backup target identifier

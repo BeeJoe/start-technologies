@@ -10,14 +10,38 @@ file tracks notable changes since the move to the monorepo.
 
 ## [Unreleased]
 
+### Added
+
+- **Automatic backups.** StartOS can protect selected current and future
+  services on hourly, daily, weekly, or advanced schedules; estimate required
+  capacity; retain tiered version history; preserve unreferenced checkpoints as
+  archives; recover or reassign unavailable locations; and restore a different
+  manual or automatic checkpoint for each service. Backup activity, actionable
+  notifications, and new-service selection reviews keep the scheduled lifecycle
+  visible and recoverable.
+
 ### Changed
 
 - **Simplified Automatic Backups.** The expanded card now uses a flat settings
   layout, keeps **Run now** with the detailed actions, and leaves checkpoint
   browsing and restore actions in the dedicated **Backup history** and restore
   cards.
+- **Automatic backup setup and version history.** The setup review places the
+  master-password field after **Create the first backup now**, accepts Enter to
+  turn automatic backups on, and provides a show/hide-password control.
+  Version history now offers hour, day, week, and month intervals (day remains
+  the default) and labels the duration with the selected singular or plural
+  unit.
+- **Automatic backup CLI coverage.** `start-cli` now manages automatic jobs,
+  capacity estimates, activity, checkpoint history, target recovery,
+  per-service retention overrides, new-service reviews, safe retention-policy
+  changes, and selected automatic-checkpoint restores.
 
 ### Fixed
+
+- **Backup password visibility.** Master-password fields in automatic and
+  advanced backup workflows now use the same show/hide control as the manual
+  backup and restore prompts.
 
 - **Backup progress and mobile layout.** Backup progress uses the full content
   width as one flat panel rather than a nested card, saving automatic settings no

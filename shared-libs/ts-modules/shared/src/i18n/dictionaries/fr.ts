@@ -1036,4 +1036,12 @@ export default {
   1129: 'Les sauvegardes automatiques seront arrêtées. Les sauvegardes manuelles ne seront pas supprimées.',
   1130: 'Supprimer les sauvegardes automatiques',
   1145: 'Une sauvegarde ou une restauration est déjà en cours.',
+  1146: 'heure',
+  1147: 'heures',
+  1148: 'jour',
+  1149: 'jours',
+  1150: 'semaine',
+  1151: 'semaines',
+  1152: 'mois',
+  1153: 'mois',
 } satisfies i18n

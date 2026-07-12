@@ -19,11 +19,12 @@ import { T } from '@start9labs/start-core'
 import {
   TuiButton,
   TuiCheckbox,
+  TuiIcon,
   TuiInput,
   TuiNotification,
   TuiTitle,
 } from '@taiga-ui/core'
-import { TuiBadge, TuiSwitch } from '@taiga-ui/kit'
+import { TuiBadge, TuiPassword, TuiSwitch } from '@taiga-ui/kit'
 import { PatchDB } from 'patch-db-client'
 import { filter, firstValueFrom, map } from 'rxjs'
 import { ApiService } from 'src/app/services/api/embassy-api.service'
@@ -354,7 +355,7 @@ interface JobEditor {
 
             @if (!form.id) {
               <tui-textfield>
-                <label tuiLabel>{{ 'Password' | i18n }}</label>
+                <label tuiLabel>{{ 'Master Password' | i18n }}</label>
                 <input
                   tuiInput
                   type="password"
@@ -363,6 +364,7 @@ interface JobEditor {
                   autocomplete="off"
                   [(ngModel)]="form.password"
                 />
+                <tui-icon tuiPassword />
               </tui-textfield>
             }
 
@@ -664,7 +666,7 @@ interface JobEditor {
               </select>
             </label>
             <tui-textfield>
-              <label tuiLabel>{{ 'Password' | i18n }}</label>
+              <label tuiLabel>{{ 'Master Password' | i18n }}</label>
               <input
                 tuiInput
                 name="reassignPassword"
@@ -673,6 +675,7 @@ interface JobEditor {
                 autocomplete="off"
                 [(ngModel)]="reassignPassword"
               />
+              <tui-icon tuiPassword />
             </tui-textfield>
             <label class="switch-row">
               <input
@@ -858,8 +861,10 @@ interface JobEditor {
     TuiBadge,
     TuiButton,
     TuiCheckbox,
+    TuiIcon,
     TuiInput,
     TuiNotification,
+    TuiPassword,
     TuiSwitch,
     TuiTitle,
     i18nPipe,

@@ -443,10 +443,7 @@ impl<G: GenericMountGuard> ScheduledBackupMountGuard<G> {
 
     pub async fn sync_archive_states(
         &mut self,
-        archived: &BTreeMap<
-            PackageId,
-            (bool, std::collections::BTreeSet<ServiceSnapshotId>),
-        >,
+        archived: &BTreeMap<PackageId, (bool, std::collections::BTreeSet<ServiceSnapshotId>)>,
     ) -> Result<(), Error> {
         for (package_id, (history_archived, archived_snapshots)) in archived {
             if let Some(history) = self.metadata.services.get_mut(package_id) {

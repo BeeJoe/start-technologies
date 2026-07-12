@@ -11,6 +11,19 @@ or the CLI's externally observable behavior.
 
 ## [Unreleased]
 
+### Added
+
+- **Complete automatic-backup administration.** `start-cli` can now create,
+  edit, enable, disable, delete, and immediately run automatic jobs; reconnect
+  or reassign their targets; inspect activity and checkpoint history; delete
+  archived checkpoints; estimate capacity; resolve new-service reviews; and
+  restore selected automatic checkpoints.
+- **Safe retention-policy commands.** Operators can preview tiered or
+  latest-only retention changes and then apply the exact previewed checkpoint
+  removals. Retention tiers accept seconds, minutes, hours, days, and weeks,
+  with per-service overrides available when a service needs a different policy
+  from the job default.
+
 ## [1.0.2]
 
 ### Changed

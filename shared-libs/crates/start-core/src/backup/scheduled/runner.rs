@@ -110,6 +110,14 @@ async fn run_job_inner(
     }
     let target_name = job.target_id.user_facing_name(&db);
     let package_ids = selected_services(&db, &job.services)?;
+    tracing::info!(
+        job_id = %job.id,
+        job_name = %job.name,
+        target = %target_name,
+        ?trigger,
+        service_count = package_ids.len(),
+        "automatic backup started"
+    );
     let encryption_key = (|| {
         let credential: ScheduledBackupCredential = db
             .as_private()
@@ -509,6 +517,17 @@ async fn run_job_inner(
             .await
             .result?;
     }
+    tracing::info!(
+        job_id = %job.id,
+        job_name = %job.name,
+        target = %target_name,
+        run_id = %run.id,
+        ?trigger,
+        state = ?run.state,
+        service_count = run.services.len(),
+        failed_service_count = run.services.values().filter(|report| report.error.is_some()).count(),
+        "automatic backup completed"
+    );
     Ok(run)
 }
 

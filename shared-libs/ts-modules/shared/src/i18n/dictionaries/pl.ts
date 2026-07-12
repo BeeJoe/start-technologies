@@ -1036,4 +1036,12 @@ export default {
   1129: 'Automatyczne kopie zapasowe zostaną zatrzymane. Ręczne kopie zapasowe nie zostaną usunięte.',
   1130: 'Usuń automatyczne kopie zapasowe',
   1145: 'Kopia zapasowa lub przywracanie jest już w toku.',
+  1146: 'godzina',
+  1147: 'godziny',
+  1148: 'dzień',
+  1149: 'dni',
+  1150: 'tydzień',
+  1151: 'tygodnie',
+  1152: 'miesiąc',
+  1153: 'miesiące',
 } satisfies i18n

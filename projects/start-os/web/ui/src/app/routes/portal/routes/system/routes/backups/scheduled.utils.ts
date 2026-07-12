@@ -1,6 +1,13 @@
 import type { T } from '@start9labs/start-core'
 
 export type BackupScheduleFrequency = 'hourly' | 'daily' | 'weekly'
+export type BackupRetentionInterval = 'hour' | 'day' | 'week' | 'month'
+export type BackupRetentionPeriodLabel =
+  | BackupRetentionInterval
+  | 'hours'
+  | 'days'
+  | 'weeks'
+  | 'months'
 
 export interface BackupScheduleFormValue {
   frequency: BackupScheduleFrequency
@@ -38,6 +45,33 @@ export function parseBackupSchedule(
     weekday: Number(fields[4]) || 0,
     timezone: schedule.timezone,
   }
+}
+
+export function retentionIntervalSeconds(
+  interval: BackupRetentionInterval,
+): number {
+  if (interval === 'hour') return 60 * 60
+  if (interval === 'week') return 7 * 24 * 60 * 60
+  if (interval === 'month') return 30 * 24 * 60 * 60
+  return 24 * 60 * 60
+}
+
+export function retentionIntervalFromSeconds(
+  seconds?: number,
+): BackupRetentionInterval {
+  if (!seconds) return 'day'
+  if (seconds < 24 * 60 * 60) return 'hour'
+  if (seconds < 7 * 24 * 60 * 60) return 'day'
+  if (seconds < 30 * 24 * 60 * 60) return 'week'
+  return 'month'
+}
+
+export function retentionPeriodLabel(
+  interval: BackupRetentionInterval,
+  count: number,
+): BackupRetentionPeriodLabel {
+  if (count === 1) return interval
+  return `${interval}s` as BackupRetentionPeriodLabel
 }
 
 function clampInteger(value: number, minimum: number, maximum: number): number {

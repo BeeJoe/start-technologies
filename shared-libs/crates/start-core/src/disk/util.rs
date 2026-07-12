@@ -263,9 +263,14 @@ pub async fn recovery_info(
                 let metadata_path = entry.path().join("unencrypted-metadata.json");
                 if tokio::fs::metadata(&metadata_path).await.is_ok() {
                     let scheduled: crate::backup::scheduled::ScheduledBackupRecoveryInfo =
-                        IoFormat::Json.from_slice(&tokio::fs::read(&metadata_path).await.with_ctx(
-                            |_| (crate::ErrorKind::Filesystem, metadata_path.display().to_string()),
-                        )?)?;
+                        IoFormat::Json.from_slice(
+                            &tokio::fs::read(&metadata_path).await.with_ctx(|_| {
+                                (
+                                    crate::ErrorKind::Filesystem,
+                                    metadata_path.display().to_string(),
+                                )
+                            })?,
+                        )?;
                     // Make a scheduled-only backup set discoverable, but let
                     // legacy/manual recovery metadata win when both exist.
                     res.entry(base_server_id).or_insert(StartOsRecoveryInfo {

@@ -80,6 +80,13 @@ pub fn backup<C: Context>() -> ParentHandler<C> {
                 .with_call_remote::<CliContext>(),
         )
         .subcommand(
+            "estimate-capacity",
+            from_fn_async(scheduled::estimate_capacity_cli)
+                .with_display_serializable()
+                .with_about("about.estimate-backup-capacity")
+                .with_call_remote::<CliContext>(),
+        )
+        .subcommand(
             "target",
             target::target::<C>().with_about("about.commands-backup-target"),
         )
@@ -90,11 +97,26 @@ pub fn backup<C: Context>() -> ParentHandler<C> {
                 .with_about("about.list-existing-backup-targets")
                 .with_call_remote::<CliContext>(),
         )
-        .subcommand("job", scheduled::job::<C>())
-        .subcommand("activity", scheduled::activity::<C>())
-        .subcommand("history", scheduled::history::<C>())
-        .subcommand("policy", scheduled::policy::<C>())
-        .subcommand("review", scheduled::review::<C>())
+        .subcommand(
+            "job",
+            scheduled::job::<C>().with_about("about.commands-automatic-backup-jobs"),
+        )
+        .subcommand(
+            "activity",
+            scheduled::activity::<C>().with_about("about.commands-backup-activity"),
+        )
+        .subcommand(
+            "history",
+            scheduled::history::<C>().with_about("about.commands-backup-history"),
+        )
+        .subcommand(
+            "policy",
+            scheduled::policy::<C>().with_about("about.commands-backup-policy"),
+        )
+        .subcommand(
+            "review",
+            scheduled::review::<C>().with_about("about.commands-backup-review"),
+        )
 }
 
 pub fn package_backup<C: Context>() -> ParentHandler<C> {
@@ -104,6 +126,13 @@ pub fn package_backup<C: Context>() -> ParentHandler<C> {
             from_fn_async(restore::restore_packages_rpc)
                 .no_display()
                 .with_about("about.restore-packages-from-backup")
+                .with_call_remote::<CliContext>(),
+        )
+        .subcommand(
+            "restore-checkpoint",
+            from_fn_async(scheduled::restore_automatic_checkpoint_cli)
+                .no_display()
+                .with_about("about.restore-automatic-backup-checkpoints")
                 .with_call_remote::<CliContext>(),
         )
         .subcommand(

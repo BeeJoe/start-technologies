@@ -1037,4 +1037,12 @@ export const ENGLISH: Record<string, number> = {
   'Automatic backups will stop. Manual backups will not be deleted.': 1129,
   'Delete automatic backups': 1130,
   'A backup or restore is already in progress.': 1145,
+  'hour': 1146,
+  'hours': 1147,
+  'day': 1148,
+  'days': 1149,
+  'week': 1150,
+  'weeks': 1151,
+  'month': 1152,
+  'months': 1153,
 }

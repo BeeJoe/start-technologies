@@ -1036,4 +1036,12 @@ export default {
   1129: 'Las copias de seguridad automáticas se detendrán. Las copias manuales no se eliminarán.',
   1130: 'Eliminar copias de seguridad automáticas',
   1145: 'Ya hay una copia de seguridad o restauración en curso.',
+  1146: 'hora',
+  1147: 'horas',
+  1148: 'día',
+  1149: 'días',
+  1150: 'semana',
+  1151: 'semanas',
+  1152: 'mes',
+  1153: 'meses',
 } satisfies i18n
