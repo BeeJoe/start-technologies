@@ -17,7 +17,9 @@ import {
 } from '@start9labs/shared'
 import { T } from '@start9labs/start-core'
 import {
+  TuiAppearance,
   TuiButton,
+  TuiCell,
   TuiCheckbox,
   TuiDataList,
   TuiGroup,
@@ -43,6 +45,9 @@ import { BackupService, formatCifsLocation } from './backup.service'
 import {
   BackupRetentionTierEditor,
   BackupScheduleFrequency,
+  BACKUP_HOURS,
+  BACKUP_MINUTES,
+  formatBackupTime,
   parseBackupRetentionTier,
   parseBackupSchedule,
   parseBackupServiceSelection,
@@ -141,144 +146,113 @@ interface JobEditor extends BackupRetentionTierEditor {
       </article>
     }
 
-    @if (mode() === 'create') {
-      <div class="heading">
-        <h3>{{ 'Advanced schedules' | i18n }}</h3>
-        <button tuiButton size="s" iconStart="@tui.plus" (click)="create()">
-          {{ 'Create automatic schedule' | i18n }}
-        </button>
-      </div>
-
+    @if (mode() === 'manage') {
       @if (loading()) {
         <p>{{ 'Loading' | i18n }}…</p>
-      } @else if (advancedJobs().length) {
-        <div class="job-selector">
-          <span tuiTitle>
-            <b>{{ 'Advanced schedules' | i18n }}</b>
-            <span tuiSubtitle>
-              {{
-                'Add another exact time, customize a service, or repair a backup location.'
-                  | i18n
-              }}
-            </span>
-          </span>
-          <tui-textfield
-            tuiChevron
-            [stringify]="stringifyJob"
-            [tuiTextfieldCleaner]="false"
-          >
-            <label tuiLabel>{{ 'Advanced schedules' | i18n }}</label>
-            <input
-              tuiSelect
-              [ngModel]="selectedJobId()"
-              (ngModelChange)="selectJob($event)"
-              [ngModelOptions]="{ standalone: true }"
-            />
-            <tui-data-list *tuiDropdown>
-              @for (job of advancedJobs(); track job.id) {
-                <button tuiOption [value]="job.id">{{ job.name }}</button>
-              }
-            </tui-data-list>
-          </tui-textfield>
-        </div>
-      } @else if (!editor()) {
-        <div tuiNotification appearance="info">
-          {{ 'No automatic schedules' | i18n }}
-        </div>
-      }
-
-      @if (selectedJob(); as job) {
-        <div class="selected-job">
-          <span tuiTitle>
-            <b>{{ job.name }}</b>
-            <span tuiSubtitle>
-              {{ targetName(job.targetId) }} · {{ 'Next run' | i18n }}:
-              {{
-                job.status.nextRunAt
-                  ? (job.status.nextRunAt | date: 'medium')
-                  : ('None' | i18n)
-              }}
-            </span>
-          </span>
-          @if (job.pause; as pause) {
-            <span tuiBadge appearance="warning">
-              {{ pauseLabel(pause) | i18n }}
-            </span>
-          } @else if (!job.enabled) {
-            <span tuiBadge>{{ 'Paused' | i18n }}</span>
-          }
-          <div class="actions">
-            <button
-              tuiButton
-              size="xs"
-              appearance="secondary"
-              [disabled]="!!job.pause || !job.enabled"
-              (click)="runNow(job)"
-            >
-              {{ 'Run now' | i18n }}
-            </button>
-            <button
-              tuiButton
-              size="xs"
-              appearance="secondary"
-              (click)="toggle(job)"
-            >
-              {{ (job.enabled ? 'Pause' : 'Resume') | i18n }}
-            </button>
-            @if (job.pause && job.pause.reason !== 'user') {
-              <button
-                tuiButton
-                size="xs"
-                appearance="secondary"
-                (click)="retry(job)"
-              >
-                {{ 'Retry backup location' | i18n }}
-              </button>
-              <button
-                tuiButton
-                size="xs"
-                appearance="secondary"
-                (click)="beginReassign(job)"
-              >
-                {{ 'Change backup location' | i18n }}
-              </button>
-            }
-            <button
-              tuiButton
-              size="xs"
-              appearance="flat-destructive"
-              (click)="deleteJob(job)"
-            >
-              {{ 'Delete' | i18n }}
-            </button>
-          </div>
-        </div>
       }
 
       @if (editor(); as form) {
         <form class="editor panel" (ngSubmit)="save(form)">
           <header class="editor-heading">
             <span tuiTitle>
-              <b>
+              <b>{{ form.name || ('Create automatic schedule' | i18n) }}</b>
+              <span tuiSubtitle>
                 {{
                   (form.id
                     ? 'Edit automatic schedule'
                     : 'Create automatic schedule'
                   ) | i18n
                 }}
-              </b>
-              <span tuiSubtitle>{{ form.name }}</span>
+              </span>
             </span>
-            <button
-              tuiButton
-              type="button"
-              size="xs"
-              appearance="secondary"
-              (click)="cancelEditor()"
-            >
-              {{ 'Cancel' | i18n }}
-            </button>
+            @if (!form.id) {
+              <button
+                tuiButton
+                type="button"
+                size="xs"
+                appearance="secondary"
+                (click)="cancelEditor()"
+              >
+                {{ 'Cancel' | i18n }}
+              </button>
+            }
           </header>
+
+          @if (selectedJob(); as job) {
+            <div class="selected-job">
+              <span tuiTitle>
+                <span tuiSubtitle>
+                  {{ targetName(job.targetId) }} · {{ 'Next run' | i18n }}:
+                  {{
+                    job.status.nextRunAt
+                      ? (job.status.nextRunAt | date: 'medium')
+                      : ('None' | i18n)
+                  }}
+                </span>
+              </span>
+              @if (job.pause; as pause) {
+                <span tuiBadge appearance="warning">
+                  {{ pauseLabel(pause) | i18n }}
+                </span>
+              } @else if (!job.enabled) {
+                <span tuiBadge>{{ 'Paused' | i18n }}</span>
+              }
+              <div class="actions">
+                @if (job.id !== primaryJobId()) {
+                  <button
+                    tuiButton
+                    type="button"
+                    size="xs"
+                    appearance="secondary"
+                    [disabled]="!!job.pause || !job.enabled"
+                    (click)="runNow(job)"
+                  >
+                    {{ 'Run now' | i18n }}
+                  </button>
+                  <button
+                    tuiButton
+                    type="button"
+                    size="xs"
+                    appearance="secondary"
+                    (click)="toggle(job)"
+                  >
+                    {{ (job.enabled ? 'Pause' : 'Resume') | i18n }}
+                  </button>
+                }
+                @if (job.pause && job.pause.reason !== 'user') {
+                  <button
+                    tuiButton
+                    type="button"
+                    size="xs"
+                    appearance="secondary"
+                    (click)="retry(job)"
+                  >
+                    {{ 'Retry backup location' | i18n }}
+                  </button>
+                  <button
+                    tuiButton
+                    type="button"
+                    size="xs"
+                    appearance="secondary"
+                    (click)="beginReassign(job)"
+                  >
+                    {{ 'Change backup location' | i18n }}
+                  </button>
+                }
+                @if (job.id !== primaryJobId()) {
+                  <button
+                    tuiButton
+                    type="button"
+                    size="xs"
+                    appearance="flat-destructive"
+                    (click)="deleteJob(job)"
+                  >
+                    {{ 'Delete' | i18n }}
+                  </button>
+                }
+              </div>
+            </div>
+          }
 
           <div class="setting-row vertical">
             <span tuiTitle>
@@ -350,27 +324,47 @@ interface JobEditor extends BackupRetentionTierEditor {
               }
 
               @if (form.frequency !== 'hourly') {
-                <tui-textfield>
+                <tui-textfield
+                  tuiChevron
+                  [stringify]="stringifyTime"
+                  [tuiTextfieldCleaner]="false"
+                >
                   <label tuiLabel>{{ 'Hour' | i18n }}</label>
                   <input
-                    tuiInputNumber
+                    tuiSelect
                     name="hour"
-                    [min]="0"
-                    [max]="23"
+                    required
                     [(ngModel)]="form.hour"
                   />
+                  <tui-data-list *tuiDropdown>
+                    @for (hour of hours; track hour) {
+                      <button tuiOption [value]="hour">
+                        {{ stringifyTime(hour) }}
+                      </button>
+                    }
+                  </tui-data-list>
                 </tui-textfield>
               }
 
-              <tui-textfield>
+              <tui-textfield
+                tuiChevron
+                [stringify]="stringifyTime"
+                [tuiTextfieldCleaner]="false"
+              >
                 <label tuiLabel>{{ 'Minute' | i18n }}</label>
                 <input
-                  tuiInputNumber
+                  tuiSelect
                   name="minute"
-                  [min]="0"
-                  [max]="59"
+                  required
                   [(ngModel)]="form.minute"
                 />
+                <tui-data-list *tuiDropdown>
+                  @for (minute of minutes; track minute) {
+                    <button tuiOption [value]="minute">
+                      {{ stringifyTime(minute) }}
+                    </button>
+                  }
+                </tui-data-list>
               </tui-textfield>
             </div>
           </div>
@@ -779,6 +773,75 @@ interface JobEditor extends BackupRetentionTierEditor {
         </form>
       }
 
+      <button
+        tuiCell
+        tuiAppearance="outline-grayscale"
+        type="button"
+        class="schedules-toggle"
+        [attr.aria-expanded]="showSchedules()"
+        (click)="showSchedules.set(!showSchedules())"
+      >
+        <tui-icon icon="@tui.list" />
+        <span tuiTitle>
+          <b>{{ 'View all backup schedules' | i18n }}</b>
+          <span tuiSubtitle>
+            {{ jobs().length }} {{ 'Automatic backups' | i18n }}
+          </span>
+        </span>
+        <tui-icon icon="@tui.chevron-down" [class.rotated]="showSchedules()" />
+      </button>
+
+      @if (showSchedules()) {
+        <section class="schedule-browser">
+          <header class="heading">
+            <span tuiTitle>
+              <b>{{ 'View all backup schedules' | i18n }}</b>
+            </span>
+            <button
+              tuiButton
+              type="button"
+              size="s"
+              iconStart="@tui.plus"
+              (click)="create()"
+            >
+              {{ 'Create automatic schedule' | i18n }}
+            </button>
+          </header>
+
+          <div class="schedule-list">
+            @for (job of jobs(); track job.id) {
+              <button
+                tuiCell
+                tuiAppearance="outline-grayscale"
+                type="button"
+                [class.selected]="job.id === selectedJobId()"
+                (click)="selectJob(job.id)"
+              >
+                <tui-icon icon="@tui.calendar-clock" />
+                <span tuiTitle>
+                  <b>{{ job.name }}</b>
+                  <span tuiSubtitle>
+                    {{ targetName(job.targetId) }} · {{ 'Next run' | i18n }}:
+                    {{
+                      job.status.nextRunAt
+                        ? (job.status.nextRunAt | date: 'medium')
+                        : ('None' | i18n)
+                    }}
+                  </span>
+                </span>
+                @if (job.pause; as pause) {
+                  <span tuiBadge appearance="warning">
+                    {{ pauseLabel(pause) | i18n }}
+                  </span>
+                } @else if (!job.enabled) {
+                  <span tuiBadge>{{ 'Paused' | i18n }}</span>
+                }
+              </button>
+            }
+          </div>
+        </section>
+      }
+
       @if (reassigning(); as job) {
         <form class="editor" (ngSubmit)="reassign(job)">
           <div class="heading">
@@ -788,7 +851,7 @@ interface JobEditor extends BackupRetentionTierEditor {
               type="button"
               size="xs"
               appearance="secondary"
-              (click)="reassigning.set(null)"
+              (click)="cancelReassign(job)"
             >
               {{ 'Cancel' | i18n }}
             </button>
@@ -852,7 +915,7 @@ interface JobEditor extends BackupRetentionTierEditor {
 
     [tuiTitle],
     .schedule-controls > *,
-    .job-selector > * {
+    .schedule-list > * {
       min-width: 0;
       overflow-wrap: anywhere;
     }
@@ -882,7 +945,6 @@ interface JobEditor extends BackupRetentionTierEditor {
       gap: 0.35rem;
     }
 
-    .job-selector,
     .selected-job,
     .editor-heading,
     .setting-row,
@@ -895,11 +957,6 @@ interface JobEditor extends BackupRetentionTierEditor {
       width: 100%;
       min-width: 0;
       box-sizing: border-box;
-    }
-
-    .job-selector tui-textfield {
-      width: min(100%, 24rem);
-      min-width: 0;
     }
 
     .selected-job {
@@ -976,7 +1033,8 @@ interface JobEditor extends BackupRetentionTierEditor {
       align-items: flex-start;
       width: 100%;
       max-width: 100%;
-      padding: 0.75rem;
+      padding-block: 0.75rem;
+      padding-inline: 1rem;
       border-radius: var(--tui-radius-m);
       background: var(--tui-background-accent-2);
       color: var(--tui-text-primary-on-accent-2);
@@ -1087,13 +1145,54 @@ interface JobEditor extends BackupRetentionTierEditor {
       margin-top: 2rem;
     }
 
+    .schedules-toggle,
+    .schedule-list > button {
+      width: 100%;
+      min-width: 0;
+      text-align: left;
+      box-sizing: border-box;
+    }
+
+    .schedules-toggle [tuiTitle],
+    .schedule-list [tuiTitle] {
+      flex: 1;
+    }
+
+    .schedule-browser,
+    .schedule-list {
+      display: grid;
+      gap: 0.75rem;
+      min-width: 0;
+    }
+
+    .schedule-browser {
+      padding: 1rem;
+      border: 1px solid var(--tui-border-normal);
+      border-radius: var(--tui-radius-m);
+    }
+
+    .schedule-browser .heading {
+      margin: 0;
+    }
+
+    .schedule-list > button.selected {
+      box-shadow: inset 0 0 0 2px var(--tui-border-focus);
+    }
+
+    .schedules-toggle > tui-icon:last-child {
+      transition: transform var(--tui-duration, 0.2s);
+    }
+
+    .rotated {
+      transform: rotate(180deg);
+    }
+
     .estimate-heading {
       margin: 0 0 0.5rem;
     }
 
     @media (max-width: 30rem) {
       .heading,
-      .job-selector,
       .selected-job,
       .editor-heading {
         align-items: stretch;
@@ -1103,10 +1202,6 @@ interface JobEditor extends BackupRetentionTierEditor {
       .heading > button,
       .editor-heading > button {
         align-self: flex-start;
-      }
-
-      .job-selector tui-textfield {
-        width: 100%;
       }
 
       .schedule-controls,
@@ -1129,9 +1224,11 @@ interface JobEditor extends BackupRetentionTierEditor {
   imports: [
     DatePipe,
     FormsModule,
+    TuiAppearance,
     TuiBadge,
     TuiBlock,
     TuiButton,
+    TuiCell,
     TuiCheckbox,
     TuiChevron,
     TuiDataList,
@@ -1148,7 +1245,7 @@ interface JobEditor extends BackupRetentionTierEditor {
   ],
 })
 export class ScheduledBackupsComponent implements OnInit {
-  readonly mode = input.required<'create' | 'restore'>()
+  readonly mode = input.required<'manage' | 'restore'>()
   readonly primaryJobId = input.required<string>()
 
   private readonly api = inject(ApiService)
@@ -1167,6 +1264,7 @@ export class ScheduledBackupsComponent implements OnInit {
   readonly saving = signal(false)
   readonly editor = signal<JobEditor | null>(null)
   protected readonly selectedJobId = signal('')
+  protected readonly showSchedules = signal(false)
   readonly reassigning = signal<T.BackupJob | null>(null)
   readonly policyHistory = signal<T.ServiceTargetHistory | null>(null)
   readonly policyTiers = signal<TierEditor[]>([])
@@ -1206,11 +1304,8 @@ export class ScheduledBackupsComponent implements OnInit {
       return manifest ? [{ id, name: manifest.title, icon: entry.icon }] : []
     }),
   )
-  protected readonly advancedJobs = computed(() =>
-    this.jobs().filter(job => job.id !== this.primaryJobId()),
-  )
   protected readonly selectedJob = computed(() =>
-    this.advancedJobs().find(job => job.id === this.selectedJobId()),
+    this.jobs().find(job => job.id === this.selectedJobId()),
   )
 
   protected readonly frequencies: BackupScheduleFrequency[] = [
@@ -1229,7 +1324,9 @@ export class ScheduledBackupsComponent implements OnInit {
     { value: 5, label: 'Friday' as const },
     { value: 6, label: 'Saturday' as const },
   ]
-  protected readonly stringifyJob = (id: string) => this.jobName(id)
+  protected readonly hours = BACKUP_HOURS
+  protected readonly minutes = BACKUP_MINUTES
+  protected readonly stringifyTime = formatBackupTime
   protected readonly stringifyFrequency = (
     frequency: BackupScheduleFrequency,
   ) =>
@@ -1279,12 +1376,14 @@ export class ScheduledBackupsComponent implements OnInit {
           Object.fromEntries(review.affectedJobs.map(id => [id, null])),
         )
       }
-      const selected = this.advancedJobs().find(
-        job => job.id === this.selectedJobId(),
-      )
+      const selected = this.jobs().find(job => job.id === this.selectedJobId())
       if (this.editor()?.id && !selected) this.editor.set(null)
       if (!this.editor()) {
-        this.edit(selected || this.advancedJobs()[0])
+        this.edit(
+          selected ||
+            this.jobs().find(job => job.id === this.primaryJobId()) ||
+            this.jobs()[0],
+        )
       }
     } catch (error: any) {
       this.errors.handleError(getErrorMessage(error))
@@ -1318,18 +1417,23 @@ export class ScheduledBackupsComponent implements OnInit {
       firstBackupNow: true,
       capacityConfirmed: false,
     }
+    this.showSchedules.set(false)
+    this.reassigning.set(null)
     this.selectedJobId.set('')
     this.editor.set(form)
     void this.refreshEstimates(form)
   }
 
   selectJob(id: string) {
-    this.edit(this.advancedJobs().find(job => job.id === id))
+    this.showSchedules.set(false)
+    this.reassigning.set(null)
+    this.edit(this.jobs().find(job => job.id === id))
   }
 
   cancelEditor() {
-    this.selectedJobId.set('')
-    this.editor.set(null)
+    this.edit(
+      this.jobs().find(job => job.id === this.primaryJobId()) || this.jobs()[0],
+    )
   }
 
   edit(job?: T.BackupJob) {
@@ -1553,11 +1657,18 @@ export class ScheduledBackupsComponent implements OnInit {
   }
 
   beginReassign(job: T.BackupJob) {
+    this.editor.set(null)
+    this.showSchedules.set(false)
     this.reassigning.set(job)
     this.reassignTargetId =
       this.targets().find(t => t.id !== job.targetId)?.id || ''
     this.reassignPassword = ''
     this.waitForSchedule = false
+  }
+
+  cancelReassign(job: T.BackupJob) {
+    this.reassigning.set(null)
+    this.edit(job)
   }
 
   async reassign(job: T.BackupJob) {
@@ -1778,9 +1889,19 @@ export class ScheduledBackupsComponent implements OnInit {
       form.name.trim() &&
       form.targetId &&
       form.packageIds.length &&
+      this.validSchedule(form) &&
       (form.id || form.password) &&
       (this.projectedCount(form) <= 1 || form.capacityConfirmed)
     )
+  }
+
+  private validSchedule(form: JobEditor): boolean {
+    const validMinute =
+      Number.isInteger(form.minute) && form.minute >= 0 && form.minute <= 59
+    const validHour =
+      form.frequency === 'hourly' ||
+      (Number.isInteger(form.hour) && form.hour >= 0 && form.hour <= 23)
+    return validMinute && validHour
   }
 
   projectedCount(form: JobEditor): number {

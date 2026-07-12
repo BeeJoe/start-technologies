@@ -589,6 +589,16 @@ for (const [sheet, file] of [
     'max-width': '100%',
     'box-sizing': 'border-box',
     'align-items': 'flex-start',
+    'padding-inline': '1rem',
+  })
+}
+
+for (const [sheet, file] of [
+  [network, networkFile],
+  [physical, physicalFile],
+]) {
+  assertRule(sheet, file, 'td:first-child:not(.empty-state)', {
+    width: '13rem',
   })
 }
 
@@ -603,14 +613,6 @@ for (const [sheet, file] of [
   assertRule(sheet, file, '.location', {
     'justify-self': 'start',
     'text-align': 'left',
-  })
-}
-for (const [sheet, file] of [
-  [network, networkFile],
-  [physical, physicalFile],
-]) {
-  assertRule(sheet, file, 'td:first-child:not(.empty-state)', {
-    width: '11rem',
   })
 }
 assertRule(network, networkFile, 'td:last-child:not(.empty-state)', {
@@ -740,7 +742,7 @@ assertSource(routesFile, [
 assertSource(editorFile, [
   /selector:\s*'automatic-backups'/,
   /readonly embedded = input\(false\)/,
-  /initializeEditor = effect\([\s\S]{0,520}this\.editor = this\.editorFor\(job\)/,
+  /scheduledBackups[\s\S]{0,80}mode="manage"[\s\S]{0,80}\[primaryJobId\]="job\.id"/,
 ])
 assertNotSource(editorFile, [
   /<nav class="tabs">/,

@@ -246,7 +246,7 @@ test('retention summary translates the sentence as well as its units', () => {
   assert.match(summary, /this\.i18n\.transform\('for'\)/)
 })
 
-test('primary and advanced job summaries use localized labels', () => {
+test('setup and job-editor summaries use localized labels', () => {
   for (const component of [automaticComponent, advancedComponent]) {
     const classStart = component.indexOf('export')
     const scheduleStart = component.indexOf('scheduleSummary(', classStart)
@@ -264,14 +264,10 @@ test('primary and advanced job summaries use localized labels', () => {
   }
 })
 
-test('advanced schedules reuse the default job layout for an alternate job', () => {
+test('all backup schedules share one selected-job editor', () => {
   assert.match(
     automaticComponent,
-    /scheduledBackups[\s\S]{0,120}\[primaryJobId\]="job\.id"/,
-  )
-  assert.match(
-    automaticComponent,
-    /<span tuiBadge>\{\{ advancedJobs\(\)\.length \}\}/,
+    /scheduledBackups[\s\S]{0,80}mode="manage"[\s\S]{0,80}\[primaryJobId\]="job\.id"/,
   )
   assert.match(
     advancedComponent,
@@ -279,9 +275,25 @@ test('advanced schedules reuse the default job layout for an alternate job', () 
   )
   assert.match(
     advancedComponent,
-    /class="job-selector"[\s\S]{0,800}tuiSelect[\s\S]{0,200}\(ngModelChange\)="selectJob\(\$event\)"/,
+    /readonly mode = input\.required<'manage' \| 'restore'>\(\)/,
   )
-  assert.doesNotMatch(advancedComponent, /class="g-table jobs"/)
+  assert.match(
+    advancedComponent,
+    /['"]View all backup schedules['"]\s*\|\s*i18n/,
+  )
+  assert.match(
+    advancedComponent,
+    /class="schedule-list"[\s\S]{0,1200}@for \(job of jobs\(\); track job\.id\)[\s\S]{0,700}\(click\)="selectJob\(job\.id\)"/,
+  )
+  assert.match(
+    advancedComponent,
+    /iconStart="@tui\.plus"[\s\S]{0,160}\(click\)="create\(\)"/,
+  )
+  assert.doesNotMatch(advancedComponent, /Advanced schedules/)
+  assert.doesNotMatch(
+    advancedComponent,
+    /job\.id === primaryJobId\(\)[\s\S]{0,500}\(click\)="deleteJob\(job\)"/,
+  )
   assert.doesNotMatch(advancedComponent, /name="scope"/)
 
   const servicesStart = advancedComponent.indexOf(
@@ -314,6 +326,10 @@ test('advanced schedules reuse the default job layout for an alternate job', () 
     advancedComponent,
     /<form class="editor panel" \(ngSubmit\)="save\(form\)"/,
   )
+  assert.match(
+    advancedComponent,
+    /class="editor-heading"[\s\S]{0,240}\{\{ form\.name/,
+  )
   assert.doesNotMatch(advancedComponent, /\(keyup\.enter\)="save\(form\)"/)
   assert.match(
     advancedComponent,
@@ -329,7 +345,37 @@ test('advanced schedules reuse the default job layout for an alternate job', () 
   )
 })
 
-test('every inline master-password field has a visibility toggle', () => {
+test('hour and minute controls cannot be cleared to null', () => {
+  for (const component of [automaticComponent, advancedComponent]) {
+    for (const field of ['hour', 'minute']) {
+      const controls = [
+        ...component.matchAll(
+          new RegExp(
+            `<(?:input|select)[\\s\\S]{0,180}(?:name="${field}"|\\[\\(ngModel\\)\\]="(?:editor|form)\\.${field}")[\\s\\S]{0,180}>`,
+            'g',
+          ),
+        ),
+      ]
+      assert.ok(controls.length > 0, `${field} control is present`)
+      for (const [control] of controls) {
+        assert.match(control, /tuiSelect|<select/)
+        assert.doesNotMatch(control, /type="number"|tuiInputNumber/)
+      }
+    }
+  }
+
+  assert.match(
+    advancedComponent,
+    /name="hour"[\s\S]{0,100}\[\(ngModel\)\]="form\.hour"/,
+  )
+  assert.match(
+    advancedComponent,
+    /name="minute"[\s\S]{0,100}\[\(ngModel\)\]="form\.minute"/,
+  )
+  assert.match(advancedComponent, /\[tuiTextfieldCleaner\]="false"/)
+})
+
+test('each visible master-password workflow has one visibility toggle', () => {
   const automaticPasswords = automaticComponent.match(/type="password"/g) ?? []
   const automaticToggles =
     automaticComponent.match(/<tui-icon tuiPassword \/>/g) ?? []
@@ -341,4 +387,8 @@ test('every inline master-password field has a visibility toggle', () => {
   assert.ok(advancedPasswords.length > 0)
   assert.equal(automaticPasswords.length, automaticToggles.length)
   assert.equal(advancedPasswords.length, advancedToggles.length)
+  assert.match(
+    advancedComponent,
+    /beginReassign\(job: T\.BackupJob\)[\s\S]{0,160}this\.editor\.set\(null\)/,
+  )
 })

@@ -1044,4 +1044,5 @@ export default {
   1151: 'tygodnie',
   1152: 'miesiąc',
   1153: 'miesiące',
+  1154: 'Wyświetl wszystkie harmonogramy kopii zapasowych',
 } satisfies i18n

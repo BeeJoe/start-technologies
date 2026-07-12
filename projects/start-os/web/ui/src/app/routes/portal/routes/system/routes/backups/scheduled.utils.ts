@@ -9,6 +9,13 @@ export type BackupRetentionPeriodLabel =
   | 'weeks'
   | 'months'
 
+export const BACKUP_HOURS = Array.from({ length: 24 }, (_, hour) => hour)
+export const BACKUP_MINUTES = Array.from({ length: 60 }, (_, minute) => minute)
+
+export function formatBackupTime(value: number): string {
+  return String(value).padStart(2, '0')
+}
+
 export interface BackupScheduleFormValue {
   frequency: BackupScheduleFrequency
   minute: number

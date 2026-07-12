@@ -13,7 +13,7 @@ file tracks notable changes since the move to the monorepo.
 ### Added
 
 - **Automatic backups.** StartOS can protect selected current and future
-  services on hourly, daily, weekly, or advanced schedules; estimate required
+  services on one or more hourly, daily, or weekly schedules; estimate required
   capacity; retain tiered version history; preserve unreferenced checkpoints as
   archives; recover or reassign unavailable locations; and restore a different
   manual or automatic checkpoint for each service. Backup activity, actionable
@@ -22,11 +22,12 @@ file tracks notable changes since the move to the monorepo.
 
 ### Changed
 
-- **Consistent advanced automatic schedules.** Advanced jobs now use the same
-  schedule, service-selection, future-service, and version-history layout as
-  the primary automatic-backup job. A compact selector switches between
-  alternate jobs while retaining target recovery, custom tiers, per-service
-  overrides, and immediate first-run controls.
+- **Unified automatic schedule editing.** **View all backup schedules** now
+  opens a compact job list with an add action. Selecting the default schedule,
+  another job, or a new schedule uses one shared editor identified by the job
+  name while retaining target recovery, custom tiers, per-service overrides,
+  and immediate first-run controls. Hour and minute choices can no longer be
+  cleared to an invalid null value.
 - **Simplified Automatic Backups.** The expanded card now uses a flat settings
   layout, keeps **Run now** with the detailed actions, and leaves checkpoint
   browsing and restore actions in the dedicated **Backup history** and restore
@@ -44,8 +45,8 @@ file tracks notable changes since the move to the monorepo.
 
 ### Fixed
 
-- **Backup password visibility.** Master-password fields in automatic and
-  advanced backup workflows now use the same show/hide control as the manual
+- **Backup password visibility.** Master-password fields in automatic backup
+  workflows now show exactly one eye control at a time, matching the manual
   backup and restore prompts.
 
 - **Backup progress and mobile layout.** Backup progress uses the full content
@@ -55,6 +56,8 @@ file tracks notable changes since the move to the monorepo.
   drive states, and compact destructive actions readable without overlap.
   Backup-location rows now consistently place the icon and name on the left,
   the address or device path on the right, and center the no-drive state.
+  Status columns are wider so **No backups found** remains readable, and the
+  future-services checkbox aligns with the service and **Toggle all** controls.
   Manage-backup network locations keep the location name and address together
   on mobile, moving the complete address to the next line when necessary
   instead of shrinking and clipping it or splitting names and IP addresses.

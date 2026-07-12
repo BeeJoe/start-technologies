@@ -90,7 +90,7 @@ import { BackupStatusComponent } from './status.component'
     }
 
     td:first-child:not(.empty-state) {
-      width: 11rem;
+      width: 13rem;
     }
 
     td:last-child:not(.empty-state),

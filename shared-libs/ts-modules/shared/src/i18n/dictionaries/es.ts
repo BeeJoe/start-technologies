@@ -1044,4 +1044,5 @@ export default {
   1151: 'semanas',
   1152: 'mes',
   1153: 'meses',
+  1154: 'Ver todas las programaciones de copias de seguridad',
 } satisfies i18n

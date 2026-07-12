@@ -1044,4 +1044,5 @@ export default {
   1151: 'Wochen',
   1152: 'Monat',
   1153: 'Monate',
+  1154: 'Alle Sicherungszeitpläne anzeigen',
 } satisfies i18n

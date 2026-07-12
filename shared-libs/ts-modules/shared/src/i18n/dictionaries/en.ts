@@ -1045,4 +1045,5 @@ export const ENGLISH: Record<string, number> = {
   'weeks': 1151,
   'month': 1152,
   'months': 1153,
+  'View all backup schedules': 1154,
 }

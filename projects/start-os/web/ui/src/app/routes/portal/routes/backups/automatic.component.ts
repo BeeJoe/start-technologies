@@ -1,7 +1,6 @@
 import {
   Component,
   computed,
-  effect,
   inject,
   input,
   OnInit,
@@ -19,17 +18,22 @@ import {
 } from '@start9labs/shared'
 import { T } from '@start9labs/start-core'
 import {
-  TuiAppearance,
   TuiButton,
-  TuiCell,
   TuiCheckbox,
+  TuiDataList,
   TuiGroup,
   TuiIcon,
   TuiInput,
   TuiNotification,
   TuiTitle,
 } from '@taiga-ui/core'
-import { TuiBadge, TuiBlock, TuiPassword, TuiSwitch } from '@taiga-ui/kit'
+import {
+  TuiBlock,
+  TuiChevron,
+  TuiPassword,
+  TuiSelect,
+  TuiSwitch,
+} from '@taiga-ui/kit'
 import { PatchDB } from 'patch-db-client'
 import { firstValueFrom } from 'rxjs'
 import { ApiService } from 'src/app/services/api/embassy-api.service'
@@ -42,9 +46,9 @@ import {
 import {
   BackupRetentionInterval,
   BackupScheduleFrequency,
-  parseBackupSchedule,
-  parseBackupServiceSelection,
-  retentionIntervalFromSeconds,
+  BACKUP_HOURS,
+  BACKUP_MINUTES,
+  formatBackupTime,
   retentionIntervalSeconds,
   retentionPeriodLabel,
   serializeBackupServiceSelection,
@@ -214,26 +218,36 @@ interface AutomaticEditor {
                 </label>
               }
               @if (editor.frequency !== 'hourly') {
-                <tui-textfield>
+                <tui-textfield
+                  tuiChevron
+                  [stringify]="stringifyTime"
+                  [tuiTextfieldCleaner]="false"
+                >
                   <label tuiLabel>{{ 'Hour' | i18n }}</label>
-                  <input
-                    tuiInput
-                    type="number"
-                    min="0"
-                    max="23"
-                    [(ngModel)]="editor.hour"
-                  />
+                  <input tuiSelect [(ngModel)]="editor.hour" />
+                  <tui-data-list *tuiDropdown>
+                    @for (hour of hours; track hour) {
+                      <button tuiOption [value]="hour">
+                        {{ stringifyTime(hour) }}
+                      </button>
+                    }
+                  </tui-data-list>
                 </tui-textfield>
               }
-              <tui-textfield>
+              <tui-textfield
+                tuiChevron
+                [stringify]="stringifyTime"
+                [tuiTextfieldCleaner]="false"
+              >
                 <label tuiLabel>{{ 'Minute' | i18n }}</label>
-                <input
-                  tuiInput
-                  type="number"
-                  min="0"
-                  max="59"
-                  [(ngModel)]="editor.minute"
-                />
+                <input tuiSelect [(ngModel)]="editor.minute" />
+                <tui-data-list *tuiDropdown>
+                  @for (minute of minutes; track minute) {
+                    <button tuiOption [value]="minute">
+                      {{ stringifyTime(minute) }}
+                    </button>
+                  }
+                </tui-data-list>
               </tui-textfield>
             </div>
           }
@@ -460,12 +474,8 @@ interface AutomaticEditor {
       </footer>
     } @else {
       @if (primary(); as job) {
-        <section
-          class="panel"
-          [class.g-card]="!embedded()"
-          [class.embedded-panel]="embedded()"
-        >
-          @if (!embedded()) {
+        @if (!embedded()) {
+          <section class="panel g-card">
             <header>
               <span tuiTitle>
                 <b>{{ 'Automatic backups' | i18n }}</b>
@@ -491,217 +501,13 @@ interface AutomaticEditor {
                 </span>
               </label>
             </header>
-          }
-
-          @if (job.services.type === 'selected' && !editor.includeFuture) {
-            <div tuiNotification appearance="info">
-              <span tuiTitle>
-                <b>{{ 'Existing service selection preserved' | i18n }}</b>
-                <span tuiSubtitle>
-                  {{
-                    'This schedule keeps its previous exact selection and will not silently add future services.'
-                      | i18n
-                  }}
-                </span>
-              </span>
-            </div>
-          }
-
-          <div class="setting-row">
-            <span tuiTitle>
-              <b>{{ 'Backup location' | i18n }}</b>
-              <span tuiSubtitle>{{ targetName(job.targetId) }}</span>
-            </span>
-            @if (job.pause && job.pause.reason !== 'user') {
-              <button tuiButton size="s" (click)="showAdvanced.set(true)">
-                {{ 'Fix backup' | i18n }}
-              </button>
-            }
-          </div>
-
-          <div class="setting-row vertical">
-            <span tuiTitle>
-              <b>{{ 'Schedule' | i18n }}</b>
-              <span tuiSubtitle>{{ scheduleSummary() }}</span>
-            </span>
-            <div class="schedule-controls">
-              <label>
-                <span>{{ 'Frequency' | i18n }}</span>
-                <select [(ngModel)]="editor.frequency">
-                  <option value="hourly">{{ 'Hourly' | i18n }}</option>
-                  <option value="daily">{{ 'Daily' | i18n }}</option>
-                  <option value="weekly">{{ 'Weekly' | i18n }}</option>
-                </select>
-              </label>
-              @if (editor.frequency === 'weekly') {
-                <label>
-                  <span>{{ 'Day of week' | i18n }}</span>
-                  <select [(ngModel)]="editor.weekday">
-                    @for (day of weekdays; track day.value) {
-                      <option [ngValue]="day.value">
-                        {{ day.label | i18n }}
-                      </option>
-                    }
-                  </select>
-                </label>
-              }
-              @if (editor.frequency !== 'hourly') {
-                <tui-textfield>
-                  <label tuiLabel>{{ 'Hour' | i18n }}</label>
-                  <input
-                    tuiInput
-                    type="number"
-                    min="0"
-                    max="23"
-                    [(ngModel)]="editor.hour"
-                  />
-                </tui-textfield>
-              }
-              <tui-textfield>
-                <label tuiLabel>{{ 'Minute' | i18n }}</label>
-                <input
-                  tuiInput
-                  type="number"
-                  min="0"
-                  max="59"
-                  [(ngModel)]="editor.minute"
-                />
-              </tui-textfield>
-            </div>
-          </div>
-
-          <div class="setting-row vertical">
-            <span tuiTitle>
-              <b>{{ 'Services' | i18n }}</b>
-              <span tuiSubtitle>
-                {{ selectedServiceSummary() }}
-              </span>
-            </span>
-            <div tuiGroup orientation="vertical" [collapsed]="true">
-              @for (service of editor.services; track service.id) {
-                <label tuiBlock="m">
-                  <input
-                    tuiCheckbox
-                    type="checkbox"
-                    [(ngModel)]="service.checked"
-                  />
-                  <img alt="" [src]="service.icon" />
-                  <span tuiTitle>
-                    <b>{{ service.title }}</b>
-                  </span>
-                </label>
-              }
-            </div>
-            <label class="checkbox-row toggle-all">
-              <input
-                tuiCheckbox
-                type="checkbox"
-                [ngModel]="allServicesSelected()"
-                (ngModelChange)="setAllServices($event)"
-              />
-              <span tuiTitle>
-                <b>{{ 'Toggle all' | i18n }}</b>
-              </span>
-            </label>
-            <label class="checkbox-row include-future">
-              <input
-                tuiCheckbox
-                type="checkbox"
-                [(ngModel)]="editor.includeFuture"
-              />
-              <span tuiTitle>
-                <b>{{ 'Automatically include future services' | i18n }}</b>
-                <span tuiSubtitle>
-                  {{
-                    'All current and future services are included unless you exclude them.'
-                      | i18n
-                  }}
-                </span>
-              </span>
-            </label>
-          </div>
-
-          <div class="setting-row vertical">
-            <span tuiTitle>
-              <b>{{ 'Version history' | i18n }}</b>
-              <span tuiSubtitle>
-                {{
-                  (editor.keepAdditional
-                    ? retentionSummary()
-                    : 'Keep only the latest automatic checkpoint'
-                  ) | i18n
-                }}
-              </span>
-            </span>
-            <label class="inline-switch left">
-              <input
-                tuiSwitch
-                type="checkbox"
-                [showIcons]="false"
-                [(ngModel)]="editor.keepAdditional"
-              />
-              <span>{{ 'Keep additional versions' | i18n }}</span>
-            </label>
-            @if (editor.keepAdditional) {
-              <div class="retention-rule">
-                <span>{{ 'Keep one backup every' | i18n }}</span>
-                <select [(ngModel)]="editor.interval">
-                  <option value="hour">{{ 'Hour' | i18n }}</option>
-                  <option value="day">{{ 'Day' | i18n }}</option>
-                  <option value="week">{{ 'Week' | i18n }}</option>
-                  <option value="month">{{ 'Month' | i18n }}</option>
-                </select>
-                <span>{{ 'for' | i18n }}</span>
-                <input
-                  type="number"
-                  min="1"
-                  max="365"
-                  [(ngModel)]="editor.duration"
-                />
-                <span>{{ retentionPeriod() | i18n }}</span>
-              </div>
-              <p class="helper">
-                {{
-                  'Use different version history settings for specific services under Advanced schedules.'
-                    | i18n
-                }}
-              </p>
-            }
-          </div>
-
-          <footer class="save-row">
-            <button tuiButton [disabled]="saving()" (click)="savePrimary(job)">
-              {{ 'Save changes' | i18n }}
-            </button>
-          </footer>
-        </section>
-
-        <button
-          tuiCell
-          tuiAppearance="outline-grayscale"
-          class="advanced-link"
-          (click)="showAdvanced.set(!showAdvanced())"
-        >
-          <tui-icon icon="@tui.settings-2" />
-          <span tuiTitle>
-            <b>{{ 'Advanced schedules' | i18n }}</b>
-            <span tuiSubtitle>
-              {{
-                'Add another exact time, customize a service, or repair a backup location.'
-                  | i18n
-              }}
-            </span>
-          </span>
-          <span tuiBadge>{{ advancedJobs().length }}</span>
-        </button>
-
-        @if (showAdvanced()) {
-          <section
-            scheduledBackups
-            mode="create"
-            [primaryJobId]="job.id"
-          ></section>
+          </section>
         }
+        <section
+          scheduledBackups
+          mode="manage"
+          [primaryJobId]="job.id"
+        ></section>
       } @else {
         <div tuiNotification appearance="info">
           {{ 'Automatic backups are not set up yet.' | i18n }}
@@ -885,7 +691,8 @@ interface AutomaticEditor {
       align-items: flex-start;
       width: 100%;
       max-width: 100%;
-      padding: 0.75rem;
+      padding-block: 0.75rem;
+      padding-inline: 1rem;
       border-radius: var(--tui-radius-m);
       background: var(--tui-background-accent-2);
       color: var(--tui-text-primary-on-accent-2);
@@ -1014,17 +821,17 @@ interface AutomaticEditor {
   imports: [
     FormsModule,
     RouterLink,
-    TuiAppearance,
-    TuiBadge,
     TuiBlock,
     TuiButton,
-    TuiCell,
     TuiCheckbox,
+    TuiChevron,
+    TuiDataList,
     TuiGroup,
     TuiIcon,
     TuiInput,
     TuiNotification,
     TuiPassword,
+    TuiSelect,
     TuiSwitch,
     TuiTitle,
     TitleDirective,
@@ -1043,7 +850,6 @@ export default class AutomaticBackupsComponent implements OnInit {
   private readonly patch = inject<PatchDB<DataModel>>(PatchDB)
   private readonly packageData = toSignal(this.patch.watch$('packageData'))
   private readonly state = toSignal(this.patch.watch$('scheduledBackups'))
-  private initializedEditorSource = ''
 
   readonly mode = input<'setup' | 'manage'>()
   readonly embedded = input(false)
@@ -1059,7 +865,6 @@ export default class AutomaticBackupsComponent implements OnInit {
   readonly targetId = signal('')
   readonly showSchedule = signal(false)
   readonly showServices = signal(false)
-  readonly showAdvanced = signal(false)
 
   readonly setupSteps = [
     { number: 1, label: 'Location' as const },
@@ -1076,6 +881,9 @@ export default class AutomaticBackupsComponent implements OnInit {
     { value: 5, label: 'Friday' as const },
     { value: 6, label: 'Saturday' as const },
   ]
+  protected readonly hours = BACKUP_HOURS
+  protected readonly minutes = BACKUP_MINUTES
+  protected readonly stringifyTime = formatBackupTime
 
   readonly jobs = computed(() =>
     Object.values(this.state()?.jobs || {}).sort((a, b) =>
@@ -1083,7 +891,6 @@ export default class AutomaticBackupsComponent implements OnInit {
     ),
   )
   readonly primary = computed(() => this.jobs()[0])
-  protected readonly advancedJobs = computed(() => this.jobs().slice(1))
   readonly histories = computed(() =>
     Object.values(this.state()?.histories || {}),
   )
@@ -1113,22 +920,6 @@ export default class AutomaticBackupsComponent implements OnInit {
 
   editor: AutomaticEditor = this.defaultEditor()
   readonly estimates = signal<T.BackupServiceCapacityEstimate[]>([])
-
-  private readonly initializeEditor = effect(() => {
-    const job = this.primary()
-    const packageData = this.packageData()
-    if (!job || !packageData) return
-    const source = JSON.stringify({
-      id: job.id,
-      schedule: job.schedule,
-      services: job.services,
-      defaultRetention: job.defaultRetention,
-      packages: Object.keys(packageData).sort(),
-    })
-    if (source === this.initializedEditorSource) return
-    this.editor = this.editorFor(job)
-    this.initializedEditorSource = source
-  })
 
   async ngOnInit() {
     await this.backupService.getBackupTargets()
@@ -1175,29 +966,6 @@ export default class AutomaticBackupsComponent implements OnInit {
           : []
       })
       .sort((a, b) => a.title.localeCompare(b.title))
-  }
-
-  private editorFor(job: T.BackupJob): AutomaticEditor {
-    const schedule = parseBackupSchedule(job.schedule)
-    const selection = parseBackupServiceSelection(
-      job.services,
-      this.serviceChoices().map(service => service.id),
-    )
-    const tier = job.defaultRetention.tiers[0]
-    const interval = retentionIntervalFromSeconds(tier?.intervalSeconds)
-    return {
-      ...this.defaultEditor(),
-      ...schedule,
-      services: this.serviceChoices(new Set(selection.packageIds)),
-      includeFuture: selection.includeFuture,
-      preservedSelectedPackageIds: selection.preservedSelectedPackageIds,
-      preservedExcludedPackageIds: selection.preservedExcludedPackageIds,
-      keepAdditional: !!tier,
-      interval,
-      duration: tier
-        ? Math.max(1, Math.round(tier.coverageSeconds / tier.intervalSeconds))
-        : 7,
-    }
   }
 
   private ensureServices() {
@@ -1389,24 +1157,6 @@ export default class AutomaticBackupsComponent implements OnInit {
     }
   }
 
-  async savePrimary(job: T.BackupJob) {
-    this.saving.set(true)
-    try {
-      await this.api.updateScheduledBackupJob({
-        id: job.id,
-        name: job.name || 'Automatic backups',
-        services: this.serviceScope(),
-        schedule: serializeBackupSchedule(this.editor),
-        defaultRetention: this.policy(),
-        retentionOverrides: job.retentionOverrides,
-      })
-    } catch (error: any) {
-      this.errors.handleError(getErrorMessage(error))
-    } finally {
-      this.saving.set(false)
-    }
-  }
-
   async toggleAllJobs(enabled: boolean) {
     try {
       await Promise.all(
@@ -1425,10 +1175,6 @@ export default class AutomaticBackupsComponent implements OnInit {
     } else {
       await this.disableAutomatic()
     }
-  }
-
-  anyJobEnabled(): boolean {
-    return this.jobs().some(job => job.enabled)
   }
 
   async disableAutomatic() {
@@ -1483,10 +1229,6 @@ export default class AutomaticBackupsComponent implements OnInit {
     } catch (error: any) {
       this.errors.handleError(getErrorMessage(error))
     }
-  }
-
-  targetName(id: string): string {
-    return this.targets().find(target => target.id === id)?.name || id
   }
 
   bytes(value: number): string {

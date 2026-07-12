@@ -161,7 +161,7 @@ const ERROR =
     }
 
     td:first-child:not(.empty-state) {
-      width: 11rem;
+      width: 13rem;
     }
 
     td:nth-child(2) {

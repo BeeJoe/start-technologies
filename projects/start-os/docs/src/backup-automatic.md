@@ -37,18 +37,16 @@ password on existing backups.
 
 ## Schedules and Service Selection
 
-The main **Automatic backups** card shows the primary schedule, its next run,
-and whether it needs attention. Expand it to change the schedule and services
-or select **Run now**.
+The main **Automatic backups** card shows the selected schedule name, its next
+run, and whether it needs attention. Expand it to change the schedule and
+services or select **Run now**.
 
-Use **Advanced schedules** when one schedule is not enough. Advanced schedules
-use the same location, schedule, service-selection, future-service, and version
-history controls as the primary job. Choose an alternate job from the schedule
-selector to edit it, or create another job with a different exact time, backup
-location, or service selection. Advanced jobs also support additional custom
-retention tiers and per-service retention overrides. StartOS validates enabled
-schedules together so their frequency can support the retention policy they
-feed.
+Select **View all backup schedules** to open the schedule list. Choose any job
+to load it into the same editor used by the default schedule, or select **Create
+automatic schedule** to configure a new job in that editor. Each job can use a
+different exact time, backup location, service selection, custom retention
+tier, or per-service retention override. StartOS validates enabled schedules
+together so their frequency can support the retention policy they feed.
 
 When a selective schedule does not automatically include future services,
 StartOS asks whether a newly installed service should be added to each affected
@@ -60,7 +58,7 @@ default. The confirmation dialog can instead permanently remove the automatic
 schedules and automatic checkpoints. Manual checkpoints are never removed by
 that option.
 
-Deleting one advanced schedule also keeps any checkpoints no longer referenced
+Deleting one additional schedule also keeps any checkpoints no longer referenced
 by another schedule as an archive by default. You can explicitly delete those
 unreferenced checkpoints after reviewing the warning.
 
