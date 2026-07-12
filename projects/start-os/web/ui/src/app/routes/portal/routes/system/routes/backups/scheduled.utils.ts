@@ -17,6 +17,22 @@ export interface BackupScheduleFormValue {
   timezone: string
 }
 
+/** Editable service scope plus IDs that are not represented by the current package list. */
+export interface BackupServiceSelection {
+  packageIds: string[]
+  includeFuture: boolean
+  preservedSelectedPackageIds: string[]
+  preservedExcludedPackageIds: string[]
+}
+
+/** Primary retention controls, including an exact custom rule for advanced jobs. */
+export interface BackupRetentionTierEditor {
+  interval: BackupRetentionInterval | 'custom'
+  duration: number
+  customIntervalHours: number
+  customCoverageHours: number
+}
+
 export function serializeBackupSchedule(
   form: BackupScheduleFormValue,
 ): T.Schedule {
@@ -44,6 +60,125 @@ export function parseBackupSchedule(
     hour: Number(fields[1]) || 0,
     weekday: Number(fields[4]) || 0,
     timezone: schedule.timezone,
+  }
+}
+
+/** Projects a stored service scope into the installed-service editor without dropping hidden IDs. */
+export function parseBackupServiceSelection(
+  services: T.BackupServiceScope,
+  installedPackageIds: string[],
+): BackupServiceSelection {
+  const installed = new Set(installedPackageIds)
+  if (services.type === 'selected') {
+    return {
+      packageIds: services.packageIds.filter(id => installed.has(id)),
+      includeFuture: false,
+      preservedSelectedPackageIds: services.packageIds.filter(
+        id => !installed.has(id),
+      ),
+      preservedExcludedPackageIds: [],
+    }
+  }
+  if (services.type === 'allExcept') {
+    const excluded = new Set(services.excludedPackageIds)
+    return {
+      packageIds: installedPackageIds.filter(id => !excluded.has(id)),
+      includeFuture: true,
+      preservedSelectedPackageIds: [],
+      preservedExcludedPackageIds: services.excludedPackageIds.filter(
+        id => !installed.has(id),
+      ),
+    }
+  }
+  return {
+    packageIds: [...installedPackageIds],
+    includeFuture: true,
+    preservedSelectedPackageIds: [],
+    preservedExcludedPackageIds: [],
+  }
+}
+
+/** Rebuilds a service scope while retaining IDs hidden from the installed-service editor. */
+export function serializeBackupServiceSelection(
+  selection: BackupServiceSelection,
+  installedPackageIds: string[],
+): T.BackupServiceScope {
+  if (!selection.includeFuture) {
+    return {
+      type: 'selected',
+      packageIds: [
+        ...new Set([
+          ...selection.packageIds,
+          ...selection.preservedSelectedPackageIds,
+        ]),
+      ],
+    }
+  }
+  const selected = new Set(selection.packageIds)
+  return {
+    type: 'allExcept',
+    excludedPackageIds: [
+      ...new Set([
+        ...selection.preservedExcludedPackageIds,
+        ...installedPackageIds.filter(id => !selected.has(id)),
+      ]),
+    ],
+  }
+}
+
+/** Maps a stored tier to standard controls when lossless and custom controls otherwise. */
+export function parseBackupRetentionTier(
+  tier?: T.RetentionTier,
+): BackupRetentionTierEditor {
+  if (!tier) {
+    return {
+      interval: 'day',
+      duration: 7,
+      customIntervalHours: 24,
+      customCoverageHours: 168,
+    }
+  }
+  const interval = retentionIntervalFromSeconds(tier.intervalSeconds)
+  const duration = tier.coverageSeconds / tier.intervalSeconds
+  const standard =
+    retentionIntervalSeconds(interval) === tier.intervalSeconds &&
+    Number.isInteger(duration) &&
+    duration >= 1 &&
+    duration <= 365
+  return {
+    interval: standard ? interval : 'custom',
+    duration: standard ? duration : 7,
+    customIntervalHours: tier.intervalSeconds / 3600,
+    customCoverageHours: tier.coverageSeconds / 3600,
+  }
+}
+
+/** Serializes the primary advanced-retention controls without normalizing custom tiers. */
+export function serializeBackupRetentionTier(
+  editor: BackupRetentionTierEditor,
+): T.RetentionTier {
+  if (editor.interval === 'custom') {
+    const minimumHours = 1 / 3600
+    return {
+      intervalSeconds: Math.round(
+        Math.max(
+          minimumHours,
+          Number(editor.customIntervalHours) || minimumHours,
+        ) * 3600,
+      ),
+      coverageSeconds: Math.round(
+        Math.max(
+          minimumHours,
+          Number(editor.customCoverageHours) || minimumHours,
+        ) * 3600,
+      ),
+    }
+  }
+  const intervalSeconds = retentionIntervalSeconds(editor.interval)
+  return {
+    intervalSeconds,
+    coverageSeconds:
+      intervalSeconds * Math.max(1, Number(editor.duration) || 1),
   }
 }
 

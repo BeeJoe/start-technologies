@@ -22,6 +22,11 @@ file tracks notable changes since the move to the monorepo.
 
 ### Changed
 
+- **Consistent advanced automatic schedules.** Advanced jobs now use the same
+  schedule, service-selection, future-service, and version-history layout as
+  the primary automatic-backup job. A compact selector switches between
+  alternate jobs while retaining target recovery, custom tiers, per-service
+  overrides, and immediate first-run controls.
 - **Simplified Automatic Backups.** The expanded card now uses a flat settings
   layout, keeps **Run now** with the detailed actions, and leaves checkpoint
   browsing and restore actions in the dedicated **Backup history** and restore

@@ -577,6 +577,22 @@ for (const selector of ['.tier', '.override']) {
 }
 
 for (const [sheet, file] of [
+  [editor, editorFile],
+  [advanced, advancedFile],
+]) {
+  assertRule(sheet, file, '.toggle-all', {
+    'padding-inline': '1rem',
+    'box-sizing': 'border-box',
+  })
+  assertRule(sheet, file, '.include-future', {
+    width: '100%',
+    'max-width': '100%',
+    'box-sizing': 'border-box',
+    'align-items': 'flex-start',
+  })
+}
+
+for (const [sheet, file] of [
   [network, networkFile],
   [physical, physicalFile],
 ]) {

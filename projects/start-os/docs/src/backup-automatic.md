@@ -42,10 +42,13 @@ and whether it needs attention. Expand it to change the schedule and services
 or select **Run now**.
 
 Use **Advanced schedules** when one schedule is not enough. Advanced schedules
-can use another exact time, backup location, or service selection. They also
-support custom retention tiers and per-service retention overrides. StartOS
-validates enabled schedules together so their frequency can support the
-retention policy they feed.
+use the same location, schedule, service-selection, future-service, and version
+history controls as the primary job. Choose an alternate job from the schedule
+selector to edit it, or create another job with a different exact time, backup
+location, or service selection. Advanced jobs also support additional custom
+retention tiers and per-service retention overrides. StartOS validates enabled
+schedules together so their frequency can support the retention policy they
+feed.
 
 When a selective schedule does not automatically include future services,
 StartOS asks whether a newly installed service should be added to each affected

@@ -43,9 +43,11 @@ import {
   BackupRetentionInterval,
   BackupScheduleFrequency,
   parseBackupSchedule,
+  parseBackupServiceSelection,
   retentionIntervalFromSeconds,
   retentionIntervalSeconds,
   retentionPeriodLabel,
+  serializeBackupServiceSelection,
   serializeBackupSchedule,
 } from '../system/routes/backups/scheduled.utils'
 import { ScheduledBackupsComponent } from '../system/routes/backups/scheduled.component'
@@ -70,7 +72,8 @@ interface AutomaticEditor {
   timezone: string
   services: ServiceChoice[]
   includeFuture: boolean
-  legacySelection: boolean
+  preservedSelectedPackageIds: string[]
+  preservedExcludedPackageIds: string[]
   keepAdditional: boolean
   interval: BackupRetentionInterval
   duration: number
@@ -283,6 +286,22 @@ interface AutomaticEditor {
                 <b>{{ 'Toggle all' | i18n }}</b>
               </span>
             </label>
+            <label class="checkbox-row include-future">
+              <input
+                tuiCheckbox
+                type="checkbox"
+                [(ngModel)]="editor.includeFuture"
+              />
+              <span tuiTitle>
+                <b>{{ 'Automatically include future services' | i18n }}</b>
+                <span tuiSubtitle>
+                  {{
+                    'All current and future services are included unless you exclude them.'
+                      | i18n
+                  }}
+                </span>
+              </span>
+            </label>
           }
 
           <div class="setting-row">
@@ -485,16 +504,6 @@ interface AutomaticEditor {
                   }}
                 </span>
               </span>
-              <label class="checkbox-row">
-                <input
-                  tuiCheckbox
-                  type="checkbox"
-                  [(ngModel)]="editor.includeFuture"
-                />
-                <span>
-                  {{ 'Automatically include future services' | i18n }}
-                </span>
-              </label>
             </div>
           }
 
@@ -594,6 +603,22 @@ interface AutomaticEditor {
                 <b>{{ 'Toggle all' | i18n }}</b>
               </span>
             </label>
+            <label class="checkbox-row include-future">
+              <input
+                tuiCheckbox
+                type="checkbox"
+                [(ngModel)]="editor.includeFuture"
+              />
+              <span tuiTitle>
+                <b>{{ 'Automatically include future services' | i18n }}</b>
+                <span tuiSubtitle>
+                  {{
+                    'All current and future services are included unless you exclude them.'
+                      | i18n
+                  }}
+                </span>
+              </span>
+            </label>
           </div>
 
           <div class="setting-row vertical">
@@ -667,11 +692,15 @@ interface AutomaticEditor {
               }}
             </span>
           </span>
-          <span tuiBadge>{{ jobs().length }}</span>
+          <span tuiBadge>{{ advancedJobs().length }}</span>
         </button>
 
         @if (showAdvanced()) {
-          <section scheduledBackups mode="create"></section>
+          <section
+            scheduledBackups
+            mode="create"
+            [primaryJobId]="job.id"
+          ></section>
         }
       } @else {
         <div tuiNotification appearance="info">
@@ -843,7 +872,32 @@ interface AutomaticEditor {
     .main-switch,
     .toggle-all {
       width: fit-content;
+      max-width: 100%;
       justify-content: flex-start;
+    }
+
+    .toggle-all {
+      padding-inline: 1rem;
+      box-sizing: border-box;
+    }
+
+    .include-future {
+      align-items: flex-start;
+      width: 100%;
+      max-width: 100%;
+      padding: 0.75rem;
+      border-radius: var(--tui-radius-m);
+      background: var(--tui-background-accent-2);
+      color: var(--tui-text-primary-on-accent-2);
+      box-sizing: border-box;
+    }
+
+    .include-future [tuiTitle] {
+      flex: 1;
+    }
+
+    .include-future [tuiSubtitle] {
+      color: inherit;
     }
 
     .first-backup {
@@ -1029,6 +1083,7 @@ export default class AutomaticBackupsComponent implements OnInit {
     ),
   )
   readonly primary = computed(() => this.jobs()[0])
+  protected readonly advancedJobs = computed(() => this.jobs().slice(1))
   readonly histories = computed(() =>
     Object.values(this.state()?.histories || {}),
   )
@@ -1090,7 +1145,8 @@ export default class AutomaticBackupsComponent implements OnInit {
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
       services: [],
       includeFuture: true,
-      legacySelection: false,
+      preservedSelectedPackageIds: [],
+      preservedExcludedPackageIds: [],
       keepAdditional: false,
       interval: 'day',
       duration: 7,
@@ -1123,28 +1179,19 @@ export default class AutomaticBackupsComponent implements OnInit {
 
   private editorFor(job: T.BackupJob): AutomaticEditor {
     const schedule = parseBackupSchedule(job.schedule)
-    const allIds = new Set(this.serviceChoices().map(service => service.id))
-    let selected = allIds
-    let legacySelection = false
-    let includeFuture = true
-    if (job.services.type === 'selected') {
-      selected = new Set(job.services.packageIds)
-      legacySelection = true
-      includeFuture = false
-    } else if (job.services.type === 'allExcept') {
-      const excludedPackageIds = job.services.excludedPackageIds
-      selected = new Set(
-        [...allIds].filter(id => !excludedPackageIds.includes(id)),
-      )
-    }
+    const selection = parseBackupServiceSelection(
+      job.services,
+      this.serviceChoices().map(service => service.id),
+    )
     const tier = job.defaultRetention.tiers[0]
     const interval = retentionIntervalFromSeconds(tier?.intervalSeconds)
     return {
       ...this.defaultEditor(),
       ...schedule,
-      services: this.serviceChoices(selected),
-      legacySelection,
-      includeFuture,
+      services: this.serviceChoices(new Set(selection.packageIds)),
+      includeFuture: selection.includeFuture,
+      preservedSelectedPackageIds: selection.preservedSelectedPackageIds,
+      preservedExcludedPackageIds: selection.preservedExcludedPackageIds,
       keepAdditional: !!tier,
       interval,
       duration: tier
@@ -1201,16 +1248,16 @@ export default class AutomaticBackupsComponent implements OnInit {
   }
 
   scheduleSummary(): string {
-    const time = `${String(this.editor.hour).padStart(2, '0')}:${String(
-      this.editor.minute,
-    ).padStart(2, '0')}`
+    const minute = String(this.editor.minute).padStart(2, '0')
+    const time = `${String(this.editor.hour).padStart(2, '0')}:${minute}`
     if (this.editor.frequency === 'hourly') {
-      return `Hourly at minute ${String(this.editor.minute).padStart(2, '0')}`
+      return `${this.i18n.transform('Hourly')} · ${this.i18n.transform('Minute')} ${minute}`
     }
     if (this.editor.frequency === 'weekly') {
-      return `${this.weekdays[this.editor.weekday]?.label || 'Sunday'} at ${time}`
+      const day = this.weekdays[this.editor.weekday]?.label || 'Sunday'
+      return `${this.i18n.transform(day)} · ${time}`
     }
-    return `Daily at ${time}`
+    return `${this.i18n.transform('Daily')} · ${time}`
   }
 
   retentionSummary(): string {
@@ -1231,9 +1278,9 @@ export default class AutomaticBackupsComponent implements OnInit {
       selected.length === this.editor.services.length &&
       this.editor.includeFuture
     ) {
-      return 'All current and future services'
+      return this.i18n.transform('All current and future services')
     }
-    return `${selected.length} of ${this.editor.services.length} services`
+    return `${selected.length} / ${this.editor.services.length} ${this.i18n.transform('Services')}`
   }
 
   selectedTargetName(): string {
@@ -1243,18 +1290,17 @@ export default class AutomaticBackupsComponent implements OnInit {
   }
 
   private serviceScope(): T.BackupServiceScope {
-    const selected = this.editor.services
-      .filter(service => service.checked)
-      .map(service => service.id)
-    if (this.editor.legacySelection && !this.editor.includeFuture) {
-      return { type: 'selected', packageIds: selected }
-    }
-    return {
-      type: 'allExcept',
-      excludedPackageIds: this.editor.services
-        .filter(service => !service.checked)
-        .map(service => service.id),
-    }
+    return serializeBackupServiceSelection(
+      {
+        packageIds: this.editor.services
+          .filter(service => service.checked)
+          .map(service => service.id),
+        includeFuture: this.editor.includeFuture,
+        preservedSelectedPackageIds: this.editor.preservedSelectedPackageIds,
+        preservedExcludedPackageIds: this.editor.preservedExcludedPackageIds,
+      },
+      this.editor.services.map(service => service.id),
+    )
   }
 
   private policy(): T.RetentionPolicy {
@@ -1303,7 +1349,9 @@ export default class AutomaticBackupsComponent implements OnInit {
 
   capacityAvailableLabel(): string {
     const available = this.capacityAvailable()
-    return available === null ? 'Availability unknown' : this.bytes(available)
+    return available === null
+      ? this.i18n.transform('Availability unknown')
+      : this.bytes(available)
   }
 
   capacityBlocked(): boolean {
