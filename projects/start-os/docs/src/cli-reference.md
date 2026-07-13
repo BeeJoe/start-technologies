@@ -371,7 +371,8 @@ Create a backup of all or selected packages.
 
 Estimate per-service automatic-backup storage and next-run staging requirements
 before creating a job. With no service filters it includes every currently
-installed service; with no retention tiers it estimates latest-only retention.
+installed service; with no version-history rules it estimates latest-only
+retention.
 The result separates live data, retained and archived checkpoints, staging
 headroom, and the conservative projected peak. A job created without filters
 also includes services installed in the future, whose size cannot yet be
@@ -380,10 +381,10 @@ estimated.
 - `--package-ids <IDS>` — Include only comma-separated package IDs
 - `--exclude-package-ids <IDS>` — Include current and future services except
   these comma-separated IDs
-- `--keep-tier <INTERVAL:COVERAGE>` — Estimate a retention tier; accepts the
-  same repeatable duration syntax as `backup job add`
+- `--keep-tier <INTERVAL:COVERAGE>` — Estimate a version-history rule; accepts
+  the same repeatable duration syntax as `backup job add`
 - `--service-keep-tier <PACKAGE_ID=INTERVAL:COVERAGE>` — Estimate a retention
-  tier for one service; repeat the option to add more tiers or services
+  rule for one service; repeat the option to add more rules or services
 - `--service-latest-only <PACKAGE_ID>` — Estimate latest-checkpoint-only
   retention for one or more comma-separated service IDs
 
@@ -406,11 +407,11 @@ daily at 03:00 UTC, and latest-checkpoint-only retention.
 - `--exclude-package-ids <IDS>` — Include current and future services except
   these comma-separated IDs
 - `--keep-tier <INTERVAL:COVERAGE>` — Retain versions at this interval for this
-  coverage. Repeat for multiple tiers; suffixes are `s`, `m`, `h`, `d`, and `w`.
+  coverage. Repeat for multiple rules; suffixes are `s`, `m`, `h`, `d`, and `w`.
   For example, `--keep-tier 1h:1d --keep-tier 1d:1w` retains hourly versions for
   one day and daily versions for one week.
 - `--service-keep-tier <PACKAGE_ID=INTERVAL:COVERAGE>` — Override retention for
-  one service. Repeat it to build multiple tiers or configure more services.
+  one service. Repeat it to build multiple rules or configure more services.
 - `--service-latest-only <PACKAGE_ID>` — Override one or more comma-separated
   services to retain only their latest checkpoint.
 - `--disabled` — Create the job paused
@@ -425,9 +426,9 @@ and repeated `--keep-tier` values use the same forms as `job add`.
 
 - `--name <NAME>` — Change the display name
 - `--all-services` — Include every current and future service
-- `--latest-only` — Replace tiered retention with the newest checkpoint only
+- `--latest-only` — Replace version-history rules with the newest checkpoint only
 - `--service-keep-tier <PACKAGE_ID=INTERVAL:COVERAGE>` — Add or replace a
-  service-specific retention policy; repeat for multiple tiers
+  service-specific retention policy; repeat for multiple rules
 - `--service-latest-only <PACKAGE_ID>` — Set comma-separated services to
   latest-checkpoint-only retention
 - `--use-default-retention <PACKAGE_ID>` — Remove service-specific overrides
@@ -475,6 +476,23 @@ start-cli backup policy apply cifs-0 bitcoind --keep-tier 1h:1d --keep-tier 1d:1
 Use `--latest-only` instead of `--keep-tier` to retain only the newest automatic
 checkpoint. Apply fails if the confirmation set differs from a fresh preview,
 which prevents stale or unintended deletion.
+
+### UI and CLI action parity
+
+Every backup action exposed by the StartOS UI has a `start-cli` command:
+
+- backup locations use `backup target list`, `backup target cifs add|update|remove`,
+  and `backup target delete-legacy`;
+- one-time backups use `backup create`;
+- automatic jobs use `backup job list|add|edit|enable|disable|run-now|delete`,
+  with `retry-target` and `reassign-target` for repair;
+- estimates, activity, history, version-history changes, and new-service
+  decisions use `backup estimate-capacity`, `backup activity`, `backup history`,
+  `backup policy`, and `backup review`;
+- manual restores use `package backup restore`, automatic restores use `package
+  backup restore-checkpoint`, and a UI-style selection mixing manual and
+  automatic checkpoints uses `package backup restore-mixed` with repeatable
+  `--checkpoint PACKAGE_ID=SNAPSHOT_ID` values and `--manual-ids`.
 
 ### New-service reviews
 

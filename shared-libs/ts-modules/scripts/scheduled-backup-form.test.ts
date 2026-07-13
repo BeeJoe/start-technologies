@@ -27,6 +27,20 @@ const advancedComponent = readFileSync(
   ),
   'utf8',
 )
+const backupsComponent = readFileSync(
+  new URL(
+    '../../../projects/start-os/web/ui/src/app/routes/portal/routes/backups/backups.component.ts',
+    import.meta.url,
+  ),
+  'utf8',
+)
+const statusComponent = readFileSync(
+  new URL(
+    '../../../projects/start-os/web/ui/src/app/routes/portal/routes/system/routes/backups/status.component.ts',
+    import.meta.url,
+  ),
+  'utf8',
+)
 
 test('serializes hourly, daily, and weekly controls as five-field cron', () => {
   assert.equal(
@@ -237,13 +251,47 @@ test('automatic setup places its toggleable password after the first-run choice 
 test('retention summary translates the sentence as well as its units', () => {
   const summaryStart = automaticComponent.indexOf('retentionSummary(): string')
   const summaryEnd = automaticComponent.indexOf(
-    'retentionPeriod()',
+    'selectedServiceSummary()',
     summaryStart,
   )
   const summary = automaticComponent.slice(summaryStart, summaryEnd)
 
   assert.match(summary, /this\.i18n\.transform\('Keep one backup every'\)/)
   assert.match(summary, /this\.i18n\.transform\('for'\)/)
+})
+
+test('first-time setup shares the collapsed service and repeatable version-history controls', () => {
+  const servicesStart = automaticComponent.indexOf(
+    "<b>{{ 'Services' | i18n }}</b>",
+  )
+  const servicesEnd = automaticComponent.indexOf(
+    "<b>{{ 'Version history' | i18n }}</b>",
+    servicesStart,
+  )
+  const services = automaticComponent.slice(servicesStart, servicesEnd)
+
+  assert.match(services, /Select services/)
+  assert.match(services, /@if \(showServices\(\)\)/)
+  assert.match(services, /tuiCheckbox[\s\S]{0,180}allServicesSelected/)
+  assert.match(services, /tuiCheckbox[\s\S]{0,180}editor\.includeFuture/)
+  assert.match(services, /tuiCheckbox[\s\S]{0,180}service\.checked/)
+  assert.ok(
+    services.indexOf('Automatically include future services') <
+      services.indexOf('Toggle all'),
+  )
+  assert.ok(services.indexOf('Toggle all') < services.indexOf('tuiGroup'))
+
+  const versionHistory = automaticComponent.slice(
+    servicesEnd,
+    automaticComponent.indexOf('@if (step() === 3)', servicesEnd),
+  )
+  assert.match(versionHistory, /retentionRules\(\)/)
+  assert.match(versionHistory, /class="duration-field"/)
+  assert.match(versionHistory, /iconStart="@tui\.plus"/)
+  assert.match(
+    automaticComponent,
+    /additionalRules: AutomaticRetentionRule\[\]/,
+  )
 })
 
 test('setup and job-editor summaries use localized labels', () => {
@@ -277,10 +325,8 @@ test('all backup schedules share one selected-job editor', () => {
     advancedComponent,
     /readonly mode = input\.required<'manage' \| 'restore'>\(\)/,
   )
-  assert.match(
-    advancedComponent,
-    /['"]View all backup schedules['"]\s*\|\s*i18n/,
-  )
+  assert.match(advancedComponent, /Add new backup schedule/)
+  assert.doesNotMatch(advancedComponent, /View all backup schedules/)
   assert.match(
     advancedComponent,
     /class="schedule-list"[\s\S]{0,1200}@for \(job of jobs\(\); track job\.id\)[\s\S]{0,700}\(click\)="selectJob\(job\.id\)"/,
@@ -306,8 +352,17 @@ test('all backup schedules share one selected-job editor', () => {
   const services = advancedComponent.slice(servicesStart, servicesEnd)
   assert.match(services, /tuiGroup/)
   assert.match(services, /tuiBlock="m"/)
+  assert.match(services, /Select services/)
+  assert.match(services, /@if \(showServices\(\)\)/)
   assert.match(services, /\[\(ngModel\)\]="form\.includeFuture"/)
+  assert.match(services, /tuiCheckbox[\s\S]{0,220}form\.includeFuture/)
+  assert.match(services, /tuiCheckbox[\s\S]{0,220}togglePackage/)
   assert.match(services, /Automatically include future services/)
+  assert.ok(
+    services.indexOf('Automatically include future services') <
+      services.indexOf('Toggle all'),
+  )
+  assert.ok(services.indexOf('Toggle all') < services.indexOf('tuiGroup'))
 
   const retentionStart = servicesEnd
   const retentionEnd = advancedComponent.indexOf('</form>', retentionStart)
@@ -316,7 +371,9 @@ test('all backup schedules share one selected-job editor', () => {
     advancedComponent,
     /retentionIntervals:[\s\S]{0,160}\['hour', 'day', 'week', 'month', 'custom'\]/,
   )
-  assert.match(retention, /tuiSelect[\s\S]{0,300}retentionIntervals/)
+  assert.match(advancedComponent, /tuiSelect[\s\S]{0,1200}retentionIntervals/)
+  assert.match(retention, /iconStart="@tui\.plus"/)
+  assert.doesNotMatch(retention, /Retention tiers|Add tier|Custom tiers/)
 
   assert.ok(
     advancedComponent.indexOf('Create the first backup now') <
@@ -343,6 +400,43 @@ test('all backup schedules share one selected-job editor', () => {
     advancedComponent,
     /if \(form\.firstBackupNow\)[\s\S]{0,120}runScheduledBackupJob\(\{ id: created\.id \}\)/,
   )
+})
+
+test('multiple automatic jobs expand as a list before an individual editor', () => {
+  assert.match(
+    advancedComponent,
+    /jobs\(\)\.length > 1[\s\S]{0,1200}class="schedule-list"/,
+  )
+  assert.match(
+    advancedComponent,
+    /jobs\(\)\.length > 1 \|\| job\.id !== primaryJobId\(\)[\s\S]{0,1600}Run now/,
+  )
+  assert.match(
+    advancedComponent,
+    /jobs\(\)\.length > 1 \|\| job\.id !== primaryJobId\(\)[\s\S]{0,900}tuiSwitch/,
+  )
+  assert.match(
+    backupsComponent,
+    /jobs\(\)\.length === 1[\s\S]{0,500}simple-switch/,
+  )
+  assert.match(
+    backupsComponent,
+    /jobs\(\)\.length === 1[\s\S]{0,900}Run now/,
+  )
+  const toolbar = advancedComponent.slice(
+    advancedComponent.indexOf('<div class="jobs-toolbar">'),
+    advancedComponent.indexOf('</div>', advancedComponent.indexOf('<div class="jobs-toolbar">')),
+  )
+  assert.doesNotMatch(toolbar, /Automatic backups/)
+})
+
+test('backup settings use primary action buttons and status text can wrap', () => {
+  for (const component of [automaticComponent, advancedComponent]) {
+    assert.doesNotMatch(component, /appearance="secondary"/)
+  }
+  assert.match(statusComponent, /min-height:\s*2rem/)
+  assert.match(statusComponent, /height:\s*auto/)
+  assert.match(statusComponent, /overflow-wrap:\s*anywhere/)
 })
 
 test('hour and minute controls cannot be cleared to null', () => {

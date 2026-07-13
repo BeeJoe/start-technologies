@@ -56,7 +56,7 @@ type Location = MappedBackupTarget<CifsBackupTarget | DiskBackupTarget>
       tuiButton
       class="manage-location"
       type="button"
-      appearance="secondary"
+      appearance="primary"
       iconStart="@tui.plus"
       (click)="manage.emit()"
     >

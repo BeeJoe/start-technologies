@@ -490,6 +490,40 @@ pub struct DirHandle {
     pub entries: crate::directory::Bucket,
 }
 
+fn cursor_for_offset(
+    cursors: &BTreeMap<i64, OsString>,
+    offset: i64,
+) -> BkfsResult<Option<OsString>> {
+    if offset == 0 {
+        return Ok(None);
+    }
+
+    cursors.get(&offset).cloned().map(Some).ok_or_else(|| {
+        BkfsError::wrap_notrace(io::Error::from_raw_os_error(libc::EINVAL))
+    })
+}
+
+#[cfg(test)]
+mod cursor_tests {
+    use super::*;
+
+    #[test]
+    fn directory_cursor_can_be_revisited() {
+        let mut cursors = BTreeMap::new();
+        cursors.insert(21, OsString::from("service-entry"));
+
+        assert_eq!(
+            cursor_for_offset(&cursors, 21).unwrap(),
+            Some(OsString::from("service-entry"))
+        );
+        assert_eq!(
+            cursor_for_offset(&cursors, 21).unwrap(),
+            Some(OsString::from("service-entry"))
+        );
+        assert_eq!(cursors.len(), 1);
+    }
+}
+
 pub struct OverwriteOptions {
     pub gc: bool,
 }
@@ -1264,14 +1298,12 @@ impl Handler {
         }
         // Take the cursor + an O(1) clone of the opendir snapshot, then drop
         // the handle borrow so handle_entry can take &mut self in the loop.
-        let (mut cur, entries) = {
+        let (cur, entries) = {
             let Some(handle) = self.open_dirs.get_mut(&fh) else {
                 return BkfsResult::errno(libc::EACCES); // opened without read perm
             };
-            (
-                handle.cursors.remove(&offset).map(Cow::Owned),
-                handle.entries.clone(),
-            )
+            let cursor = cursor_for_offset(&handle.cursors, offset)?.map(Cow::Owned);
+            (cursor, handle.entries.clone())
         };
 
         let mut range = if let Some(cursor) = cur.as_deref() {
@@ -1305,6 +1337,7 @@ impl Handler {
         };
 
         let mut res: BkfsResult<bool> = Ok(false);
+        let mut cursors = Vec::new();
         for (name, entry) in special
             .into_iter()
             .flatten()
@@ -1315,16 +1348,14 @@ impl Handler {
                 break;
             }
             offset += 1;
-            cur = Some(Cow::Borrowed(name));
+            cursors.push((offset, name.to_owned()));
         }
 
         let Some(handle) = self.open_dirs.get_mut(&fh) else {
             return BkfsResult::errno(libc::EACCES); // opened without read perm
         };
 
-        if let Some(cur) = cur {
-            handle.cursors.insert(offset, cur.into_owned());
-        }
+        handle.cursors.extend(cursors);
 
         res?;
 

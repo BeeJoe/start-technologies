@@ -30,6 +30,7 @@ import {
 import {
   TuiBlock,
   TuiChevron,
+  TuiInputNumber,
   TuiPassword,
   TuiSelect,
   TuiSwitch,
@@ -81,8 +82,14 @@ interface AutomaticEditor {
   keepAdditional: boolean
   interval: BackupRetentionInterval
   duration: number
+  additionalRules: AutomaticRetentionRule[]
   password: string
   firstBackupNow: boolean
+}
+
+interface AutomaticRetentionRule {
+  interval: BackupRetentionInterval
+  duration: number
 }
 
 @Component({
@@ -189,7 +196,7 @@ interface AutomaticEditor {
             tuiButton
             type="button"
             size="s"
-            appearance="secondary"
+            appearance="primary"
             (click)="showSchedule.set(!showSchedule())"
           >
             {{ (showSchedule() ? 'Hide schedule' : 'Change schedule') | i18n }}
@@ -266,40 +273,14 @@ interface AutomaticEditor {
               tuiButton
               type="button"
               size="s"
-              appearance="secondary"
+              appearance="primary"
               (click)="showServices.set(!showServices())"
             >
-              {{ (showServices() ? 'Done' : 'Customize') | i18n }}
+              {{ (showServices() ? 'Done' : 'Select services') | i18n }}
             </button>
           </div>
 
           @if (showServices()) {
-            <div tuiGroup orientation="vertical" [collapsed]="true">
-              @for (service of editor.services; track service.id) {
-                <label tuiBlock="m">
-                  <input
-                    tuiCheckbox
-                    type="checkbox"
-                    [(ngModel)]="service.checked"
-                  />
-                  <img alt="" [src]="service.icon" />
-                  <span tuiTitle>
-                    <b>{{ service.title }}</b>
-                  </span>
-                </label>
-              }
-            </div>
-            <label class="checkbox-row toggle-all">
-              <input
-                tuiCheckbox
-                type="checkbox"
-                [ngModel]="allServicesSelected()"
-                (ngModelChange)="setAllServices($event)"
-              />
-              <span tuiTitle>
-                <b>{{ 'Toggle all' | i18n }}</b>
-              </span>
-            </label>
             <label class="checkbox-row include-future">
               <input
                 tuiCheckbox
@@ -316,6 +297,32 @@ interface AutomaticEditor {
                 </span>
               </span>
             </label>
+            <label class="checkbox-row toggle-all">
+              <input
+                tuiCheckbox
+                type="checkbox"
+                [ngModel]="allServicesSelected()"
+                (ngModelChange)="setAllServices($event)"
+              />
+              <span tuiTitle>
+                <b>{{ 'Toggle all' | i18n }}</b>
+              </span>
+            </label>
+            <div tuiGroup orientation="vertical" [collapsed]="true">
+              @for (service of editor.services; track service.id) {
+                <label tuiBlock="m">
+                  <input
+                    tuiCheckbox
+                    type="checkbox"
+                    [(ngModel)]="service.checked"
+                  />
+                  <img alt="" [src]="service.icon" />
+                  <span tuiTitle>
+                    <b>{{ service.title }}</b>
+                  </span>
+                </label>
+              }
+            </div>
           }
 
           <div class="setting-row">
@@ -342,22 +349,51 @@ interface AutomaticEditor {
           </div>
 
           @if (editor.keepAdditional) {
-            <div class="retention-rule">
-              <span>{{ 'Keep one backup every' | i18n }}</span>
-              <select [(ngModel)]="editor.interval">
-                <option value="hour">{{ 'Hour' | i18n }}</option>
-                <option value="day">{{ 'Day' | i18n }}</option>
-                <option value="week">{{ 'Week' | i18n }}</option>
-                <option value="month">{{ 'Month' | i18n }}</option>
-              </select>
-              <span>{{ 'for' | i18n }}</span>
-              <input
-                type="number"
-                min="1"
-                max="365"
-                [(ngModel)]="editor.duration"
-              />
-              <span>{{ retentionPeriod() | i18n }}</span>
+            <div class="retention-rules">
+              @for (rule of retentionRules(); track $index) {
+                <div class="retention-rule">
+                  <span>{{ 'Keep one backup every' | i18n }}</span>
+                  <select [(ngModel)]="rule.interval">
+                    <option value="hour">{{ 'Hour' | i18n }}</option>
+                    <option value="day">{{ 'Day' | i18n }}</option>
+                    <option value="week">{{ 'Week' | i18n }}</option>
+                    <option value="month">{{ 'Month' | i18n }}</option>
+                  </select>
+                  <span>{{ 'for' | i18n }}</span>
+                  <tui-textfield class="duration-field">
+                    <label tuiLabel>{{ 'Duration' | i18n }}</label>
+                    <input
+                      tuiInputNumber
+                      [min]="1"
+                      [max]="365"
+                      [(ngModel)]="rule.duration"
+                    />
+                  </tui-textfield>
+                  <span>{{ retentionPeriod(rule) | i18n }}</span>
+                  @if ($index > 0) {
+                    <button
+                      tuiButton
+                      type="button"
+                      size="xs"
+                      appearance="flat-destructive"
+                      (click)="editor.additionalRules.splice($index - 1, 1)"
+                    >
+                      {{ 'Remove' | i18n }}
+                    </button>
+                  }
+                </div>
+              }
+              <button
+                tuiIconButton
+                type="button"
+                size="s"
+                appearance="primary"
+                iconStart="@tui.plus"
+                [attr.aria-label]="'Add' | i18n"
+                (click)="editor.additionalRules.push(newRetentionRule())"
+              >
+                {{ 'Add' | i18n }}
+              </button>
             </div>
             <div tuiNotification appearance="warning">
               {{
@@ -453,7 +489,7 @@ interface AutomaticEditor {
 
       <footer class="wizard-actions">
         @if (step() > 1) {
-          <button tuiButton appearance="secondary" (click)="previous()">
+          <button tuiButton appearance="primary" (click)="previous()">
             {{ 'Back' | i18n }}
           </button>
         }
@@ -662,9 +698,24 @@ interface AutomaticEditor {
 
     .retention-rule {
       display: grid;
-      grid-template-columns: auto minmax(7rem, 1fr) auto 6rem auto;
+      grid-template-columns:
+        auto minmax(9rem, 1fr) auto minmax(10rem, 0.75fr) auto auto;
       gap: 0.5rem;
       align-items: center;
+      width: 100%;
+      min-width: 0;
+    }
+
+    .retention-rules {
+      display: grid;
+      justify-items: start;
+      gap: 0.75rem;
+      width: 100%;
+      min-width: 0;
+    }
+
+    .duration-field {
+      min-width: 10rem;
     }
 
     .inline-switch {
@@ -829,6 +880,7 @@ interface AutomaticEditor {
     TuiGroup,
     TuiIcon,
     TuiInput,
+    TuiInputNumber,
     TuiNotification,
     TuiPassword,
     TuiSelect,
@@ -941,6 +993,7 @@ export default class AutomaticBackupsComponent implements OnInit {
       keepAdditional: false,
       interval: 'day',
       duration: 7,
+      additionalRules: [],
       password: '',
       firstBackupNow: true,
     }
@@ -978,7 +1031,10 @@ export default class AutomaticBackupsComponent implements OnInit {
     if (this.step() === 1) return !!this.targetId()
     if (this.step() === 2) {
       this.ensureServices()
-      return this.editor.services.some(service => service.checked)
+      return (
+        this.validSchedule() &&
+        this.editor.services.some(service => service.checked)
+      )
     }
     return true
   }
@@ -986,6 +1042,7 @@ export default class AutomaticBackupsComponent implements OnInit {
   canSaveSetup(): boolean {
     return (
       !!this.editor.password &&
+      this.validSchedule() &&
       !this.capacityBlocked() &&
       this.editor.services.some(service => service.checked)
     )
@@ -1030,14 +1087,39 @@ export default class AutomaticBackupsComponent implements OnInit {
 
   retentionSummary(): string {
     const every = this.i18n.transform('Keep one backup every')
-    const interval = this.i18n.transform(this.editor.interval)
     const forLabel = this.i18n.transform('for')
-    const period = this.i18n.transform(this.retentionPeriod())
-    return `${every} ${interval} ${forLabel} ${this.editor.duration} ${period}`
+    return this.retentionRules()
+      .map(rule => {
+        const interval = this.i18n.transform(rule.interval)
+        const period = this.i18n.transform(this.retentionPeriod(rule))
+        return `${every} ${interval} ${forLabel} ${rule.duration} ${period}`
+      })
+      .join(', ')
   }
 
-  retentionPeriod() {
-    return retentionPeriodLabel(this.editor.interval, this.editor.duration)
+  retentionPeriod(rule: AutomaticRetentionRule) {
+    return retentionPeriodLabel(rule.interval, rule.duration)
+  }
+
+  retentionRules(): AutomaticRetentionRule[] {
+    return [this.editor, ...this.editor.additionalRules]
+  }
+
+  newRetentionRule(): AutomaticRetentionRule {
+    return { interval: 'day', duration: 7 }
+  }
+
+  private validSchedule(): boolean {
+    const validMinute =
+      Number.isInteger(this.editor.minute) &&
+      this.editor.minute >= 0 &&
+      this.editor.minute <= 59
+    const validHour =
+      this.editor.frequency === 'hourly' ||
+      (Number.isInteger(this.editor.hour) &&
+        this.editor.hour >= 0 &&
+        this.editor.hour <= 23)
+    return validMinute && validHour
   }
 
   selectedServiceSummary(): string {
@@ -1073,14 +1155,14 @@ export default class AutomaticBackupsComponent implements OnInit {
 
   private policy(): T.RetentionPolicy {
     if (!this.editor.keepAdditional) return { tiers: [] }
-    const intervalSeconds = retentionIntervalSeconds(this.editor.interval)
     return {
-      tiers: [
-        {
+      tiers: this.retentionRules().map(rule => {
+        const intervalSeconds = retentionIntervalSeconds(rule.interval)
+        return {
           intervalSeconds,
-          coverageSeconds: intervalSeconds * Math.max(1, this.editor.duration),
-        },
-      ],
+          coverageSeconds: intervalSeconds * Math.max(1, rule.duration),
+        }
+      }),
     }
   }
 

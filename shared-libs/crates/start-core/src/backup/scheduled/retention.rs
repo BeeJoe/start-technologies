@@ -157,7 +157,7 @@ impl RetentionPolicy {
 }
 
 /// Checks that the union of enabled jobs feeding a shared history has at least
-/// one attempt in every bucket of the finest retention tier. A full leap-year
+/// one attempt in every bucket of the finest version-history rule. A full leap-year
 /// cycle covers weekdays, month lengths, and both DST transitions.
 pub fn validate_combined_schedule_coverage(
     schedules: &[Schedule],

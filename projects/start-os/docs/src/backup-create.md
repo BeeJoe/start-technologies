@@ -52,8 +52,11 @@ one page. Select a card to expand it; opening another card closes the current
 one.
 
 - **Automatic backups** creates or manages scheduled backups. The collapsed
-  card summarizes the primary schedule. Expand it to use **Run now** or change
-  the schedule, service selection, retention settings, and advanced schedules.
+  card summarizes the primary schedule. A single job keeps its On switch and
+  **Run now** action at card level. Multiple jobs expand first into a jobs list;
+  select one to reveal its controls and editor, or select **Add new backup
+  schedule**. Service selection is collapsed under **Select services** by
+  default.
 - **Create a manual backup** creates a one-time backup for selected services.
 - **Restore from a backup** chooses a manual or automatic checkpoint.
 - **Manage backup locations** adds or repairs physical drives and network
@@ -99,7 +102,7 @@ are not deleted.
 ## Automatic Backups
 
 Automatic backups protect selected services on hourly, daily, weekly, or
-advanced schedules. They support future-service selection, version history,
+multiple schedules. They support future-service selection, version history,
 capacity estimates, archived checkpoints, target recovery, and per-service
 restore choices while keeping the latest manual checkpoint separate.
 

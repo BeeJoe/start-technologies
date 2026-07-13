@@ -566,7 +566,7 @@ assertRule(
   { 'align-items': 'stretch', 'flex-direction': 'column' },
   phone,
 )
-for (const selector of ['.tier', '.override']) {
+for (const selector of ['.retention-rule', '.custom-rule-fields', '.override']) {
   assertRule(
     advanced,
     advancedFile,
@@ -598,7 +598,7 @@ for (const [sheet, file] of [
   [physical, physicalFile],
 ]) {
   assertRule(sheet, file, 'td:first-child:not(.empty-state)', {
-    width: '13rem',
+    width: '15rem',
   })
 }
 

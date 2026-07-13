@@ -24,10 +24,15 @@ import { TuiIcon } from '@taiga-ui/core'
   `,
   styles: `
     :host {
-      height: 2rem;
       display: flex;
       align-items: center;
       gap: 0.25rem;
+      min-height: 2rem;
+      height: auto;
+      padding-block: 0.25rem;
+      line-height: 1.25;
+      overflow-wrap: anywhere;
+      white-space: normal;
     }
 
     tui-icon {
@@ -36,9 +41,6 @@ import { TuiIcon } from '@taiga-ui/core'
       text-align: center;
     }
 
-    :host-context(tui-root._mobile) {
-      height: auto;
-    }
   `,
   imports: [TuiIcon, i18nPipe],
 })

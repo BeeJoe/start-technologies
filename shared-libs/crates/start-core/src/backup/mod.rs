@@ -136,6 +136,13 @@ pub fn package_backup<C: Context>() -> ParentHandler<C> {
                 .with_call_remote::<CliContext>(),
         )
         .subcommand(
+            "restore-mixed",
+            from_fn_async(restore::restore_selection_cli)
+                .no_display()
+                .with_about("about.restore-mixed-backup-checkpoints")
+                .with_call_remote::<CliContext>(),
+        )
+        .subcommand(
             "restore-scheduled",
             from_fn_async(restore::restore_scheduled_packages_rpc).no_cli(),
         )

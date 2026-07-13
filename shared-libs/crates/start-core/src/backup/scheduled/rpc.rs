@@ -181,7 +181,7 @@ pub struct EstimateBackupCapacityCliParams {
         help = "help.arg.automatic-backup-excluded-package-ids"
     )]
     pub exclude_package_ids: Vec<PackageId>,
-    /// Retention tier INTERVAL:COVERAGE; accepts s, m, h, d, or w suffixes and may repeat.
+    /// Version-history rule INTERVAL:COVERAGE; accepts s, m, h, d, or w suffixes and may repeat.
     #[arg(
         long = "keep-tier",
         value_name = "INTERVAL:COVERAGE",
@@ -189,7 +189,7 @@ pub struct EstimateBackupCapacityCliParams {
         help = "help.arg.automatic-backup-retention-tier"
     )]
     pub retention_tiers: Vec<RetentionTier>,
-    /// Per-service retention tier PACKAGE_ID=INTERVAL:COVERAGE; may repeat.
+    /// Per-service version-history rule PACKAGE_ID=INTERVAL:COVERAGE; may repeat.
     #[arg(
         long = "service-keep-tier",
         value_name = "PACKAGE_ID=INTERVAL:COVERAGE",
@@ -806,7 +806,7 @@ pub struct PreviewRetentionPolicyCliParams {
     /// Service package ID whose automatic checkpoints should use this policy.
     #[arg(help = "help.arg.package-id")]
     pub package_id: PackageId,
-    /// Retention tier INTERVAL:COVERAGE; accepts s, m, h, d, or w suffixes and may repeat.
+    /// Version-history rule INTERVAL:COVERAGE; accepts s, m, h, d, or w suffixes and may repeat.
     #[arg(
         long = "keep-tier",
         value_name = "INTERVAL:COVERAGE",
@@ -866,7 +866,7 @@ pub struct ApplyRetentionPolicyCliParams {
     /// Service package ID whose automatic checkpoints should use this policy.
     #[arg(help = "help.arg.package-id")]
     pub package_id: PackageId,
-    /// Retention tier INTERVAL:COVERAGE; accepts s, m, h, d, or w suffixes and may repeat.
+    /// Version-history rule INTERVAL:COVERAGE; accepts s, m, h, d, or w suffixes and may repeat.
     #[arg(
         long = "keep-tier",
         value_name = "INTERVAL:COVERAGE",
@@ -1050,7 +1050,7 @@ pub struct CreateBackupJobParams {
 }
 
 /// CLI-friendly automatic backup creation. Omitting both service filters means
-/// every current and future service. Omitting retention tiers means latest-only.
+/// every current and future service. Omitting version-history rules means latest-only.
 #[derive(Deserialize, Serialize, Parser)]
 #[group(skip)]
 #[serde(rename_all = "camelCase")]
@@ -1095,7 +1095,7 @@ pub struct AddBackupJobCliParams {
         help = "help.arg.automatic-backup-excluded-package-ids"
     )]
     pub exclude_package_ids: Vec<PackageId>,
-    /// Retention tier INTERVAL:COVERAGE; accepts s, m, h, d, or w suffixes and may repeat.
+    /// Version-history rule INTERVAL:COVERAGE; accepts s, m, h, d, or w suffixes and may repeat.
     #[arg(
         long = "keep-tier",
         value_name = "INTERVAL:COVERAGE",
@@ -1103,7 +1103,7 @@ pub struct AddBackupJobCliParams {
         help = "help.arg.automatic-backup-retention-tier"
     )]
     pub retention_tiers: Vec<RetentionTier>,
-    /// Per-service retention tier PACKAGE_ID=INTERVAL:COVERAGE; may repeat.
+    /// Per-service version-history rule PACKAGE_ID=INTERVAL:COVERAGE; may repeat.
     #[arg(
         long = "service-keep-tier",
         value_name = "PACKAGE_ID=INTERVAL:COVERAGE",
@@ -1211,7 +1211,7 @@ pub struct EditBackupJobCliParams {
         help = "help.arg.automatic-backup-excluded-package-ids"
     )]
     pub exclude_package_ids: Vec<PackageId>,
-    /// Retention tier INTERVAL:COVERAGE; accepts s, m, h, d, or w suffixes and may repeat.
+    /// Version-history rule INTERVAL:COVERAGE; accepts s, m, h, d, or w suffixes and may repeat.
     #[arg(
         long = "keep-tier",
         value_name = "INTERVAL:COVERAGE",
@@ -1223,7 +1223,7 @@ pub struct EditBackupJobCliParams {
     /// Keep only the latest automatic checkpoint.
     #[arg(long, help = "help.arg.automatic-backup-latest-only")]
     pub latest_only: bool,
-    /// Set per-service retention tier PACKAGE_ID=INTERVAL:COVERAGE; may repeat.
+    /// Set per-service version-history rule PACKAGE_ID=INTERVAL:COVERAGE; may repeat.
     #[arg(
         long = "service-keep-tier",
         value_name = "PACKAGE_ID=INTERVAL:COVERAGE",
@@ -1342,7 +1342,9 @@ pub async fn edit_cli(
 fn parse_retention_tier(value: &str) -> Result<RetentionTier, String> {
     let (interval, coverage) = value
         .split_once(':')
-        .ok_or_else(|| "retention tier must use INTERVAL:COVERAGE, for example 1d:7d".to_owned())?;
+        .ok_or_else(|| {
+            "version-history rule must use INTERVAL:COVERAGE, for example 1d:7d".to_owned()
+        })?;
     let tier = RetentionTier {
         interval_seconds: parse_duration_seconds(interval)?,
         coverage_seconds: parse_duration_seconds(coverage)?,

@@ -313,6 +313,12 @@ async fn run_job_inner(
         let started = Instant::now();
         let mut phase = phases.remove(package_id).expect("backup phase exists");
         phase.start();
+        tracing::info!(
+            job_id = %job.id,
+            run_id = %run.id,
+            service = %package_id,
+            "automatic backup service started"
+        );
         let report = if let Some(service) = &*ctx.services.get(package_id).await {
             match scheduled_guard.staging(&run.id, package_id).await {
                 Ok(staging) => match service.backup(staging, phase).await {
@@ -355,6 +361,12 @@ async fn run_job_inner(
                                 ErrorKind::Incoherent,
                             )
                         })?;
+                        tracing::info!(
+                            job_id = %job.id,
+                            run_id = %run.id,
+                            service = %package_id,
+                            "automatic backup service snapshot promotion started"
+                        );
                         let promotion = owned
                             .promote(&run.id, snapshot, history.timezone, history.policy)
                             .await;
@@ -409,6 +421,27 @@ async fn run_job_inner(
                 measured_at: None,
             }
         };
+        if let Some(error) = report.error.as_deref() {
+            tracing::warn!(
+                job_id = %job.id,
+                run_id = %run.id,
+                service = %package_id,
+                duration_ms = report.duration_ms,
+                error,
+                "automatic backup service failed"
+            );
+        } else {
+            tracing::info!(
+                job_id = %job.id,
+                run_id = %run.id,
+                service = %package_id,
+                duration_ms = report.duration_ms,
+                logical_size = ?report.logical_size,
+                physical_size = ?report.physical_size,
+                changed_bytes = ?report.changed_bytes,
+                "automatic backup service completed"
+            );
+        }
         run.services.insert(package_id.clone(), report);
     }
     progress.complete();

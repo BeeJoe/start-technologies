@@ -120,7 +120,7 @@ const WEEKDAYS = [
           </span>
         </button>
 
-        @if (jobs().length) {
+        @if (jobs().length === 1) {
           <div class="card-actions">
             <label class="simple-switch">
               <input
@@ -151,7 +151,7 @@ const WEEKDAYS = [
 
       @if (expanded() === 'automatic') {
         <div class="card-body">
-          @if (jobs().length) {
+          @if (jobs().length === 1) {
             <div class="expanded-actions">
               <button
                 tuiButton

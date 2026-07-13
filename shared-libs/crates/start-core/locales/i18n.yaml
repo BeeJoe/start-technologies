@@ -1711,11 +1711,11 @@ backup.scheduled.invalid-review-decision:
   pl_PL: "Decyzja musi używać formatu JOB_ID=add lub JOB_ID=skip"
 
 backup.scheduled.invalid-retention-tiers:
-  en_US: "Retention tiers must have progressively coarser intervals and increasing coverage"
-  de_DE: "Aufbewahrungsstufen müssen zunehmend gröbere Intervalle und größere Zeiträume haben"
-  es_ES: "Los niveles de retención deben tener intervalos progresivamente mayores y cobertura creciente"
-  fr_FR: "Les niveaux de rétention doivent avoir des intervalles progressivement plus larges et une couverture croissante"
-  pl_PL: "Poziomy retencji muszą mieć coraz większe interwały i rosnący zakres"
+  en_US: "Version-history rules must have progressively coarser intervals and increasing coverage"
+  de_DE: "Regeln für den Versionsverlauf müssen zunehmend größere Intervalle und Zeiträume haben"
+  es_ES: "Las reglas del historial de versiones deben tener intervalos progresivamente mayores y una cobertura creciente"
+  fr_FR: "Les règles d'historique des versions doivent avoir des intervalles progressivement plus larges et une couverture croissante"
+  pl_PL: "Reguły historii wersji muszą mieć coraz większe interwały i rosnący zakres"
 
 backup.scheduled.insufficient-schedule-coverage:
   en_US: "Enabled schedules do not cover every finest retention bucket"
@@ -4291,11 +4291,11 @@ help.arg.automatic-backup-package-ids:
   pl_PL: "Identyfikatory pakietów uwzględnionych w automatycznej kopii"
 
 help.arg.automatic-backup-retention-tier:
-  en_US: "Retention tier INTERVAL:COVERAGE; accepts s, m, h, d, or w and may repeat"
-  de_DE: "Aufbewahrungsstufe INTERVAL:COVERAGE; s, m, h, d oder w; wiederholbar"
-  es_ES: "Nivel de retención INTERVAL:COVERAGE; admite s, m, h, d o w y se puede repetir"
-  fr_FR: "Niveau de rétention INTERVAL:COVERAGE ; accepte s, m, h, d ou w et peut être répété"
-  pl_PL: "Poziom retencji INTERVAL:COVERAGE; obsługuje s, m, h, d lub w i może się powtarzać"
+  en_US: "Version-history rule INTERVAL:COVERAGE; accepts s, m, h, d, or w and may repeat"
+  de_DE: "Versionsverlaufsregel INTERVAL:COVERAGE; s, m, h, d oder w; wiederholbar"
+  es_ES: "Regla de historial INTERVAL:COVERAGE; admite s, m, h, d o w y se puede repetir"
+  fr_FR: "Règle d'historique INTERVAL:COVERAGE ; accepte s, m, h, d ou w et peut être répétée"
+  pl_PL: "Reguła historii INTERVAL:COVERAGE; obsługuje s, m, h, d lub w i może się powtarzać"
 
 help.arg.automatic-backup-review-decision:
   en_US: "Decision as JOB_ID=add or JOB_ID=skip; repeat for every affected job"
@@ -6685,6 +6685,13 @@ about.restore-automatic-backup-checkpoints:
   es_ES: "Restaurar servicios desde puntos seleccionados de copias automáticas"
   fr_FR: "Restaurer des services depuis des points de sauvegarde automatique sélectionnés"
   pl_PL: "Przywróć usługi z wybranych punktów automatycznych kopii zapasowych"
+
+about.restore-mixed-backup-checkpoints:
+  en_US: "Restore one selection of manual and automatic backup checkpoints"
+  de_DE: "Eine Auswahl manueller und automatischer Sicherungspunkte wiederherstellen"
+  es_ES: "Restaurar una selección de puntos manuales y automáticos"
+  fr_FR: "Restaurer une sélection de points de sauvegarde manuels et automatiques"
+  pl_PL: "Przywróć wybrane ręczne i automatyczne punkty kopii zapasowych"
 
 about.restore-packages-from-backup:
   en_US: "Restore packages from backup"

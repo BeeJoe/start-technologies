@@ -41,7 +41,7 @@ export interface DisableAutomaticDecision {
     </label>
 
     <footer class="actions">
-      <button tuiButton size="s" appearance="secondary" (click)="cancel()">
+      <button tuiButton size="s" appearance="primary" (click)="cancel()">
         {{ 'Cancel' | i18n }}
       </button>
       <button

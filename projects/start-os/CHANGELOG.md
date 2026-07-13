@@ -14,20 +14,21 @@ file tracks notable changes since the move to the monorepo.
 
 - **Automatic backups.** StartOS can protect selected current and future
   services on one or more hourly, daily, or weekly schedules; estimate required
-  capacity; retain tiered version history; preserve unreferenced checkpoints as
-  archives; recover or reassign unavailable locations; and restore a different
-  manual or automatic checkpoint for each service. Backup activity, actionable
-  notifications, and new-service selection reviews keep the scheduled lifecycle
-  visible and recoverable.
+  capacity; retain configurable version history; preserve unreferenced
+  checkpoints as archives; recover or reassign unavailable locations; and
+  restore a different manual or automatic checkpoint for each service. Backup
+  activity, actionable notifications, and new-service selection reviews keep
+  the scheduled lifecycle visible and recoverable.
 
 ### Changed
 
-- **Unified automatic schedule editing.** **View all backup schedules** now
-  opens a compact job list with an add action. Selecting the default schedule,
-  another job, or a new schedule uses one shared editor identified by the job
-  name while retaining target recovery, custom tiers, per-service overrides,
-  and immediate first-run controls. Hour and minute choices can no longer be
-  cleared to an invalid null value.
+- **Unified automatic schedule editing.** Multiple jobs now expand first into a
+  compact jobs list, and selecting a job opens the shared editor identified by
+  that job's name. **Add new backup schedule** opens the same editor for a new
+  job. Per-job On and **Run now** controls appear with the selected job, service
+  selection is collapsed by default, and repeated **Keep one backup every**
+  rules replace separate interval-and-coverage settings. Hour and minute choices
+  can no longer be cleared to an invalid null value.
 - **Simplified Automatic Backups.** The expanded card now uses a flat settings
   layout, keeps **Run now** with the detailed actions, and leaves checkpoint
   browsing and restore actions in the dedicated **Backup history** and restore
@@ -36,14 +37,21 @@ file tracks notable changes since the move to the monorepo.
   master-password field after **Create the first backup now**, accepts Enter to
   turn automatic backups on, and provides a show/hide-password control.
   Version history now offers hour, day, week, and month intervals (day remains
-  the default) and labels the duration with the selected singular or plural
-  unit.
+  the default), labels the duration with the selected singular or plural unit,
+  and lets additional rules be added with a plus button.
 - **Automatic backup CLI coverage.** `start-cli` now manages automatic jobs,
   capacity estimates, activity, checkpoint history, target recovery,
   per-service retention overrides, new-service reviews, safe retention-policy
-  changes, and selected automatic-checkpoint restores.
+  changes, selected automatic-checkpoint restores, and mixed manual/automatic
+  restore selections matching the UI.
 
 ### Fixed
+
+- **Automatic backup directory traversal.** `backup-fs` now preserves every
+  returned directory cursor and rejects unknown nonzero cursors instead of
+  restarting a listing. Snapshot promotion no longer loops over the same
+  directory indefinitely at partial progress, and service-level OS logs show
+  where each automatic backup is running or failed.
 
 - **Backup password visibility.** Master-password fields in automatic backup
   workflows now show exactly one eye control at a time, matching the manual
@@ -56,8 +64,9 @@ file tracks notable changes since the move to the monorepo.
   drive states, and compact destructive actions readable without overlap.
   Backup-location rows now consistently place the icon and name on the left,
   the address or device path on the right, and center the no-drive state.
-  Status columns are wider so **No backups found** remains readable, and the
-  future-services checkbox aligns with the service and **Toggle all** controls.
+  Status columns are wider and wrap naturally so **No StartOS backups
+  detected** remains readable. The future-services and **Toggle all**
+  checkboxes are aligned above the individual service checkboxes.
   Manage-backup network locations keep the location name and address together
   on mobile, moving the complete address to the next line when necessary
   instead of shrinking and clipping it or splitting names and IP addresses.

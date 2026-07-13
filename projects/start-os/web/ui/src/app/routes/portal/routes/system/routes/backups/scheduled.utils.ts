@@ -160,7 +160,7 @@ export function parseBackupRetentionTier(
   }
 }
 
-/** Serializes the primary advanced-retention controls without normalizing custom tiers. */
+/** Serializes the primary version-history controls without normalizing custom rules. */
 export function serializeBackupRetentionTier(
   editor: BackupRetentionTierEditor,
 ): T.RetentionTier {

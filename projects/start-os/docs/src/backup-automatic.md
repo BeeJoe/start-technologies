@@ -19,13 +19,15 @@ Backups`.
    captures the timezone of the device used for setup, so the displayed local
    time remains meaningful through daylight-saving changes.
 1. Choose the services to protect. All current services are selected by
-   default, and **Automatically include future services** keeps later installs
-   protected. You can instead keep a fixed selection or exclude individual
-   services.
+   default. Expand **Select services** to place **Automatically include future
+   services** and **Toggle all** above the service list. The
+   section stays collapsed when you are not changing the selection.
 1. Choose version-history settings. The safe storage default keeps only the
    latest automatic checkpoint. **Keep additional versions** can retain one
    version per hour, day, week, or month for the duration you select; day is the
-   default interval.
+   default interval. Select the plus button below **Keep one backup every** to
+   add another version-history rule with the same frequency and duration
+   controls.
 1. Review the estimated storage, decide whether to **Create the first backup
    now**, and enter the master password. The password field follows that choice;
    use its eye icon to check what you typed. Select **Turn on automatic
@@ -37,16 +39,16 @@ password on existing backups.
 
 ## Schedules and Service Selection
 
-The main **Automatic backups** card shows the selected schedule name, its next
-run, and whether it needs attention. Expand it to change the schedule and
-services or select **Run now**.
+With one job, the main **Automatic backups** card keeps the On switch and **Run
+now** action at card level. With multiple jobs, expanding the card first shows
+only the jobs list. Select a job to expand its editor and reveal that job's On
+switch and **Run now** action. Select it again to collapse it.
 
-Select **View all backup schedules** to open the schedule list. Choose any job
-to load it into the same editor used by the default schedule, or select **Create
-automatic schedule** to configure a new job in that editor. Each job can use a
-different exact time, backup location, service selection, custom retention
-tier, or per-service retention override. StartOS validates enabled schedules
-together so their frequency can support the retention policy they feed.
+Select **Add new backup schedule** to configure another job in the same editor.
+Each job can use a different exact time, backup location, service selection,
+version-history rules, or per-service version-history overrides. StartOS
+validates enabled schedules together so their frequency can support the
+version history they feed.
 
 When a selective schedule does not automatically include future services,
 StartOS asks whether a newly installed service should be added to each affected
@@ -78,10 +80,10 @@ Capacity estimates separate the space used or projected for:
 - staging for the next run.
 
 **Backup history** shows active and archived automatic checkpoints by service
-and location. A retention policy shared by several schedules cannot be changed
-silently: StartOS previews the checkpoints that would be removed, estimates the
-space reclaimed, names affected jobs, and requires confirmation of that exact
-set before applying the change.
+and location. Version-history settings shared by several schedules cannot be
+changed silently: StartOS previews the checkpoints that would be removed,
+estimates the space reclaimed, names affected jobs, and requires confirmation
+of that exact set before applying the change.
 
 Changing a job to another location does not copy its existing checkpoints. They
 remain archived on the original location, and the next run begins history on
@@ -125,9 +127,11 @@ explain the next action:
 - **Backup Selection Requires Review** — decide whether a newly installed
   service belongs in each selective job.
 
-For deeper troubleshooting, `start-cli server logs` shows structured
-**automatic backup started**, **automatic backup completed**, and **automatic
-backup run failed** entries. These include useful identifiers, the job and
-location names, trigger, run state, and service counts without logging the
-master password. See the [start-cli backup reference](./cli-reference.md#backups)
-for job repair, activity, history, retention, review, and restore commands.
+For deeper troubleshooting, `start-cli server logs` shows structured run-level
+and service-level entries, including **automatic backup service started**,
+**automatic backup service snapshot promotion started**, **automatic backup
+service completed**, and failure details. These include useful identifiers,
+durations, sizes, the job and location names, trigger, run state, and service
+counts without logging the master password. See the [start-cli backup
+reference](./cli-reference.md#backups) for the command corresponding to every
+backup action in the UI.

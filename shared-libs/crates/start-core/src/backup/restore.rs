@@ -91,6 +91,80 @@ pub struct RestoreSelectionParams {
     pub password: Option<String>,
 }
 
+#[derive(Deserialize, Serialize, Parser)]
+#[group(skip)]
+#[serde(rename_all = "camelCase")]
+#[command(rename_all = "kebab-case")]
+pub struct RestoreSelectionCliParams {
+    #[arg(help = "help.arg.backup-target-id")]
+    pub target_id: BackupTargetId,
+    #[arg(long, value_delimiter = ',', help = "help.arg.package-ids")]
+    pub manual_ids: Vec<PackageId>,
+    #[arg(
+        long = "checkpoint",
+        value_name = "PACKAGE_ID=SNAPSHOT_ID",
+        value_parser = super::scheduled::parse_checkpoint_selection,
+        help = "help.arg.automatic-backup-checkpoint-selection"
+    )]
+    pub checkpoints: Vec<(PackageId, ServiceSnapshotId)>,
+    #[arg(long, help = "help.arg.server-id")]
+    pub server_id: Option<String>,
+    #[arg(long, help = "help.arg.backup-password")]
+    pub password: Option<String>,
+}
+
+pub async fn restore_selection_cli(
+    ctx: RpcContext,
+    RestoreSelectionCliParams {
+        target_id,
+        manual_ids,
+        checkpoints,
+        server_id,
+        password,
+    }: RestoreSelectionCliParams,
+) -> Result<(), Error> {
+    restore_selection_rpc(
+        ctx,
+        RestoreSelectionParams {
+            target_id,
+            manual_ids,
+            snapshots: checkpoints.into_iter().collect(),
+            server_id,
+            password,
+        },
+    )
+    .await
+}
+
+#[cfg(test)]
+mod cli_tests {
+    use super::*;
+
+    #[test]
+    fn mixed_restore_cli_accepts_manual_and_automatic_selections() {
+        let snapshot_id = ServiceSnapshotId::new();
+        let params = RestoreSelectionCliParams::try_parse_from(vec![
+            "restore-mixed".to_owned(),
+            "cifs-7".to_owned(),
+            "--manual-ids".to_owned(),
+            "bitcoind,lnd".to_owned(),
+            "--checkpoint".to_owned(),
+            format!("core-lightning={snapshot_id}"),
+            "--password".to_owned(),
+            "secret".to_owned(),
+        ])
+        .unwrap();
+
+        assert_eq!(params.target_id, BackupTargetId::Cifs { id: 7 });
+        assert_eq!(params.manual_ids.len(), 2);
+        assert_eq!(
+            params.checkpoints,
+            vec![("core-lightning".parse().unwrap(), snapshot_id)]
+        );
+        assert_eq!(params.password.as_deref(), Some("secret"));
+    }
+}
+
 pub async fn restore_selection_rpc(
     ctx: RpcContext,
     RestoreSelectionParams {
