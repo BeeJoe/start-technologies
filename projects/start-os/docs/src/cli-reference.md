@@ -490,7 +490,7 @@ Every backup action exposed by the StartOS UI has a `start-cli` command:
   decisions use `backup estimate-capacity`, `backup activity`, `backup history`,
   `backup policy`, and `backup review`;
 - manual restores use `package backup restore`, automatic restores use `package
-  backup restore-checkpoint`, and a UI-style selection mixing manual and
+backup restore-checkpoint`, and a UI-style selection mixing manual and
   automatic checkpoints uses `package backup restore-mixed` with repeatable
   `--checkpoint PACKAGE_ID=SNAPSHOT_ID` values and `--manual-ids`.
 

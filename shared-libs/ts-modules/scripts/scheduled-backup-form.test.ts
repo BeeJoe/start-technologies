@@ -419,13 +419,13 @@ test('multiple automatic jobs expand as a list before an individual editor', () 
     backupsComponent,
     /jobs\(\)\.length === 1[\s\S]{0,500}simple-switch/,
   )
-  assert.match(
-    backupsComponent,
-    /jobs\(\)\.length === 1[\s\S]{0,900}Run now/,
-  )
+  assert.match(backupsComponent, /jobs\(\)\.length === 1[\s\S]{0,900}Run now/)
   const toolbar = advancedComponent.slice(
     advancedComponent.indexOf('<div class="jobs-toolbar">'),
-    advancedComponent.indexOf('</div>', advancedComponent.indexOf('<div class="jobs-toolbar">')),
+    advancedComponent.indexOf(
+      '</div>',
+      advancedComponent.indexOf('<div class="jobs-toolbar">'),
+    ),
   )
   assert.doesNotMatch(toolbar, /Automatic backups/)
 })

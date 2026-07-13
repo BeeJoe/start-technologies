@@ -136,7 +136,6 @@ impl Public {
                     restart: None,
                 },
                 unread_notification_count: 0,
-                password_hash: account.password.clone(),
                 pubkey: ssh_key::PublicKey::from(&account.ssh_key)
                     .to_openssh()
                     .unwrap(),
@@ -194,7 +193,6 @@ pub struct ServerInfo {
     pub status_info: ServerStatus,
     #[ts(type = "number")]
     pub unread_notification_count: u64,
-    pub password_hash: String,
     pub pubkey: String,
     pub ca_fingerprint: String,
     #[serde(default)]

@@ -698,8 +698,10 @@ interface AutomaticRetentionRule {
 
     .retention-rule {
       display: grid;
-      grid-template-columns:
-        auto minmax(9rem, 1fr) auto minmax(10rem, 0.75fr) auto auto;
+      grid-template-columns: auto minmax(9rem, 1fr) auto minmax(
+          10rem,
+          0.75fr
+        ) auto auto;
       gap: 0.5rem;
       align-items: center;
       width: 100%;

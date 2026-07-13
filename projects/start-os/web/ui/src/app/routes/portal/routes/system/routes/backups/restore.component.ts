@@ -1,17 +1,11 @@
 import { DatePipe, KeyValuePipe } from '@angular/common'
 import { Component, inject, OnInit } from '@angular/core'
-import {
-  DialogService,
-  ErrorService,
-  i18nPipe,
-  StartOSDiskInfo,
-  TaskService,
-} from '@start9labs/shared'
+import { DialogService, i18nPipe, TaskService } from '@start9labs/shared'
 import { TuiButton } from '@taiga-ui/core'
 import { injectContext, PolymorpheusComponent } from '@taiga-ui/polymorpheus'
+import { filter, switchMap, take } from 'rxjs'
 import { TableComponent } from 'src/app/routes/portal/components/table.component'
 import { ApiService } from 'src/app/services/api/embassy-api.service'
-import { verifyPassword } from 'src/app/utils/verify-password'
 import { BackupContext } from './backup.types'
 import { RECOVER } from './recover.component'
 
@@ -25,11 +19,7 @@ import { RECOVER } from './recover.component'
             <td>{{ server.value.version }}</td>
             <td>{{ server.value.timestamp | date: 'medium' }}</td>
             <td>
-              <button
-                tuiButton
-                size="s"
-                (click)="onClick(server.key, server.value)"
-              >
+              <button tuiButton size="s" (click)="onClick(server.key)">
                 {{ 'Select' | i18n }}
               </button>
             </td>
@@ -68,7 +58,6 @@ export class BackupRestoreComponent implements OnInit {
   private readonly dialog = inject(DialogService)
   private readonly tasks = inject(TaskService)
   private readonly api = inject(ApiService)
-  private readonly errorService = inject(ErrorService)
   private readonly context = injectContext<BackupContext>()
 
   readonly target = this.context.data
@@ -77,11 +66,11 @@ export class BackupRestoreComponent implements OnInit {
   ngOnInit() {
     const server = this.servers[0]
     if (this.servers.length === 1 && server) {
-      queueMicrotask(() => this.onClick(server[0], server[1]))
+      queueMicrotask(() => this.onClick(server[0]))
     }
   }
 
-  onClick(serverId: string, { passwordHash }: StartOSDiskInfo) {
+  onClick(serverId: string) {
     this.dialog
       .openPrompt<string>({
         label: 'Password required',
@@ -93,30 +82,41 @@ export class BackupRestoreComponent implements OnInit {
           useMask: true,
         },
       })
-      .pipe(verifyPassword(passwordHash, e => this.errorService.handleError(e)))
-      .subscribe(password =>
-        this.tasks.run(async () => {
-          const params = { targetId: this.target.id, serverId, password }
-          const [backupInfo, scheduledHistories] = await Promise.all([
-            this.api.getBackupInfo(params).catch(() => ({
-              version: '',
-          timestamp: null,
-          packageBackups: {},
-        })),
-        this.api
-          .discoverScheduledBackupHistories({
-            targetId: this.target.id,
-            serverId,
-            password,
-          })
-              .catch(() => []),
-          ])
-          if (
-            !Object.keys(backupInfo.packageBackups).length &&
+      .pipe(
+        filter(Boolean),
+        switchMap(password => this.decrypt(serverId, password)),
+        filter(Boolean), // a password the server rejects leaves the prompt open to retry
+        take(1),
+      )
+      .subscribe()
+  }
+
+  private decrypt(serverId: string, password: string) {
+    return this.tasks.run(async () => {
+      const params = { targetId: this.target.id, serverId, password }
+      const [manual, automatic] = await Promise.allSettled([
+        this.api.getBackupInfo(params),
+        this.api.discoverScheduledBackupHistories(params),
+      ])
+
+      if (manual.status === 'rejected' && automatic.status === 'rejected') {
+        throw manual.reason
+      }
+
+      const backupInfo =
+        manual.status === 'fulfilled'
+          ? manual.value
+          : { version: '', timestamp: null, packageBackups: {} }
+      const scheduledHistories =
+        automatic.status === 'fulfilled' ? automatic.value : []
+
+      if (
+        !Object.keys(backupInfo.packageBackups).length &&
         !scheduledHistories.length
       ) {
         throw new Error('No restorable checkpoints were found')
       }
+
       const data = {
         targetId: this.target.id,
         serverId,
@@ -125,12 +125,11 @@ export class BackupRestoreComponent implements OnInit {
         password,
       }
 
-          this.context.$implicit.complete()
-          this.dialog
-            .openComponent(RECOVER, { label: 'Select services', data })
-            .subscribe()
-        }, 'Decrypting drive'),
-      )
+      this.context.$implicit.complete()
+      this.dialog
+        .openComponent(RECOVER, { label: 'Select services', data })
+        .subscribe()
+    }, 'Decrypting drive')
   }
 }
 

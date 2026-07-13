@@ -566,7 +566,11 @@ assertRule(
   { 'align-items': 'stretch', 'flex-direction': 'column' },
   phone,
 )
-for (const selector of ['.retention-rule', '.custom-rule-fields', '.override']) {
+for (const selector of [
+  '.retention-rule',
+  '.custom-rule-fields',
+  '.override',
+]) {
   assertRule(
     advanced,
     advancedFile,

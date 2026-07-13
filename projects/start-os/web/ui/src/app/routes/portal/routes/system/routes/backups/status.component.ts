@@ -40,7 +40,6 @@ import { TuiIcon } from '@taiga-ui/core'
       min-width: 1.25rem;
       text-align: center;
     }
-
   `,
   imports: [TuiIcon, i18nPipe],
 })

@@ -265,12 +265,26 @@ pub async fn backup_all(
         .result?;
     let status_guard = BackupStatusGuard::new(ctx.db.clone(), activity_id);
 
+    // `check_password` above already validated the master password, so a rejected
+    // password here can only mean the target's existing backup was encrypted with a
+    // different one. Distinguish it so the client can ask for that password instead of
+    // reporting the master password as wrong.
     let mut backup_guard = BackupMountGuard::mount(
         TmpMountGuard::mount(&fs, BackupWrite).await?,
         &server_id,
         &old_password_decrypted,
     )
-    .await?;
+    .await
+    .map_err(|e| {
+        if e.kind == ErrorKind::IncorrectPassword {
+            Error::new(
+                eyre!("{}", t!("backup.bulk.password-mismatch")),
+                ErrorKind::BackupPasswordMismatch,
+            )
+        } else {
+            e
+        }
+    })?;
     if old_password.is_some() {
         backup_guard.change_password(&password)?;
     }
