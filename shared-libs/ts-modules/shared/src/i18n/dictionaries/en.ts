@@ -1041,4 +1041,5 @@ export const ENGLISH: Record<string, number> = {
   'months': 1153,
   'Add new backup schedule': 1155,
   'Custom': 1156,
+  'Setup progress': 1157,
 }

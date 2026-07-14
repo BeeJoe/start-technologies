@@ -1710,6 +1710,27 @@ backup.scheduled.invalid-checkpoint-selection:
   fr_FR: "La sélection du point doit utiliser PACKAGE_ID=SNAPSHOT_ID"
   pl_PL: "Wybór punktu musi używać formatu PACKAGE_ID=SNAPSHOT_ID"
 
+backup.scheduled.invalid-duration:
+  en_US: "Invalid duration: %{value}"
+  de_DE: "Ungültige Dauer: %{value}"
+  es_ES: "Duración no válida: %{value}"
+  fr_FR: "Durée invalide : %{value}"
+  pl_PL: "Nieprawidłowy czas trwania: %{value}"
+
+backup.scheduled.invalid-duration-unit:
+  en_US: "Invalid duration unit in %{value}; use s, m, h, d, or w"
+  de_DE: "Ungültige Dauereinheit in %{value}; s, m, h, d oder w verwenden"
+  es_ES: "Unidad de duración no válida en %{value}; use s, m, h, d o w"
+  fr_FR: "Unité de durée invalide dans %{value} ; utilisez s, m, h, d ou w"
+  pl_PL: "Nieprawidłowa jednostka czasu w %{value}; użyj s, m, h, d lub w"
+
+backup.scheduled.invalid-version-history-rule:
+  en_US: "Version-history rule must use INTERVAL:COVERAGE, for example 1d:7d"
+  de_DE: "Die Versionsverlaufsregel muss INTERVAL:COVERAGE verwenden, zum Beispiel 1d:7d"
+  es_ES: "La regla del historial debe usar INTERVAL:COVERAGE, por ejemplo 1d:7d"
+  fr_FR: "La règle d'historique doit utiliser INTERVAL:COVERAGE, par exemple 1d:7d"
+  pl_PL: "Reguła historii wersji musi używać INTERVAL:COVERAGE, na przykład 1d:7d"
+
 backup.scheduled.invalid-retention-override:
   en_US: "Per-service retention must use PACKAGE_ID=INTERVAL:COVERAGE"
   de_DE: "Die dienstbezogene Aufbewahrung muss PACKAGE_ID=INTERVAL:COVERAGE verwenden"
@@ -4332,11 +4353,11 @@ help.arg.automatic-backup-service-latest-only:
   pl_PL: "Identyfikatory usług zachowujących tylko najnowszy punkt"
 
 help.arg.automatic-backup-service-retention-tier:
-  en_US: "Per-service tier PACKAGE_ID=INTERVAL:COVERAGE; may repeat"
-  de_DE: "Dienstbezogene Stufe PACKAGE_ID=INTERVAL:COVERAGE; wiederholbar"
-  es_ES: "Nivel por servicio PACKAGE_ID=INTERVAL:COVERAGE; se puede repetir"
-  fr_FR: "Niveau par service PACKAGE_ID=INTERVAL:COVERAGE ; peut être répété"
-  pl_PL: "Poziom usługi PACKAGE_ID=INTERVAL:COVERAGE; może się powtarzać"
+  en_US: "Per-service version-history rule PACKAGE_ID=INTERVAL:COVERAGE; may repeat"
+  de_DE: "Dienstbezogene Versionsverlaufsregel PACKAGE_ID=INTERVAL:COVERAGE; wiederholbar"
+  es_ES: "Regla de historial por servicio PACKAGE_ID=INTERVAL:COVERAGE; se puede repetir"
+  fr_FR: "Règle d'historique par service PACKAGE_ID=INTERVAL:COVERAGE ; peut être répétée"
+  pl_PL: "Reguła historii wersji usługi PACKAGE_ID=INTERVAL:COVERAGE; może się powtarzać"
 
 help.arg.automatic-backup-snapshot-ids:
   en_US: "Automatic checkpoint IDs to delete"

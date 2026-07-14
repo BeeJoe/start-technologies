@@ -1,16 +1,16 @@
 .ie \n(.g .ds Aq \(aq
 .el .ds Aq '
-.TH start-cli-backup-policy-apply 1  "apply "
+.TH start-cli-backup-policy-apply 1  "apply " 
 .SH NAME
 start\-cli\-backup\-policy\-apply \- Apply an automatic backup retention policy
 .SH SYNOPSIS
-\fBstart\-cli backup policy apply\fR [\fB\-\-keep\-tier\fR] [\fB\-\-latest\-only\fR] [\fB\-\-confirm\-removal\fR] [\fB\-\-format\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fITARGET_ID\fR> <\fIPACKAGE_ID\fR>
+\fBstart\-cli backup policy apply\fR [\fB\-\-keep\-rule\fR] [\fB\-\-latest\-only\fR] [\fB\-\-confirm\-removal\fR] [\fB\-\-format\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fITARGET_ID\fR> <\fIPACKAGE_ID\fR> 
 .SH DESCRIPTION
 Apply an automatic backup retention policy
 .SH OPTIONS
 .TP
-\fB\-\-keep\-tier\fR \fI<INTERVAL:COVERAGE>\fR
-Retention tier INTERVAL:COVERAGE; accepts s, m, h, d, or w and may repeat
+\fB\-\-keep\-rule\fR \fI<INTERVAL:COVERAGE>\fR
+Version\-history rule INTERVAL:COVERAGE; accepts s, m, h, d, or w and may repeat
 .TP
 \fB\-\-latest\-only\fR
 Keep only the latest automatic checkpoint

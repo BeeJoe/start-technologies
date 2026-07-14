@@ -79,6 +79,7 @@ npm run check:ui       # or a single project (check:shared / check:marketplace /
 ```
 
 `npm run check:i18n` validates that every language dictionary stays in sync with `en.ts`.
+`npm run check:ui` also runs the backup responsive-layout contract after type-checking.
 
 ## Formatting
 

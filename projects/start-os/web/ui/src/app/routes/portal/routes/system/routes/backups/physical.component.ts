@@ -125,7 +125,7 @@ import { BackupStatusComponent } from './status.component'
       }
 
       tr {
-        grid-template-columns: auto minmax(0, 1fr) minmax(7rem, 45%);
+        grid-template-columns: minmax(0, 1fr) minmax(7rem, 45%);
         width: 100%;
         min-width: 0;
         white-space: normal;
@@ -137,14 +137,21 @@ import { BackupStatusComponent } from './status.component'
         overflow-wrap: anywhere;
 
         &:first-child:not(.empty-state) {
-          font-size: 0;
           width: auto;
-          grid-area: 1 / 1 / 3 / 2;
-          place-content: center;
-          margin: 0 0.5rem;
+          grid-area: 3 / 1 / 4 / -1;
+          justify-self: start;
+          margin-top: 0.25rem;
         }
 
         &:nth-child(3) {
+          grid-area: 2 / 1;
+        }
+
+        &:nth-child(4) {
+          grid-area: 1 / 2;
+        }
+
+        &:nth-child(5) {
           grid-area: 2 / 2;
         }
 
@@ -158,7 +165,7 @@ import { BackupStatusComponent } from './status.component'
         color: var(--tui-text-primary);
         font: var(--tui-typography-body-m);
         font-weight: bold;
-        grid-area: 1 / 2;
+        grid-area: 1 / 1;
         justify-self: start;
         max-width: 100%;
         text-align: left;

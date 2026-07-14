@@ -141,7 +141,7 @@ interface AutomaticRetentionRule {
         {{ 'Automatic backups are already set up.' | i18n }}
       </div>
     } @else if (setupMode()) {
-      <nav class="steps" aria-label="Setup progress">
+      <nav class="steps" [attr.aria-label]="'Setup progress' | i18n">
         @for (item of setupSteps; track item.number) {
           <span [class.active]="step() === item.number">
             <b>{{ item.number }}</b>
@@ -698,10 +698,9 @@ interface AutomaticRetentionRule {
 
     .retention-rule {
       display: grid;
-      grid-template-columns: auto minmax(9rem, 1fr) auto minmax(
-          10rem,
-          0.75fr
-        ) auto auto;
+      grid-template-columns:
+        auto minmax(9rem, 1fr) auto minmax(10rem, 0.75fr)
+        auto auto;
       gap: 0.5rem;
       align-items: center;
       width: 100%;

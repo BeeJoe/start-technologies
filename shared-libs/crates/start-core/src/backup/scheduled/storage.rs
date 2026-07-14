@@ -18,7 +18,7 @@ use crate::hostname::ServerHostname;
 use crate::prelude::*;
 use crate::rpc_continuations::Guid;
 use crate::util::crypto::{decrypt_slice, encrypt_slice};
-use crate::util::io::{AtomicFile, delete_dir, dir_copy, dir_size};
+use crate::util::io::{AtomicFile, delete_dir, dir_copy, dir_size, rename};
 use crate::util::serde::IoFormat;
 use crate::version::VersionT;
 
@@ -302,21 +302,7 @@ impl<G: GenericMountGuard> ScheduledBackupMountGuard<G> {
             .join(&*snapshot.package_id);
         snapshot.logical_size = dir_size(&staging_path, None).await?;
         let destination = self.snapshot_path(&snapshot.package_id, &snapshot.id);
-        if let Some(parent) = destination.parent() {
-            tokio::fs::create_dir_all(parent).await?;
-        }
-        tokio::fs::rename(&staging_path, &destination)
-            .await
-            .with_ctx(|_| {
-                (
-                    ErrorKind::Filesystem,
-                    format!(
-                        "promote {} to {}",
-                        staging_path.display(),
-                        destination.display()
-                    ),
-                )
-            })?;
+        rename(&staging_path, &destination).await?;
 
         self.recovery.timestamp = snapshot.completed_at;
         self.recovery.version = crate::version::Current::default().semver();

@@ -1040,4 +1040,5 @@ export default {
   1153: 'mois',
   1155: 'Ajouter un nouveau planning de sauvegarde',
   1156: 'Personnalisé',
+  1157: 'Progression de la configuration',
 } satisfies i18n

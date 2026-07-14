@@ -1,10 +1,10 @@
 .ie \n(.g .ds Aq \(aq
 .el .ds Aq '
-.TH start-cli-backup-job-add 1  "add "
+.TH start-cli-backup-job-add 1  "add " 
 .SH NAME
 start\-cli\-backup\-job\-add \- Add an automatic backup job
 .SH SYNOPSIS
-\fBstart\-cli backup job add\fR [\fB\-\-cron\fR] [\fB\-\-timezone\fR] [\fB\-\-package\-ids\fR] [\fB\-\-exclude\-package\-ids\fR] [\fB\-\-keep\-tier\fR] [\fB\-\-service\-keep\-tier\fR] [\fB\-\-service\-latest\-only\fR] [\fB\-\-disabled\fR] [\fB\-\-format\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fINAME\fR> <\fITARGET_ID\fR> <\fIPASSWORD\fR>
+\fBstart\-cli backup job add\fR [\fB\-\-cron\fR] [\fB\-\-timezone\fR] [\fB\-\-package\-ids\fR] [\fB\-\-exclude\-package\-ids\fR] [\fB\-\-keep\-rule\fR] [\fB\-\-service\-keep\-rule\fR] [\fB\-\-service\-latest\-only\fR] [\fB\-\-disabled\fR] [\fB\-\-format\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fINAME\fR> <\fITARGET_ID\fR> <\fIPASSWORD\fR> 
 .SH DESCRIPTION
 Add an automatic backup job
 .SH OPTIONS
@@ -21,11 +21,11 @@ Package IDs to include in the automatic backup
 \fB\-\-exclude\-package\-ids\fR \fI<EXCLUDE_PACKAGE_IDS>\fR
 Package IDs to exclude from current and future services
 .TP
-\fB\-\-keep\-tier\fR \fI<INTERVAL:COVERAGE>\fR
-Retention tier INTERVAL:COVERAGE; accepts s, m, h, d, or w and may repeat
+\fB\-\-keep\-rule\fR \fI<INTERVAL:COVERAGE>\fR
+Version\-history rule INTERVAL:COVERAGE; accepts s, m, h, d, or w and may repeat
 .TP
-\fB\-\-service\-keep\-tier\fR \fI<PACKAGE_ID=INTERVAL:COVERAGE>\fR
-Per\-service tier PACKAGE_ID=INTERVAL:COVERAGE; may repeat
+\fB\-\-service\-keep\-rule\fR \fI<PACKAGE_ID=INTERVAL:COVERAGE>\fR
+Per\-service version\-history rule PACKAGE_ID=INTERVAL:COVERAGE; may repeat
 .TP
 \fB\-\-service\-latest\-only\fR \fI<PACKAGE_ID>\fR
 Service package IDs that should keep only their latest checkpoint

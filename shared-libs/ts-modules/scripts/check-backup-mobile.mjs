@@ -680,8 +680,8 @@ assertNestedRule(
 )
 
 for (const [sheet, file, columns] of [
-  [network, networkFile, 'auto minmax(0, 1fr) auto'],
-  [physical, physicalFile, 'auto minmax(0, 1fr) minmax(7rem, 45%)'],
+  [network, networkFile, 'minmax(0, 1fr) auto'],
+  [physical, physicalFile, 'minmax(0, 1fr) minmax(7rem, 45%)'],
 ]) {
   assertRule(
     sheet,
@@ -694,6 +694,10 @@ for (const [sheet, file, columns] of [
     },
     null,
   )
+}
+
+for (const file of [networkFile, physicalFile]) {
+  assertNotSource(file, [/font-size:\s*0/])
 }
 
 for (const file of [editorFile, manualFile, recoverFile]) {
@@ -821,6 +825,16 @@ assertNestedRule(
   network,
   networkFile,
   ':host-context(tui-root._mobile)',
+  '&:first-child:not(:only-child)',
+  {
+    'grid-area': '2 / 1 / 3 / -1',
+    'justify-self': 'start',
+  },
+)
+assertNestedRule(
+  network,
+  networkFile,
+  ':host-context(tui-root._mobile)',
   '.mobile-location-line',
   {
     display: 'flex',
@@ -865,6 +879,16 @@ assertNestedRule(
     'place-items': 'center',
     'justify-self': 'center',
     width: '100%',
+  },
+)
+assertNestedRule(
+  physical,
+  physicalFile,
+  ':host-context(tui-root._mobile)',
+  '&:first-child:not(.empty-state)',
+  {
+    'grid-area': '3 / 1 / 4 / -1',
+    'justify-self': 'start',
   },
 )
 assertSource(manualPageFile, [

@@ -59,11 +59,9 @@ import {
 
 type RetentionPreset = 'latest' | 'daily-week' | 'custom'
 
-interface TierEditor extends BackupRetentionTierEditor {}
-
 interface RetentionOverrideEditor {
   preset: RetentionPreset
-  tiers: TierEditor[]
+  tiers: BackupRetentionTierEditor[]
 }
 
 interface JobEditor extends BackupRetentionTierEditor {
@@ -80,7 +78,7 @@ interface JobEditor extends BackupRetentionTierEditor {
   weekday: number
   timezone: string
   keepAdditional: boolean
-  additionalTiers: TierEditor[]
+  additionalTiers: BackupRetentionTierEditor[]
   retentionOverrides: Record<string, RetentionOverrideEditor>
   password: string
   firstBackupNow: boolean
@@ -278,15 +276,19 @@ interface JobEditor extends BackupRetentionTierEditor {
         <form class="editor panel" (ngSubmit)="save(form)">
           <header class="editor-heading">
             <span tuiTitle>
-              <b>{{ form.name || ('Create automatic schedule' | i18n) }}</b>
-              <span tuiSubtitle>
-                {{
-                  (form.id
-                    ? 'Edit automatic schedule'
-                    : 'Create automatic schedule'
-                  ) | i18n
-                }}
-              </span>
+              @if (form.id && jobs().length === 1) {
+                <b>{{ 'Edit automatic schedule' | i18n }}</b>
+              } @else {
+                <b>{{ form.name || ('Create automatic schedule' | i18n) }}</b>
+                <span tuiSubtitle>
+                  {{
+                    (form.id
+                      ? 'Edit automatic schedule'
+                      : 'Create automatic schedule'
+                    ) | i18n
+                  }}
+                </span>
+              }
             </span>
             @if (!form.id) {
               <button
@@ -1037,10 +1039,9 @@ interface JobEditor extends BackupRetentionTierEditor {
 
     .retention-rule {
       display: grid;
-      grid-template-columns: auto minmax(9rem, 1fr) auto minmax(
-          10rem,
-          0.75fr
-        ) auto auto;
+      grid-template-columns:
+        auto minmax(9rem, 1fr) auto minmax(10rem, 0.75fr)
+        auto auto;
       gap: 0.5rem;
       align-items: center;
       width: 100%;
@@ -1307,7 +1308,7 @@ export class ScheduledBackupsComponent implements OnInit {
   protected readonly showServices = signal(false)
   readonly reassigning = signal<T.BackupJob | null>(null)
   readonly policyHistory = signal<T.ServiceTargetHistory | null>(null)
-  readonly policyTiers = signal<TierEditor[]>([])
+  readonly policyTiers = signal<BackupRetentionTierEditor[]>([])
   readonly policyPreview = signal<T.RetentionPolicyChangePreview | null>(null)
   readonly estimates = signal<T.BackupServiceCapacityEstimate[]>([])
 
@@ -1945,7 +1946,7 @@ export class ScheduledBackupsComponent implements OnInit {
       : retentionPeriodLabel(rule.interval, rule.duration)
   }
 
-  newRetentionRule(): TierEditor {
+  newRetentionRule(): BackupRetentionTierEditor {
     return parseBackupRetentionTier()
   }
 
@@ -2075,13 +2076,15 @@ export class ScheduledBackupsComponent implements OnInit {
     }
   }
 
-  private policy(tiers: TierEditor[]): T.RetentionPolicy {
+  private policy(tiers: BackupRetentionTierEditor[]): T.RetentionPolicy {
     return {
       tiers: tiers.map(serializeBackupRetentionTier),
     }
   }
 
-  private toTierEditors(policy: T.RetentionPolicy): TierEditor[] {
+  private toTierEditors(
+    policy: T.RetentionPolicy,
+  ): BackupRetentionTierEditor[] {
     return policy.tiers.map(parseBackupRetentionTier)
   }
 

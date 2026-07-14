@@ -1040,4 +1040,5 @@ export default {
   1153: 'Monate',
   1155: 'Neuen Sicherungszeitplan hinzufügen',
   1156: 'Benutzerdefiniert',
+  1157: 'Einrichtungsfortschritt',
 } satisfies i18n

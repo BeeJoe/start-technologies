@@ -183,7 +183,8 @@ pub struct EstimateBackupCapacityCliParams {
     pub exclude_package_ids: Vec<PackageId>,
     /// Version-history rule INTERVAL:COVERAGE; accepts s, m, h, d, or w suffixes and may repeat.
     #[arg(
-        long = "keep-tier",
+        long = "keep-rule",
+        alias = "keep-tier",
         value_name = "INTERVAL:COVERAGE",
         value_parser = parse_retention_tier,
         help = "help.arg.automatic-backup-retention-tier"
@@ -191,7 +192,8 @@ pub struct EstimateBackupCapacityCliParams {
     pub retention_tiers: Vec<RetentionTier>,
     /// Per-service version-history rule PACKAGE_ID=INTERVAL:COVERAGE; may repeat.
     #[arg(
-        long = "service-keep-tier",
+        long = "service-keep-rule",
+        alias = "service-keep-tier",
         value_name = "PACKAGE_ID=INTERVAL:COVERAGE",
         value_parser = parse_retention_override_tier,
         help = "help.arg.automatic-backup-service-retention-tier"
@@ -808,7 +810,8 @@ pub struct PreviewRetentionPolicyCliParams {
     pub package_id: PackageId,
     /// Version-history rule INTERVAL:COVERAGE; accepts s, m, h, d, or w suffixes and may repeat.
     #[arg(
-        long = "keep-tier",
+        long = "keep-rule",
+        alias = "keep-tier",
         value_name = "INTERVAL:COVERAGE",
         value_parser = parse_retention_tier,
         required_unless_present = "latest_only",
@@ -868,7 +871,8 @@ pub struct ApplyRetentionPolicyCliParams {
     pub package_id: PackageId,
     /// Version-history rule INTERVAL:COVERAGE; accepts s, m, h, d, or w suffixes and may repeat.
     #[arg(
-        long = "keep-tier",
+        long = "keep-rule",
+        alias = "keep-tier",
         value_name = "INTERVAL:COVERAGE",
         value_parser = parse_retention_tier,
         required_unless_present = "latest_only",
@@ -1097,7 +1101,8 @@ pub struct AddBackupJobCliParams {
     pub exclude_package_ids: Vec<PackageId>,
     /// Version-history rule INTERVAL:COVERAGE; accepts s, m, h, d, or w suffixes and may repeat.
     #[arg(
-        long = "keep-tier",
+        long = "keep-rule",
+        alias = "keep-tier",
         value_name = "INTERVAL:COVERAGE",
         value_parser = parse_retention_tier,
         help = "help.arg.automatic-backup-retention-tier"
@@ -1105,7 +1110,8 @@ pub struct AddBackupJobCliParams {
     pub retention_tiers: Vec<RetentionTier>,
     /// Per-service version-history rule PACKAGE_ID=INTERVAL:COVERAGE; may repeat.
     #[arg(
-        long = "service-keep-tier",
+        long = "service-keep-rule",
+        alias = "service-keep-tier",
         value_name = "PACKAGE_ID=INTERVAL:COVERAGE",
         value_parser = parse_retention_override_tier,
         help = "help.arg.automatic-backup-service-retention-tier"
@@ -1213,7 +1219,8 @@ pub struct EditBackupJobCliParams {
     pub exclude_package_ids: Vec<PackageId>,
     /// Version-history rule INTERVAL:COVERAGE; accepts s, m, h, d, or w suffixes and may repeat.
     #[arg(
-        long = "keep-tier",
+        long = "keep-rule",
+        alias = "keep-tier",
         value_name = "INTERVAL:COVERAGE",
         value_parser = parse_retention_tier,
         conflicts_with = "latest_only",
@@ -1225,7 +1232,8 @@ pub struct EditBackupJobCliParams {
     pub latest_only: bool,
     /// Set per-service version-history rule PACKAGE_ID=INTERVAL:COVERAGE; may repeat.
     #[arg(
-        long = "service-keep-tier",
+        long = "service-keep-rule",
+        alias = "service-keep-tier",
         value_name = "PACKAGE_ID=INTERVAL:COVERAGE",
         value_parser = parse_retention_override_tier,
         help = "help.arg.automatic-backup-service-retention-tier"
@@ -1342,9 +1350,7 @@ pub async fn edit_cli(
 fn parse_retention_tier(value: &str) -> Result<RetentionTier, String> {
     let (interval, coverage) = value
         .split_once(':')
-        .ok_or_else(|| {
-            "version-history rule must use INTERVAL:COVERAGE, for example 1d:7d".to_owned()
-        })?;
+        .ok_or_else(|| t!("backup.scheduled.invalid-version-history-rule").to_string())?;
     let tier = RetentionTier {
         interval_seconds: parse_duration_seconds(interval)?,
         coverage_seconds: parse_duration_seconds(coverage)?,
@@ -1400,7 +1406,7 @@ fn parse_duration_seconds(value: &str) -> Result<u64, String> {
     let (amount, suffix) = value.split_at(split);
     let amount = amount
         .parse::<u64>()
-        .map_err(|_| format!("invalid duration: {value}"))?;
+        .map_err(|_| t!("backup.scheduled.invalid-duration", value = value).to_string())?;
     let multiplier = match suffix {
         "" | "s" => 1,
         "m" => 60,
@@ -1408,15 +1414,13 @@ fn parse_duration_seconds(value: &str) -> Result<u64, String> {
         "d" => 24 * 60 * 60,
         "w" => 7 * 24 * 60 * 60,
         _ => {
-            return Err(format!(
-                "invalid duration unit in {value}; use s, m, h, d, or w"
-            ));
+            return Err(t!("backup.scheduled.invalid-duration-unit", value = value).to_string());
         }
     };
     amount
         .checked_mul(multiplier)
         .filter(|seconds| *seconds > 0)
-        .ok_or_else(|| format!("invalid duration: {value}"))
+        .ok_or_else(|| t!("backup.scheduled.invalid-duration", value = value).to_string())
 }
 
 pub fn parse_checkpoint_selection(value: &str) -> Result<(PackageId, ServiceSnapshotId), String> {
@@ -2199,7 +2203,7 @@ mod cli_tests {
             "15 * * * *",
             "--all-services",
             "--latest-only",
-            "--service-keep-tier",
+            "--service-keep-rule",
             "bitcoind=1h:1d",
             "--service-latest-only",
             "lnd",
@@ -2230,9 +2234,9 @@ mod cli_tests {
             "test",
             target,
             package,
-            "--keep-tier",
+            "--keep-rule",
             "1h:1d",
-            "--keep-tier",
+            "--keep-rule",
             "1d:1w",
         ])
         .unwrap();
@@ -2259,7 +2263,7 @@ mod cli_tests {
             "cifs-0",
             "--package-ids",
             "bitcoind,lnd",
-            "--keep-tier",
+            "--keep-rule",
             "1h:1d",
             "--service-latest-only",
             "lnd",

@@ -1040,4 +1040,5 @@ export default {
   1153: 'miesiące',
   1155: 'Dodaj nowy harmonogram kopii zapasowych',
   1156: 'Niestandardowe',
+  1157: 'Postęp konfiguracji',
 } satisfies i18n

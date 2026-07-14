@@ -18,9 +18,9 @@ or the CLI's externally observable behavior.
   or reassign their targets; inspect activity and checkpoint history; delete
   archived checkpoints; estimate capacity; resolve new-service reviews; and
   restore selected automatic checkpoints.
-- **Safe retention-policy commands.** Operators can preview tiered or
+- **Safe version-history commands.** Operators can preview rule-based or
   latest-only retention changes and then apply the exact previewed checkpoint
-  removals. Retention tiers accept seconds, minutes, hours, days, and weeks,
+  removals. Version-history rules accept seconds, minutes, hours, days, and weeks,
   with per-service overrides available when a service needs a different policy
   from the job default.
 

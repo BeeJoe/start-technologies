@@ -381,9 +381,9 @@ estimated.
 - `--package-ids <IDS>` — Include only comma-separated package IDs
 - `--exclude-package-ids <IDS>` — Include current and future services except
   these comma-separated IDs
-- `--keep-tier <INTERVAL:COVERAGE>` — Estimate a version-history rule; accepts
+- `--keep-rule <INTERVAL:COVERAGE>` — Estimate a version-history rule; accepts
   the same repeatable duration syntax as `backup job add`
-- `--service-keep-tier <PACKAGE_ID=INTERVAL:COVERAGE>` — Estimate a retention
+- `--service-keep-rule <PACKAGE_ID=INTERVAL:COVERAGE>` — Estimate a retention
   rule for one service; repeat the option to add more rules or services
 - `--service-latest-only <PACKAGE_ID>` — Estimate latest-checkpoint-only
   retention for one or more comma-separated service IDs
@@ -406,11 +406,11 @@ daily at 03:00 UTC, and latest-checkpoint-only retention.
 - `--package-ids <IDS>` — Include only comma-separated package IDs
 - `--exclude-package-ids <IDS>` — Include current and future services except
   these comma-separated IDs
-- `--keep-tier <INTERVAL:COVERAGE>` — Retain versions at this interval for this
+- `--keep-rule <INTERVAL:COVERAGE>` — Retain versions at this interval for this
   coverage. Repeat for multiple rules; suffixes are `s`, `m`, `h`, `d`, and `w`.
-  For example, `--keep-tier 1h:1d --keep-tier 1d:1w` retains hourly versions for
+  For example, `--keep-rule 1h:1d --keep-rule 1d:1w` retains hourly versions for
   one day and daily versions for one week.
-- `--service-keep-tier <PACKAGE_ID=INTERVAL:COVERAGE>` — Override retention for
+- `--service-keep-rule <PACKAGE_ID=INTERVAL:COVERAGE>` — Override retention for
   one service. Repeat it to build multiple rules or configure more services.
 - `--service-latest-only <PACKAGE_ID>` — Override one or more comma-separated
   services to retain only their latest checkpoint.
@@ -422,12 +422,12 @@ first backup immediately.
 #### `start-cli backup job edit <ID>`
 
 Update only the supplied job settings. Schedule flags, service-selection flags,
-and repeated `--keep-tier` values use the same forms as `job add`.
+and repeated `--keep-rule` values use the same forms as `job add`.
 
 - `--name <NAME>` — Change the display name
 - `--all-services` — Include every current and future service
 - `--latest-only` — Replace version-history rules with the newest checkpoint only
-- `--service-keep-tier <PACKAGE_ID=INTERVAL:COVERAGE>` — Add or replace a
+- `--service-keep-rule <PACKAGE_ID=INTERVAL:COVERAGE>` — Add or replace a
   service-specific retention policy; repeat for multiple rules
 - `--service-latest-only <PACKAGE_ID>` — Set comma-separated services to
   latest-checkpoint-only retention
@@ -462,18 +462,18 @@ and repeated `--keep-tier` values use the same forms as `job add`.
 Preview every retention change before applying it:
 
 ```sh
-start-cli backup policy preview-change cifs-0 bitcoind --keep-tier 1h:1d --keep-tier 1d:1w
+start-cli backup policy preview-change cifs-0 bitcoind --keep-rule 1h:1d --keep-rule 1d:1w
 ```
 
 Then apply the identical policy and repeat `--confirm-removal` for every
 checkpoint ID listed in the preview:
 
 ```sh
-start-cli backup policy apply cifs-0 bitcoind --keep-tier 1h:1d --keep-tier 1d:1w \
+start-cli backup policy apply cifs-0 bitcoind --keep-rule 1h:1d --keep-rule 1d:1w \
   --confirm-removal <CHECKPOINT_ID>
 ```
 
-Use `--latest-only` instead of `--keep-tier` to retain only the newest automatic
+Use `--latest-only` instead of `--keep-rule` to retain only the newest automatic
 checkpoint. Apply fails if the confirmation set differs from a fresh preview,
 which prevents stale or unintended deletion.
 

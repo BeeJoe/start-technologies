@@ -1040,4 +1040,5 @@ export default {
   1153: 'meses',
   1155: 'Añadir nueva programación de copias de seguridad',
   1156: 'Personalizado',
+  1157: 'Progreso de configuración',
 } satisfies i18n

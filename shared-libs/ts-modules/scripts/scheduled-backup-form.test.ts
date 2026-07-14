@@ -387,6 +387,10 @@ test('all backup schedules share one selected-job editor', () => {
     advancedComponent,
     /class="editor-heading"[\s\S]{0,240}\{\{ form\.name/,
   )
+  assert.match(
+    advancedComponent,
+    /form\.id && jobs\(\)\.length === 1[\s\S]{0,120}Edit automatic schedule/,
+  )
   assert.doesNotMatch(advancedComponent, /\(keyup\.enter\)="save\(form\)"/)
   assert.match(
     advancedComponent,

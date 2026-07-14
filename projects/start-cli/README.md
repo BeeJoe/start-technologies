@@ -110,14 +110,14 @@ one day and daily checkpoints for one week, then starts its first run:
 
 ```sh
 start-cli backup estimate-capacity cifs-0 \
-  --keep-tier 1h:1d \
-  --keep-tier 1d:1w \
+  --keep-rule 1h:1d \
+  --keep-rule 1d:1w \
   --service-latest-only lnd
 start-cli backup job add "Hourly backups" cifs-0 '<MASTER_PASSWORD>' \
   --cron '15 * * * *' \
   --timezone 'America/New_York' \
-  --keep-tier 1h:1d \
-  --keep-tier 1d:1w \
+  --keep-rule 1h:1d \
+  --keep-rule 1d:1w \
   --service-latest-only lnd
 start-cli backup job list
 start-cli backup job run-now <JOB_ID>
@@ -131,7 +131,7 @@ reported by the preview, preventing a stale policy change from deleting a
 different set.
 
 Use repeatable
-`--service-keep-tier PACKAGE_ID=INTERVAL:COVERAGE` options or
+`--service-keep-rule PACKAGE_ID=INTERVAL:COVERAGE` options or
 `--service-latest-only PACKAGE_ID` when a service needs different retention
 from the job default. On `backup job edit`,
 `--use-default-retention PACKAGE_ID` removes an override.

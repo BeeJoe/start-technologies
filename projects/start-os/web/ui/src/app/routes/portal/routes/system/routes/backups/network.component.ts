@@ -244,7 +244,7 @@ const ERROR =
       }
 
       tr {
-        grid-template-columns: auto minmax(0, 1fr) auto;
+        grid-template-columns: minmax(0, 1fr) auto;
         width: 100%;
         min-width: 0;
         white-space: normal;
@@ -260,15 +260,14 @@ const ERROR =
         overflow-wrap: anywhere;
 
         &:first-child:not(:only-child) {
-          font-size: 0;
           width: auto;
-          grid-area: 1 / 1;
-          place-content: center;
-          margin: 0 0.5rem;
+          grid-area: 2 / 1 / 3 / -1;
+          justify-self: start;
+          margin-top: 0.25rem;
         }
 
         &:last-child {
-          grid-area: 1 / 3;
+          grid-area: 1 / 2;
           align-self: center;
           justify-self: end;
         }
@@ -278,12 +277,16 @@ const ERROR =
         width: auto;
         color: var(--tui-text-primary);
         font: var(--tui-typography-body-m);
-        grid-column: 2;
+        grid-area: 1 / 1;
         justify-self: stretch;
         max-width: 100%;
         overflow-wrap: normal;
         text-align: left;
         word-break: normal;
+      }
+
+      td.free {
+        grid-area: 3 / 1;
       }
 
       .desktop-name,
