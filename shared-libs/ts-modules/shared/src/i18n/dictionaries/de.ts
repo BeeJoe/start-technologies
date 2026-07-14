@@ -1044,4 +1044,8 @@ export default {
   1158: 'Alle Aufträge anzeigen',
   1159: 'Anzeigen/Bearbeiten',
   1160: 'Nicht gespeicherte Änderungen wurden verworfen',
+  1161: 'Monatlich',
+  1162: 'Tag des Monats',
+  1163: 'Zeitplan löschen',
+  1164: 'Zugehörige Sicherungen löschen',
 } satisfies i18n

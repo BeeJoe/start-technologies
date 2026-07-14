@@ -1044,4 +1044,8 @@ export default {
   1158: 'Voir toutes les tâches',
   1159: 'Voir/Modifier',
   1160: 'Les modifications non enregistrées ont été ignorées',
+  1161: 'Mensuel',
+  1162: 'Jour du mois',
+  1163: 'Supprimer le planning',
+  1164: 'Supprimer les sauvegardes associées',
 } satisfies i18n

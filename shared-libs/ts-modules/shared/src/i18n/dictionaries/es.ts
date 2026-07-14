@@ -1044,4 +1044,8 @@ export default {
   1158: 'Ver todos los trabajos',
   1159: 'Ver/Editar',
   1160: 'Los cambios no guardados se descartaron',
+  1161: 'Mensualmente',
+  1162: 'Día del mes',
+  1163: 'Eliminar programación',
+  1164: 'Eliminar copias de seguridad relacionadas',
 } satisfies i18n

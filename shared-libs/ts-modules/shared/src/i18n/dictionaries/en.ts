@@ -1045,4 +1045,8 @@ export const ENGLISH: Record<string, number> = {
   'View all jobs': 1158,
   'View/Edit': 1159,
   'Unsaved changes were not saved': 1160,
+  'Monthly': 1161,
+  'Day of month': 1162,
+  'Delete schedule': 1163,
+  'Delete related backups': 1164,
 }

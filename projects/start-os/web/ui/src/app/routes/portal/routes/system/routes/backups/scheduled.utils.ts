@@ -1,6 +1,6 @@
 import type { T } from '@start9labs/start-core'
 
-export type BackupScheduleFrequency = 'hourly' | 'daily' | 'weekly'
+export type BackupScheduleFrequency = 'hourly' | 'daily' | 'weekly' | 'monthly'
 export type BackupRetentionInterval = 'hour' | 'day' | 'week' | 'month'
 export type BackupRetentionPeriodLabel =
   | BackupRetentionInterval
@@ -11,6 +11,7 @@ export type BackupRetentionPeriodLabel =
 
 export const BACKUP_HOURS = Array.from({ length: 24 }, (_, hour) => hour)
 export const BACKUP_MINUTES = Array.from({ length: 60 }, (_, minute) => minute)
+export const BACKUP_MONTH_DAYS = Array.from({ length: 31 }, (_, day) => day + 1)
 
 export function formatBackupTime(value: number): string {
   return String(value).padStart(2, '0')
@@ -21,7 +22,23 @@ export interface BackupScheduleFormValue {
   minute: number
   hour: number
   weekday: number
+  dayOfMonth: number
   timezone: string
+}
+
+export interface BackupJobAttentionState {
+  enabled: boolean
+  pause: { reason: string } | null
+  status: { lastResult: string | null }
+}
+
+export function backupJobNeedsAttention(job: BackupJobAttentionState): boolean {
+  return (
+    job.enabled &&
+    ((!!job.pause && job.pause.reason !== 'user') ||
+      job.status.lastResult === 'failed' ||
+      job.status.lastResult === 'partiallyFailed')
+  )
 }
 
 /** Editable service scope plus IDs that are not represented by the current package list. */
@@ -46,12 +63,15 @@ export function serializeBackupSchedule(
   const minute = clampInteger(form.minute, 0, 59)
   const hour = clampInteger(form.hour, 0, 23)
   const weekday = clampInteger(form.weekday, 0, 6)
+  const dayOfMonth = clampInteger(form.dayOfMonth, 1, 31)
   const cron =
     form.frequency === 'hourly'
       ? `${minute} * * * *`
       : form.frequency === 'daily'
         ? `${minute} ${hour} * * *`
-        : `${minute} ${hour} * * ${weekday}`
+        : form.frequency === 'weekly'
+          ? `${minute} ${hour} * * ${weekday}`
+          : `${minute} ${hour} ${dayOfMonth} * *`
   return { cron, timezone: form.timezone }
 }
 
@@ -60,12 +80,19 @@ export function parseBackupSchedule(
 ): BackupScheduleFormValue {
   const fields = schedule.cron.split(/\s+/)
   const frequency: BackupScheduleFrequency =
-    fields[4] !== '*' ? 'weekly' : fields[1] !== '*' ? 'daily' : 'hourly'
+    fields[2] !== '*'
+      ? 'monthly'
+      : fields[4] !== '*'
+        ? 'weekly'
+        : fields[1] !== '*'
+          ? 'daily'
+          : 'hourly'
   return {
     frequency,
     minute: Number(fields[0]) || 0,
     hour: Number(fields[1]) || 0,
     weekday: Number(fields[4]) || 0,
+    dayOfMonth: Number(fields[2]) || 1,
     timezone: schedule.timezone,
   }
 }

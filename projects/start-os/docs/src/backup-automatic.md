@@ -15,9 +15,10 @@ Backups`.
 1. Go to `System > Backups` and expand **Automatic backups**.
 1. Choose a physical drive or network folder. Locations needing repair remain
    visible so you can fix them or select **Add or repair a location**.
-1. Choose an hourly, daily, or weekly schedule and its exact time. StartOS
-   captures the timezone of the device used for setup, so the displayed local
-   time remains meaningful through daylight-saving changes.
+1. Choose an hourly, daily, weekly, or monthly schedule and its exact time.
+   Weekly schedules include a day of the week; monthly schedules include a day
+   of the month. StartOS captures the timezone of the device used for setup, so
+   the displayed local time remains meaningful through daylight-saving changes.
 1. Choose the services to protect. All current services are selected by
    default. Expand **Select services** to place **Automatically include future
    services** and **Toggle all** above the service list. The
@@ -48,17 +49,22 @@ password on existing backups.
 With one job, the main **Automatic backups** card keeps the On switch and **Run
 now** action at card level. With multiple jobs, expanding the card first shows
 the unboxed jobs list. Each row keeps its own On switch, **Run now**, and
-**View/Edit** actions available without opening the full editor. Select
-**View/Edit** to collapse the list and open that job. Select **View all jobs**
-to close the editor and return to the list; StartOS warns you if that discards
-unsaved changes. **Add new backup schedule** appears below the list.
+**View/Edit** actions available without opening the full editor and reports how
+many currently installed services it protects. On phones, each row is inset
+from the screen edge and its On/Off switch stays at the right. Select
+**View/Edit** to collapse the list and open that job. Saving closes the editor
+and returns to the list. Select **View all jobs** to close without saving and
+return to the list; StartOS warns you if that discards unsaved changes. **Add
+new backup schedule** appears below the list and moves focus directly to the job
+name field.
 
 Each job can use a different exact time, backup location, service selection, or
 version-history rules. StartOS validates enabled schedules together so their
 frequency can support the version history they feed.
 
-When a job needs attention, the collapsed main **Automatic backups** card says
-so and explains the problem. With several jobs, the collapsed summary reports
+When an enabled job needs attention, the collapsed main **Automatic backups**
+card says so and explains the problem. The warning clears after the job runs
+successfully or is turned off. With several jobs, the collapsed summary reports
 the number of schedules without presenting one job's time as though it applied
 to every job.
 
@@ -72,9 +78,9 @@ default. The confirmation dialog can instead permanently remove the automatic
 schedules and automatic checkpoints. Manual checkpoints are never removed by
 that option.
 
-Deleting one additional schedule also keeps any checkpoints no longer referenced
-by another schedule as an archive by default. You can explicitly delete those
-unreferenced checkpoints after reviewing the warning.
+The bottom of an additional schedule's editor places **Delete schedule**
+opposite **Save**. Its confirmation can also delete checkpoints no longer
+referenced by another schedule; leaving that option off keeps them as an archive.
 
 ## Version History and Storage
 
@@ -82,6 +88,9 @@ Every retained automatic version is a full target-side copy, not a small
 incremental delta. A run also needs temporary staging space. More frequent
 version history therefore increases required space, run time, and I/O,
 especially on network folders and slower external drives.
+
+When version history contains several retention tiers, the collapsed summary
+lists every tier so the editor never hides part of the active policy.
 
 Capacity estimates separate the space used or projected for:
 

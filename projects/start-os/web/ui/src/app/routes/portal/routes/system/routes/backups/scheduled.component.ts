@@ -1,11 +1,15 @@
 import { DatePipe, NgTemplateOutlet } from '@angular/common'
 import {
+  afterNextRender,
   Component,
   computed,
+  ElementRef,
   inject,
+  Injector,
   input,
   OnInit,
   signal,
+  viewChild,
 } from '@angular/core'
 import { toSignal } from '@angular/core/rxjs-interop'
 import { FormsModule } from '@angular/forms'
@@ -47,6 +51,7 @@ import {
   BackupScheduleFrequency,
   BACKUP_HOURS,
   BACKUP_MINUTES,
+  BACKUP_MONTH_DAYS,
   formatBackupTime,
   parseBackupRetentionTier,
   parseBackupSchedule,
@@ -58,6 +63,10 @@ import {
   serializeBackupServiceSelection,
   serializeBackupSchedule,
 } from './scheduled.utils'
+import {
+  DELETE_SCHEDULE_DIALOG,
+  DeleteScheduleDecision,
+} from './delete-schedule.dialog'
 
 interface EditableRetentionRule extends BackupRetentionTierEditor {
   preserved: {
@@ -83,6 +92,7 @@ interface JobEditor extends EditableRetentionRule {
   minute: number
   hour: number
   weekday: number
+  dayOfMonth: number
   timezone: string
   keepAdditional: boolean
   additionalTiers: EditableRetentionRule[]
@@ -225,7 +235,8 @@ interface JobEditor extends EditableRetentionRule {
                 <span tuiTitle>
                   <b>{{ job.name }}</b>
                   <span tuiSubtitle>
-                    {{ targetName(job.targetId) }} · {{ 'Next run' | i18n }}:
+                    {{ targetName(job.targetId) }} · {{ jobServiceCount(job) }}
+                    {{ 'Services' | i18n }} · {{ 'Next run' | i18n }}:
                     {{
                       job.status.nextRunAt
                         ? (job.status.nextRunAt | date: 'medium')
@@ -364,17 +375,6 @@ interface JobEditor extends EditableRetentionRule {
                     {{ 'Change backup location' | i18n }}
                   </button>
                 }
-                @if (job.id !== primaryJobId()) {
-                  <button
-                    tuiButton
-                    type="button"
-                    size="xs"
-                    appearance="flat-destructive"
-                    (click)="deleteJob(job)"
-                  >
-                    {{ 'Delete' | i18n }}
-                  </button>
-                }
               </div>
             </div>
           }
@@ -385,7 +385,13 @@ interface JobEditor extends EditableRetentionRule {
             </span>
             <tui-textfield>
               <label tuiLabel>{{ 'Job name' | i18n }}</label>
-              <input tuiInput name="name" required [(ngModel)]="form.name" />
+              <input
+                #jobNameInput
+                tuiInput
+                name="name"
+                required
+                [(ngModel)]="form.name"
+              />
             </tui-textfield>
           </div>
 
@@ -448,6 +454,23 @@ interface JobEditor extends EditableRetentionRule {
                       <button tuiOption [value]="day.value">
                         {{ day.label | i18n }}
                       </button>
+                    }
+                  </tui-data-list>
+                </tui-textfield>
+              }
+
+              @if (form.frequency === 'monthly') {
+                <tui-textfield tuiChevron [tuiTextfieldCleaner]="false">
+                  <label tuiLabel>{{ 'Day of month' | i18n }}</label>
+                  <input
+                    tuiSelect
+                    name="dayOfMonth"
+                    required
+                    [(ngModel)]="form.dayOfMonth"
+                  />
+                  <tui-data-list *tuiDropdown>
+                    @for (day of monthDays; track day) {
+                      <button tuiOption [value]="day">{{ day }}</button>
                     }
                   </tui-data-list>
                 </tui-textfield>
@@ -759,7 +782,19 @@ interface JobEditor extends EditableRetentionRule {
             {{ 'Maximum automatic checkpoints per service' | i18n }}:
             {{ projectedCount(form) }}
           </p>
-          <footer class="g-buttons">
+          <footer class="editor-actions">
+            @if (selectedJob(); as job) {
+              @if (job.id !== primaryJobId()) {
+                <button
+                  tuiButton
+                  type="button"
+                  appearance="primary-destructive"
+                  (click)="deleteJob(job)"
+                >
+                  {{ 'Delete schedule' | i18n }}
+                </button>
+              }
+            }
             <button
               tuiButton
               type="submit"
@@ -909,6 +944,18 @@ interface JobEditor extends EditableRetentionRule {
     .job-switch {
       width: fit-content;
       justify-content: flex-start;
+    }
+
+    .editor-actions {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+    }
+
+    .editor-actions > :last-child {
+      margin-inline-start: auto;
     }
 
     .selected-job,
@@ -1180,6 +1227,8 @@ interface JobEditor extends EditableRetentionRule {
         display: grid;
         grid-template-columns: auto minmax(0, 1fr) auto;
         align-items: center;
+        padding-inline: 0.75rem;
+        box-sizing: border-box;
       }
 
       .schedule-job > tui-icon:first-child {
@@ -1200,11 +1249,18 @@ interface JobEditor extends EditableRetentionRule {
 
       .job-list-actions {
         grid-column: 1 / -1;
-        justify-content: flex-start;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
       }
 
       .job-list-actions > button {
-        flex: 1 1 7rem;
+        width: 100%;
+      }
+
+      .job-switch {
+        grid-column: 1 / -1;
+        justify-self: end;
+        flex-direction: row-reverse;
       }
 
       .retention-heading {
@@ -1260,6 +1316,9 @@ export class ScheduledBackupsComponent implements OnInit {
   private readonly errors = inject(ErrorService)
   private readonly i18n = inject(i18nPipe)
   private readonly alerts = inject(TuiNotificationService)
+  private readonly injector = inject(Injector)
+  private readonly jobNameInput =
+    viewChild<ElementRef<HTMLInputElement>>('jobNameInput')
   private readonly packageData = toSignal(
     inject<PatchDB<DataModel>>(PatchDB).watch$('packageData'),
   )
@@ -1320,6 +1379,7 @@ export class ScheduledBackupsComponent implements OnInit {
     'hourly',
     'daily',
     'weekly',
+    'monthly',
   ]
   protected readonly retentionIntervals: Exclude<
     BackupRetentionTierEditor['interval'],
@@ -1336,6 +1396,7 @@ export class ScheduledBackupsComponent implements OnInit {
   ]
   protected readonly hours = BACKUP_HOURS
   protected readonly minutes = BACKUP_MINUTES
+  protected readonly monthDays = BACKUP_MONTH_DAYS
   protected readonly stringifyTime = formatBackupTime
   protected readonly stringifyFrequency = (
     frequency: BackupScheduleFrequency,
@@ -1345,7 +1406,9 @@ export class ScheduledBackupsComponent implements OnInit {
         ? 'Hourly'
         : frequency === 'weekly'
           ? 'Weekly'
-          : 'Daily',
+          : frequency === 'monthly'
+            ? 'Monthly'
+            : 'Daily',
     )
   protected readonly stringifyWeekday = (weekday: number) =>
     this.i18n.transform(this.weekdays[weekday]?.label || 'Sunday')
@@ -1415,6 +1478,7 @@ export class ScheduledBackupsComponent implements OnInit {
       minute: now.getMinutes(),
       hour: now.getHours(),
       weekday: now.getDay(),
+      dayOfMonth: now.getDate(),
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
       keepAdditional: false,
       ...this.newRetentionRule(),
@@ -1430,6 +1494,9 @@ export class ScheduledBackupsComponent implements OnInit {
     this.editor.set(form)
     this.editorBaseline = this.editorSnapshot(form)
     void this.refreshEstimates(form)
+    afterNextRender(() => this.jobNameInput()?.nativeElement.focus(), {
+      injector: this.injector,
+    })
   }
 
   viewAllJobs() {
@@ -1568,8 +1635,9 @@ export class ScheduledBackupsComponent implements OnInit {
           await this.api.runScheduledBackupJob({ id: created.id })
         }
       }
+      this.selectedJobId.set('')
       this.editor.set(null)
-      this.editorBaseline = ''
+      this.editorBaseline = null
       await this.reload()
     } catch (error: any) {
       this.errors.handleError(getErrorMessage(error))
@@ -1593,48 +1661,39 @@ export class ScheduledBackupsComponent implements OnInit {
   }
 
   async deleteJob(job: T.BackupJob) {
-    const confirmed = await firstValueFrom(
-      this.dialogs
-        .openConfirm({
-          label: 'Delete scheduled job?',
-          size: 's',
-          data: {
-            content:
-              'Snapshots that are no longer referenced will be kept as an archive by default.',
-            yes: 'Delete',
-            no: 'Cancel',
-          },
-        })
-        .pipe(filter(Boolean)),
-      { defaultValue: false },
-    )
-    if (!confirmed) return
-
     const unreferenced = this.histories().filter(
       history =>
         history.snapshots.length > 0 &&
         history.feedingJobs.length === 1 &&
         history.feedingJobs[0] === job.id,
     )
-    const deleteCheckpoints = unreferenced.length
-      ? await firstValueFrom(
-          this.dialogs.openConfirm({
-            label: 'Delete unreferenced checkpoints?',
-            size: 's',
-            data: {
-              content:
-                'This job is the last reference to these checkpoints. Keeping the archive is the safe default.',
-              yes: 'Delete checkpoints',
-              no: 'Keep archive',
-            },
-          }),
-          { defaultValue: false },
-        )
-      : false
+    const checkpointCount = unreferenced.reduce(
+      (sum, history) => sum + history.snapshots.length,
+      0,
+    )
+    const reclaimable = unreferenced.reduce(
+      (sum, history) => sum + this.historyBytes(history),
+      0,
+    )
+    const decision = await firstValueFrom(
+      this.dialogs.openComponent<DeleteScheduleDecision | null>(
+        DELETE_SCHEDULE_DIALOG,
+        {
+          label: 'Delete scheduled job?',
+          size: 's',
+          data: {
+            checkpointCount,
+            reclaimable: this.bytes(reclaimable),
+          },
+        },
+      ),
+      { defaultValue: null },
+    )
+    if (!decision) return
 
     await this.perform(async () => {
       await this.api.deleteScheduledBackupJob({ id: job.id })
-      if (deleteCheckpoints) {
+      if (decision.deleteCheckpoints) {
         for (const history of unreferenced) {
           await this.api.deleteArchivedBackupSnapshots({
             targetId: history.targetId,
@@ -1861,7 +1920,17 @@ export class ScheduledBackupsComponent implements OnInit {
       const day = this.weekdays[form.weekday]?.label || 'Sunday'
       return `${this.i18n.transform(day)} · ${time}`
     }
+    if (form.frequency === 'monthly') {
+      return `${this.i18n.transform('Monthly')} · ${this.i18n.transform('Day of month')} ${form.dayOfMonth} · ${time}`
+    }
     return `${this.i18n.transform('Daily')} · ${time}`
+  }
+
+  jobServiceCount(job: T.BackupJob): number {
+    return parseBackupServiceSelection(
+      job.services,
+      this.packages().map(pkg => pkg.id),
+    ).packageIds.length
   }
 
   selectedServiceSummary(form: JobEditor): string {
@@ -1875,20 +1944,26 @@ export class ScheduledBackupsComponent implements OnInit {
     if (!form.keepAdditional) {
       return this.i18n.transform('Keep only the latest automatic checkpoint')
     }
+    return [form, ...form.additionalTiers]
+      .map(rule => this.retentionRuleSummary(rule))
+      .join(' · ')
+  }
+
+  private retentionRuleSummary(rule: BackupRetentionTierEditor): string {
     const every = this.i18n.transform('Keep one backup every')
-    if (form.interval === 'custom') {
+    if (rule.interval === 'custom') {
       const intervalUnit = this.i18n.transform(
-        form.customIntervalHours === 1 ? 'hour' : 'hours',
+        rule.customIntervalHours === 1 ? 'hour' : 'hours',
       )
       const coverageUnit = this.i18n.transform(
-        form.customCoverageHours === 1 ? 'hour' : 'hours',
+        rule.customCoverageHours === 1 ? 'hour' : 'hours',
       )
-      return `${every} ${form.customIntervalHours} ${intervalUnit} ${this.i18n.transform('for')} ${form.customCoverageHours} ${coverageUnit}`
+      return `${every} ${rule.customIntervalHours} ${intervalUnit} ${this.i18n.transform('for')} ${rule.customCoverageHours} ${coverageUnit}`
     }
-    const interval = this.i18n.transform(form.interval)
+    const interval = this.i18n.transform(rule.interval)
     const forLabel = this.i18n.transform('for')
-    const period = this.i18n.transform(this.retentionPeriod(form))
-    return `${every} ${interval} ${forLabel} ${form.duration} ${period}`
+    const period = this.i18n.transform(this.retentionPeriodFor(rule))
+    return `${every} ${interval} ${forLabel} ${rule.duration} ${period}`
   }
 
   retentionPeriod(form: JobEditor) {
@@ -1927,7 +2002,12 @@ export class ScheduledBackupsComponent implements OnInit {
     const validHour =
       form.frequency === 'hourly' ||
       (Number.isInteger(form.hour) && form.hour >= 0 && form.hour <= 23)
-    return validFrequency && validMinute && validHour
+    const validDayOfMonth =
+      form.frequency !== 'monthly' ||
+      (Number.isInteger(form.dayOfMonth) &&
+        form.dayOfMonth >= 1 &&
+        form.dayOfMonth <= 31)
+    return validFrequency && validMinute && validHour && validDayOfMonth
   }
 
   private validRetention(form: JobEditor): boolean {

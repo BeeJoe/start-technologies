@@ -577,14 +577,34 @@ assertRule(
   advanced,
   advancedFile,
   '.schedule-job',
-  { display: 'grid', 'grid-template-columns': 'auto minmax(0, 1fr) auto' },
+  {
+    display: 'grid',
+    'grid-template-columns': 'auto minmax(0, 1fr) auto',
+    'padding-inline': '0.75rem',
+    'box-sizing': 'border-box',
+  },
   phone,
 )
 assertRule(
   advanced,
   advancedFile,
   '.job-list-actions',
-  { 'grid-column': '1 / -1', 'justify-content': 'flex-start' },
+  {
+    'grid-column': '1 / -1',
+    display: 'grid',
+    'grid-template-columns': 'repeat(2, minmax(0, 1fr))',
+  },
+  phone,
+)
+assertRule(
+  advanced,
+  advancedFile,
+  '.job-switch',
+  {
+    'grid-column': '1 / -1',
+    'justify-self': 'end',
+    'flex-direction': 'row-reverse',
+  },
   phone,
 )
 

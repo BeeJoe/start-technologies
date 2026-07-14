@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import {
+  backupJobNeedsAttention,
   parseBackupSchedule,
   parseBackupRetentionTier,
   parseBackupServiceSelection,
@@ -41,14 +42,22 @@ const statusComponent = readFileSync(
   ),
   'utf8',
 )
+const deleteScheduleDialog = readFileSync(
+  new URL(
+    '../../../projects/start-os/web/ui/src/app/routes/portal/routes/system/routes/backups/delete-schedule.dialog.ts',
+    import.meta.url,
+  ),
+  'utf8',
+)
 
-test('serializes hourly, daily, and weekly controls as five-field cron', () => {
+test('serializes hourly through monthly controls as five-field cron', () => {
   assert.equal(
     serializeBackupSchedule({
       frequency: 'hourly',
       minute: 15,
       hour: 9,
       weekday: 2,
+      dayOfMonth: 14,
       timezone: 'America/Chicago',
     }).cron,
     '15 * * * *',
@@ -59,6 +68,7 @@ test('serializes hourly, daily, and weekly controls as five-field cron', () => {
       minute: 5,
       hour: 23,
       weekday: 2,
+      dayOfMonth: 14,
       timezone: 'America/Chicago',
     }).cron,
     '5 23 * * *',
@@ -69,9 +79,21 @@ test('serializes hourly, daily, and weekly controls as five-field cron', () => {
       minute: 30,
       hour: 4,
       weekday: 1,
+      dayOfMonth: 14,
       timezone: 'America/Chicago',
     }).cron,
     '30 4 * * 1',
+  )
+  assert.equal(
+    serializeBackupSchedule({
+      frequency: 'monthly',
+      minute: 45,
+      hour: 6,
+      weekday: 1,
+      dayOfMonth: 14,
+      timezone: 'America/Chicago',
+    }).cron,
+    '45 6 14 * *',
   )
 })
 
@@ -86,6 +108,22 @@ test('editing preserves the captured timezone', () => {
       minute: 45,
       hour: 6,
       weekday: 0,
+      dayOfMonth: 1,
+      timezone: 'Europe/Warsaw',
+    },
+  )
+
+  assert.deepEqual(
+    parseBackupSchedule({
+      cron: '15 8 23 * *',
+      timezone: 'Europe/Warsaw',
+    }),
+    {
+      frequency: 'monthly',
+      minute: 15,
+      hour: 8,
+      weekday: 0,
+      dayOfMonth: 23,
       timezone: 'Europe/Warsaw',
     },
   )
@@ -273,6 +311,17 @@ test('retention summary translates the sentence as well as its units', () => {
 
   assert.match(summary, /this\.i18n\.transform\('Keep one backup every'\)/)
   assert.match(summary, /this\.i18n\.transform\('for'\)/)
+  const advancedSummary = advancedComponent.slice(
+    advancedComponent.indexOf('retentionSummary(form: JobEditor)'),
+    advancedComponent.indexOf(
+      'retentionPeriod(form: JobEditor)',
+      advancedComponent.indexOf('retentionSummary(form: JobEditor)'),
+    ),
+  )
+  assert.match(
+    advancedSummary,
+    /\[form, \.\.\.form\.additionalTiers\][\s\S]{0,120}\.map\(/,
+  )
 })
 
 test('first-time setup shares the collapsed service and repeatable version-history controls', () => {
@@ -426,6 +475,15 @@ test('all backup schedules share one selected-job editor', () => {
     advancedComponent,
     /if \(form\.firstBackupNow\)[\s\S]{0,120}runScheduledBackupJob\(\{ id: created\.id \}\)/,
   )
+  assert.match(advancedComponent, /#jobNameInput[\s\S]{0,120}name="name"/)
+  assert.match(
+    advancedComponent,
+    /create\(\)[\s\S]{0,1500}afterNextRender\(\(\) => this\.jobNameInput\(\)\?\.nativeElement\.focus\(\)/,
+  )
+  assert.match(
+    advancedComponent,
+    /async save\(form: JobEditor\)[\s\S]{0,1800}this\.selectedJobId\.set\(''\)[\s\S]{0,180}this\.editor\.set\(null\)[\s\S]{0,180}await this\.reload\(\)/,
+  )
 })
 
 test('multiple automatic jobs expand as a list before an individual editor', () => {
@@ -500,6 +558,80 @@ test('collapsed automatic card surfaces attention without leaking one schedule i
   assert.match(
     backupsComponent,
     /if \(jobs\.length > 1\)[\s\S]{0,220}\$\{jobs\.length\} schedules/,
+  )
+
+  assert.equal(
+    backupJobNeedsAttention({
+      enabled: true,
+      pause: null,
+      status: { lastResult: 'failed' },
+    }),
+    true,
+  )
+  assert.equal(
+    backupJobNeedsAttention({
+      enabled: true,
+      pause: null,
+      status: { lastResult: 'succeeded' },
+    }),
+    false,
+  )
+  assert.equal(
+    backupJobNeedsAttention({
+      enabled: false,
+      pause: { reason: 'user' },
+      status: { lastResult: 'failed' },
+    }),
+    false,
+  )
+  assert.match(
+    backupsComponent,
+    /this\.jobs\(\)\.some\(backupJobNeedsAttention\)/,
+  )
+})
+
+test('job list shows service counts and keeps destructive editing actions at the bottom', () => {
+  const list = advancedComponent.slice(
+    advancedComponent.indexOf('class="schedule-list"'),
+    advancedComponent.indexOf(
+      '</section>',
+      advancedComponent.indexOf('class="schedule-list"'),
+    ),
+  )
+  const selected = advancedComponent.slice(
+    advancedComponent.indexOf('class="selected-job"'),
+    advancedComponent.indexOf(
+      '</div>',
+      advancedComponent.indexOf('class="selected-job"'),
+    ),
+  )
+  const footer = advancedComponent.slice(
+    advancedComponent.indexOf('<footer class="editor-actions">'),
+    advancedComponent.indexOf(
+      '</footer>',
+      advancedComponent.indexOf('<footer class="editor-actions">'),
+    ),
+  )
+
+  assert.match(list, /jobServiceCount\(job\)[\s\S]{0,120}'Services'/)
+  assert.doesNotMatch(selected, /deleteJob\(job\)/)
+  assert.match(footer, /appearance="primary-destructive"/)
+  assert.match(footer, /deleteJob\(job\)/)
+  assert.match(footer, /Delete schedule/)
+  assert.match(deleteScheduleDialog, /deleteCheckpoints/)
+  assert.match(deleteScheduleDialog, /Delete related backups/)
+})
+
+test('main schedule editors expose monthly frequency and day-of-month controls', () => {
+  for (const component of [automaticComponent, advancedComponent]) {
+    assert.match(component, /monthly/)
+    assert.match(component, /dayOfMonth/)
+    assert.match(component, /Day of month/)
+    assert.match(component, /Monthly/)
+  }
+  assert.match(
+    advancedComponent,
+    /frequencies: BackupScheduleFrequency\[\] = \[[\s\S]{0,100}'monthly'/,
   )
 })
 

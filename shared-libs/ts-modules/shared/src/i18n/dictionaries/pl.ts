@@ -1044,4 +1044,8 @@ export default {
   1158: 'Wyświetl wszystkie zadania',
   1159: 'Wyświetl/Edytuj',
   1160: 'Niezapisane zmiany zostały odrzucone',
+  1161: 'Co miesiąc',
+  1162: 'Dzień miesiąca',
+  1163: 'Usuń harmonogram',
+  1164: 'Usuń powiązane kopie zapasowe',
 } satisfies i18n

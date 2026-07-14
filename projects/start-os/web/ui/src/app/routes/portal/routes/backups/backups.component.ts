@@ -21,7 +21,10 @@ import { TitleDirective } from 'src/app/services/title.service'
 import { BackupService } from '../system/routes/backups/backup.service'
 import SystemBackupComponent from '../system/routes/backups/backups.component'
 import { BackupProgressComponent } from '../system/routes/backups/progress.component'
-import { parseBackupSchedule } from '../system/routes/backups/scheduled.utils'
+import {
+  backupJobNeedsAttention,
+  parseBackupSchedule,
+} from '../system/routes/backups/scheduled.utils'
 import AutomaticBackupsComponent from './automatic.component'
 import {
   DISABLE_AUTOMATIC_DIALOG,
@@ -613,12 +616,7 @@ export default class BackupsComponent implements OnInit {
     this.jobs().some(job => job.enabled && !job.pause),
   )
   readonly needsAttention = computed(() =>
-    this.jobs().some(
-      job =>
-        (!!job.pause && job.pause.reason !== 'user') ||
-        job.status.lastResult === 'failed' ||
-        job.status.lastResult === 'partiallyFailed',
-    ),
+    this.jobs().some(backupJobNeedsAttention),
   )
 
   ngOnInit() {
@@ -654,18 +652,15 @@ export default class BackupsComponent implements OnInit {
         ? `Hourly at minute ${String(schedule.minute).padStart(2, '0')}`
         : schedule.frequency === 'weekly'
           ? `${WEEKDAYS[schedule.weekday] || 'Sunday'} at ${time}`
-          : `Daily at ${time}`
+          : schedule.frequency === 'monthly'
+            ? `Monthly on day ${schedule.dayOfMonth} at ${time}`
+            : `Daily at ${time}`
     const state = this.automaticOn() ? timing : `Off · ${timing}`
     return state
   }
 
   healthDetail(): string {
-    const job = this.jobs().find(
-      item =>
-        (!!item.pause && item.pause.reason !== 'user') ||
-        item.status.lastResult === 'failed' ||
-        item.status.lastResult === 'partiallyFailed',
-    )
+    const job = this.jobs().find(backupJobNeedsAttention)
     if (job?.pause?.reason === 'reauthenticationRequired') {
       return 'The backup location needs your password again.'
     }

@@ -31,16 +31,20 @@ file tracks notable changes since the move to the monorepo.
 
 - **Unified automatic schedule editing.** Multiple jobs now expand first into a
   compact, unboxed jobs list with per-job On, **Run now**, and **View/Edit**
-  actions. Opening one job collapses the list to a **View all jobs** card, which
-  warns before discarding unsaved edits, while **Add new backup schedule** sits
-  below the list. The collapsed main card surfaces jobs needing attention and
-  avoids showing one job's schedule details when several jobs exist. Service
-  selection is collapsed by default. Version history requires a frequency,
-  removes the custom option and retention-overrides editor, aligns repeated
-  **Keep one backup every** rows, and lets every row be removed; removing the
-  last row restores the latest-only default. Existing nonstandard CLI-created
-  retention tiers remain exact until their row is changed. Hour and minute
-  choices can no longer be cleared to an invalid null value.
+  actions and selected-service counts. Opening one job collapses the list to a
+  **View all jobs** card, which warns before discarding unsaved edits, while
+  **Add new backup schedule** sits below the list and focuses the job name.
+  Saving returns to the list. Monthly schedules add a day-of-month choice. The
+  collapsed main card surfaces enabled jobs needing attention and clears the
+  warning after success or when a failed job is turned off. Service selection
+  is collapsed by default. Version history requires a frequency, removes the
+  custom option and retention-overrides editor, aligns repeated **Keep one
+  backup every** rows, summarizes every configured tier, and lets every row be
+  removed; removing the last row restores the latest-only default. Existing
+  nonstandard CLI-created retention tiers remain exact until their row is
+  changed. Hour and minute choices can no longer be cleared to an invalid null
+  value. Additional schedules put **Delete schedule** opposite **Save**, with a
+  confirmation option to delete checkpoints used only by that schedule.
 - **Simplified Automatic Backups.** The expanded card now uses a flat settings
   layout, keeps **Run now** with the detailed actions, and leaves checkpoint
   browsing and restore actions in the dedicated **Backup history** and restore
@@ -85,7 +89,8 @@ file tracks notable changes since the move to the monorepo.
   Empty network-folder and no-drive content is centered across the full table
   frame on desktop and mobile. Location choices also share the action button's
   centered width and keep long location names horizontal on phones, including
-  automatic-backup setup. The overall progress spinner and percentage align
+  automatic-backup setup. Automatic job rows are inset from phone edges and
+  keep each On/Off switch aligned at the right. The overall progress spinner and percentage align
   with each service's status, and service progress is right-aligned within the
   card.
   Manual and custom automatic runs no longer force-scroll or place a blocking

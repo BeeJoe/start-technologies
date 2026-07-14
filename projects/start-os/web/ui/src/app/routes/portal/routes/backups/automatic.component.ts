@@ -49,6 +49,7 @@ import {
   BackupScheduleFrequency,
   BACKUP_HOURS,
   BACKUP_MINUTES,
+  BACKUP_MONTH_DAYS,
   formatBackupTime,
   retentionIntervalSeconds,
   retentionPeriodLabel,
@@ -74,6 +75,7 @@ interface AutomaticEditor {
   minute: number
   hour: number
   weekday: number
+  dayOfMonth: number
   timezone: string
   services: ServiceChoice[]
   includeFuture: boolean
@@ -214,6 +216,7 @@ interface AutomaticRetentionRule {
                   <option value="hourly">{{ 'Hourly' | i18n }}</option>
                   <option value="daily">{{ 'Daily' | i18n }}</option>
                   <option value="weekly">{{ 'Weekly' | i18n }}</option>
+                  <option value="monthly">{{ 'Monthly' | i18n }}</option>
                 </select>
               </label>
               @if (editor.frequency === 'weekly') {
@@ -224,6 +227,20 @@ interface AutomaticRetentionRule {
                       <option [ngValue]="day.value">
                         {{ day.label | i18n }}
                       </option>
+                    }
+                  </select>
+                </label>
+              }
+              @if (editor.frequency === 'monthly') {
+                <label>
+                  <span>{{ 'Day of month' | i18n }}</span>
+                  <select
+                    name="dayOfMonth"
+                    required
+                    [(ngModel)]="editor.dayOfMonth"
+                  >
+                    @for (day of monthDays; track day) {
+                      <option [ngValue]="day">{{ day }}</option>
                     }
                   </select>
                 </label>
@@ -968,6 +985,7 @@ export default class AutomaticBackupsComponent implements OnInit {
   ]
   protected readonly hours = BACKUP_HOURS
   protected readonly minutes = BACKUP_MINUTES
+  protected readonly monthDays = BACKUP_MONTH_DAYS
   protected readonly stringifyTime = formatBackupTime
 
   readonly jobs = computed(() =>
@@ -1013,11 +1031,13 @@ export default class AutomaticBackupsComponent implements OnInit {
   }
 
   private defaultEditor(): AutomaticEditor {
+    const now = new Date()
     return {
       frequency: 'daily',
       minute: 0,
       hour: 3,
       weekday: 0,
+      dayOfMonth: now.getDate(),
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
       services: [],
       includeFuture: true,
@@ -1117,6 +1137,9 @@ export default class AutomaticBackupsComponent implements OnInit {
       const day = this.weekdays[this.editor.weekday]?.label || 'Sunday'
       return `${this.i18n.transform(day)} · ${time}`
     }
+    if (this.editor.frequency === 'monthly') {
+      return `${this.i18n.transform('Monthly')} · ${this.i18n.transform('Day of month')} ${this.editor.dayOfMonth} · ${time}`
+    }
     return `${this.i18n.transform('Daily')} · ${time}`
   }
 
@@ -1158,7 +1181,7 @@ export default class AutomaticBackupsComponent implements OnInit {
   }
 
   private validSchedule(): boolean {
-    const validFrequency = ['hourly', 'daily', 'weekly'].includes(
+    const validFrequency = ['hourly', 'daily', 'weekly', 'monthly'].includes(
       this.editor.frequency,
     )
     const validMinute =
@@ -1170,7 +1193,12 @@ export default class AutomaticBackupsComponent implements OnInit {
       (Number.isInteger(this.editor.hour) &&
         this.editor.hour >= 0 &&
         this.editor.hour <= 23)
-    return validFrequency && validMinute && validHour
+    const validDayOfMonth =
+      this.editor.frequency !== 'monthly' ||
+      (Number.isInteger(this.editor.dayOfMonth) &&
+        this.editor.dayOfMonth >= 1 &&
+        this.editor.dayOfMonth <= 31)
+    return validFrequency && validMinute && validHour && validDayOfMonth
   }
 
   private validRetention(): boolean {
