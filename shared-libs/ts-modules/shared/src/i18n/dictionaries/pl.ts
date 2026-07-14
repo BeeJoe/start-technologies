@@ -1041,4 +1041,7 @@ export default {
   1155: 'Dodaj nowy harmonogram kopii zapasowych',
   1156: 'Niestandardowe',
   1157: 'Postęp konfiguracji',
+  1158: 'Wyświetl wszystkie zadania',
+  1159: 'Wyświetl/Edytuj',
+  1160: 'Niezapisane zmiany zostały odrzucone',
 } satisfies i18n

@@ -207,6 +207,21 @@ test('advanced retention round-trips a nonstandard first tier', () => {
   }
 })
 
+test('job editing preserves hidden custom tiers until that row changes', () => {
+  assert.match(
+    advancedComponent,
+    /preserved:\s*\{[\s\S]{0,120}tier: structuredClone\(tier\)[\s\S]{0,120}interval,[\s\S]{0,120}duration/,
+  )
+  assert.match(
+    advancedComponent,
+    /private serializeRetentionRule[\s\S]{0,500}rule\.preserved[\s\S]{0,300}rule\.interval === rule\.preserved\.interval[\s\S]{0,300}rule\.duration === rule\.preserved\.duration[\s\S]{0,300}structuredClone\(rule\.preserved\.tier\)/,
+  )
+  assert.match(
+    advancedComponent,
+    /private defaultPolicy[\s\S]{0,300}this\.serializeRetentionRule\(form\)/,
+  )
+})
+
 test('version history supports hourly through monthly intervals', () => {
   assert.equal(retentionIntervalSeconds('hour'), 60 * 60)
   assert.equal(retentionIntervalSeconds('day'), 24 * 60 * 60)
@@ -326,11 +341,13 @@ test('all backup schedules share one selected-job editor', () => {
     /readonly mode = input\.required<'manage' \| 'restore'>\(\)/,
   )
   assert.match(advancedComponent, /Add new backup schedule/)
-  assert.doesNotMatch(advancedComponent, /View all backup schedules/)
+  assert.match(advancedComponent, /View all jobs/)
   assert.match(
     advancedComponent,
-    /class="schedule-list"[\s\S]{0,1200}@for \(job of jobs\(\); track job\.id\)[\s\S]{0,700}\(click\)="selectJob\(job\.id\)"/,
+    /class="schedule-list"[\s\S]{0,1200}@for \(job of jobs\(\); track job\.id\)/,
   )
+  assert.match(advancedComponent, /\(click\)="edit\(job\)"/)
+  assert.match(advancedComponent, /View\/Edit/)
   assert.match(
     advancedComponent,
     /iconStart="@tui\.plus"[\s\S]{0,160}\(click\)="create\(\)"/,
@@ -369,10 +386,15 @@ test('all backup schedules share one selected-job editor', () => {
   const retention = advancedComponent.slice(retentionStart, retentionEnd)
   assert.match(
     advancedComponent,
-    /retentionIntervals:[\s\S]{0,160}\['hour', 'day', 'week', 'month', 'custom'\]/,
+    /retentionIntervals:[\s\S]{0,160}\['hour', 'day', 'week', 'month'\]/,
   )
   assert.match(advancedComponent, /tuiSelect[\s\S]{0,1200}retentionIntervals/)
   assert.match(retention, /iconStart="@tui\.plus"/)
+  assert.doesNotMatch(
+    retention,
+    /<button tuiOption \[value\]="interval">[\s\S]{0,120}Custom/,
+  )
+  assert.doesNotMatch(retention, /Per-service retention overrides/)
   assert.doesNotMatch(retention, /Retention tiers|Add tier|Custom tiers/)
 
   assert.ok(
@@ -413,17 +435,26 @@ test('multiple automatic jobs expand as a list before an individual editor', () 
   )
   assert.match(
     advancedComponent,
-    /jobs\(\)\.length > 1 \|\| job\.id !== primaryJobId\(\)[\s\S]{0,1600}Run now/,
+    /class="schedule-job"[\s\S]{0,1800}tuiSwitch[\s\S]{0,900}Run now[\s\S]{0,600}View\/Edit/,
   )
   assert.match(
     advancedComponent,
-    /jobs\(\)\.length > 1 \|\| job\.id !== primaryJobId\(\)[\s\S]{0,900}tuiSwitch/,
+    /@if \(jobs\(\)\.length > 1 && editor\(\)\)[\s\S]{0,800}View all jobs/,
   )
   assert.match(
     backupsComponent,
     /jobs\(\)\.length === 1[\s\S]{0,500}simple-switch/,
   )
-  assert.match(backupsComponent, /jobs\(\)\.length === 1[\s\S]{0,900}Run now/)
+  const automaticHeading = backupsComponent.slice(
+    backupsComponent.indexOf('<header class="card-heading automatic-heading">'),
+    backupsComponent.indexOf(
+      '</header>',
+      backupsComponent.indexOf(
+        '<header class="card-heading automatic-heading">',
+      ),
+    ),
+  )
+  assert.match(automaticHeading, /jobs\(\)\.length === 1[\s\S]{0,900}Run now/)
   const toolbar = advancedComponent.slice(
     advancedComponent.indexOf('<div class="jobs-toolbar">'),
     advancedComponent.indexOf(
@@ -432,6 +463,71 @@ test('multiple automatic jobs expand as a list before an individual editor', () 
     ),
   )
   assert.doesNotMatch(toolbar, /Automatic backups/)
+  assert.ok(
+    advancedComponent.indexOf('class="schedule-list"') <
+      advancedComponent.indexOf('<div class="jobs-toolbar">'),
+  )
+  assert.match(
+    advancedComponent,
+    /viewAllJobs\(\)[\s\S]{0,500}Unsaved changes were not saved/,
+  )
+  assert.doesNotMatch(
+    advancedComponent,
+    /\.schedule-browser\s*\{[\s\S]{0,160}border:/,
+  )
+})
+
+test('collapsed automatic card surfaces attention without leaking one schedule into a multi-job summary', () => {
+  const heading = backupsComponent.slice(
+    backupsComponent.indexOf('<header class="card-heading automatic-heading">'),
+    backupsComponent.indexOf(
+      '</header>',
+      backupsComponent.indexOf(
+        '<header class="card-heading automatic-heading">',
+      ),
+    ),
+  )
+  const body = backupsComponent.slice(
+    backupsComponent.indexOf('<div class="card-body">'),
+    backupsComponent.indexOf('</automatic-backups>'),
+  )
+
+  assert.match(
+    heading,
+    /needsAttention\(\)[\s\S]{0,260}Automatic backups need attention/,
+  )
+  assert.doesNotMatch(body, /Automatic backups need attention/)
+  assert.match(
+    backupsComponent,
+    /if \(jobs\.length > 1\)[\s\S]{0,220}\$\{jobs\.length\} schedules/,
+  )
+})
+
+test('schedule and version-history frequencies are required and every retention row is removable', () => {
+  for (const component of [automaticComponent, advancedComponent]) {
+    assert.match(
+      component,
+      /(?:name="frequency"[\s\S]{0,120}required|required[\s\S]{0,120}name="frequency")/,
+    )
+  }
+
+  const retentionStart = advancedComponent.indexOf(
+    "<b>{{ 'Version history' | i18n }}</b>",
+  )
+  const retentionEnd = advancedComponent.indexOf('</form>', retentionStart)
+  const retention = advancedComponent.slice(retentionStart, retentionEnd)
+  assert.match(
+    advancedComponent,
+    /\[name\]="prefix \+ '-interval'"[\s\S]{0,120}required/,
+  )
+  assert.match(retention, /index: 0,[\s\S]{0,80}owner: form/)
+  assert.match(advancedComponent, /removeRetentionRule\(owner, index\)/)
+  assert.match(
+    advancedComponent,
+    /removeRetentionRule\(form: JobEditor, index: number\)[\s\S]{0,700}form\.keepAdditional = false/,
+  )
+  assert.match(advancedComponent, /class="retention-heading setting-row"/)
+  assert.match(retention, /class="add-retention-rule"/)
 })
 
 test('backup settings use primary action buttons and status text can wrap', () => {

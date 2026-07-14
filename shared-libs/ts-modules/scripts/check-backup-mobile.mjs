@@ -566,19 +566,43 @@ assertRule(
   { 'align-items': 'stretch', 'flex-direction': 'column' },
   phone,
 )
-for (const selector of [
+assertRule(
+  advanced,
+  advancedFile,
   '.retention-rule',
-  '.custom-rule-fields',
-  '.override',
+  { 'grid-template-columns': '1fr' },
+  phone,
+)
+assertRule(
+  advanced,
+  advancedFile,
+  '.schedule-job',
+  { display: 'grid', 'grid-template-columns': 'auto minmax(0, 1fr) auto' },
+  phone,
+)
+assertRule(
+  advanced,
+  advancedFile,
+  '.job-list-actions',
+  { 'grid-column': '1 / -1', 'justify-content': 'flex-start' },
+  phone,
+)
+
+for (const [sheet, file] of [
+  [editor, editorFile],
+  [advanced, advancedFile],
 ]) {
-  assertRule(
-    advanced,
-    advancedFile,
-    selector,
-    { 'grid-template-columns': '1fr' },
-    phone,
-  )
+  assertRule(sheet, file, '.retention-toggle-label', { display: 'none' }, phone)
+  assertSource(file, [
+    /\[attr\.aria-label\]="'Keep additional versions' \| i18n"/,
+  ])
 }
+assertSource(editorFile, [
+  /class="setting-row retention-heading"[\s\S]{0,180}'Version history'/,
+])
+assertSource(advancedFile, [
+  /class="retention-heading setting-row"[\s\S]{0,180}'Version history'/,
+])
 
 for (const [sheet, file] of [
   [editor, editorFile],
@@ -715,7 +739,7 @@ assertSource(homeFile, [
   /<system-backup[\s\S]{0,100}mode="create"[\s\S]{0,100}\[embedded\]="true"/,
   /<system-backup[\s\S]{0,100}mode="restore"[\s\S]{0,100}\[embedded\]="true"/,
   /<backup-locations \[embedded\]="true"/,
-  /class="card-body"[\s\S]{0,500}['"]Run now['"]/,
+  /class="card-actions"[\s\S]{0,900}['"]Run now['"]/,
   /<backup-locations[\s\S]*['"]Backup history['"][\s\S]*<backup-history/,
   /class="card-heading automatic-heading"[\s\S]*class="card-actions"[\s\S]*class="expand-toggle"/,
   /parseBackupSchedule\(primary\.schedule\)/,
@@ -731,7 +755,7 @@ assertNotSource(homeFile, [
   /routerLink="manage"/,
   /['"]Dismiss['"]\s*\|\s*i18n/,
   /class="delete-checkpoints"/,
-  /class="card-actions"[\s\S]{0,500}['"]Run now['"]/,
+  /class="card-body"[\s\S]{0,500}['"]Run now['"]/,
   /progress-prominent[\s\S]{0,500}--tui-background-accent-2/,
   /\[disabled\]="progressActive\(\)"/,
   /scrollIntoView/,

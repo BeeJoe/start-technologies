@@ -25,9 +25,15 @@ Backups`.
 1. Choose version-history settings. The safe storage default keeps only the
    latest automatic checkpoint. **Keep additional versions** can retain one
    version per hour, day, week, or month for the duration you select; day is the
-   default interval. Select the plus button below **Keep one backup every** to
-   add another version-history rule with the same frequency and duration
-   controls.
+   default interval. Each row requires a frequency. Select the plus button at
+   the right edge to add another version-history rule with the same frequency
+   and duration controls. Every row, including the first, can be removed;
+   removing the last row turns **Keep additional versions** off and returns to
+   the latest-checkpoint-only default.
+
+   Existing nonstandard version-history intervals created with `start-cli` are
+   preserved unless you change or remove that specific row in the UI.
+
 1. Review the estimated storage, decide whether to **Create the first backup
    now**, and enter the master password. The password field follows that choice;
    use its eye icon to check what you typed. Select **Turn on automatic
@@ -41,14 +47,20 @@ password on existing backups.
 
 With one job, the main **Automatic backups** card keeps the On switch and **Run
 now** action at card level. With multiple jobs, expanding the card first shows
-only the jobs list. Select a job to expand its editor and reveal that job's On
-switch and **Run now** action. Select it again to collapse it.
+the unboxed jobs list. Each row keeps its own On switch, **Run now**, and
+**View/Edit** actions available without opening the full editor. Select
+**View/Edit** to collapse the list and open that job. Select **View all jobs**
+to close the editor and return to the list; StartOS warns you if that discards
+unsaved changes. **Add new backup schedule** appears below the list.
 
-Select **Add new backup schedule** to configure another job in the same editor.
-Each job can use a different exact time, backup location, service selection,
-version-history rules, or per-service version-history overrides. StartOS
-validates enabled schedules together so their frequency can support the
-version history they feed.
+Each job can use a different exact time, backup location, service selection, or
+version-history rules. StartOS validates enabled schedules together so their
+frequency can support the version history they feed.
+
+When a job needs attention, the collapsed main **Automatic backups** card says
+so and explains the problem. With several jobs, the collapsed summary reports
+the number of schedules without presenting one job's time as though it applied
+to every job.
 
 When a selective schedule does not automatically include future services,
 StartOS asks whether a newly installed service should be added to each affected

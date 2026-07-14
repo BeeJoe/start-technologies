@@ -23,12 +23,17 @@ file tracks notable changes since the move to the monorepo.
 ### Changed
 
 - **Unified automatic schedule editing.** Multiple jobs now expand first into a
-  compact jobs list, and selecting a job opens the shared editor identified by
-  that job's name. **Add new backup schedule** opens the same editor for a new
-  job. Per-job On and **Run now** controls appear with the selected job, service
-  selection is collapsed by default, and repeated **Keep one backup every**
-  rules replace separate interval-and-coverage settings. Hour and minute choices
-  can no longer be cleared to an invalid null value.
+  compact, unboxed jobs list with per-job On, **Run now**, and **View/Edit**
+  actions. Opening one job collapses the list to a **View all jobs** card, which
+  warns before discarding unsaved edits, while **Add new backup schedule** sits
+  below the list. The collapsed main card surfaces jobs needing attention and
+  avoids showing one job's schedule details when several jobs exist. Service
+  selection is collapsed by default. Version history requires a frequency,
+  removes the custom option and retention-overrides editor, aligns repeated
+  **Keep one backup every** rows, and lets every row be removed; removing the
+  last row restores the latest-only default. Existing nonstandard CLI-created
+  retention tiers remain exact until their row is changed. Hour and minute
+  choices can no longer be cleared to an invalid null value.
 - **Simplified Automatic Backups.** The expanded card now uses a flat settings
   layout, keeps **Run now** with the detailed actions, and leaves checkpoint
   browsing and restore actions in the dedicated **Backup history** and restore

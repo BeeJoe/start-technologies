@@ -1042,4 +1042,7 @@ export const ENGLISH: Record<string, number> = {
   'Add new backup schedule': 1155,
   'Custom': 1156,
   'Setup progress': 1157,
+  'View all jobs': 1158,
+  'View/Edit': 1159,
+  'Unsaved changes were not saved': 1160,
 }

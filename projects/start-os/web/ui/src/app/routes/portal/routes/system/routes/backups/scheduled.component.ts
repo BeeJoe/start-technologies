@@ -17,7 +17,6 @@ import {
 } from '@start9labs/shared'
 import { T } from '@start9labs/start-core'
 import {
-  TuiAppearance,
   TuiButton,
   TuiCell,
   TuiCheckbox,
@@ -26,6 +25,7 @@ import {
   TuiIcon,
   TuiInput,
   TuiNotification,
+  TuiNotificationService,
   TuiTitle,
 } from '@taiga-ui/core'
 import {
@@ -51,20 +51,27 @@ import {
   parseBackupRetentionTier,
   parseBackupSchedule,
   parseBackupServiceSelection,
+  retentionIntervalFromSeconds,
+  retentionIntervalSeconds,
   retentionPeriodLabel,
   serializeBackupRetentionTier,
   serializeBackupServiceSelection,
   serializeBackupSchedule,
 } from './scheduled.utils'
 
-type RetentionPreset = 'latest' | 'daily-week' | 'custom'
-
-interface RetentionOverrideEditor {
-  preset: RetentionPreset
-  tiers: BackupRetentionTierEditor[]
+interface EditableRetentionRule extends BackupRetentionTierEditor {
+  preserved: {
+    tier: T.RetentionTier
+    interval: BackupRetentionTierEditor['interval']
+    duration: number
+  } | null
 }
 
-interface JobEditor extends BackupRetentionTierEditor {
+interface RetentionOverrideEditor {
+  tiers: EditableRetentionRule[]
+}
+
+interface JobEditor extends EditableRetentionRule {
   id?: string
   name: string
   targetId: string
@@ -78,7 +85,7 @@ interface JobEditor extends BackupRetentionTierEditor {
   weekday: number
   timezone: string
   keepAdditional: boolean
-  additionalTiers: BackupRetentionTierEditor[]
+  additionalTiers: EditableRetentionRule[]
   retentionOverrides: Record<string, RetentionOverrideEditor>
   password: string
   firstBackupNow: boolean
@@ -92,16 +99,21 @@ interface JobEditor extends BackupRetentionTierEditor {
       #retentionRule
       let-rule
       let-prefix="prefix"
-      let-rules="rules"
       let-index="index"
+      let-owner="owner"
     >
       <div class="retention-rule">
         <span>{{ 'Keep one backup every' | i18n }}</span>
-        <tui-textfield tuiChevron [stringify]="stringifyRetentionInterval">
+        <tui-textfield
+          tuiChevron
+          [stringify]="stringifyRetentionInterval"
+          [tuiTextfieldCleaner]="false"
+        >
           <label tuiLabel>{{ 'Frequency' | i18n }}</label>
           <input
             tuiSelect
             [name]="prefix + '-interval'"
+            required
             [(ngModel)]="rule.interval"
           />
           <tui-data-list *tuiDropdown>
@@ -112,54 +124,27 @@ interface JobEditor extends BackupRetentionTierEditor {
             }
           </tui-data-list>
         </tui-textfield>
-        @if (rule.interval !== 'custom') {
-          <span>{{ 'for' | i18n }}</span>
-          <tui-textfield class="duration-field">
-            <label tuiLabel>{{ 'Duration' | i18n }}</label>
-            <input
-              tuiInputNumber
-              [name]="prefix + '-duration'"
-              [min]="1"
-              [max]="365"
-              [(ngModel)]="rule.duration"
-            />
-          </tui-textfield>
-          <span>{{ retentionPeriodFor(rule) | i18n }}</span>
-        } @else {
-          <span class="custom-rule-fields">
-            <tui-textfield>
-              <label tuiLabel>{{ 'Interval hours' | i18n }}</label>
-              <input
-                tuiInputNumber
-                [name]="prefix + '-custom-interval'"
-                [min]="1 / 3600"
-                [step]="1 / 3600"
-                [(ngModel)]="rule.customIntervalHours"
-              />
-            </tui-textfield>
-            <tui-textfield>
-              <label tuiLabel>{{ 'Coverage hours' | i18n }}</label>
-              <input
-                tuiInputNumber
-                [name]="prefix + '-custom-coverage'"
-                [min]="1 / 3600"
-                [step]="1 / 3600"
-                [(ngModel)]="rule.customCoverageHours"
-              />
-            </tui-textfield>
-          </span>
-        }
-        @if (rules) {
-          <button
-            tuiButton
-            type="button"
-            size="xs"
-            appearance="flat-destructive"
-            (click)="rules.splice(index, 1)"
-          >
-            {{ 'Remove' | i18n }}
-          </button>
-        }
+        <span>{{ 'for' | i18n }}</span>
+        <tui-textfield class="duration-field">
+          <label tuiLabel>{{ 'Duration' | i18n }}</label>
+          <input
+            tuiInputNumber
+            [name]="prefix + '-duration'"
+            [min]="1"
+            [max]="365"
+            [(ngModel)]="rule.duration"
+          />
+        </tui-textfield>
+        <span>{{ retentionPeriodFor(rule) | i18n }}</span>
+        <button
+          tuiButton
+          type="button"
+          size="xs"
+          appearance="flat-destructive"
+          (click)="removeRetentionRule(owner, index)"
+        >
+          {{ 'Remove' | i18n }}
+        </button>
       </div>
     </ng-template>
 
@@ -218,31 +203,24 @@ interface JobEditor extends BackupRetentionTierEditor {
         <p>{{ 'Loading' | i18n }}…</p>
       }
 
-      <div class="jobs-toolbar">
+      @if (jobs().length > 1 && editor()) {
         <button
-          tuiButton
+          tuiCell
           type="button"
-          size="s"
-          appearance="primary"
-          iconStart="@tui.plus"
-          (click)="create()"
+          class="view-all-jobs"
+          (click)="viewAllJobs()"
         >
-          {{ 'Add new backup schedule' | i18n }}
+          <tui-icon icon="@tui.list" />
+          <span tuiTitle>
+            <b>{{ 'View all jobs' | i18n }}</b>
+          </span>
+          <tui-icon icon="@tui.chevron-left" />
         </button>
-      </div>
-
-      @if (jobs().length > 1) {
+      } @else if (jobs().length > 1) {
         <section class="schedule-browser">
           <div class="schedule-list">
             @for (job of jobs(); track job.id) {
-              <button
-                tuiCell
-                tuiAppearance="outline-grayscale"
-                type="button"
-                [class.selected]="job.id === selectedJobId()"
-                [attr.aria-expanded]="job.id === selectedJobId()"
-                (click)="selectJob(job.id)"
-              >
+              <div tuiCell class="schedule-job">
                 <tui-icon icon="@tui.calendar-clock" />
                 <span tuiTitle>
                   <b>{{ job.name }}</b>
@@ -262,14 +240,57 @@ interface JobEditor extends BackupRetentionTierEditor {
                 } @else if (!job.enabled) {
                   <span tuiBadge>{{ 'Paused' | i18n }}</span>
                 }
-                <tui-icon
-                  icon="@tui.chevron-down"
-                  [class.rotated]="job.id === selectedJobId()"
-                />
-              </button>
+                <div class="job-list-actions">
+                  <label class="inline-switch job-switch">
+                    <input
+                      tuiSwitch
+                      type="checkbox"
+                      [showIcons]="false"
+                      [ngModelOptions]="{ standalone: true }"
+                      [ngModel]="job.enabled && !job.pause"
+                      [disabled]="!!job.pause && job.pause.reason !== 'user'"
+                      (ngModelChange)="setJobEnabled(job, $event)"
+                    />
+                    <span>
+                      {{ (job.enabled && !job.pause ? 'On' : 'Off') | i18n }}
+                    </span>
+                  </label>
+                  <button
+                    tuiButton
+                    type="button"
+                    size="xs"
+                    appearance="primary"
+                    [disabled]="!!job.pause || !job.enabled"
+                    (click)="runNow(job)"
+                  >
+                    {{ 'Run now' | i18n }}
+                  </button>
+                  <button
+                    tuiButton
+                    type="button"
+                    size="xs"
+                    appearance="primary"
+                    (click)="edit(job)"
+                  >
+                    {{ 'View/Edit' | i18n }}
+                  </button>
+                </div>
+              </div>
             }
           </div>
         </section>
+        <div class="jobs-toolbar">
+          <button
+            tuiButton
+            type="button"
+            size="s"
+            appearance="primary"
+            iconStart="@tui.plus"
+            (click)="create()"
+          >
+            {{ 'Add new backup schedule' | i18n }}
+          </button>
+        </div>
       }
 
       @if (editor(); as form) {
@@ -323,32 +344,6 @@ interface JobEditor extends BackupRetentionTierEditor {
                 <span tuiBadge>{{ 'Paused' | i18n }}</span>
               }
               <div class="actions">
-                @if (jobs().length > 1 || job.id !== primaryJobId()) {
-                  <label class="inline-switch job-switch">
-                    <input
-                      tuiSwitch
-                      type="checkbox"
-                      [showIcons]="false"
-                      [ngModelOptions]="{ standalone: true }"
-                      [ngModel]="job.enabled && !job.pause"
-                      [disabled]="!!job.pause && job.pause.reason !== 'user'"
-                      (ngModelChange)="setJobEnabled(job, $event)"
-                    />
-                    <span>
-                      {{ (job.enabled && !job.pause ? 'On' : 'Off') | i18n }}
-                    </span>
-                  </label>
-                  <button
-                    tuiButton
-                    type="button"
-                    size="xs"
-                    appearance="primary"
-                    [disabled]="!!job.pause || !job.enabled"
-                    (click)="runNow(job)"
-                  >
-                    {{ 'Run now' | i18n }}
-                  </button>
-                }
                 @if (job.pause && job.pause.reason !== 'user') {
                   <button
                     tuiButton
@@ -423,11 +418,16 @@ interface JobEditor extends BackupRetentionTierEditor {
               <span tuiSubtitle>{{ scheduleSummary(form) }}</span>
             </span>
             <div class="schedule-controls">
-              <tui-textfield tuiChevron [stringify]="stringifyFrequency">
+              <tui-textfield
+                tuiChevron
+                [stringify]="stringifyFrequency"
+                [tuiTextfieldCleaner]="false"
+              >
                 <label tuiLabel>{{ 'Frequency' | i18n }}</label>
                 <input
                   tuiSelect
                   name="frequency"
+                  required
                   [(ngModel)]="form.frequency"
                 />
                 <tui-data-list *tuiDropdown>
@@ -566,26 +566,36 @@ interface JobEditor extends BackupRetentionTierEditor {
           </div>
 
           <div class="setting-row vertical retention-setting">
-            <span tuiTitle>
-              <b>{{ 'Version history' | i18n }}</b>
-              <span tuiSubtitle>{{ retentionSummary(form) }}</span>
-            </span>
-            <label class="inline-switch left">
-              <input
-                tuiSwitch
-                type="checkbox"
-                [showIcons]="false"
-                name="keepAdditional"
-                [(ngModel)]="form.keepAdditional"
-              />
-              <span>{{ 'Keep additional versions' | i18n }}</span>
-            </label>
+            <div class="retention-heading setting-row">
+              <span tuiTitle>
+                <b>{{ 'Version history' | i18n }}</b>
+                <span tuiSubtitle>{{ retentionSummary(form) }}</span>
+              </span>
+              <label class="inline-switch">
+                <input
+                  tuiSwitch
+                  type="checkbox"
+                  [showIcons]="false"
+                  [attr.aria-label]="'Keep additional versions' | i18n"
+                  name="keepAdditional"
+                  [(ngModel)]="form.keepAdditional"
+                />
+                <span class="retention-toggle-label">
+                  {{ 'Keep additional versions' | i18n }}
+                </span>
+              </label>
+            </div>
             @if (form.keepAdditional) {
               <div class="retention-rules">
                 <ng-container
                   *ngTemplateOutlet="
                     retentionRule;
-                    context: { $implicit: form, prefix: 'default' }
+                    context: {
+                      $implicit: form,
+                      prefix: 'default',
+                      index: 0,
+                      owner: form,
+                    }
                   "
                 />
                 @for (rule of form.additionalTiers; track $index) {
@@ -595,8 +605,8 @@ interface JobEditor extends BackupRetentionTierEditor {
                       context: {
                         $implicit: rule,
                         prefix: 'default-' + $index,
-                        rules: form.additionalTiers,
-                        index: $index,
+                        index: $index + 1,
+                        owner: form,
                       }
                     "
                   />
@@ -604,6 +614,7 @@ interface JobEditor extends BackupRetentionTierEditor {
                 <button
                   tuiIconButton
                   type="button"
+                  class="add-retention-rule"
                   size="s"
                   appearance="primary"
                   iconStart="@tui.plus"
@@ -621,61 +632,6 @@ interface JobEditor extends BackupRetentionTierEditor {
               </div>
             }
           </div>
-
-          @if (selectedPackages(form).length) {
-            <fieldset>
-              <legend>{{ 'Per-service retention overrides' | i18n }}</legend>
-              @for (pkg of selectedPackages(form); track pkg.id) {
-                <div class="override">
-                  <strong>{{ pkg.name }}</strong>
-                  <select
-                    [name]="'override-' + pkg.id"
-                    [ngModel]="overridePreset(form, pkg.id)"
-                    (ngModelChange)="setOverridePreset(form, pkg.id, $event)"
-                  >
-                    <option value="default">
-                      {{ 'Use default retention' | i18n }}
-                    </option>
-                    <option value="latest">{{ 'Latest only' | i18n }}</option>
-                    <option value="daily-week">
-                      {{ 'Daily for one week' | i18n }}
-                    </option>
-                    <option value="custom">{{ 'Custom' | i18n }}</option>
-                  </select>
-                </div>
-                @if (form.retentionOverrides[pkg.id]; as override) {
-                  @if (override.preset === 'custom') {
-                    <div class="retention-rules override-rules">
-                      @for (rule of override.tiers; track $index) {
-                        <ng-container
-                          *ngTemplateOutlet="
-                            retentionRule;
-                            context: {
-                              $implicit: rule,
-                              prefix: 'override-' + pkg.id + '-' + $index,
-                              rules: override.tiers,
-                              index: $index,
-                            }
-                          "
-                        />
-                      }
-                      <button
-                        tuiIconButton
-                        type="button"
-                        size="s"
-                        appearance="primary"
-                        iconStart="@tui.plus"
-                        [attr.aria-label]="'Add' | i18n"
-                        (click)="override.tiers.push(newRetentionRule())"
-                      >
-                        {{ 'Add' | i18n }}
-                      </button>
-                    </div>
-                  }
-                }
-              }
-            </fieldset>
-          }
 
           <fieldset>
             <div class="heading estimate-heading">
@@ -815,6 +771,21 @@ interface JobEditor extends BackupRetentionTierEditor {
         </form>
       }
 
+      @if (jobs().length <= 1 && editor()) {
+        <div class="jobs-toolbar">
+          <button
+            tuiButton
+            type="button"
+            size="s"
+            appearance="primary"
+            iconStart="@tui.plus"
+            (click)="create()"
+          >
+            {{ 'Add new backup schedule' | i18n }}
+          </button>
+        </div>
+      }
+
       @if (reassigning(); as job) {
         <form class="editor" (ngSubmit)="reassign(job)">
           <div class="heading">
@@ -917,6 +888,14 @@ interface JobEditor extends BackupRetentionTierEditor {
       align-items: center;
       flex-wrap: wrap;
       gap: 0.35rem;
+    }
+
+    .job-list-actions {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      flex-wrap: wrap;
+      gap: 0.5rem;
     }
 
     .jobs-toolbar {
@@ -1048,8 +1027,7 @@ interface JobEditor extends BackupRetentionTierEditor {
       min-width: 0;
     }
 
-    .retention-rules,
-    .custom-rule-fields {
+    .retention-rules {
       display: grid;
       gap: 0.75rem;
       width: 100%;
@@ -1057,12 +1035,11 @@ interface JobEditor extends BackupRetentionTierEditor {
     }
 
     .retention-rules {
-      justify-items: start;
+      justify-items: stretch;
     }
 
-    .custom-rule-fields {
-      grid-column: 3 / -2;
-      grid-template-columns: repeat(2, minmax(9rem, 1fr));
+    .add-retention-rule {
+      justify-self: end;
     }
 
     .duration-field {
@@ -1102,17 +1079,6 @@ interface JobEditor extends BackupRetentionTierEditor {
       min-height: 2.75rem;
     }
 
-    .override {
-      display: grid;
-      grid-template-columns: minmax(10rem, 1fr) minmax(12rem, 1fr);
-      gap: 0.75rem;
-      align-items: center;
-    }
-
-    .override-rules {
-      margin-inline-start: 1rem;
-    }
-
     .muted,
     .snapshot-row {
       color: var(--tui-text-secondary);
@@ -1133,7 +1099,6 @@ interface JobEditor extends BackupRetentionTierEditor {
     }
 
     .grid > *,
-    .override > *,
     .histories td {
       min-width: 0;
       overflow-wrap: anywhere;
@@ -1143,14 +1108,28 @@ interface JobEditor extends BackupRetentionTierEditor {
       margin-top: 2rem;
     }
 
-    .schedule-list > button {
+    .schedule-job,
+    .view-all-jobs {
       width: 100%;
       min-width: 0;
       text-align: left;
       box-sizing: border-box;
     }
 
-    .schedule-list [tuiTitle] {
+    .schedule-job {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.75rem 0;
+      border-bottom: 1px solid var(--tui-border-normal);
+    }
+
+    .schedule-job:last-child {
+      border-bottom: 0;
+    }
+
+    .schedule-job [tuiTitle],
+    .view-all-jobs [tuiTitle] {
       flex: 1;
     }
 
@@ -1159,24 +1138,6 @@ interface JobEditor extends BackupRetentionTierEditor {
       display: grid;
       gap: 0.75rem;
       min-width: 0;
-    }
-
-    .schedule-browser {
-      padding: 1rem;
-      border: 1px solid var(--tui-border-normal);
-      border-radius: var(--tui-radius-m);
-    }
-
-    .schedule-browser .heading {
-      margin: 0;
-    }
-
-    .schedule-list > button.selected {
-      box-shadow: inset 0 0 0 2px var(--tui-border-focus);
-    }
-
-    .rotated {
-      transform: rotate(180deg);
     }
 
     .estimate-heading {
@@ -1198,21 +1159,8 @@ interface JobEditor extends BackupRetentionTierEditor {
       }
 
       .schedule-controls,
-      .retention-rule,
-      .custom-rule-fields {
+      .retention-rule {
         grid-template-columns: 1fr;
-      }
-
-      .override {
-        grid-template-columns: 1fr;
-      }
-
-      .custom-rule-fields {
-        grid-column: auto;
-      }
-
-      .override-rules {
-        margin-inline-start: 0;
       }
 
       .editor.panel,
@@ -1228,35 +1176,53 @@ interface JobEditor extends BackupRetentionTierEditor {
         flex: 0 1 auto;
       }
 
-      .schedule-browser {
-        padding: 0.5rem;
-      }
-
-      .schedule-list > button {
+      .schedule-job {
         display: grid;
         grid-template-columns: auto minmax(0, 1fr) auto;
         align-items: center;
       }
 
-      .schedule-list > button > tui-icon:first-child {
+      .schedule-job > tui-icon:first-child {
         grid-column: 1;
         grid-row: 1 / span 2;
       }
 
-      .schedule-list > button > [tuiTitle] {
+      .schedule-job > [tuiTitle] {
         grid-column: 2;
         grid-row: 1;
       }
 
-      .schedule-list > button > [tuiBadge] {
+      .schedule-job > [tuiBadge] {
         grid-column: 2;
         grid-row: 2;
         justify-self: start;
       }
 
-      .schedule-list > button > tui-icon:last-child {
-        grid-column: 3;
-        grid-row: 1 / span 2;
+      .job-list-actions {
+        grid-column: 1 / -1;
+        justify-content: flex-start;
+      }
+
+      .job-list-actions > button {
+        flex: 1 1 7rem;
+      }
+
+      .retention-heading {
+        align-items: flex-start;
+      }
+
+      .retention-heading > [tuiTitle] {
+        flex: 1;
+        min-width: 0;
+      }
+
+      .retention-heading .inline-switch {
+        flex: 0 0 auto;
+        width: fit-content;
+      }
+
+      .retention-toggle-label {
+        display: none;
       }
     }
   `,
@@ -1265,7 +1231,6 @@ interface JobEditor extends BackupRetentionTierEditor {
     DatePipe,
     FormsModule,
     NgTemplateOutlet,
-    TuiAppearance,
     TuiBadge,
     TuiBlock,
     TuiButton,
@@ -1294,6 +1259,7 @@ export class ScheduledBackupsComponent implements OnInit {
   private readonly dialogs = inject(DialogService)
   private readonly errors = inject(ErrorService)
   private readonly i18n = inject(i18nPipe)
+  private readonly alerts = inject(TuiNotificationService)
   private readonly packageData = toSignal(
     inject<PatchDB<DataModel>>(PatchDB).watch$('packageData'),
   )
@@ -1308,7 +1274,7 @@ export class ScheduledBackupsComponent implements OnInit {
   protected readonly showServices = signal(false)
   readonly reassigning = signal<T.BackupJob | null>(null)
   readonly policyHistory = signal<T.ServiceTargetHistory | null>(null)
-  readonly policyTiers = signal<BackupRetentionTierEditor[]>([])
+  readonly policyTiers = signal<EditableRetentionRule[]>([])
   readonly policyPreview = signal<T.RetentionPolicyChangePreview | null>(null)
   readonly estimates = signal<T.BackupServiceCapacityEstimate[]>([])
 
@@ -1316,6 +1282,7 @@ export class ScheduledBackupsComponent implements OnInit {
   reassignPassword = ''
   waitForSchedule = false
   confirmPrune = false
+  private editorBaseline: string | null = null
 
   private readonly reviewDecisions = new Map<
     string,
@@ -1354,8 +1321,10 @@ export class ScheduledBackupsComponent implements OnInit {
     'daily',
     'weekly',
   ]
-  protected readonly retentionIntervals: BackupRetentionTierEditor['interval'][] =
-    ['hour', 'day', 'week', 'month', 'custom']
+  protected readonly retentionIntervals: Exclude<
+    BackupRetentionTierEditor['interval'],
+    'custom'
+  >[] = ['hour', 'day', 'week', 'month']
   readonly weekdays = [
     { value: 0, label: 'Sunday' as const },
     { value: 1, label: 'Monday' as const },
@@ -1448,10 +1417,7 @@ export class ScheduledBackupsComponent implements OnInit {
       weekday: now.getDay(),
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
       keepAdditional: false,
-      interval: 'day',
-      duration: 7,
-      customIntervalHours: 24,
-      customCoverageHours: 168,
+      ...this.newRetentionRule(),
       additionalTiers: [],
       retentionOverrides: {},
       password: '',
@@ -1462,24 +1428,33 @@ export class ScheduledBackupsComponent implements OnInit {
     this.reassigning.set(null)
     this.selectedJobId.set('')
     this.editor.set(form)
+    this.editorBaseline = this.editorSnapshot(form)
     void this.refreshEstimates(form)
   }
 
-  selectJob(id: string) {
-    this.reassigning.set(null)
-    if (this.selectedJobId() === id && this.editor()?.id === id) {
-      this.selectedJobId.set('')
-      this.editor.set(null)
-      this.showServices.set(false)
-      return
+  viewAllJobs() {
+    const form = this.editor()
+    if (
+      form &&
+      this.editorBaseline !== null &&
+      this.editorSnapshot(form) !== this.editorBaseline
+    ) {
+      this.alerts
+        .open(this.i18n.transform('Unsaved changes were not saved'), {
+          appearance: 'warning',
+        })
+        .subscribe()
     }
-    this.edit(this.jobs().find(job => job.id === id))
+    this.reassigning.set(null)
+    this.selectedJobId.set('')
+    this.editor.set(null)
+    this.editorBaseline = null
+    this.showServices.set(false)
   }
 
   cancelEditor() {
     if (this.jobs().length > 1) {
-      this.selectedJobId.set('')
-      this.editor.set(null)
+      this.viewAllJobs()
     } else {
       this.edit(this.jobs()[0])
     }
@@ -1494,7 +1469,7 @@ export class ScheduledBackupsComponent implements OnInit {
       this.packages().map(pkg => pkg.id),
     )
     const [tier, ...additionalTiers] = job.defaultRetention.tiers
-    const retention = parseBackupRetentionTier(tier)
+    const retention = this.editableRetentionTier(tier)
     const form: JobEditor = {
       id: job.id,
       name: job.name,
@@ -1503,12 +1478,13 @@ export class ScheduledBackupsComponent implements OnInit {
       ...schedule,
       keepAdditional: !!tier,
       ...retention,
-      additionalTiers: this.toTierEditors({ tiers: additionalTiers }),
+      additionalTiers: additionalTiers.map(item =>
+        this.editableRetentionTier(item),
+      ),
       retentionOverrides: Object.fromEntries(
         Object.entries(job.retentionOverrides).map(([packageId, policy]) => [
           packageId,
           {
-            preset: this.retentionPreset(policy),
             tiers: this.toTierEditors(policy),
           },
         ]),
@@ -1519,7 +1495,21 @@ export class ScheduledBackupsComponent implements OnInit {
     }
     this.selectedJobId.set(job.id)
     this.editor.set(form)
+    this.editorBaseline = this.editorSnapshot(form)
     void this.refreshEstimates(form)
+  }
+
+  removeRetentionRule(form: JobEditor, index: number) {
+    if (index === 0 && form.additionalTiers.length) {
+      const next = form.additionalTiers.shift()!
+      Object.assign(form, next)
+    } else if (index > 0) {
+      form.additionalTiers.splice(index - 1, 1)
+    } else {
+      form.keepAdditional = false
+      Object.assign(form, this.newRetentionRule())
+    }
+    form.capacityConfirmed = false
   }
 
   togglePackage(form: JobEditor, packageId: string, checked: boolean) {
@@ -1540,42 +1530,6 @@ export class ScheduledBackupsComponent implements OnInit {
   setAllPackages(form: JobEditor, checked: boolean) {
     form.packageIds = checked ? this.packages().map(pkg => pkg.id) : []
     if (!checked) form.retentionOverrides = {}
-    form.capacityConfirmed = false
-  }
-
-  overridePreset(
-    form: JobEditor,
-    packageId: string,
-  ): RetentionPreset | 'default' {
-    return form.retentionOverrides[packageId]?.preset || 'default'
-  }
-
-  setOverridePreset(
-    form: JobEditor,
-    packageId: string,
-    preset: RetentionPreset | 'default',
-  ) {
-    if (preset === 'default') {
-      delete form.retentionOverrides[packageId]
-    } else {
-      const current = form.retentionOverrides[packageId]
-      form.retentionOverrides[packageId] = {
-        preset,
-        tiers:
-          preset === 'latest'
-            ? []
-            : preset === 'daily-week'
-              ? [
-                  parseBackupRetentionTier({
-                    intervalSeconds: 24 * 60 * 60,
-                    coverageSeconds: 7 * 24 * 60 * 60,
-                  }),
-                ]
-              : current?.tiers.length
-                ? current.tiers
-                : [this.newRetentionRule()],
-      }
-    }
     form.capacityConfirmed = false
   }
 
@@ -1615,6 +1569,7 @@ export class ScheduledBackupsComponent implements OnInit {
         }
       }
       this.editor.set(null)
+      this.editorBaseline = ''
       await this.reload()
     } catch (error: any) {
       this.errors.handleError(getErrorMessage(error))
@@ -1946,8 +1901,11 @@ export class ScheduledBackupsComponent implements OnInit {
       : retentionPeriodLabel(rule.interval, rule.duration)
   }
 
-  newRetentionRule(): BackupRetentionTierEditor {
-    return parseBackupRetentionTier()
+  newRetentionRule(): EditableRetentionRule {
+    return {
+      ...parseBackupRetentionTier(),
+      preserved: null,
+    }
   }
 
   canSave(form: JobEditor): boolean {
@@ -1956,18 +1914,33 @@ export class ScheduledBackupsComponent implements OnInit {
       form.targetId &&
       form.packageIds.length &&
       this.validSchedule(form) &&
+      this.validRetention(form) &&
       (form.id || form.password) &&
       (this.projectedCount(form) <= 1 || form.capacityConfirmed)
     )
   }
 
   private validSchedule(form: JobEditor): boolean {
+    const validFrequency = this.frequencies.includes(form.frequency)
     const validMinute =
       Number.isInteger(form.minute) && form.minute >= 0 && form.minute <= 59
     const validHour =
       form.frequency === 'hourly' ||
       (Number.isInteger(form.hour) && form.hour >= 0 && form.hour <= 23)
-    return validMinute && validHour
+    return validFrequency && validMinute && validHour
+  }
+
+  private validRetention(form: JobEditor): boolean {
+    if (!form.keepAdditional) return true
+    return [form, ...form.additionalTiers].every(
+      rule =>
+        this.retentionIntervals.includes(
+          rule.interval as (typeof this.retentionIntervals)[number],
+        ) &&
+        Number.isInteger(rule.duration) &&
+        rule.duration >= 1 &&
+        rule.duration <= 365,
+    )
   }
 
   projectedCount(form: JobEditor): number {
@@ -2070,34 +2043,64 @@ export class ScheduledBackupsComponent implements OnInit {
     if (!form.keepAdditional) return { tiers: [] }
     return {
       tiers: [
-        serializeBackupRetentionTier(form),
+        this.serializeRetentionRule(form),
         ...this.policy(form.additionalTiers).tiers,
       ],
     }
   }
 
-  private policy(tiers: BackupRetentionTierEditor[]): T.RetentionPolicy {
+  private policy(tiers: EditableRetentionRule[]): T.RetentionPolicy {
     return {
-      tiers: tiers.map(serializeBackupRetentionTier),
+      tiers: tiers.map(tier => this.serializeRetentionRule(tier)),
     }
   }
 
-  private toTierEditors(
-    policy: T.RetentionPolicy,
-  ): BackupRetentionTierEditor[] {
-    return policy.tiers.map(parseBackupRetentionTier)
+  private toTierEditors(policy: T.RetentionPolicy): EditableRetentionRule[] {
+    return policy.tiers.map(tier => this.editableRetentionTier(tier))
   }
 
-  private retentionPreset(policy: T.RetentionPolicy): RetentionPreset {
-    if (!policy.tiers.length) return 'latest'
+  private editorSnapshot(form: JobEditor): string {
+    return JSON.stringify(form)
+  }
+
+  private editableRetentionTier(tier?: T.RetentionTier): EditableRetentionRule {
+    const parsed = parseBackupRetentionTier(tier)
+    if (parsed.interval !== 'custom' || !tier) {
+      return {
+        ...parsed,
+        preserved: null,
+      }
+    }
+
+    const interval = retentionIntervalFromSeconds(tier.intervalSeconds)
+    const duration = Math.max(
+      1,
+      Math.min(
+        365,
+        Math.round(tier.coverageSeconds / retentionIntervalSeconds(interval)),
+      ),
+    )
+    return {
+      ...parsed,
+      interval,
+      duration,
+      preserved: {
+        tier: structuredClone(tier),
+        interval,
+        duration,
+      },
+    }
+  }
+
+  private serializeRetentionRule(rule: EditableRetentionRule): T.RetentionTier {
     if (
-      policy.tiers.length === 1 &&
-      policy.tiers[0]!.intervalSeconds === 24 * 60 * 60 &&
-      policy.tiers[0]!.coverageSeconds === 7 * 24 * 60 * 60
+      rule.preserved &&
+      rule.interval === rule.preserved.interval &&
+      rule.duration === rule.preserved.duration
     ) {
-      return 'daily-week'
+      return structuredClone(rule.preserved.tier)
     }
-    return 'custom'
+    return serializeBackupRetentionTier(rule)
   }
 
   private async perform<T>(action: () => Promise<T>) {

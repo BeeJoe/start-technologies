@@ -1041,4 +1041,7 @@ export default {
   1155: 'Añadir nueva programación de copias de seguridad',
   1156: 'Personalizado',
   1157: 'Progreso de configuración',
+  1158: 'Ver todos los trabajos',
+  1159: 'Ver/Editar',
+  1160: 'Los cambios no guardados se descartaron',
 } satisfies i18n

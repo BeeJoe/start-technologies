@@ -113,10 +113,25 @@ const WEEKDAYS = [
           [attr.aria-expanded]="expanded() === 'automatic'"
           (click)="togglePanel('automatic')"
         >
-          <tui-icon icon="@tui.calendar-clock" />
+          <tui-icon
+            [icon]="
+              needsAttention() ? '@tui.triangle-alert' : '@tui.calendar-clock'
+            "
+          />
           <span tuiTitle>
-            <b>{{ 'Automatic backups' | i18n }}</b>
-            <span tuiSubtitle>{{ automaticSummary() | i18n }}</span>
+            <b>
+              {{
+                (needsAttention()
+                  ? 'Automatic backups need attention'
+                  : 'Automatic backups'
+                ) | i18n
+              }}
+            </b>
+            <span tuiSubtitle>
+              {{
+                (needsAttention() ? healthDetail() : automaticSummary()) | i18n
+              }}
+            </span>
           </span>
         </button>
 
@@ -133,6 +148,15 @@ const WEEKDAYS = [
               />
               <span>{{ (automaticOn() ? 'On' : 'Off') | i18n }}</span>
             </label>
+            <button
+              tuiButton
+              type="button"
+              size="s"
+              [disabled]="!canRunNow()"
+              (click)="runNow()"
+            >
+              {{ 'Run now' | i18n }}
+            </button>
           </div>
         }
         <button
@@ -151,28 +175,6 @@ const WEEKDAYS = [
 
       @if (expanded() === 'automatic') {
         <div class="card-body">
-          @if (jobs().length === 1) {
-            <div class="expanded-actions">
-              <button
-                tuiButton
-                type="button"
-                size="s"
-                [disabled]="!canRunNow()"
-                (click)="runNow()"
-              >
-                {{ 'Run now' | i18n }}
-              </button>
-            </div>
-          }
-          @if (needsAttention()) {
-            <div class="attention" tuiCell>
-              <tui-icon icon="@tui.triangle-alert" />
-              <span tuiTitle>
-                <b>{{ 'Automatic backups need attention' | i18n }}</b>
-                <span tuiSubtitle>{{ healthDetail() | i18n }}</span>
-              </span>
-            </div>
-          }
           <automatic-backups
             [embedded]="true"
             [mode]="jobs().length ? 'manage' : 'setup'"
@@ -440,11 +442,6 @@ const WEEKDAYS = [
       border-top: 0;
     }
 
-    .expanded-actions {
-      display: flex;
-      justify-content: flex-end;
-    }
-
     .operation,
     .attention {
       gap: 0.75rem;
@@ -541,10 +538,6 @@ const WEEKDAYS = [
       }
 
       .card-actions > button {
-        width: 100%;
-      }
-
-      .expanded-actions > button {
         width: 100%;
       }
 
@@ -647,6 +640,10 @@ export default class BackupsComponent implements OnInit {
   automaticSummary(): string {
     const jobs = this.jobs()
     if (!jobs.length) return 'Automatic backups are not set up yet.'
+    if (jobs.length > 1) {
+      const summary = `${jobs.length} schedules`
+      return this.automaticOn() ? summary : `Off · ${summary}`
+    }
     const primary = jobs[0]!
     const schedule = parseBackupSchedule(primary.schedule)
     const time = `${String(schedule.hour).padStart(2, '0')}:${String(
@@ -659,7 +656,7 @@ export default class BackupsComponent implements OnInit {
           ? `${WEEKDAYS[schedule.weekday] || 'Sunday'} at ${time}`
           : `Daily at ${time}`
     const state = this.automaticOn() ? timing : `Off · ${timing}`
-    return jobs.length === 1 ? state : `${state} · ${jobs.length} schedules`
+    return state
   }
 
   healthDetail(): string {

@@ -206,7 +206,11 @@ interface AutomaticRetentionRule {
             <div class="schedule-controls">
               <label>
                 <span>{{ 'Frequency' | i18n }}</span>
-                <select [(ngModel)]="editor.frequency">
+                <select
+                  name="frequency"
+                  required
+                  [(ngModel)]="editor.frequency"
+                >
                   <option value="hourly">{{ 'Hourly' | i18n }}</option>
                   <option value="daily">{{ 'Daily' | i18n }}</option>
                   <option value="weekly">{{ 'Weekly' | i18n }}</option>
@@ -325,7 +329,7 @@ interface AutomaticRetentionRule {
             </div>
           }
 
-          <div class="setting-row">
+          <div class="setting-row retention-heading">
             <span tuiTitle>
               <b>{{ 'Version history' | i18n }}</b>
               <span tuiSubtitle>
@@ -342,9 +346,12 @@ interface AutomaticRetentionRule {
                 tuiSwitch
                 type="checkbox"
                 [showIcons]="false"
+                [attr.aria-label]="'Keep additional versions' | i18n"
                 [(ngModel)]="editor.keepAdditional"
               />
-              <span>{{ 'Keep additional versions' | i18n }}</span>
+              <span class="retention-toggle-label">
+                {{ 'Keep additional versions' | i18n }}
+              </span>
             </label>
           </div>
 
@@ -353,7 +360,11 @@ interface AutomaticRetentionRule {
               @for (rule of retentionRules(); track $index) {
                 <div class="retention-rule">
                   <span>{{ 'Keep one backup every' | i18n }}</span>
-                  <select [(ngModel)]="rule.interval">
+                  <select
+                    [name]="'retention-frequency-' + $index"
+                    required
+                    [(ngModel)]="rule.interval"
+                  >
                     <option value="hour">{{ 'Hour' | i18n }}</option>
                     <option value="day">{{ 'Day' | i18n }}</option>
                     <option value="week">{{ 'Week' | i18n }}</option>
@@ -370,22 +381,21 @@ interface AutomaticRetentionRule {
                     />
                   </tui-textfield>
                   <span>{{ retentionPeriod(rule) | i18n }}</span>
-                  @if ($index > 0) {
-                    <button
-                      tuiButton
-                      type="button"
-                      size="xs"
-                      appearance="flat-destructive"
-                      (click)="editor.additionalRules.splice($index - 1, 1)"
-                    >
-                      {{ 'Remove' | i18n }}
-                    </button>
-                  }
+                  <button
+                    tuiButton
+                    type="button"
+                    size="xs"
+                    appearance="flat-destructive"
+                    (click)="removeRetentionRule($index)"
+                  >
+                    {{ 'Remove' | i18n }}
+                  </button>
                 </div>
               }
               <button
                 tuiIconButton
                 type="button"
+                class="add-retention-rule"
                 size="s"
                 appearance="primary"
                 iconStart="@tui.plus"
@@ -709,10 +719,14 @@ interface AutomaticRetentionRule {
 
     .retention-rules {
       display: grid;
-      justify-items: start;
+      justify-items: stretch;
       gap: 0.75rem;
       width: 100%;
       min-width: 0;
+    }
+
+    .add-retention-rule {
+      justify-self: end;
     }
 
     .duration-field {
@@ -858,6 +872,24 @@ interface AutomaticRetentionRule {
       .inline-switch {
         width: fit-content;
         justify-content: flex-start;
+      }
+
+      .setting-row.retention-heading:not(.vertical) {
+        align-items: flex-start;
+        flex-direction: row;
+      }
+
+      .retention-heading > [tuiTitle] {
+        flex: 1;
+        min-width: 0;
+      }
+
+      .retention-heading .inline-switch {
+        flex: 0 0 auto;
+      }
+
+      .retention-toggle-label {
+        display: none;
       }
 
       .schedule-controls {
@@ -1034,6 +1066,7 @@ export default class AutomaticBackupsComponent implements OnInit {
       this.ensureServices()
       return (
         this.validSchedule() &&
+        this.validRetention() &&
         this.editor.services.some(service => service.checked)
       )
     }
@@ -1044,6 +1077,7 @@ export default class AutomaticBackupsComponent implements OnInit {
     return (
       !!this.editor.password &&
       this.validSchedule() &&
+      this.validRetention() &&
       !this.capacityBlocked() &&
       this.editor.services.some(service => service.checked)
     )
@@ -1110,7 +1144,23 @@ export default class AutomaticBackupsComponent implements OnInit {
     return { interval: 'day', duration: 7 }
   }
 
+  removeRetentionRule(index: number) {
+    if (index === 0 && this.editor.additionalRules.length) {
+      const next = this.editor.additionalRules.shift()!
+      this.editor.interval = next.interval
+      this.editor.duration = next.duration
+    } else if (index > 0) {
+      this.editor.additionalRules.splice(index - 1, 1)
+    } else {
+      this.editor.keepAdditional = false
+      Object.assign(this.editor, this.newRetentionRule())
+    }
+  }
+
   private validSchedule(): boolean {
+    const validFrequency = ['hourly', 'daily', 'weekly'].includes(
+      this.editor.frequency,
+    )
     const validMinute =
       Number.isInteger(this.editor.minute) &&
       this.editor.minute >= 0 &&
@@ -1120,7 +1170,18 @@ export default class AutomaticBackupsComponent implements OnInit {
       (Number.isInteger(this.editor.hour) &&
         this.editor.hour >= 0 &&
         this.editor.hour <= 23)
-    return validMinute && validHour
+    return validFrequency && validMinute && validHour
+  }
+
+  private validRetention(): boolean {
+    if (!this.editor.keepAdditional) return true
+    return this.retentionRules().every(
+      rule =>
+        ['hour', 'day', 'week', 'month'].includes(rule.interval) &&
+        Number.isInteger(rule.duration) &&
+        rule.duration >= 1 &&
+        rule.duration <= 365,
+    )
   }
 
   selectedServiceSummary(): string {

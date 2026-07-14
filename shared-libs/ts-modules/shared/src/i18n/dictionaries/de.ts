@@ -1041,4 +1041,7 @@ export default {
   1155: 'Neuen Sicherungszeitplan hinzufügen',
   1156: 'Benutzerdefiniert',
   1157: 'Einrichtungsfortschritt',
+  1158: 'Alle Aufträge anzeigen',
+  1159: 'Anzeigen/Bearbeiten',
+  1160: 'Nicht gespeicherte Änderungen wurden verworfen',
 } satisfies i18n

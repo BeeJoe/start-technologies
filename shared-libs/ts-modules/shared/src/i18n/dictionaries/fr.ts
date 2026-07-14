@@ -1041,4 +1041,7 @@ export default {
   1155: 'Ajouter un nouveau planning de sauvegarde',
   1156: 'Personnalisé',
   1157: 'Progression de la configuration',
+  1158: 'Voir toutes les tâches',
+  1159: 'Voir/Modifier',
+  1160: 'Les modifications non enregistrées ont été ignorées',
 } satisfies i18n
