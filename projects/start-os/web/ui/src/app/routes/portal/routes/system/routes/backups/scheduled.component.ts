@@ -226,7 +226,7 @@ interface JobEditor extends EditableRetentionRule {
           </span>
           <tui-icon icon="@tui.chevron-left" />
         </button>
-      } @else if (jobs().length > 1) {
+      } @else if (jobs().length && !editor()) {
         <section class="schedule-browser">
           <div class="schedule-list">
             @for (job of jobs(); track job.id) {
@@ -1329,6 +1329,7 @@ export class ScheduledBackupsComponent implements OnInit {
   readonly loading = signal(true)
   readonly saving = signal(false)
   readonly editor = signal<JobEditor | null>(null)
+  private showSingleJobList = false
   protected readonly selectedJobId = signal('')
   protected readonly showServices = signal(false)
   readonly reassigning = signal<T.BackupJob | null>(null)
@@ -1454,7 +1455,7 @@ export class ScheduledBackupsComponent implements OnInit {
       if (!this.editor()) {
         if (selected) {
           this.edit(selected)
-        } else if (this.jobs().length === 1) {
+        } else if (this.jobs().length === 1 && !this.showSingleJobList) {
           this.edit(this.jobs()[0])
         }
       }
@@ -1489,6 +1490,7 @@ export class ScheduledBackupsComponent implements OnInit {
       capacityConfirmed: false,
     }
     this.showServices.set(false)
+    this.showSingleJobList = false
     this.reassigning.set(null)
     this.selectedJobId.set('')
     this.editor.set(form)
@@ -1513,6 +1515,7 @@ export class ScheduledBackupsComponent implements OnInit {
         .subscribe()
     }
     this.reassigning.set(null)
+    this.showSingleJobList = true
     this.selectedJobId.set('')
     this.editor.set(null)
     this.editorBaseline = null
@@ -1529,6 +1532,7 @@ export class ScheduledBackupsComponent implements OnInit {
 
   edit(job?: T.BackupJob) {
     if (!job) return
+    this.showSingleJobList = false
     this.showServices.set(false)
     const schedule = parseBackupSchedule(job.schedule)
     const selection = parseBackupServiceSelection(
@@ -1638,6 +1642,7 @@ export class ScheduledBackupsComponent implements OnInit {
       this.selectedJobId.set('')
       this.editor.set(null)
       this.editorBaseline = null
+      this.showSingleJobList = true
       await this.reload()
     } catch (error: any) {
       this.errors.handleError(getErrorMessage(error))

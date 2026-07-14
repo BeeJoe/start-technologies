@@ -482,7 +482,11 @@ test('all backup schedules share one selected-job editor', () => {
   )
   assert.match(
     advancedComponent,
-    /async save\(form: JobEditor\)[\s\S]{0,1800}this\.selectedJobId\.set\(''\)[\s\S]{0,180}this\.editor\.set\(null\)[\s\S]{0,180}await this\.reload\(\)/,
+    /async save\(form: JobEditor\)[\s\S]{0,1900}this\.selectedJobId\.set\(''\)[\s\S]{0,180}this\.editor\.set\(null\)[\s\S]{0,180}this\.showSingleJobList = true[\s\S]{0,180}await this\.reload\(\)/,
+  )
+  assert.match(
+    advancedComponent,
+    /this\.jobs\(\)\.length === 1 && !this\.showSingleJobList/,
   )
 })
 

@@ -32,6 +32,7 @@ export interface BackupJobAttentionState {
   status: { lastResult: string | null }
 }
 
+/** Returns whether an enabled job should surface the automatic-backup warning. */
 export function backupJobNeedsAttention(job: BackupJobAttentionState): boolean {
   return (
     job.enabled &&

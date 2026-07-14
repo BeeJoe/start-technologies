@@ -232,18 +232,20 @@ interface AutomaticRetentionRule {
                 </label>
               }
               @if (editor.frequency === 'monthly') {
-                <label>
-                  <span>{{ 'Day of month' | i18n }}</span>
-                  <select
+                <tui-textfield tuiChevron [tuiTextfieldCleaner]="false">
+                  <label tuiLabel>{{ 'Day of month' | i18n }}</label>
+                  <input
+                    tuiSelect
                     name="dayOfMonth"
                     required
                     [(ngModel)]="editor.dayOfMonth"
-                  >
+                  />
+                  <tui-data-list *tuiDropdown>
                     @for (day of monthDays; track day) {
-                      <option [ngValue]="day">{{ day }}</option>
+                      <button tuiOption [value]="day">{{ day }}</button>
                     }
-                  </select>
-                </label>
+                  </tui-data-list>
+                </tui-textfield>
               }
               @if (editor.frequency !== 'hourly') {
                 <tui-textfield
