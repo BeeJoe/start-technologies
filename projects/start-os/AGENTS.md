@@ -23,11 +23,6 @@ is wired.
   and `assets/` live directly in this dir; the shared build infra (root
   `build/`) and `apt/` are at the repo root.
 
-## Collaboration
-
-- [Matrix](https://matrix.to/#/#dev-startos:matrix.start9labs.com)
-- Security issues: [security@start9.com](mailto:security@start9.com)
-
 ## Prerequisites and build configuration
 
 The OS product uses the shared root toolchain plus multi-arch emulation and
@@ -84,8 +79,6 @@ plus these values:
 
 ## Deploying to a device
 
-These targets are slow and touch a live device, so ask before using them:
-
 | Target                                        | Purpose                                      |
 | --------------------------------------------- | -------------------------------------------- |
 | `start-os-update-startbox REMOTE=start9@<ip>` | Deploy binary + UI only                      |
@@ -126,9 +119,6 @@ When exported Rust types change, verify in this order:
   per-component prettier configs or scripts.
 - **Don't edit generated binding files** like
   `shared-libs/ts-modules/start-core/lib/osBindings/index.ts` or `projects/start-sdk/s9pk.mk`.
-- **Ask before destructive `make` recipes** — `update*`, `reflash`, `wormhole*`,
-  image flashing, and `make clean*` consume hours/disk and may touch a live
-  device.
 - **The `beta` feature swaps the UI seed** (`patchdb-ui-seed.beta.json`) and
   forwards to `start-core`'s `beta` feature — keep both seeds in sync when you
   change seed shape.
