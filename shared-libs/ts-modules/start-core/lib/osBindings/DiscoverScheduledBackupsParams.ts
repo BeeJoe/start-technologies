@@ -2,7 +2,16 @@
 import type { BackupTargetId } from './BackupTargetId'
 
 export type DiscoverScheduledBackupsParams = {
+  /**
+   * Backup target containing the automatic checkpoints.
+   */
   targetId: BackupTargetId
+  /**
+   * Source StartOS server ID stored on the backup target.
+   */
   serverId: string
+  /**
+   * Master password that encrypted the source server's checkpoints.
+   */
   password: string
 }

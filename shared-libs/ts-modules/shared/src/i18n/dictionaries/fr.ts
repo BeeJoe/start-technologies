@@ -1048,4 +1048,5 @@ export default {
   1162: 'Jour du mois',
   1163: 'Supprimer le planning',
   1164: 'Supprimer les sauvegardes associées',
+  1165: 'La première sauvegarde est en attente et démarrera automatiquement lorsqu’aucune sauvegarde ou restauration ne sera en cours.',
 } satisfies i18n

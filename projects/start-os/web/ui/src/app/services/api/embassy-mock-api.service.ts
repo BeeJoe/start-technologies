@@ -1057,8 +1057,9 @@ export class MockApiService extends ApiService {
     params: T.CreateBackupJobParams,
   ): Promise<T.BackupJob> {
     const now = new Date().toISOString()
+    const { runNow, ...jobParams } = params
     const job: T.BackupJob = {
-      ...params,
+      ...jobParams,
       id: crypto.randomUUID(),
       enabled: params.enabled ?? true,
       pause: null,
@@ -1068,6 +1069,7 @@ export class MockApiService extends ApiService {
         lastAttemptedAt: null,
         lastSucceededAt: null,
         nextRunAt: now,
+        runRequested: params.enabled && runNow,
         consecutiveFailures: 0,
         lastResult: null,
       },

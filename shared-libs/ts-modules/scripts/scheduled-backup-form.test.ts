@@ -299,6 +299,18 @@ test('automatic setup places its toggleable password after the first-run choice 
     automaticComponent,
     /async createAutomaticBackup\(\)\s*\{\s*if \(!this\.canSaveSetup\(\) \|\| this\.saving\(\)\) return/,
   )
+  assert.match(
+    automaticComponent,
+    /createScheduledBackupJob\(\{[\s\S]{0,500}runNow: this\.editor\.firstBackupNow/,
+  )
+  assert.match(
+    automaticComponent,
+    /const created = await this\.api\.createScheduledBackupJob/,
+  )
+  assert.match(
+    automaticComponent,
+    /if \(created\.status\.runRequested\)[\s\S]{0,300}The first backup is queued and will start automatically when no backup or restore is in progress\./,
+  )
 })
 
 test('retention summary translates the sentence as well as its units', () => {
@@ -377,14 +389,8 @@ test('setup and job-editor summaries use localized labels', () => {
 })
 
 test('all backup schedules share one selected-job editor', () => {
-  assert.match(
-    automaticComponent,
-    /scheduledBackups[\s\S]{0,80}mode="manage"[\s\S]{0,80}\[primaryJobId\]="job\.id"/,
-  )
-  assert.match(
-    advancedComponent,
-    /readonly primaryJobId = input\.required<string>\(\)/,
-  )
+  assert.match(automaticComponent, /scheduledBackups[\s\S]{0,80}mode="manage"/)
+  assert.doesNotMatch(advancedComponent, /primaryJobId/)
   assert.match(
     advancedComponent,
     /readonly mode = input\.required<'manage' \| 'restore'>\(\)/,
@@ -473,7 +479,15 @@ test('all backup schedules share one selected-job editor', () => {
   )
   assert.match(
     advancedComponent,
-    /if \(form\.firstBackupNow\)[\s\S]{0,120}runScheduledBackupJob\(\{ id: created\.id \}\)/,
+    /createScheduledBackupJob\(\{[\s\S]{0,500}runNow: form\.firstBackupNow/,
+  )
+  assert.match(
+    advancedComponent,
+    /const created = await this\.api\.createScheduledBackupJob/,
+  )
+  assert.match(
+    advancedComponent,
+    /if \(created\.status\.runRequested\)[\s\S]{0,300}The first backup is queued and will start automatically when no backup or restore is in progress\./,
   )
   assert.match(advancedComponent, /#jobNameInput[\s\S]{0,120}name="name"/)
   assert.match(
@@ -618,12 +632,25 @@ test('job list shows service counts and keeps destructive editing actions at the
   )
 
   assert.match(list, /jobServiceCount\(job\)[\s\S]{0,120}'Services'/)
+  assert.match(footer, /\(click\)="deleteJob\(job\)"/)
+  assert.doesNotMatch(footer, /job\.id !== primaryJobId\(\)/)
   assert.doesNotMatch(selected, /deleteJob\(job\)/)
   assert.match(footer, /appearance="primary-destructive"/)
   assert.match(footer, /deleteJob\(job\)/)
   assert.match(footer, /Delete schedule/)
   assert.match(deleteScheduleDialog, /deleteCheckpoints/)
   assert.match(deleteScheduleDialog, /Delete related backups/)
+  assert.doesNotMatch(
+    deleteScheduleDialog,
+    /@if \(context\.data\.checkpointCount\)/,
+  )
+})
+
+test('mobile job switches keep their on-off labels beside the control', () => {
+  assert.match(
+    advancedComponent,
+    /\.inline-switch\.job-switch\s*\{[\s\S]{0,180}width:\s*fit-content;[\s\S]{0,180}justify-content:\s*flex-start;/,
+  )
 })
 
 test('main schedule editors expose monthly frequency and day-of-month controls', () => {

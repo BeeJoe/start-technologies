@@ -1048,4 +1048,5 @@ export default {
   1162: 'Dzień miesiąca',
   1163: 'Usuń harmonogram',
   1164: 'Usuń powiązane kopie zapasowe',
+  1165: 'Pierwsza kopia zapasowa jest w kolejce i rozpocznie się automatycznie, gdy nie będzie trwała żadna kopia zapasowa ani przywracanie.',
 } satisfies i18n

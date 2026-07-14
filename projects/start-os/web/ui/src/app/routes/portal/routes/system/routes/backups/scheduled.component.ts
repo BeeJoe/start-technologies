@@ -784,16 +784,14 @@ interface JobEditor extends EditableRetentionRule {
           </p>
           <footer class="editor-actions">
             @if (selectedJob(); as job) {
-              @if (job.id !== primaryJobId()) {
-                <button
-                  tuiButton
-                  type="button"
-                  appearance="primary-destructive"
-                  (click)="deleteJob(job)"
-                >
-                  {{ 'Delete schedule' | i18n }}
-                </button>
-              }
+              <button
+                tuiButton
+                type="button"
+                appearance="primary-destructive"
+                (click)="deleteJob(job)"
+              >
+                {{ 'Delete schedule' | i18n }}
+              </button>
             }
             <button
               tuiButton
@@ -941,11 +939,6 @@ interface JobEditor extends EditableRetentionRule {
       min-width: 0;
     }
 
-    .job-switch {
-      width: fit-content;
-      justify-content: flex-start;
-    }
-
     .editor-actions {
       display: flex;
       align-items: center;
@@ -970,6 +963,11 @@ interface JobEditor extends EditableRetentionRule {
       width: 100%;
       min-width: 0;
       box-sizing: border-box;
+    }
+
+    .inline-switch.job-switch {
+      width: fit-content;
+      justify-content: flex-start;
     }
 
     .selected-job {
@@ -1308,7 +1306,6 @@ interface JobEditor extends EditableRetentionRule {
 })
 export class ScheduledBackupsComponent implements OnInit {
   readonly mode = input.required<'manage' | 'restore'>()
-  readonly primaryJobId = input.required<string>()
 
   private readonly api = inject(ApiService)
   private readonly backupService = inject(BackupService)
@@ -1633,10 +1630,21 @@ export class ScheduledBackupsComponent implements OnInit {
           targetId: form.targetId,
           password: form.password,
           enabled: true,
+          runNow: form.firstBackupNow,
         })
         this.selectedJobId.set(created.id)
-        if (form.firstBackupNow) {
-          await this.api.runScheduledBackupJob({ id: created.id })
+        if (created.status.runRequested) {
+          this.alerts
+            .open(
+              this.i18n.transform(
+                'The first backup is queued and will start automatically when no backup or restore is in progress.',
+              ),
+              {
+                appearance: 'info',
+                label: this.i18n.transform('Automatic backup'),
+              },
+            )
+            .subscribe()
         }
       }
       this.selectedJobId.set('')

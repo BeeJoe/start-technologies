@@ -240,16 +240,27 @@ fn initialize_next_runs(
 fn oldest_due_job(
     jobs: &BTreeMap<BackupJobId, BackupJob>,
     now: chrono::DateTime<Utc>,
-) -> Option<(BackupJobId, chrono::DateTime<Utc>)> {
+) -> Option<(BackupJobId, chrono::DateTime<Utc>, BackupRunTrigger)> {
     jobs.iter()
         .filter(|(_, job)| job.enabled && job.pause.is_none())
         .filter_map(|(id, job)| {
-            job.status
-                .next_run_at
-                .filter(|scheduled_at| *scheduled_at <= now)
-                .map(|scheduled_at| (id.clone(), scheduled_at))
+            if job.status.run_requested {
+                Some((id.clone(), job.created_at, BackupRunTrigger::RunNow))
+            } else {
+                job.status
+                    .next_run_at
+                    .filter(|scheduled_at| *scheduled_at <= now)
+                    .map(|scheduled_at| {
+                        let trigger = if now - scheduled_at > chrono::Duration::minutes(1) {
+                            BackupRunTrigger::CatchUp
+                        } else {
+                            BackupRunTrigger::Scheduled
+                        };
+                        (id.clone(), scheduled_at, trigger)
+                    })
+            }
         })
-        .min_by(|(left_id, left_at), (right_id, right_at)| {
+        .min_by(|(left_id, left_at, _), (right_id, right_at, _)| {
             left_at.cmp(right_at).then_with(|| left_id.cmp(right_id))
         })
 }
@@ -258,17 +269,25 @@ fn claim_oldest_due_job(
     jobs: &mut BTreeMap<BackupJobId, BackupJob>,
     now: chrono::DateTime<Utc>,
 ) -> Result<Option<(BackupJobId, BackupRunTrigger)>, Error> {
-    let Some((job_id, scheduled_at)) = oldest_due_job(jobs, now) else {
+    let Some((job_id, scheduled_at, trigger)) = oldest_due_job(jobs, now) else {
         return Ok(None);
     };
     let job = jobs.get_mut(&job_id).expect("selected backup job exists");
-    let trigger = if now - scheduled_at > chrono::Duration::minutes(1) {
-        BackupRunTrigger::CatchUp
+    if trigger == BackupRunTrigger::RunNow {
+        job.status.run_requested = false;
+        if let Some(scheduled_at) = job
+            .status
+            .next_run_at
+            .filter(|scheduled_at| *scheduled_at <= now)
+        {
+            job.status.last_scheduled_at = Some(scheduled_at);
+            job.status.next_run_at =
+                Some(job.schedule.next_after_cursor(now, Some(scheduled_at))?.utc);
+        }
     } else {
-        BackupRunTrigger::Scheduled
-    };
-    job.status.last_scheduled_at = Some(scheduled_at);
-    job.status.next_run_at = Some(job.schedule.next_after_cursor(now, Some(scheduled_at))?.utc);
+        job.status.last_scheduled_at = Some(scheduled_at);
+        job.status.next_run_at = Some(job.schedule.next_after_cursor(now, Some(scheduled_at))?.utc);
+    }
     Ok(Some((job_id, trigger)))
 }
 
@@ -356,6 +375,51 @@ mod tests {
 
         assert!(claimed.is_none());
         assert_eq!(jobs, before);
+    }
+
+    #[test]
+    fn requested_run_stays_queued_until_the_scheduler_is_idle() {
+        let now = Utc.with_ymd_and_hms(2026, 7, 10, 12, 0, 0).unwrap();
+        let next_scheduled = now + chrono::Duration::days(1);
+        let mut job = job_with_next_run("2BY2ABKG4HN5F75DNPPL54ALW4PFXPLD", next_scheduled);
+        job.status.run_requested = true;
+        let id = job.id.clone();
+        let mut jobs: BTreeMap<BackupJobId, BackupJob> = [(id.clone(), job)].into_iter().collect();
+        let coordinator = std::sync::Arc::new(tokio::sync::Mutex::new(()));
+        let active_operation = crate::backup::try_backup_coordinator(coordinator.clone()).unwrap();
+
+        assert!(try_scheduler_slot(coordinator.clone()).is_none());
+        assert!(jobs.get(&id).unwrap().status.run_requested);
+
+        drop(active_operation);
+        let _slot = try_scheduler_slot(coordinator).unwrap();
+        assert_eq!(
+            claim_oldest_due_job(&mut jobs, now).unwrap(),
+            Some((id.clone(), BackupRunTrigger::RunNow))
+        );
+        let status = &jobs.get(&id).unwrap().status;
+        assert!(!status.run_requested);
+        assert_eq!(status.next_run_at, Some(next_scheduled));
+        assert_eq!(status.last_scheduled_at, None);
+    }
+
+    #[test]
+    fn requested_run_advances_a_schedule_that_became_due_while_queued() {
+        let now = Utc.with_ymd_and_hms(2026, 7, 10, 12, 0, 0).unwrap();
+        let scheduled_at = now - chrono::Duration::minutes(5);
+        let mut job = job_with_next_run("2BY2ABKG4HN5F75DNPPL54ALW4PFXPLD", scheduled_at);
+        job.status.run_requested = true;
+        let id = job.id.clone();
+        let mut jobs: BTreeMap<BackupJobId, BackupJob> = [(id.clone(), job)].into_iter().collect();
+
+        assert_eq!(
+            claim_oldest_due_job(&mut jobs, now).unwrap(),
+            Some((id.clone(), BackupRunTrigger::RunNow))
+        );
+        let status = &jobs.get(&id).unwrap().status;
+        assert!(!status.run_requested);
+        assert_eq!(status.last_scheduled_at, Some(scheduled_at));
+        assert!(status.next_run_at.is_some_and(|next| next > now));
     }
 
     #[test]

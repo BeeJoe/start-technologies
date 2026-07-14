@@ -1049,4 +1049,5 @@ export const ENGLISH: Record<string, number> = {
   'Day of month': 1162,
   'Delete schedule': 1163,
   'Delete related backups': 1164,
+  'The first backup is queued and will start automatically when no backup or restore is in progress.': 1165,
 }

@@ -17,8 +17,10 @@ Backups`.
    visible so you can fix them or select **Add or repair a location**.
 1. Choose an hourly, daily, weekly, or monthly schedule and its exact time.
    Weekly schedules include a day of the week; monthly schedules include a day
-   of the month. StartOS captures the timezone of the device used for setup, so
-   the displayed local time remains meaningful through daylight-saving changes.
+   of the month. A monthly job set for the 30th or 31st runs on the month's last
+   available day when that date does not exist. StartOS captures the timezone of
+   the device used for setup, so the displayed local time remains meaningful
+   through daylight-saving changes.
 1. Choose the services to protect. All current services are selected by
    default. Expand **Select services** to place **Automatically include future
    services** and **Toggle all** above the service list. The
@@ -51,7 +53,8 @@ now** action at card level. With multiple jobs, expanding the card first shows
 the unboxed jobs list. Each row keeps its own On switch, **Run now**, and
 **View/Edit** actions available without opening the full editor and reports how
 many currently installed services it protects. On phones, each row is inset
-from the screen edge and its On/Off switch stays at the right. Select
+from the screen edge and its On/Off text remains beside the switch at the
+right. Select
 **View/Edit** to collapse the list and open that job. Saving closes the editor
 and returns to the list. Select **View all jobs** to close without saving and
 return to the list; StartOS warns you if that discards unsaved changes. **Add
@@ -78,9 +81,11 @@ default. The confirmation dialog can instead permanently remove the automatic
 schedules and automatic checkpoints. Manual checkpoints are never removed by
 that option.
 
-The bottom of an additional schedule's editor places **Delete schedule**
-opposite **Save**. Its confirmation can also delete checkpoints no longer
-referenced by another schedule; leaving that option off keeps them as an archive.
+The bottom of every schedule editor places **Delete schedule** opposite **Save**,
+including the first or only schedule. Its confirmation can also delete
+checkpoints no longer referenced by another schedule; leaving that option off
+keeps them as an archive. Deleting the last schedule returns **Automatic
+backups** to its initial setup state.
 
 ## Version History and Storage
 
@@ -118,10 +123,13 @@ available. Progress continues if you leave the Backups page, and the progress
 card links to the main Services list.
 
 Only one backup or restore owns the backup system at a time. A scheduled job
-waits while another operation is active; another manual backup, automatic run,
-or restore request is rejected instead of being silently queued. If StartOS
-restarts during an operation, it records the interrupted activity as failed and
-clears stale progress so the next operation can proceed.
+waits while another operation is active; another manual backup, explicit
+automatic run, or restore request is rejected instead of being silently queued.
+One intentional exception is **Create the first backup now**: StartOS saves the
+new schedule, notifies you that its first backup is queued, and starts that
+requested first run automatically as soon as the backup system is free. If
+StartOS restarts during an operation, it records the interrupted activity as
+failed and clears stale progress so the next operation can proceed.
 
 Use **Backup history** to review manual backups, automatic runs, and restores,
 including partial failures and service-level errors. During restore, each

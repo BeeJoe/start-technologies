@@ -1,7 +1,7 @@
 use std::collections::BTreeSet;
 use std::str::FromStr;
 
-use chrono::{DateTime, Datelike, Duration, NaiveDateTime, Timelike, Utc};
+use chrono::{DateTime, Datelike, Duration, NaiveDate, NaiveDateTime, Timelike, Utc};
 use chrono_tz::Tz;
 use color_eyre::eyre::eyre;
 use serde::{Deserialize, Serialize};
@@ -153,7 +153,16 @@ struct ParsedSchedule {
 
 impl ParsedSchedule {
     fn matches(&self, local: NaiveDateTime) -> bool {
-        let dom_matches = self.days_of_month.contains(local.day());
+        let last_day = last_day_of_month(local.year(), local.month());
+        let dom_matches = self.days_of_month.contains(local.day())
+            || (!self.days_of_month.wildcard
+                && local.day() == last_day
+                && self
+                    .days_of_month
+                    .values
+                    .range((last_day + 1)..)
+                    .next()
+                    .is_some());
         let dow_matches = self
             .days_of_week
             .contains(local.weekday().num_days_from_sunday());
@@ -169,6 +178,16 @@ impl ParsedSchedule {
             && self.months.contains(local.month())
             && day_matches
     }
+}
+
+fn last_day_of_month(year: i32, month: u32) -> u32 {
+    let first_of_next_month = if month == 12 {
+        NaiveDate::from_ymd_opt(year + 1, 1, 1)
+    } else {
+        NaiveDate::from_ymd_opt(year, month + 1, 1)
+    }
+    .expect("valid year and month");
+    (first_of_next_month - Duration::days(1)).day()
 }
 
 #[derive(Debug)]
@@ -295,5 +314,31 @@ mod tests {
         let before = Utc.with_ymd_and_hms(2025, 1, 1, 9, 1, 0).unwrap();
         let next = schedule.next_after(before, None).unwrap();
         assert_eq!(next.utc, Utc.with_ymd_and_hms(2025, 1, 6, 9, 0, 0).unwrap());
+    }
+
+    #[test]
+    fn monthly_schedule_uses_last_available_day() {
+        let thirty_first = Schedule::new("0 9 31 * *", "UTC").unwrap();
+        let before_april = Utc.with_ymd_and_hms(2025, 4, 1, 0, 0, 0).unwrap();
+        assert_eq!(
+            thirty_first.next_after(before_april, None).unwrap().utc,
+            Utc.with_ymd_and_hms(2025, 4, 30, 9, 0, 0).unwrap()
+        );
+
+        let thirtieth = Schedule::new("0 9 30 * *", "UTC").unwrap();
+        let before_february = Utc.with_ymd_and_hms(2025, 2, 1, 0, 0, 0).unwrap();
+        assert_eq!(
+            thirtieth.next_after(before_february, None).unwrap().utc,
+            Utc.with_ymd_and_hms(2025, 2, 28, 9, 0, 0).unwrap()
+        );
+
+        let before_leap_february = Utc.with_ymd_and_hms(2024, 2, 1, 0, 0, 0).unwrap();
+        assert_eq!(
+            thirty_first
+                .next_after(before_leap_february, None)
+                .unwrap()
+                .utc,
+            Utc.with_ymd_and_hms(2024, 2, 29, 9, 0, 0).unwrap()
+        );
     }
 }

@@ -27,18 +27,16 @@ export interface DeleteScheduleDecision {
       }}
     </p>
 
-    @if (context.data.checkpointCount) {
-      <label class="delete-option">
-        <input tuiCheckbox type="checkbox" [(ngModel)]="deleteCheckpoints" />
-        <span tuiTitle>
-          <b>{{ 'Delete related backups' | i18n }}</b>
-          <span tuiSubtitle>
-            {{ context.data.checkpointCount }} {{ 'Checkpoints' | i18n }} ·
-            {{ context.data.reclaimable }}
-          </span>
+    <label class="delete-option">
+      <input tuiCheckbox type="checkbox" [(ngModel)]="deleteCheckpoints" />
+      <span tuiTitle>
+        <b>{{ 'Delete related backups' | i18n }}</b>
+        <span tuiSubtitle>
+          {{ context.data.checkpointCount }} {{ 'Checkpoints' | i18n }} ·
+          {{ context.data.reclaimable }}
         </span>
-      </label>
-    }
+      </span>
+    </label>
 
     <footer class="actions">
       <button tuiButton size="s" appearance="primary" (click)="cancel()">

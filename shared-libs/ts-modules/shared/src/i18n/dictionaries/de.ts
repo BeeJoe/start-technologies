@@ -1048,4 +1048,5 @@ export default {
   1162: 'Tag des Monats',
   1163: 'Zeitplan löschen',
   1164: 'Zugehörige Sicherungen löschen',
+  1165: 'Die erste Sicherung befindet sich in der Warteschlange und startet automatisch, sobald keine Sicherung oder Wiederherstellung ausgeführt wird.',
 } satisfies i18n

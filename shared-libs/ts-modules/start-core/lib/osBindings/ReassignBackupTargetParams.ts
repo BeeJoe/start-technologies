@@ -4,8 +4,20 @@ import type { Guid } from './Guid'
 import type { PasswordType } from './PasswordType'
 
 export type ReassignBackupTargetParams = {
+  /**
+   * Automatic backup job ID to move.
+   */
   id: Guid
+  /**
+   * New backup target ID.
+   */
   targetId: BackupTargetId
+  /**
+   * Current master password.
+   */
   password: PasswordType
+  /**
+   * Wait for the next scheduled time instead of running on the new target now.
+   */
   waitForSchedule: boolean
 }

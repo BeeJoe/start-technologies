@@ -25,6 +25,7 @@ import {
   TuiIcon,
   TuiInput,
   TuiNotification,
+  TuiNotificationService,
   TuiTitle,
 } from '@taiga-ui/core'
 import {
@@ -568,11 +569,7 @@ interface AutomaticRetentionRule {
             </header>
           </section>
         }
-        <section
-          scheduledBackups
-          mode="manage"
-          [primaryJobId]="job.id"
-        ></section>
+        <section scheduledBackups mode="manage"></section>
       } @else {
         <div tuiNotification appearance="info">
           {{ 'Automatic backups are not set up yet.' | i18n }}
@@ -950,6 +947,7 @@ export default class AutomaticBackupsComponent implements OnInit {
   private readonly dialogs = inject(DialogService)
   private readonly errors = inject(ErrorService)
   private readonly i18n = inject(i18nPipe)
+  private readonly alerts = inject(TuiNotificationService)
   private readonly router = inject(Router)
   private readonly patch = inject<PatchDB<DataModel>>(PatchDB)
   private readonly packageData = toSignal(this.patch.watch$('packageData'))
@@ -1310,7 +1308,7 @@ export default class AutomaticBackupsComponent implements OnInit {
     if (!this.canSaveSetup() || this.saving()) return
     this.saving.set(true)
     try {
-      const job = await this.api.createScheduledBackupJob({
+      const created = await this.api.createScheduledBackupJob({
         name: 'Automatic backups',
         targetId: this.targetId(),
         services: this.serviceScope(),
@@ -1319,9 +1317,20 @@ export default class AutomaticBackupsComponent implements OnInit {
         retentionOverrides: {},
         password: this.editor.password,
         enabled: true,
+        runNow: this.editor.firstBackupNow,
       })
-      if (this.editor.firstBackupNow) {
-        await this.api.runScheduledBackupJob({ id: job.id })
+      if (created.status.runRequested) {
+        this.alerts
+          .open(
+            this.i18n.transform(
+              'The first backup is queued and will start automatically when no backup or restore is in progress.',
+            ),
+            {
+              appearance: 'info',
+              label: this.i18n.transform('Automatic backup'),
+            },
+          )
+          .subscribe()
       }
       if (!this.embedded()) await this.router.navigate(['/system/backups'])
     } catch (error: any) {

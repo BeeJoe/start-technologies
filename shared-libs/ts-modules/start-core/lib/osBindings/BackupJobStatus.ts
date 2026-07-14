@@ -6,6 +6,10 @@ export type BackupJobStatus = {
   lastAttemptedAt: string | null
   lastSucceededAt: string | null
   nextRunAt: string | null
+  /**
+   * A durable one-shot request consumed once the backup coordinator is free.
+   */
+  runRequested: boolean
   consecutiveFailures: number
   lastResult: BackupRunState | null
 }

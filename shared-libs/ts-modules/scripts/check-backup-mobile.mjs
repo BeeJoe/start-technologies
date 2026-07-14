@@ -794,7 +794,7 @@ assertSource(routesFile, [
 assertSource(editorFile, [
   /selector:\s*'automatic-backups'/,
   /readonly embedded = input\(false\)/,
-  /scheduledBackups[\s\S]{0,80}mode="manage"[\s\S]{0,80}\[primaryJobId\]="job\.id"/,
+  /<section scheduledBackups mode="manage"><\/section>/,
 ])
 assertNotSource(editorFile, [
   /<nav class="tabs">/,
@@ -806,6 +806,7 @@ assertNotSource(editorFile, [
   /select,\s*\.retention-rule input/,
   /class="g-card panel/,
   /notifications\.open\('Saving'\)/,
+  /\[primaryJobId\]/,
 ])
 assertSource(historyFile, [
   /selector:\s*'backup-history'/,
@@ -1031,9 +1032,11 @@ assertSource(backendScheduledSchedulerFile, [
   /assert_eq!\(job\.status\.consecutive_failures, 2\)/,
   /as_backup_progress_mut\(\)[\s\S]{0,80}ser\(&None\)/,
   /fn dispatch_due_jobs[\s\S]{0,600}if !has_due_job[\s\S]{0,220}try_scheduler_slot\(ctx\.backup_coordinator\.clone\(\)\)[\s\S]{0,420}claim_oldest_due_job/,
-  /fn oldest_due_job[\s\S]{0,700}\.min_by\([\s\S]{0,240}left_at[\s\S]{0,160}left_id/,
+  /fn oldest_due_job[\s\S]{0,1200}\.min_by\(\|\(left_id, left_at, _\), \(right_id, right_at, _\)\|[\s\S]{0,160}left_at[\s\S]{0,160}left_id/,
   /fn scheduler_claims_only_the_oldest_due_job/,
   /fn busy_scheduler_slot_leaves_due_jobs_unchanged/,
+  /fn requested_run_stays_queued_until_the_scheduler_is_idle/,
+  /fn requested_run_advances_a_schedule_that_became_due_while_queued/,
   /run_job_with_coordinator\([\s\S]{0,160}coordinator[\s\S]{0,80}\.await/,
   /tracing::error!\([\s\S]{0,180}job_id = %log_job_id[\s\S]{0,120}\?trigger[\s\S]{0,120}error = %error[\s\S]{0,120}"automatic backup run failed"/,
 ])

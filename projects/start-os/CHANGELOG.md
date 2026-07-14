@@ -34,7 +34,8 @@ file tracks notable changes since the move to the monorepo.
   actions and selected-service counts. Opening one job collapses the list to a
   **View all jobs** card, which warns before discarding unsaved edits, while
   **Add new backup schedule** sits below the list and focuses the job name.
-  Saving returns to the list. Monthly schedules add a day-of-month choice. The
+  Saving returns to the list. Monthly schedules add a day-of-month choice and
+  use the month's last available day when the 30th or 31st does not exist. The
   collapsed main card surfaces enabled jobs needing attention and clears the
   warning after success or when a failed job is turned off. Service selection
   is collapsed by default. Version history requires a frequency, removes the
@@ -43,8 +44,10 @@ file tracks notable changes since the move to the monorepo.
   removed; removing the last row restores the latest-only default. Existing
   nonstandard CLI-created retention tiers remain exact until their row is
   changed. Hour and minute choices can no longer be cleared to an invalid null
-  value. Additional schedules put **Delete schedule** opposite **Save**, with a
-  confirmation option to delete checkpoints used only by that schedule.
+  value. Every schedule, including the first or only one, puts **Delete
+  schedule** opposite **Save**, with a confirmation option to delete checkpoints
+  used only by that schedule. Deleting the final schedule returns automatic
+  backups to initial setup.
 - **Simplified Automatic Backups.** The expanded card now uses a flat settings
   layout, keeps **Run now** with the detailed actions, and leaves checkpoint
   browsing and restore actions in the dedicated **Backup history** and restore
@@ -90,9 +93,9 @@ file tracks notable changes since the move to the monorepo.
   frame on desktop and mobile. Location choices also share the action button's
   centered width and keep long location names horizontal on phones, including
   automatic-backup setup. Automatic job rows are inset from phone edges and
-  keep each On/Off switch aligned at the right. The overall progress spinner and percentage align
-  with each service's status, and service progress is right-aligned within the
-  card.
+  keep each On/Off label beside its switch at the right. The overall progress
+  spinner and percentage align with each service's status, and service progress
+  is right-aligned within the card.
   Manual and custom automatic runs no longer force-scroll or place a blocking
   notification over navigation; their blue progress indicator stays at the top
   of the page, scrolls out of view normally, links back to the main Services
@@ -120,9 +123,11 @@ file tracks notable changes since the move to the monorepo.
   failure cannot leave the backup progress card visible or keep backup controls
   busy while idle.
 - **Concurrent backup and restore requests.** StartOS now serializes scheduled
-  jobs and rejects a second manual backup, automatic backup, or restore request
-  while another operation owns the backup coordinator, rather than queuing it
-  to begin unexpectedly after the first operation finishes.
+  jobs and rejects a second manual backup, explicit automatic run, or restore
+  request while another operation owns the backup coordinator. Saving a new job
+  with **Create the first backup now** is the deliberate exception: the schedule
+  saves successfully, a notification explains the delay, and its requested
+  first run is durably queued until the active backup or restore finishes.
 - **Automatic backup failure notifications.** Scheduled-backup warnings show
   the backup location's user-facing name without exposing internal job or
   target identifiers through a meaningless **View details** action.

@@ -68,6 +68,9 @@ pub struct BackupJobStatus {
     pub last_succeeded_at: Option<DateTime<Utc>>,
     #[ts(type = "string | null")]
     pub next_run_at: Option<DateTime<Utc>>,
+    /// A durable one-shot request consumed once the backup coordinator is free.
+    #[serde(default)]
+    pub run_requested: bool,
     pub consecutive_failures: u8,
     pub last_result: Option<BackupRunState>,
 }

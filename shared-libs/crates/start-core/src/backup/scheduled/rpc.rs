@@ -1051,6 +1051,9 @@ pub struct CreateBackupJobParams {
     pub password: PasswordType,
     #[serde(default = "default_true")]
     pub enabled: bool,
+    /// Queue the job's first run after creation.
+    #[serde(default)]
+    pub run_now: bool,
 }
 
 /// CLI-friendly automatic backup creation. Omitting both service filters means
@@ -1171,6 +1174,7 @@ pub async fn add_cli(
             )?,
             password,
             enabled: !disabled,
+            run_now: false,
         },
     )
     .await
@@ -1544,6 +1548,7 @@ pub async fn create(
         retention_overrides,
         password,
         enabled,
+        run_now,
     }: CreateBackupJobParams,
 ) -> Result<BackupJob, Error> {
     validate_job_input(&name, &schedule, &default_retention, &retention_overrides)?;
@@ -1591,6 +1596,7 @@ pub async fn create(
         retention_overrides,
         status: BackupJobStatus {
             next_run_at,
+            run_requested: enabled && run_now,
             ..Default::default()
         },
         created_at: now,
@@ -1757,6 +1763,9 @@ pub async fn set_enabled(
                 .then(|| job.schedule.next_after(Utc::now(), None))
                 .transpose()?
                 .map(|x| x.utc);
+            if !enabled {
+                job.status.run_requested = false;
+            }
             db.as_public_mut()
                 .as_scheduled_backups_mut()
                 .as_jobs_mut()
