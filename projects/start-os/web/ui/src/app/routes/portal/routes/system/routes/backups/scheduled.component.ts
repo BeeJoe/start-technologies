@@ -25,6 +25,7 @@ import {
   TuiCell,
   TuiCheckbox,
   TuiDataList,
+  TuiDropdown,
   TuiGroup,
   TuiIcon,
   TuiInput,
@@ -33,6 +34,7 @@ import {
   TuiTitle,
 } from '@taiga-ui/core'
 import {
+  TuiAccordion,
   TuiBadge,
   TuiBlock,
   TuiChevron,
@@ -257,33 +259,35 @@ interface JobEditor extends EditableRetentionRule {
                       tuiSwitch
                       type="checkbox"
                       [showIcons]="false"
+                      [attr.aria-label]="job.name"
                       [ngModelOptions]="{ standalone: true }"
                       [ngModel]="job.enabled && !job.pause"
                       [disabled]="!!job.pause && job.pause.reason !== 'user'"
                       (ngModelChange)="setJobEnabled(job, $event)"
                     />
-                    <span>
-                      {{ (job.enabled && !job.pause ? 'On' : 'Off') | i18n }}
-                    </span>
                   </label>
                   <button
-                    tuiButton
+                    tuiIconButton
+                    tuiDropdown
+                    tuiDropdownAuto
                     type="button"
-                    size="xs"
-                    appearance="primary"
-                    [disabled]="!!job.pause || !job.enabled"
-                    (click)="runNow(job)"
+                    size="s"
+                    appearance="flat-grayscale"
+                    iconStart="@tui.ellipsis-vertical"
                   >
-                    {{ 'Run now' | i18n }}
-                  </button>
-                  <button
-                    tuiButton
-                    type="button"
-                    size="xs"
-                    appearance="primary"
-                    (click)="edit(job)"
-                  >
-                    {{ 'View/Edit' | i18n }}
+                    {{ 'More' | i18n }}
+                    <tui-data-list *tuiDropdown="let close" (click)="close()">
+                      <button
+                        tuiOption
+                        [disabled]="!!job.pause || !job.enabled"
+                        (click)="runNow(job)"
+                      >
+                        {{ 'Run now' | i18n }}
+                      </button>
+                      <button tuiOption (click)="edit(job)">
+                        {{ 'View/Edit' | i18n }}
+                      </button>
+                    </tui-data-list>
                   </button>
                 </div>
               </div>
@@ -523,69 +527,69 @@ interface JobEditor extends EditableRetentionRule {
           </div>
 
           <div class="setting-row vertical services-setting">
-            <div class="setting-row">
-              <span tuiTitle>
-                <b>{{ 'Services' | i18n }}</b>
-                <span tuiSubtitle>{{ selectedServiceSummary(form) }}</span>
-              </span>
+            <tui-accordion>
               <button
-                tuiButton
-                type="button"
-                size="s"
-                appearance="primary"
-                (click)="showServices.set(!showServices())"
+                [tuiAccordion]="showServices()"
+                (tuiAccordionChange)="showServices.set(!!$event)"
               >
-                {{ (showServices() ? 'Done' : 'Select services') | i18n }}
+                <span tuiTitle>
+                  <b>{{ 'Services' | i18n }}</b>
+                  <span tuiSubtitle>{{ selectedServiceSummary(form) }}</span>
+                </span>
               </button>
-            </div>
-            @if (showServices()) {
-              <label class="checkbox-row include-future">
-                <input
-                  tuiCheckbox
-                  type="checkbox"
-                  name="includeFuture"
-                  [(ngModel)]="form.includeFuture"
-                />
-                <span tuiTitle>
-                  <b>{{ 'Automatically include future services' | i18n }}</b>
-                  <span tuiSubtitle>
-                    {{
-                      'All current and future services are included unless you exclude them.'
-                        | i18n
-                    }}
-                  </span>
-                </span>
-              </label>
-              <label class="checkbox-row toggle-all">
-                <input
-                  tuiCheckbox
-                  type="checkbox"
-                  [ngModelOptions]="{ standalone: true }"
-                  [ngModel]="allPackagesSelected(form)"
-                  (ngModelChange)="setAllPackages(form, $event)"
-                />
-                <span tuiTitle>
-                  <b>{{ 'Toggle all' | i18n }}</b>
-                </span>
-              </label>
-              <div tuiGroup orientation="vertical" [collapsed]="true">
-                @for (pkg of packages(); track pkg.id) {
-                  <label tuiBlock="m">
+              <tui-expand>
+                <div class="services-options">
+                  <label class="checkbox-row include-future">
+                    <input
+                      tuiCheckbox
+                      type="checkbox"
+                      name="includeFuture"
+                      [(ngModel)]="form.includeFuture"
+                    />
+                    <span tuiTitle>
+                      <b>
+                        {{ 'Automatically include future services' | i18n }}
+                      </b>
+                      <span tuiSubtitle>
+                        {{
+                          'All current and future services are included unless you exclude them.'
+                            | i18n
+                        }}
+                      </span>
+                    </span>
+                  </label>
+                  <label class="checkbox-row toggle-all">
                     <input
                       tuiCheckbox
                       type="checkbox"
                       [ngModelOptions]="{ standalone: true }"
-                      [ngModel]="form.packageIds.includes(pkg.id)"
-                      (ngModelChange)="togglePackage(form, pkg.id, $event)"
+                      [ngModel]="allPackagesSelected(form)"
+                      (ngModelChange)="setAllPackages(form, $event)"
                     />
-                    <img alt="" [src]="pkg.icon" />
                     <span tuiTitle>
-                      <b>{{ pkg.name }}</b>
+                      <b>{{ 'Toggle all' | i18n }}</b>
                     </span>
                   </label>
-                }
-              </div>
-            }
+                  <div tuiGroup orientation="vertical" [collapsed]="true">
+                    @for (pkg of packages(); track pkg.id) {
+                      <label tuiBlock="m">
+                        <input
+                          tuiCheckbox
+                          type="checkbox"
+                          [ngModelOptions]="{ standalone: true }"
+                          [ngModel]="form.packageIds.includes(pkg.id)"
+                          (ngModelChange)="togglePackage(form, pkg.id, $event)"
+                        />
+                        <img alt="" [src]="pkg.icon" />
+                        <span tuiTitle>
+                          <b>{{ pkg.name }}</b>
+                        </span>
+                      </label>
+                    }
+                  </div>
+                </div>
+              </tui-expand>
+            </tui-accordion>
           </div>
 
           <div class="setting-row vertical retention-setting">
@@ -595,6 +599,9 @@ interface JobEditor extends EditableRetentionRule {
                 <span tuiSubtitle>{{ retentionSummary(form) }}</span>
               </span>
               <label class="inline-switch">
+                <span class="retention-toggle-label">
+                  {{ 'Keep additional versions' | i18n }}
+                </span>
                 <input
                   tuiSwitch
                   type="checkbox"
@@ -603,9 +610,6 @@ interface JobEditor extends EditableRetentionRule {
                   name="keepAdditional"
                   [(ngModel)]="form.keepAdditional"
                 />
-                <span class="retention-toggle-label">
-                  {{ 'Keep additional versions' | i18n }}
-                </span>
               </label>
             </div>
             @if (form.keepAdditional) {
@@ -931,6 +935,11 @@ interface JobEditor extends EditableRetentionRule {
       gap: 0.5rem;
     }
 
+    .services-options {
+      display: grid;
+      gap: 1rem;
+    }
+
     .jobs-toolbar {
       display: flex;
       align-items: center;
@@ -1246,19 +1255,13 @@ interface JobEditor extends EditableRetentionRule {
       }
 
       .job-list-actions {
-        grid-column: 1 / -1;
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-      }
-
-      .job-list-actions > button {
-        width: 100%;
+        grid-column: 2 / -1;
+        grid-row: 3;
+        justify-self: end;
       }
 
       .job-switch {
-        grid-column: 1 / -1;
-        justify-self: end;
-        flex-direction: row-reverse;
+        width: fit-content;
       }
 
       .retention-heading {
@@ -1275,7 +1278,7 @@ interface JobEditor extends EditableRetentionRule {
         width: fit-content;
       }
 
-      .retention-toggle-label {
+      .retention-heading .retention-toggle-label {
         display: none;
       }
     }
@@ -1285,6 +1288,7 @@ interface JobEditor extends EditableRetentionRule {
     DatePipe,
     FormsModule,
     NgTemplateOutlet,
+    TuiAccordion,
     TuiBadge,
     TuiBlock,
     TuiButton,
@@ -1292,6 +1296,7 @@ interface JobEditor extends EditableRetentionRule {
     TuiCheckbox,
     TuiChevron,
     TuiDataList,
+    TuiDropdown,
     TuiGroup,
     TuiIcon,
     TuiInput,

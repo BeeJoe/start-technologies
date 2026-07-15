@@ -30,23 +30,27 @@ file tracks notable changes since the move to the monorepo.
 ### Changed
 
 - **Unified automatic schedule editing.** Multiple jobs now expand first into a
-  compact, unboxed jobs list with per-job On, **Run now**, and **View/Edit**
-  actions and selected-service counts. Opening one job collapses the list to a
-  **View all jobs** card, which warns before discarding unsaved edits, while
-  **Add new backup schedule** sits below the list and focuses the job name.
+  compact, unboxed jobs list with icon-only switches, three-dot menus containing
+  **Run now** and **View/Edit**, and selected-service counts. The one-job card
+  also moves **Run now** and **View/Edit** into a three-dot menu. Opening one job
+  collapses the list to a **View all jobs** card, which warns before discarding
+  unsaved edits, while **Add new backup schedule** sits below the list and
+  focuses the job name.
   Saving returns to the list. Monthly schedules add a day-of-month choice and
   use the month's last available day when the 30th or 31st does not exist. The
   collapsed main card surfaces enabled jobs needing attention and clears the
   warning after success or when a failed job is turned off. Service selection
-  is collapsed by default. Version history requires a frequency, removes the
+  is collapsed by default behind its clickable heading. Version history requires a frequency, removes the
   custom option and retention-overrides editor, aligns repeated **Keep one
   backup every** rows, summarizes every configured tier, and lets every row be
   removed; removing the last row restores the latest-only default. Existing
   nonstandard CLI-created retention tiers remain exact until their row is
   changed. Hour and minute choices can no longer be cleared to an invalid null
   value. Every schedule, including the first or only one, puts **Delete
-  schedule** opposite **Save**, with a confirmation option to delete checkpoints
-  used only by that schedule. Deleting the final schedule returns automatic
+  schedule** opposite **Save**, with a confirmation option that changes the
+  action to **Delete schedule and backups** when deleting checkpoints used only
+  by that schedule. Turning automatic backups off now directly pauses schedules
+  without a deletion dialog. Deleting the final schedule returns automatic
   backups to initial setup.
 - **Simplified Automatic Backups.** The expanded card now uses a flat settings
   layout, keeps **Run now** with the detailed actions, and leaves checkpoint
@@ -81,6 +85,9 @@ file tracks notable changes since the move to the monorepo.
   longer opens a blocking progress notification, retention controls share a
   consistent size, and narrow screens keep location names, addresses, empty
   drive states, and compact destructive actions readable without overlap.
+  Top-level backup cards now use the standard StartOS card color and gradient.
+  The System sidebar replaces its red backup badge with the animated purple
+  progress circle while the Backup Progress card is out of view.
   Backup-location rows now consistently place the icon and name on the left,
   the address or device path on the right, and center the no-drive state.
   Status columns are wider and wrap naturally so **No StartOS backups
@@ -93,7 +100,7 @@ file tracks notable changes since the move to the monorepo.
   frame on desktop and mobile. Location choices also share the action button's
   centered width and keep long location names horizontal on phones, including
   automatic-backup setup. Automatic job rows are inset from phone edges and
-  keep each On/Off label beside its switch at the right. The overall progress
+  keep icon-only switches and action menus clear of schedule text. The overall progress
   spinner and percentage align with each service's status, and service progress
   is right-aligned within the card.
   Manual and custom automatic runs no longer force-scroll or place a blocking
@@ -105,11 +112,10 @@ file tracks notable changes since the move to the monorepo.
   right-aligned line inside the progress card. While another backup or restore
   is running, the manual-backup card now shows a clear busy state instead of
   expanding to an empty panel.
-- **Backup-location removal.** Choosing to delete automatic checkpoints while
-  turning automatic backups off now also removes the stopped schedule
-  definitions. Unused network backup locations can then be forgotten, and
-  turning automatic backups on again starts with a clean setup. The confirmation
-  dialog now states this choice more directly.
+- **Backup-location removal.** Schedule deletion can also remove the automatic
+  checkpoints used only by that schedule, allowing unused network backup
+  locations to be forgotten. The confirmation action clearly distinguishes
+  deleting only the schedule from deleting the schedule and backups.
 - **Legacy backup target loading.** Backup target discovery no longer waits
   indefinitely while measuring an old pre-v2 `StartOSBackups` folder on a slow
   network share. StartOS now checks only whether this server's old backup folder

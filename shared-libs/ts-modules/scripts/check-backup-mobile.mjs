@@ -158,8 +158,8 @@ const editorFile =
   'projects/start-os/web/ui/src/app/routes/portal/routes/backups/automatic.component.ts'
 const historyFile =
   'projects/start-os/web/ui/src/app/routes/portal/routes/backups/history.component.ts'
-const disableDialogFile =
-  'projects/start-os/web/ui/src/app/routes/portal/routes/backups/disable-automatic.dialog.ts'
+const deleteScheduleDialogFile =
+  'projects/start-os/web/ui/src/app/routes/portal/routes/system/routes/backups/delete-schedule.dialog.ts'
 const progressFile =
   'projects/start-os/web/ui/src/app/routes/portal/routes/system/routes/backups/progress.component.ts'
 const locationFile =
@@ -205,7 +205,7 @@ const narrowCard = 'card (max-width: 30rem)'
 const home = componentStyles(homeFile)
 const editor = componentStyles(editorFile)
 const history = componentStyles(historyFile)
-const disableDialog = componentStyles(disableDialogFile)
+const deleteScheduleDialog = componentStyles(deleteScheduleDialogFile)
 const progress = componentStyles(progressFile)
 const location = componentStyles(locationFile)
 const manual = componentStyles(manualFile)
@@ -478,20 +478,10 @@ assertRule(editor, editorFile, '.retention-rule input', {
 assertRule(editor, editorFile, '.first-backup', {
   'justify-content': 'flex-start',
 })
-assertRule(disableDialog, disableDialogFile, '.actions button', {
-  'block-size': 'auto',
-  height: 'auto',
-  'min-block-size': '2.75rem',
-  'min-height': '2.75rem',
-  'white-space': 'normal',
+assertRule(deleteScheduleDialog, deleteScheduleDialogFile, '.actions', {
+  'flex-wrap': 'wrap',
+  'justify-content': 'flex-end',
 })
-assertRule(
-  disableDialog,
-  disableDialogFile,
-  '.actions',
-  { 'grid-template-columns': 'auto minmax(0, 1fr)' },
-  phone,
-)
 assertRule(
   history,
   historyFile,
@@ -590,9 +580,9 @@ assertRule(
   advancedFile,
   '.job-list-actions',
   {
-    'grid-column': '1 / -1',
-    display: 'grid',
-    'grid-template-columns': 'repeat(2, minmax(0, 1fr))',
+    'grid-column': '2 / -1',
+    'grid-row': '3',
+    'justify-self': 'end',
   },
   phone,
 )
@@ -601,9 +591,7 @@ assertRule(
   advancedFile,
   '.job-switch',
   {
-    'grid-column': '1 / -1',
-    'justify-self': 'end',
-    'flex-direction': 'row-reverse',
+    width: 'fit-content',
   },
   phone,
 )
@@ -612,7 +600,13 @@ for (const [sheet, file] of [
   [editor, editorFile],
   [advanced, advancedFile],
 ]) {
-  assertRule(sheet, file, '.retention-toggle-label', { display: 'none' }, phone)
+  assertRule(
+    sheet,
+    file,
+    '.retention-heading .retention-toggle-label',
+    { display: 'none' },
+    phone,
+  )
   assertSource(file, [
     /\[attr\.aria-label\]="'Keep additional versions' \| i18n"/,
   ])
@@ -759,7 +753,7 @@ assertSource(homeFile, [
   /<system-backup[\s\S]{0,100}mode="create"[\s\S]{0,100}\[embedded\]="true"/,
   /<system-backup[\s\S]{0,100}mode="restore"[\s\S]{0,100}\[embedded\]="true"/,
   /<backup-locations \[embedded\]="true"/,
-  /class="card-actions"[\s\S]{0,900}['"]Run now['"]/,
+  /class="card-actions"[\s\S]{0,900}iconStart="@tui\.ellipsis-vertical"[\s\S]{0,500}['"]Run now['"][\s\S]{0,500}['"]View\/Edit['"]/,
   /<backup-locations[\s\S]*['"]Backup history['"][\s\S]*<backup-history/,
   /class="card-heading automatic-heading"[\s\S]*class="card-actions"[\s\S]*class="expand-toggle"/,
   /parseBackupSchedule\(primary\.schedule\)/,
@@ -768,6 +762,10 @@ assertSource(homeFile, [
   /@if \(operationActivity\(\); as activity\)\s*\{\s*@if \(manualRunning\(\)\)/,
   /\[operationActive\]="progressActive\(\)"/,
   /readonly progressActive = computed\(\s*\(\) => !!this\.operationActivity\(\)/,
+])
+assertSource(systemFile, [
+  /page\.item === 'Backups'[\s\S]{0,180}!activeLink\.isActive \|\| !backupProgressActive\(\)/,
+  /readonly backupProgressActive = toSignal\(inject\(OSService\)\.backingUp\$/,
 ])
 assertNotSource(homeFile, [
   /<backup-navigation/,
@@ -783,6 +781,8 @@ assertNotSource(homeFile, [
   /progress-prominent::before/,
   /@if \(manualRunning\(\)\)[\s\S]{0,450}@else if \(operationActivity\(\); as activity\)/,
   /this\.activities\(\)\.find\(activity => activity\.state === 'running'\)/,
+  /DISABLE_AUTOMATIC_DIALOG/,
+  /deleteArchivedBackupSnapshots/,
 ])
 assertSource(routesFile, [
   /path: 'manage',[\s\S]{0,80}redirectTo: ''/,
@@ -812,18 +812,6 @@ assertSource(historyFile, [
   /selector:\s*'backup-history'/,
   /filteredActivities\(\)/,
   /['"]Backup location['"]/,
-])
-assertSource(disableDialogFile, [
-  /tuiCheckbox/,
-  /['"]Automatic backups will stop\. Manual backups will not be deleted\.['"]/,
-  /['"]Delete automatic backups['"]/,
-  /deleteCheckpoints:\s*this\.deleteCheckpoints/,
-  /['"]Turn off and delete['"]/,
-  /['"]Turn off automatic backups['"]/,
-])
-assertNotSource(disableDialogFile, [
-  /['"]Turning off pauses schedules\. Deleting checkpoints is optional and never deletes manual backups\.['"]/,
-  /['"]Selecting checkpoint deletion also removes automatic schedules, allowing unused backup locations to be forgotten\.['"]/,
 ])
 assertNotSource(manualPageFile, [/'Last Backup'/, /<backup-navigation/])
 assertSource(locationFile, [
@@ -964,11 +952,9 @@ assertNotSource(osServiceFile, [
 assertSource(backupServiceFile, [
   /formatCifsLocation[\s\S]{0,180}target\.hostname[\s\S]{0,80}share/,
 ])
-assertSource(homeFile, [
-  /if \(!enabled && deleteCheckpoints\)[\s\S]{0,1200}deleteArchivedBackupSnapshots[\s\S]{0,1200}deleteScheduledBackupJob/,
-])
-assertSource(editorFile, [
-  /if \(decision\.deleteCheckpoints\)[\s\S]{0,1200}deleteArchivedBackupSnapshots[\s\S]{0,1200}deleteScheduledBackupJob/,
+assertNotSource(editorFile, [
+  /DISABLE_AUTOMATIC_DIALOG/,
+  /deleteArchivedBackupSnapshots/,
 ])
 
 // Keep the refactored UI connected to the typed live RPC surface and the

@@ -1049,4 +1049,6 @@ export default {
   1163: 'Eliminar programación',
   1164: 'Eliminar copias de seguridad relacionadas',
   1165: 'La primera copia de seguridad está en cola y comenzará automáticamente cuando no haya ninguna copia de seguridad o restauración en curso.',
+  1166: 'Eliminar programación y copias de seguridad',
+  1167: 'Eliminar programación',
 } satisfies i18n

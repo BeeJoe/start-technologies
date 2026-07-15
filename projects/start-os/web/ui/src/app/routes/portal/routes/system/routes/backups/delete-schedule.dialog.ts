@@ -48,7 +48,12 @@ export interface DeleteScheduleDecision {
         appearance="primary-destructive"
         (click)="confirm()"
       >
-        {{ 'Delete' | i18n }}
+        {{
+          (deleteCheckpoints
+            ? 'Delete Schedule and Backups'
+            : 'Delete Schedule'
+          ) | i18n
+        }}
       </button>
     </footer>
   `,

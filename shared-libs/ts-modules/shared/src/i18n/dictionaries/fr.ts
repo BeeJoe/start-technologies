@@ -1049,4 +1049,6 @@ export default {
   1163: 'Supprimer le planning',
   1164: 'Supprimer les sauvegardes associées',
   1165: 'La première sauvegarde est en attente et démarrera automatiquement lorsqu’aucune sauvegarde ou restauration ne sera en cours.',
+  1166: 'Supprimer le planning et les sauvegardes',
+  1167: 'Supprimer le planning',
 } satisfies i18n

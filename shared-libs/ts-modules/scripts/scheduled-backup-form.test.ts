@@ -346,8 +346,13 @@ test('first-time setup shares the collapsed service and repeatable version-histo
   )
   const services = automaticComponent.slice(servicesStart, servicesEnd)
 
-  assert.match(services, /Select services/)
-  assert.match(services, /@if \(showServices\(\)\)/)
+  assert.doesNotMatch(services, /Select services|>\s*Done\s*</)
+  assert.match(
+    automaticComponent,
+    /<tui-accordion>[\s\S]{0,160}\[tuiAccordion\]="showServices\(\)"/,
+  )
+  assert.match(services, /<tui-expand>/)
+  assert.doesNotMatch(services, /section-toggle|@tui\.chevron-down/)
   assert.match(services, /tuiCheckbox[\s\S]{0,180}allServicesSelected/)
   assert.match(services, /tuiCheckbox[\s\S]{0,180}editor\.includeFuture/)
   assert.match(services, /tuiCheckbox[\s\S]{0,180}service\.checked/)
@@ -424,11 +429,16 @@ test('all backup schedules share one selected-job editor', () => {
   const services = advancedComponent.slice(servicesStart, servicesEnd)
   assert.match(services, /tuiGroup/)
   assert.match(services, /tuiBlock="m"/)
-  assert.match(services, /Select services/)
-  assert.match(services, /@if \(showServices\(\)\)/)
+  assert.doesNotMatch(services, /Select services|>\s*Done\s*</)
+  assert.match(
+    advancedComponent,
+    /<tui-accordion>[\s\S]{0,160}\[tuiAccordion\]="showServices\(\)"/,
+  )
+  assert.match(services, /<tui-expand>/)
+  assert.doesNotMatch(services, /section-toggle|@tui\.chevron-down/)
   assert.match(services, /\[\(ngModel\)\]="form\.includeFuture"/)
   assert.match(services, /tuiCheckbox[\s\S]{0,220}form\.includeFuture/)
-  assert.match(services, /tuiCheckbox[\s\S]{0,220}togglePackage/)
+  assert.match(services, /tuiCheckbox[\s\S]{0,360}togglePackage/)
   assert.match(services, /Automatically include future services/)
   assert.ok(
     services.indexOf('Automatically include future services') <
@@ -511,7 +521,7 @@ test('multiple automatic jobs expand as a list before an individual editor', () 
   )
   assert.match(
     advancedComponent,
-    /class="schedule-job"[\s\S]{0,1800}tuiSwitch[\s\S]{0,900}Run now[\s\S]{0,600}View\/Edit/,
+    /class="schedule-job"[\s\S]{0,1800}tuiSwitch[\s\S]{0,900}iconStart="@tui\.ellipsis-vertical"[\s\S]{0,600}Run now[\s\S]{0,600}View\/Edit/,
   )
   assert.match(
     advancedComponent,
@@ -530,7 +540,18 @@ test('multiple automatic jobs expand as a list before an individual editor', () 
       ),
     ),
   )
-  assert.match(automaticHeading, /jobs\(\)\.length === 1[\s\S]{0,900}Run now/)
+  assert.match(
+    automaticHeading,
+    /jobs\(\)\.length === 1[\s\S]{0,900}iconStart="@tui\.ellipsis-vertical"[\s\S]{0,500}Run now[\s\S]{0,500}View\/Edit/,
+  )
+  assert.match(
+    backupsComponent,
+    /openAutomaticEditor\(\)[\s\S]{0,120}expanded\.set\('automatic'\)/,
+  )
+  assert.doesNotMatch(
+    automaticHeading,
+    /<button\s+tuiButton[\s\S]{0,180}Run now/,
+  )
   const toolbar = advancedComponent.slice(
     advancedComponent.indexOf('<div class="jobs-toolbar">'),
     advancedComponent.indexOf(
@@ -640,16 +661,41 @@ test('job list shows service counts and keeps destructive editing actions at the
   assert.match(footer, /Delete schedule/)
   assert.match(deleteScheduleDialog, /deleteCheckpoints/)
   assert.match(deleteScheduleDialog, /Delete related backups/)
+  assert.match(
+    deleteScheduleDialog,
+    /deleteCheckpoints[\s\S]{0,160}Delete Schedule and Backups[\s\S]{0,120}Delete Schedule/,
+  )
   assert.doesNotMatch(
     deleteScheduleDialog,
     /@if \(context\.data\.checkpointCount\)/,
   )
 })
 
-test('mobile job switches keep their on-off labels beside the control', () => {
+test('turning off automatic backups directly pauses schedules without a delete dialog', () => {
+  for (const component of [automaticComponent, backupsComponent]) {
+    assert.doesNotMatch(component, /DISABLE_AUTOMATIC_DIALOG/)
+    assert.doesNotMatch(component, /deleteArchivedBackupSnapshots/)
+  }
   assert.match(
+    automaticComponent,
+    /async toggleMain\(enabled: boolean\)[\s\S]{0,240}toggleAllJobs\(enabled\)/,
+  )
+  assert.match(
+    backupsComponent,
+    /async setAutomatic\(enabled: boolean\)[\s\S]{0,500}setScheduledBackupJobEnabled/,
+  )
+})
+
+test('automatic job switches are icon-only and remain accessible', () => {
+  assert.doesNotMatch(
     advancedComponent,
-    /\.inline-switch\.job-switch\s*\{[\s\S]{0,180}width:\s*fit-content;[\s\S]{0,180}justify-content:\s*flex-start;/,
+    /job\.enabled && !job\.pause \? 'On' : 'Off'/,
+  )
+  assert.doesNotMatch(backupsComponent, /automaticOn\(\) \? 'On' : 'Off'/)
+  assert.match(advancedComponent, /\[attr\.aria-label\]="job\.name"/)
+  assert.match(
+    backupsComponent,
+    /\[attr\.aria-label\]="'Automatic backups' \| i18n"/,
   )
 })
 

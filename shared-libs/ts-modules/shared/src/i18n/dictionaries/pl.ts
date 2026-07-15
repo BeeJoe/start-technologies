@@ -1049,4 +1049,6 @@ export default {
   1163: 'Usuń harmonogram',
   1164: 'Usuń powiązane kopie zapasowe',
   1165: 'Pierwsza kopia zapasowa jest w kolejce i rozpocznie się automatycznie, gdy nie będzie trwała żadna kopia zapasowa ani przywracanie.',
+  1166: 'Usuń harmonogram i kopie zapasowe',
+  1167: 'Usuń harmonogram',
 } satisfies i18n

@@ -22,9 +22,9 @@ Backups`.
    the device used for setup, so the displayed local time remains meaningful
    through daylight-saving changes.
 1. Choose the services to protect. All current services are selected by
-   default. Expand **Select services** to place **Automatically include future
-   services** and **Toggle all** above the service list. The
-   section stays collapsed when you are not changing the selection.
+   default. Expand the **Services** heading to place **Automatically include
+   future services** and **Toggle all** above the service list. The section
+   stays collapsed when you are not changing the selection.
 1. Choose version-history settings. The safe storage default keeps only the
    latest automatic checkpoint. **Keep additional versions** can retain one
    version per hour, day, week, or month for the duration you select; day is the
@@ -48,18 +48,15 @@ password on existing backups.
 
 ## Schedules and Service Selection
 
-With one job, the main **Automatic backups** card keeps the On switch and **Run
-now** action at card level. With multiple jobs, expanding the card first shows
-the unboxed jobs list. Each row keeps its own On switch, **Run now**, and
-**View/Edit** actions available without opening the full editor and reports how
-many currently installed services it protects. On phones, each row is inset
-from the screen edge and its On/Off text remains beside the switch at the
-right. Select
-**View/Edit** to collapse the list and open that job. Saving closes the editor
-and returns to the list. Select **View all jobs** to close without saving and
-return to the list; StartOS warns you if that discards unsaved changes. **Add
-new backup schedule** appears below the list and moves focus directly to the job
-name field.
+With one job, the main **Automatic backups** card keeps its switch and puts
+**Run now** and **View/Edit** in the three-dot menu. With multiple jobs,
+expanding the card first shows the unboxed jobs list. Each row keeps an unlabeled
+switch and a three-dot menu containing **Run now** and **View/Edit**, and reports
+how many currently installed services it protects. Select **View/Edit** to
+collapse the list and open that job. Saving closes the editor and returns to the
+list. Select **View all jobs** to close without saving and return to the list;
+StartOS warns you if that discards unsaved changes. **Add new backup schedule**
+appears below the list and moves focus directly to the job name field.
 
 Each job can use a different exact time, backup location, service selection, or
 version-history rules. StartOS validates enabled schedules together so their
@@ -76,16 +73,15 @@ StartOS asks whether a newly installed service should be added to each affected
 job. Resolve the review before starting that service; this prevents a new
 service from silently running without the protection you intended.
 
-Pausing or turning off automatic backups keeps schedules and checkpoints by
-default. The confirmation dialog can instead permanently remove the automatic
-schedules and automatic checkpoints. Manual checkpoints are never removed by
-that option.
+Turning off automatic backups immediately pauses the schedules and keeps their
+settings and checkpoints. Delete a schedule from its editor when you want to
+remove it.
 
 The bottom of every schedule editor places **Delete schedule** opposite **Save**,
-including the first or only schedule. Its confirmation can also delete
-checkpoints no longer referenced by another schedule; leaving that option off
-keeps them as an archive. Deleting the last schedule returns **Automatic
-backups** to its initial setup state.
+including the first or only schedule. Its confirmation button changes to
+**Delete schedule and backups** when you select **Delete related backups**;
+leaving that option off keeps unreferenced checkpoints as an archive. Deleting
+the last schedule returns **Automatic backups** to its initial setup state.
 
 ## Version History and Storage
 
@@ -120,7 +116,9 @@ the new location.
 Each run stops a selected service, backs it up, and starts it again only if it
 was running before the backup. Other services and the rest of StartOS remain
 available. Progress continues if you leave the Backups page, and the progress
-card links to the main Services list.
+card links to the main Services list. While that card is out of view, the
+**Backups** item in the System sidebar shows the same animated purple progress
+circle.
 
 Only one backup or restore owns the backup system at a time. A scheduled job
 waits while another operation is active; another manual backup, explicit

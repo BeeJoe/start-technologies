@@ -3,17 +3,22 @@ import { toSignal } from '@angular/core/rxjs-interop'
 import { FormsModule } from '@angular/forms'
 import { Router } from '@angular/router'
 import {
-  DialogService,
   DocsLinkDirective,
   ErrorService,
   getErrorMessage,
   i18nPipe,
 } from '@start9labs/shared'
 import { T } from '@start9labs/start-core'
-import { TuiButton, TuiCell, TuiIcon, TuiTitle } from '@taiga-ui/core'
+import {
+  TuiButton,
+  TuiCell,
+  TuiDataList,
+  TuiDropdown,
+  TuiIcon,
+  TuiTitle,
+} from '@taiga-ui/core'
 import { TuiBadge, TuiSwitch } from '@taiga-ui/kit'
 import { PatchDB } from 'patch-db-client'
-import { firstValueFrom } from 'rxjs'
 import { ApiService } from 'src/app/services/api/embassy-api.service'
 import { OSService } from 'src/app/services/os.service'
 import { DataModel } from 'src/app/services/patch-db/data-model'
@@ -26,10 +31,6 @@ import {
   parseBackupSchedule,
 } from '../system/routes/backups/scheduled.utils'
 import AutomaticBackupsComponent from './automatic.component'
-import {
-  DISABLE_AUTOMATIC_DIALOG,
-  DisableAutomaticDecision,
-} from './disable-automatic.dialog'
 import { BackupHistoryComponent } from './history.component'
 import BackupLocationsComponent from './locations.component'
 
@@ -145,20 +146,30 @@ const WEEKDAYS = [
                 tuiSwitch
                 type="checkbox"
                 [showIcons]="false"
+                [attr.aria-label]="'Automatic backups' | i18n"
                 [ngModel]="automaticOn()"
                 [disabled]="changingAutomatic"
                 (ngModelChange)="setAutomatic($event)"
               />
-              <span>{{ (automaticOn() ? 'On' : 'Off') | i18n }}</span>
             </label>
             <button
-              tuiButton
+              tuiIconButton
+              tuiDropdown
+              tuiDropdownAuto
               type="button"
               size="s"
-              [disabled]="!canRunNow()"
-              (click)="runNow()"
+              appearance="flat-grayscale"
+              iconStart="@tui.ellipsis-vertical"
             >
-              {{ 'Run now' | i18n }}
+              {{ 'More' | i18n }}
+              <tui-data-list *tuiDropdown="let close" (click)="close()">
+                <button tuiOption [disabled]="!canRunNow()" (click)="runNow()">
+                  {{ 'Run now' | i18n }}
+                </button>
+                <button tuiOption (click)="openAutomaticEditor()">
+                  {{ 'View/Edit' | i18n }}
+                </button>
+              </tui-data-list>
             </button>
           </div>
         }
@@ -565,6 +576,8 @@ const WEEKDAYS = [
     TuiBadge,
     TuiButton,
     TuiCell,
+    TuiDataList,
+    TuiDropdown,
     TuiIcon,
     TuiSwitch,
     TuiTitle,
@@ -580,7 +593,6 @@ const WEEKDAYS = [
 })
 export default class BackupsComponent implements OnInit {
   private readonly api = inject(ApiService)
-  private readonly dialogs = inject(DialogService)
   private readonly errors = inject(ErrorService)
   private readonly backupService = inject(BackupService)
   private readonly os = inject(OSService)
@@ -599,9 +611,6 @@ export default class BackupsComponent implements OnInit {
     ),
   )
   readonly primary = computed(() => this.jobs()[0])
-  readonly histories = computed(() =>
-    Object.values(this.state()?.histories || {}),
-  )
   readonly activities = computed(() =>
     Object.values(this.state()?.activities || {}).sort((a, b) =>
       b.startedAt.localeCompare(a.startedAt),
@@ -629,6 +638,10 @@ export default class BackupsComponent implements OnInit {
 
   openLocations() {
     this.expanded.set('locations')
+  }
+
+  openAutomaticEditor() {
+    this.expanded.set('automatic')
   }
 
   goToServices() {
@@ -698,35 +711,6 @@ export default class BackupsComponent implements OnInit {
 
   async setAutomatic(enabled: boolean) {
     if (enabled === this.automaticOn()) return
-    const snapshots = this.histories().flatMap(history =>
-      history.snapshots.map(snapshot => ({ history, snapshot })),
-    )
-    let deleteCheckpoints = false
-
-    if (!enabled) {
-      const bytes = snapshots.reduce(
-        (sum, item) =>
-          sum + (item.snapshot.physicalSize ?? item.snapshot.logicalSize),
-        0,
-      )
-      const decision = await firstValueFrom(
-        this.dialogs.openComponent<DisableAutomaticDecision | null>(
-          DISABLE_AUTOMATIC_DIALOG,
-          {
-            label: 'Turn off automatic backups?',
-            size: 's',
-            data: {
-              checkpointCount: snapshots.length,
-              reclaimable: this.bytes(bytes),
-            },
-          },
-        ),
-        { defaultValue: null },
-      )
-      if (!decision) return
-      deleteCheckpoints = decision.deleteCheckpoints
-    }
-
     this.changingAutomatic = true
     try {
       await Promise.all(
@@ -734,36 +718,10 @@ export default class BackupsComponent implements OnInit {
           this.api.setScheduledBackupJobEnabled({ id: job.id, enabled }),
         ),
       )
-      if (!enabled && deleteCheckpoints) {
-        for (const history of this.histories()) {
-          const snapshotIds = history.snapshots.map(snapshot => snapshot.id)
-          if (snapshotIds.length) {
-            await this.api.deleteArchivedBackupSnapshots({
-              targetId: history.targetId,
-              packageId: history.packageId,
-              snapshotIds,
-            })
-          }
-        }
-        for (const job of this.jobs()) {
-          await this.api.deleteScheduledBackupJob({ id: job.id })
-        }
-      }
     } catch (error: any) {
       this.errors.handleError(getErrorMessage(error))
     } finally {
       this.changingAutomatic = false
     }
-  }
-
-  private bytes(value: number): string {
-    const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB']
-    let amount = value
-    let unit = 0
-    while (amount >= 1024 && unit < units.length - 1) {
-      amount /= 1024
-      unit += 1
-    }
-    return `${amount.toFixed(unit ? 1 : 0)} ${units[unit]}`
   }
 }

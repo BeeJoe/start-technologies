@@ -10,12 +10,7 @@ import {
 import { toSignal } from '@angular/core/rxjs-interop'
 import { FormsModule } from '@angular/forms'
 import { ActivatedRoute, Router, RouterLink } from '@angular/router'
-import {
-  DialogService,
-  ErrorService,
-  getErrorMessage,
-  i18nPipe,
-} from '@start9labs/shared'
+import { ErrorService, getErrorMessage, i18nPipe } from '@start9labs/shared'
 import { T } from '@start9labs/start-core'
 import {
   TuiButton,
@@ -29,6 +24,7 @@ import {
   TuiTitle,
 } from '@taiga-ui/core'
 import {
+  TuiAccordion,
   TuiBlock,
   TuiChevron,
   TuiInputNumber,
@@ -37,7 +33,6 @@ import {
   TuiSwitch,
 } from '@taiga-ui/kit'
 import { PatchDB } from 'patch-db-client'
-import { firstValueFrom } from 'rxjs'
 import { ApiService } from 'src/app/services/api/embassy-api.service'
 import { DataModel } from 'src/app/services/patch-db/data-model'
 import { TitleDirective } from 'src/app/services/title.service'
@@ -58,10 +53,6 @@ import {
   serializeBackupSchedule,
 } from '../system/routes/backups/scheduled.utils'
 import { ScheduledBackupsComponent } from '../system/routes/backups/scheduled.component'
-import {
-  DISABLE_AUTOMATIC_DIALOG,
-  DisableAutomaticDecision,
-} from './disable-automatic.dialog'
 import { BackupLocationPickerComponent } from './location-picker.component'
 
 interface ServiceChoice {
@@ -283,36 +274,13 @@ interface AutomaticRetentionRule {
             </div>
           }
 
-          <div class="setting-row">
-            <span tuiTitle>
-              <b>{{ 'Services' | i18n }}</b>
-              <span tuiSubtitle>
-                {{
-                  'All current and future services are included unless you exclude them.'
-                    | i18n
-                }}
-              </span>
-            </span>
+          <tui-accordion>
             <button
-              tuiButton
-              type="button"
-              size="s"
-              appearance="primary"
-              (click)="showServices.set(!showServices())"
+              [tuiAccordion]="showServices()"
+              (tuiAccordionChange)="showServices.set(!!$event)"
             >
-              {{ (showServices() ? 'Done' : 'Select services') | i18n }}
-            </button>
-          </div>
-
-          @if (showServices()) {
-            <label class="checkbox-row include-future">
-              <input
-                tuiCheckbox
-                type="checkbox"
-                [(ngModel)]="editor.includeFuture"
-              />
               <span tuiTitle>
-                <b>{{ 'Automatically include future services' | i18n }}</b>
+                <b>{{ 'Services' | i18n }}</b>
                 <span tuiSubtitle>
                   {{
                     'All current and future services are included unless you exclude them.'
@@ -320,34 +288,54 @@ interface AutomaticRetentionRule {
                   }}
                 </span>
               </span>
-            </label>
-            <label class="checkbox-row toggle-all">
-              <input
-                tuiCheckbox
-                type="checkbox"
-                [ngModel]="allServicesSelected()"
-                (ngModelChange)="setAllServices($event)"
-              />
-              <span tuiTitle>
-                <b>{{ 'Toggle all' | i18n }}</b>
-              </span>
-            </label>
-            <div tuiGroup orientation="vertical" [collapsed]="true">
-              @for (service of editor.services; track service.id) {
-                <label tuiBlock="m">
+            </button>
+            <tui-expand>
+              <div class="services-options">
+                <label class="checkbox-row include-future">
                   <input
                     tuiCheckbox
                     type="checkbox"
-                    [(ngModel)]="service.checked"
+                    [(ngModel)]="editor.includeFuture"
                   />
-                  <img alt="" [src]="service.icon" />
                   <span tuiTitle>
-                    <b>{{ service.title }}</b>
+                    <b>{{ 'Automatically include future services' | i18n }}</b>
+                    <span tuiSubtitle>
+                      {{
+                        'All current and future services are included unless you exclude them.'
+                          | i18n
+                      }}
+                    </span>
                   </span>
                 </label>
-              }
-            </div>
-          }
+                <label class="checkbox-row toggle-all">
+                  <input
+                    tuiCheckbox
+                    type="checkbox"
+                    [ngModel]="allServicesSelected()"
+                    (ngModelChange)="setAllServices($event)"
+                  />
+                  <span tuiTitle>
+                    <b>{{ 'Toggle all' | i18n }}</b>
+                  </span>
+                </label>
+                <div tuiGroup orientation="vertical" [collapsed]="true">
+                  @for (service of editor.services; track service.id) {
+                    <label tuiBlock="m">
+                      <input
+                        tuiCheckbox
+                        type="checkbox"
+                        [(ngModel)]="service.checked"
+                      />
+                      <img alt="" [src]="service.icon" />
+                      <span tuiTitle>
+                        <b>{{ service.title }}</b>
+                      </span>
+                    </label>
+                  }
+                </div>
+              </div>
+            </tui-expand>
+          </tui-accordion>
 
           <div class="setting-row retention-heading">
             <span tuiTitle>
@@ -362,6 +350,9 @@ interface AutomaticRetentionRule {
               </span>
             </span>
             <label class="inline-switch">
+              <span class="retention-toggle-label">
+                {{ 'Keep additional versions' | i18n }}
+              </span>
               <input
                 tuiSwitch
                 type="checkbox"
@@ -369,9 +360,6 @@ interface AutomaticRetentionRule {
                 [attr.aria-label]="'Keep additional versions' | i18n"
                 [(ngModel)]="editor.keepAdditional"
               />
-              <span class="retention-toggle-label">
-                {{ 'Keep additional versions' | i18n }}
-              </span>
             </label>
           </div>
 
@@ -559,12 +547,10 @@ interface AutomaticRetentionRule {
                   tuiSwitch
                   type="checkbox"
                   [showIcons]="false"
+                  [attr.aria-label]="'Automatic backups' | i18n"
                   [ngModel]="job.enabled && !job.pause"
                   (ngModelChange)="toggleMain($event)"
                 />
-                <span>
-                  {{ (job.enabled && !job.pause ? 'On' : 'Off') | i18n }}
-                </span>
               </label>
             </header>
           </section>
@@ -675,6 +661,11 @@ interface AutomaticRetentionRule {
     .setting-row {
       width: 100%;
       min-width: 0;
+    }
+
+    .services-options {
+      display: grid;
+      gap: 1rem;
     }
 
     .schedule-controls {
@@ -904,7 +895,7 @@ interface AutomaticRetentionRule {
         flex: 0 0 auto;
       }
 
-      .retention-toggle-label {
+      .retention-heading .retention-toggle-label {
         display: none;
       }
 
@@ -921,6 +912,7 @@ interface AutomaticRetentionRule {
   imports: [
     FormsModule,
     RouterLink,
+    TuiAccordion,
     TuiBlock,
     TuiButton,
     TuiCheckbox,
@@ -944,7 +936,6 @@ interface AutomaticRetentionRule {
 export default class AutomaticBackupsComponent implements OnInit {
   private readonly api = inject(ApiService)
   private readonly backupService = inject(BackupService)
-  private readonly dialogs = inject(DialogService)
   private readonly errors = inject(ErrorService)
   private readonly i18n = inject(i18nPipe)
   private readonly alerts = inject(TuiNotificationService)
@@ -994,10 +985,6 @@ export default class AutomaticBackupsComponent implements OnInit {
     ),
   )
   readonly primary = computed(() => this.jobs()[0])
-  readonly histories = computed(() =>
-    Object.values(this.state()?.histories || {}),
-  )
-
   readonly targets = computed(() => [
     ...this.backupService.cifs().map(target => ({
       id: target.id,
@@ -1353,65 +1340,7 @@ export default class AutomaticBackupsComponent implements OnInit {
   }
 
   async toggleMain(enabled: boolean) {
-    if (enabled) {
-      await this.toggleAllJobs(true)
-    } else {
-      await this.disableAutomatic()
-    }
-  }
-
-  async disableAutomatic() {
-    const snapshots = this.histories().flatMap(history =>
-      history.snapshots.map(snapshot => ({ history, snapshot })),
-    )
-    const bytes = snapshots.reduce(
-      (sum, item) =>
-        sum + (item.snapshot.physicalSize ?? item.snapshot.logicalSize),
-      0,
-    )
-    const decision = await firstValueFrom(
-      this.dialogs.openComponent<DisableAutomaticDecision | null>(
-        DISABLE_AUTOMATIC_DIALOG,
-        {
-          label: 'Turn off automatic backups?',
-          size: 's',
-          data: {
-            checkpointCount: snapshots.length,
-            reclaimable: this.bytes(bytes),
-          },
-        },
-      ),
-      { defaultValue: null },
-    )
-    if (!decision) return
-
-    try {
-      for (const job of this.jobs()) {
-        if (job.enabled) {
-          await this.api.setScheduledBackupJobEnabled({
-            id: job.id,
-            enabled: false,
-          })
-        }
-      }
-      if (decision.deleteCheckpoints) {
-        for (const history of this.histories()) {
-          const ids = history.snapshots.map(snapshot => snapshot.id)
-          if (ids.length) {
-            await this.api.deleteArchivedBackupSnapshots({
-              targetId: history.targetId,
-              packageId: history.packageId,
-              snapshotIds: ids,
-            })
-          }
-        }
-        for (const job of this.jobs()) {
-          await this.api.deleteScheduledBackupJob({ id: job.id })
-        }
-      }
-    } catch (error: any) {
-      this.errors.handleError(getErrorMessage(error))
-    }
+    await this.toggleAllJobs(enabled)
   }
 
   bytes(value: number): string {

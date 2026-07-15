@@ -1050,4 +1050,6 @@ export const ENGLISH: Record<string, number> = {
   'Delete schedule': 1163,
   'Delete related backups': 1164,
   'The first backup is queued and will start automatically when no backup or restore is in progress.': 1165,
+  'Delete Schedule and Backups': 1166,
+  'Delete Schedule': 1167,
 }

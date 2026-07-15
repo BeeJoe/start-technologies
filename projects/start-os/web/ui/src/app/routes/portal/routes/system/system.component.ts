@@ -2,9 +2,10 @@ import { Component, inject } from '@angular/core'
 import { toSignal } from '@angular/core/rxjs-interop'
 import { RouterModule } from '@angular/router'
 import { i18nPipe } from '@start9labs/shared'
-import { TuiIcon, TuiTitle, TuiCell } from '@taiga-ui/core'
+import { TuiCell, TuiIcon, TuiLoader, TuiTitle } from '@taiga-ui/core'
 import { TuiBadgeNotification } from '@taiga-ui/kit'
 import { BadgeService } from 'src/app/services/badge.service'
+import { OSService } from 'src/app/services/os.service'
 import { TitleDirective } from 'src/app/services/title.service'
 import { SYSTEM_MENU } from './system.const'
 
@@ -17,7 +18,12 @@ import { SYSTEM_MENU } from './system.const'
           <hr />
         }
         @for (page of cat; track $index) {
-          <a tuiCell="s" routerLinkActive="active" [routerLink]="page.link">
+          <a
+            tuiCell="s"
+            routerLinkActive="active"
+            #activeLink="routerLinkActive"
+            [routerLink]="page.link"
+          >
             <tui-icon [icon]="page.icon" />
             <span tuiTitle>
               <span>
@@ -27,10 +33,12 @@ import { SYSTEM_MENU } from './system.const'
                     {{ generalBadge() }}
                   </tui-badge-notification>
                 }
-                @if (page.item === 'Backups' && backupsBadge()) {
-                  <tui-badge-notification>
-                    {{ backupsBadge() }}
-                  </tui-badge-notification>
+                @if (
+                  page.item === 'Backups' &&
+                  backupsBadge() &&
+                  (!activeLink.isActive || !backupProgressActive())
+                ) {
+                  <tui-loader class="backup-progress-indicator" size="s" />
                 }
               </span>
             </span>
@@ -48,6 +56,13 @@ import { SYSTEM_MENU } from './system.const'
 
     tui-badge-notification {
       vertical-align: baseline;
+    }
+
+    .backup-progress-indicator {
+      display: inline-flex;
+      margin-inline-start: 0.35rem;
+      color: var(--tui-text-action);
+      vertical-align: middle;
     }
 
     hr {
@@ -115,6 +130,7 @@ import { SYSTEM_MENU } from './system.const'
     RouterModule,
     TuiCell,
     TuiIcon,
+    TuiLoader,
     TuiTitle,
     TitleDirective,
     TuiBadgeNotification,
@@ -125,4 +141,7 @@ export class SystemComponent {
   readonly menu = SYSTEM_MENU
   readonly generalBadge = toSignal(inject(BadgeService).getCount('general'))
   readonly backupsBadge = toSignal(inject(BadgeService).getCount('backups'))
+  readonly backupProgressActive = toSignal(inject(OSService).backingUp$, {
+    initialValue: false,
+  })
 }
