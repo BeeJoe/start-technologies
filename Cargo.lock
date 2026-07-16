@@ -2484,9 +2484,7 @@ dependencies = [
  "either",
  "emver",
  "fp-core",
- "getrandom 0.2.17",
  "itertools 0.13.0",
- "js-sys",
  "memchr",
  "pest",
  "pest_derive",
@@ -2494,7 +2492,6 @@ dependencies = [
  "serde",
  "serde_yaml",
  "smallvec",
- "wasm-bindgen",
  "yasi",
 ]
 

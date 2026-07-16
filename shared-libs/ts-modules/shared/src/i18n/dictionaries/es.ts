@@ -679,7 +679,7 @@ export default {
   771: 'Fin del juego',
   772: 'Pulsa cualquier tecla o toca para empezar',
   773: 'Pulsa cualquier tecla o toca para jugar de nuevo',
-  774: 'El estado del puerto no se puede determinar mientras el servicio no está en ejecución',
+  774: 'Nada respondió en este puerto, por lo que no se puede determinar su estado',
   775: 'Esta dirección no funcionará desde tu red local debido a una limitación de hairpinning del router',
   776: 'Acción no encontrada',
   777: 'El dominio también se aplicará a las siguientes interfaces:',
@@ -819,7 +819,7 @@ export default {
   1139: 'Último resultado',
   1140: 'En pausa',
   1141: 'Ninguno',
-  908: 'Ejecutar ahora',
+  1172: 'Ejecutar ahora',
   909: 'Reintentar destino',
   910: 'Cambiar destino',
   911: 'No hay programaciones de copia',
@@ -1055,4 +1055,5 @@ export default {
   1169: 'Servicios futuros no incluidos',
   1170: 'Espacio máximo requerido',
   1171: 'Más información',
+  908: 'El servicio debe estar en ejecución para realizar esta prueba. Estado actual:',
 } satisfies i18n

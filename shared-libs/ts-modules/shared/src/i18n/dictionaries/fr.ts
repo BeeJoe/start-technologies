@@ -679,7 +679,7 @@ export default {
   771: 'Partie terminée',
   772: "Appuyez sur une touche ou touchez l'écran pour commencer",
   773: "Appuyez sur une touche ou touchez l'écran pour rejouer",
-  774: "L'état du port ne peut pas être déterminé tant que le service n'est pas en cours d'exécution",
+  774: "Rien n'a répondu sur ce port, son état ne peut donc pas être déterminé",
   775: "Cette adresse ne fonctionnera pas depuis votre réseau local en raison d'une limitation de hairpinning du routeur",
   776: 'Action introuvable',
   777: "Le domaine s'appliquera également aux interfaces suivantes :",
@@ -819,7 +819,7 @@ export default {
   1139: 'Dernier résultat',
   1140: 'En pause',
   1141: 'Aucun',
-  908: 'Exécuter maintenant',
+  1172: 'Exécuter maintenant',
   909: 'Réessayer la cible',
   910: 'Changer de cible',
   911: 'Aucune planification de sauvegarde',
@@ -1055,4 +1055,5 @@ export default {
   1169: 'Services futurs non inclus',
   1170: 'Espace maximal requis',
   1171: 'Plus d’informations',
+  908: 'Le service doit être en fonctionnement pour effectuer ce test. Statut actuel :',
 } satisfies i18n

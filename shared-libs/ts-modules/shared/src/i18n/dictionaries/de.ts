@@ -679,7 +679,7 @@ export default {
   771: 'Spiel vorbei',
   772: 'Beliebige Taste drücken oder tippen zum Starten',
   773: 'Beliebige Taste drücken oder tippen zum Neustarten',
-  774: 'Der Portstatus kann nicht ermittelt werden, solange der Dienst nicht läuft',
+  774: 'Auf diesem Port hat nichts geantwortet, daher kann sein Status nicht ermittelt werden',
   775: 'Diese Adresse funktioniert nicht aus Ihrem lokalen Netzwerk aufgrund einer Router-Hairpinning-Einschränkung',
   776: 'Aktion nicht gefunden',
   777: 'Die Domain gilt auch für die folgenden Schnittstellen:',
@@ -819,7 +819,7 @@ export default {
   1139: 'Letztes Ergebnis',
   1140: 'Pausiert',
   1141: 'Keine',
-  908: 'Jetzt ausführen',
+  1172: 'Jetzt ausführen',
   909: 'Ziel erneut versuchen',
   910: 'Ziel ändern',
   911: 'Keine Sicherungszeitpläne',
@@ -1055,4 +1055,5 @@ export default {
   1169: 'Zukünftige Dienste nicht eingeschlossen',
   1170: 'Maximal benötigter Speicherplatz',
   1171: 'Weitere Informationen',
+  908: 'Der Dienst muss laufen, um diesen Test durchzuführen. Aktueller Status:',
 } satisfies i18n

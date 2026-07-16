@@ -679,7 +679,7 @@ export default {
   771: 'Koniec gry',
   772: 'Naciśnij dowolny klawisz lub dotknij, aby rozpocząć',
   773: 'Naciśnij dowolny klawisz lub dotknij, aby zagrać ponownie',
-  774: 'Status portu nie może być określony, gdy usługa nie jest uruchomiona',
+  774: 'Nic nie odpowiedziało na tym porcie, więc nie można określić jego statusu',
   775: 'Ten adres nie będzie działać z Twojej sieci lokalnej z powodu ograniczenia hairpinning routera',
   776: 'Nie znaleziono akcji',
   777: 'Domena będzie również dotyczyć następujących interfejsów:',
@@ -819,7 +819,7 @@ export default {
   1139: 'Ostatni wynik',
   1140: 'Wstrzymane',
   1141: 'Brak',
-  908: 'Uruchom teraz',
+  1172: 'Uruchom teraz',
   909: 'Ponów próbę celu',
   910: 'Zmień cel',
   911: 'Brak harmonogramów kopii',
@@ -1055,4 +1055,5 @@ export default {
   1169: 'Przyszłe usługi nieuwzględnione',
   1170: 'Maksymalna wymagana przestrzeń',
   1171: 'Więcej informacji',
+  908: 'Serwis musi być uruchomiony, aby wykonać ten test. Aktualny status:',
 } satisfies i18n
