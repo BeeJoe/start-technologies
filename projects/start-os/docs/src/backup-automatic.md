@@ -58,17 +58,17 @@ keeps an unlabeled switch and a three-dot menu containing the purple **Run
 now**, **View/Edit**, and red **Delete schedule** action, and reports how many
 currently installed services it protects. Select **View/Edit** to collapse the
 list and open that schedule. Saving closes the editor and returns to the list.
-Select **View all schedules** to close without saving and return to the list;
-StartOS warns that changes were not saved if that discards edits. **Add
-schedule** appears below the list and moves focus directly to the schedule name
-field.
+Select **Cancel** or **View all schedules** to close without saving and return
+to the list; StartOS warns that changes were not saved if that discards edits.
+When there is only one schedule, **Cancel** collapses the Automatic backups
+card instead. **Add schedule** appears below the list and moves focus directly
+to the schedule name field.
 
-The first schedule does not show a name while it is the only schedule. If you add
-another, the first appears as **Default** and each additional schedule has its
-own name. Each schedule can use a different exact time, backup location,
-service selection, or version-history rules. StartOS validates enabled
-schedules together so their frequency can support the version history they
-feed.
+The first schedule never shows an editable name field. If you add another, the
+first appears as **Default** and each additional schedule has its own name. Each
+schedule can use a different exact time, backup location, service selection, or
+version-history rules. StartOS validates enabled schedules together so their
+frequency can support the version history they feed.
 
 When an enabled schedule needs attention, the collapsed main **Automatic
 backups** card says so and explains the problem. The warning clears after the

@@ -82,9 +82,14 @@ file tracks notable changes since the move to the monorepo.
   backup or restore is actually blocking it, mobile service-selection headings
   remain visible, and version-history switches stay to the right of their labels
   on desktop without overlapping narrow layouts. Backup navigation uses white
-  back actions, paused cards keep their title clear at narrow widths, and
-  capacity estimates show one service total until **More Info** expands the
-  labeled breakdown.
+  back actions, paused top-level card controls stay right-aligned on mobile, and
+  duration values retain clear spacing below their labels. The first schedule's
+  name stays hidden from editing and becomes **Default** when more schedules are
+  added. **Cancel** returns multi-schedule edits to the schedule list and
+  single-schedule edits to the collapsed card. The delete confirmation now
+  immediately and reversibly changes between **Delete Schedule** and **Delete
+  Schedule and Backups** with its checkbox. Capacity estimates show one service
+  total until **More Info** expands the labeled breakdown.
 
 - **Automatic backup directory traversal.** `backup-fs` now preserves every
   returned directory cursor and rejects unknown nonzero cursors instead of

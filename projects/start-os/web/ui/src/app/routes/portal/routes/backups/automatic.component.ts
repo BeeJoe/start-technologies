@@ -91,9 +91,9 @@ interface AutomaticRetentionRule {
     @if (!embedded()) {
       <ng-container *title>
         <a
+          appearance="backup-back"
           routerLink="/system/backups"
           tuiIconButton
-          appearance="flat-grayscale"
           iconStart="@tui.arrow-left"
         >
           {{ 'Back' | i18n }}
@@ -504,7 +504,7 @@ interface AutomaticRetentionRule {
 
       <footer class="wizard-actions">
         @if (step() > 1) {
-          <button tuiButton appearance="flat-grayscale" (click)="previous()">
+          <button tuiButton appearance="backup-back" (click)="previous()">
             {{ 'Back' | i18n }}
           </button>
         }
@@ -556,6 +556,7 @@ interface AutomaticRetentionRule {
           scheduledBackups
           mode="manage"
           [createRequest]="createRequest()"
+          (collapseRequested)="collapseRequested.emit()"
         ></section>
       } @else {
         <div tuiNotification appearance="info">
@@ -669,25 +670,6 @@ interface AutomaticRetentionRule {
       gap: 1rem;
     }
 
-    .services-accordion,
-    .services-accordion > button,
-    .services-accordion > button [tuiTitle] {
-      width: 100%;
-      min-width: 0;
-    }
-
-    .services-accordion > button {
-      height: auto;
-      min-height: 3.5rem;
-      white-space: normal;
-    }
-
-    .services-accordion > button [tuiSubtitle] {
-      display: block;
-      white-space: normal;
-      overflow: visible;
-    }
-
     .schedule-controls {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
@@ -705,19 +687,6 @@ interface AutomaticRetentionRule {
     label > span:first-child,
     .helper {
       color: var(--tui-text-secondary);
-    }
-
-    .retention-rule input {
-      width: 100%;
-      min-height: 3.5rem;
-      padding: 0 1rem;
-      color: var(--tui-text-primary);
-      background-color: var(--tui-background-neutral-1);
-      border: 0;
-      border-radius: var(--tui-radius-m);
-      box-shadow: inset 0 0 0 1px var(--tui-border-normal);
-      font: var(--tui-typography-body-l);
-      box-sizing: border-box;
     }
 
     [tuiGroup] {
@@ -967,6 +936,7 @@ export default class AutomaticBackupsComponent implements OnInit {
   readonly embedded = input(false)
   readonly createRequest = input(0)
   readonly manageLocations = output<void>()
+  readonly collapseRequested = output<void>()
   private readonly route = inject(ActivatedRoute)
   readonly setupMode = computed(
     () =>

@@ -9,6 +9,7 @@ import {
   Injector,
   input,
   OnInit,
+  output,
   signal,
   viewChild,
 } from '@angular/core'
@@ -323,7 +324,7 @@ interface JobEditor extends EditableRetentionRule {
         <form class="editor panel" (ngSubmit)="save(form)">
           <header class="editor-heading">
             <span tuiTitle>
-              @if (form.id && jobs().length === 1) {
+              @if (isDefaultJob(form)) {
                 <b>{{ 'Edit automatic schedule' | i18n }}</b>
               } @else {
                 <b>{{ form.name || ('Create automatic schedule' | i18n) }}</b>
@@ -337,17 +338,15 @@ interface JobEditor extends EditableRetentionRule {
                 </span>
               }
             </span>
-            @if (!form.id) {
-              <button
-                tuiButton
-                type="button"
-                size="xs"
-                appearance="primary"
-                (click)="cancelEditor()"
-              >
-                {{ 'Cancel' | i18n }}
-              </button>
-            }
+            <button
+              tuiButton
+              type="button"
+              size="xs"
+              appearance="primary"
+              (click)="cancelEditor()"
+            >
+              {{ 'Cancel' | i18n }}
+            </button>
           </header>
 
           @if (selectedJob(); as job) {
@@ -394,7 +393,7 @@ interface JobEditor extends EditableRetentionRule {
             </div>
           }
 
-          @if (!form.id || jobs().length > 1) {
+          @if (!isDefaultJob(form)) {
             <div class="setting-row vertical">
               <span tuiTitle>
                 <b>{{ 'Schedule name' | i18n }}</b>
@@ -1451,6 +1450,7 @@ interface JobEditor extends EditableRetentionRule {
 export class ScheduledBackupsComponent implements OnInit {
   readonly mode = input.required<'manage' | 'restore'>()
   readonly createRequest = input(0)
+  readonly collapseRequested = output<void>()
 
   private readonly api = inject(ApiService)
   private readonly backupService = inject(BackupService)
@@ -1598,7 +1598,7 @@ export class ScheduledBackupsComponent implements OnInit {
         this.api.getScheduledBackupHistories({}),
         this.api.getNewServiceBackupReviews({}),
       ])
-      this.jobs.set(jobs)
+      this.jobs.set(jobs.sort((a, b) => a.createdAt.localeCompare(b.createdAt)))
       this.histories.set(histories)
       this.reviews.set(reviews)
       for (const review of reviews) {
@@ -1683,8 +1683,16 @@ export class ScheduledBackupsComponent implements OnInit {
     if (this.jobs().length > 1) {
       this.viewAllJobs()
     } else {
-      this.edit(this.jobs()[0])
+      this.selectedJobId.set('')
+      this.editor.set(null)
+      this.editorBaseline = null
+      this.showServices.set(false)
+      this.collapseRequested.emit()
     }
+  }
+
+  isDefaultJob(form: JobEditor): boolean {
+    return !!form.id && form.id === this.jobs()[0]?.id
   }
 
   edit(job?: T.BackupJob) {

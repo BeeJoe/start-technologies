@@ -325,7 +325,7 @@ assertContainerRule(
   {
     'grid-column': '1',
     'grid-row': '2',
-    'justify-content': 'flex-start',
+    'justify-content': 'flex-end',
   },
   'card (max-width: 34rem)',
 )
@@ -384,16 +384,11 @@ assertRule(editor, editorFile, '.panel', {
   width: '100%',
   'min-width': '0',
 })
-assertRule(editor, editorFile, '.services-accordion > button', {
-  height: 'auto',
-  'min-height': '3.5rem',
-  'white-space': 'normal',
-})
-assertRule(editor, editorFile, '.services-accordion > button [tuiSubtitle]', {
-  display: 'block',
-  'white-space': 'normal',
-  overflow: 'visible',
-})
+assertSource(globalStylesFile, [
+  /\.services-accordion > button\s*\{[\s\S]{0,240}height:\s*auto[\s\S]{0,160}min-height:\s*3\.5rem[\s\S]{0,200}white-space:\s*normal/,
+  /\.services-accordion > button \[tuiTitle\][\s\S]{0,320}display:\s*block[\s\S]{0,200}flex:\s*1[\s\S]{0,200}width:\s*auto[\s\S]{0,240}color:\s*var\(--tui-text-primary\)[\s\S]{0,120}visibility:\s*visible/,
+  /\.services-accordion > button \[tuiSubtitle\][\s\S]{0,240}display:\s*block[\s\S]{0,160}white-space:\s*normal[\s\S]{0,160}overflow:\s*visible/,
+])
 assertRule(advanced, advancedFile, '.capacity-summary', {
   width: '100%',
   'min-width': '0',
@@ -551,11 +546,9 @@ assertRule(editor, editorFile, '.embedded-panel', {
   'box-shadow': 'none',
   background: 'transparent',
 })
-assertRule(editor, editorFile, '.retention-rule input', {
-  font: 'var(--tui-typography-body-l)',
-  'min-height': '3.5rem',
-  'background-color': 'var(--tui-background-neutral-1)',
-})
+assertNotSource(editorFile, [
+  /\.retention-rule input\s*\{[\s\S]{0,320}padding:\s*0 1rem/,
+])
 assertRule(editor, editorFile, '.first-backup', {
   'justify-content': 'flex-start',
 })
@@ -876,14 +869,14 @@ assertSource(editorFile, [
   /selector:\s*'automatic-backups'/,
   /readonly embedded = input\(false\)/,
   /<section[\s\S]{0,100}scheduledBackups[\s\S]{0,100}mode="manage"[\s\S]{0,100}\[createRequest\]="createRequest\(\)"/,
-  /routerLink="\/system\/backups"[\s\S]{0,120}appearance="flat-grayscale"[\s\S]{0,120}Back/,
-  /appearance="flat-grayscale"[\s\S]{0,120}\(click\)="previous\(\)"[\s\S]{0,120}Back/,
+  /appearance="backup-back"[\s\S]{0,160}routerLink="\/system\/backups"[\s\S]{0,160}Back/,
+  /appearance="backup-back"[\s\S]{0,120}\(click\)="previous\(\)"[\s\S]{0,120}Back/,
 ])
 assertSource(locationsFile, [
-  /routerLink="\/system\/backups"[\s\S]{0,120}appearance="flat-grayscale"[\s\S]{0,120}Back/,
+  /appearance="backup-back"[\s\S]{0,160}routerLink="\/system\/backups"[\s\S]{0,160}Back/,
 ])
 assertSource(manualPageFile, [
-  /routerLink="\.\."[\s\S]{0,120}appearance="flat-grayscale"[\s\S]{0,120}Back/,
+  /appearance="backup-back"[\s\S]{0,160}routerLink="\.\."[\s\S]{0,160}Back/,
 ])
 assertNotSource(editorFile, [
   /<nav class="tabs">/,
@@ -1126,6 +1119,7 @@ assertSource(globalStylesFile, [
   /select:focus-visible[\s\S]*var\(--tui-border-focus\)/,
   /option\s*\{[\s\S]*background:\s*var\(--tui-background-base\)[\s\S]*var\(--tui-typography-body-l\)/,
   /tui-data-list\.backup-menu[\s\S]*min-width:\s*12rem[\s\S]*min-height:\s*3rem/,
+  /\[tuiAppearance\]\[data-appearance='backup-back'\][\s\S]*color:\s*#000[\s\S]*background:\s*#fff/,
 ])
 
 console.log('Backup mobile layout contract passed')

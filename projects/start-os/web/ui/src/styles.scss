@@ -424,6 +424,44 @@ tui-root._mobile tui-action-bar {
   }
 }
 
+[tuiAppearance][data-appearance='backup-back'] {
+  color: #000;
+  background: #fff;
+
+  &:hover {
+    background: #e8e8e8;
+  }
+}
+
+.services-accordion,
+.services-accordion > button {
+  width: 100%;
+  min-width: 0;
+}
+
+.services-accordion > button {
+  height: auto;
+  min-height: 3.5rem;
+  color: var(--tui-text-primary);
+  white-space: normal;
+}
+
+.services-accordion > button [tuiTitle] {
+  display: block;
+  flex: 1;
+  width: auto;
+  min-width: 0;
+  color: var(--tui-text-primary);
+  visibility: visible;
+  overflow-wrap: anywhere;
+}
+
+.services-accordion > button [tuiSubtitle] {
+  display: block;
+  white-space: normal;
+  overflow: visible;
+}
+
 tui-data-list.backup-menu {
   min-width: 12rem;
   padding-block: 0.375rem;

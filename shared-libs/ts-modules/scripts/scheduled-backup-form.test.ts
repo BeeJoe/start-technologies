@@ -520,7 +520,7 @@ test('all backup schedules share one selected-job editor', () => {
   )
   assert.match(
     advancedComponent,
-    /form\.id && jobs\(\)\.length === 1[\s\S]{0,120}Edit automatic schedule/,
+    /isDefaultJob\(form\)[\s\S]{0,120}Edit automatic schedule/,
   )
   assert.doesNotMatch(advancedComponent, /\(keyup\.enter\)="save\(form\)"/)
   assert.match(
@@ -751,12 +751,17 @@ test('schedule list uses schedule terminology and styled menu actions', () => {
   assert.match(advancedComponent, /Schedule name/)
   assert.doesNotMatch(advancedComponent, /View all jobs|Job name/)
   assert.match(deleteScheduleDialog, /Delete backup schedule\?/)
-  assert.match(deleteScheduleDialog, /deleteCheckpoints/)
-  assert.match(deleteScheduleDialog, /Delete related backups/)
   assert.match(
     deleteScheduleDialog,
-    /deleteCheckpoints[\s\S]{0,160}Delete Schedule and Backups[\s\S]{0,120}Delete Schedule/,
+    /protected readonly deleteCheckpoints = signal\(false\)/,
   )
+  assert.match(deleteScheduleDialog, /Delete related backups/)
+  assert.match(deleteScheduleDialog, /\[\(ngModel\)\]="deleteCheckpoints"/)
+  assert.match(
+    deleteScheduleDialog,
+    /protected readonly deleteAction = computed\(\(\) =>[\s\S]{0,160}deleteCheckpoints\(\)[\s\S]{0,120}Delete Schedule and Backups[\s\S]{0,120}Delete Schedule/,
+  )
+  assert.match(deleteScheduleDialog, /\{\{ deleteAction\(\) \| i18n \}\}/)
   assert.doesNotMatch(
     deleteScheduleDialog,
     /@if \(context\.data\.checkpointCount\)/,
@@ -767,16 +772,53 @@ test('the first schedule keeps its default name hidden until another schedule ex
   assert.match(automaticComponent, /name: 'Default'/)
   assert.match(
     advancedComponent,
+    /jobs\.sort\(\(a, b\) => a\.createdAt\.localeCompare\(b\.createdAt\)\)/,
+  )
+  assert.match(
+    advancedComponent,
     /normalizeDefaultScheduleName\(\)[\s\S]{0,1200}name: 'Default'/,
   )
   assert.match(
     advancedComponent,
-    /@if \(!form\.id \|\| jobs\(\)\.length > 1\)[\s\S]{0,500}Schedule name/,
+    /@if \(!isDefaultJob\(form\)\)[\s\S]{0,500}Schedule name/,
   )
   assert.match(
     advancedComponent,
-    /form\.id && jobs\(\)\.length === 1[\s\S]{0,160}Edit automatic schedule/,
+    /isDefaultJob\(form\)[\s\S]{0,160}Edit automatic schedule/,
   )
+  assert.match(
+    advancedComponent,
+    /isDefaultJob\(form: JobEditor\)[\s\S]{0,240}form\.id === this\.jobs\(\)\[0\]\?\.id/,
+  )
+})
+
+test('canceling a job edit returns to the appropriate collapsed view', () => {
+  assert.match(
+    advancedComponent,
+    /class="editor-heading"[\s\S]{0,1200}\(click\)="cancelEditor\(\)"[\s\S]{0,120}Cancel/,
+  )
+  assert.match(
+    advancedComponent,
+    /readonly collapseRequested = output<void>\(\)/,
+  )
+  assert.match(
+    advancedComponent,
+    /cancelEditor\(\)[\s\S]{0,260}jobs\(\)\.length > 1[\s\S]{0,120}viewAllJobs\(\)[\s\S]{0,240}collapseRequested\.emit\(\)/,
+  )
+  assert.match(
+    automaticComponent,
+    /\(collapseRequested\)="collapseRequested\.emit\(\)"/,
+  )
+  assert.match(
+    backupsComponent,
+    /\(collapseRequested\)="expanded\.set\(null\)"/,
+  )
+})
+
+test('backup Back buttons use the shared high-contrast appearance', () => {
+  for (const component of [automaticComponent]) {
+    assert.match(component, /appearance="backup-back"[\s\S]{0,180}Back/)
+  }
 })
 
 test('service summary includes its count and future-service policy', () => {

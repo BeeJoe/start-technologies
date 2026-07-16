@@ -219,6 +219,7 @@ const WEEKDAYS = [
             [mode]="jobs().length ? 'manage' : 'setup'"
             [createRequest]="createScheduleRequest()"
             (manageLocations)="openLocations()"
+            (collapseRequested)="expanded.set(null)"
           />
         </div>
       }
@@ -591,7 +592,7 @@ const WEEKDAYS = [
       .automatic-heading.single-job .card-actions {
         grid-column: 1;
         grid-row: 2;
-        justify-content: flex-start;
+        justify-content: flex-end;
         padding: 0 1.25rem 1rem;
       }
     }
