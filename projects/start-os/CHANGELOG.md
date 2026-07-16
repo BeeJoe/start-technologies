@@ -204,6 +204,14 @@ file tracks notable changes since the move to the monorepo.
 
 ### Changed
 
+- **Stable, predictable IPv6 address (EUI-64).** NetworkManager is set to derive
+  each interface's IPv6 address from its MAC (modified EUI-64) with RFC 4941
+  privacy extensions off. StartOS applies this to existing network connections
+  on every boot, not just newly-created ones, so upgraded servers pick it up too.
+  The server therefore keeps one stable global-unicast address (GUA) across
+  reboots instead of the default rotating stable-privacy address, giving the
+  GUA-based clearnet and public-domain features a predictable address to
+  advertise (`AAAA`) and pinhole.
 - **External ports 9050 and 9051 are no longer restricted (#3407).** The port
   allocator reserved 9050/9051 for the 0.3.x host Tor daemon, which no longer
   exists. Freeing 9050 lets the tor service bind its SOCKS proxy with
@@ -225,9 +233,11 @@ file tracks notable changes since the move to the monorepo.
   re-points the tor package's persisted hidden-service identity for the admin
   UI (`STARTOS`/`startos-ui` → `start-os`/`admin`), preserving the server's
   existing `.onion` address across the identity change.
-- **SDK (breaking):** `PluginHostnameInfo.packageId` is required — url plugins
-  (e.g. tor) must export the StartOS UI's urls as `start-os`/`admin` instead of
-  `packageId: null`.
+- **SDK:** `PluginHostnameInfo.packageId` is required in the type — url plugins
+  (e.g. tor) should export the StartOS UI's urls as `start-os`/`admin` instead of
+  `packageId: null`. For backwards compatibility during the beta.10 transition,
+  the host still accepts the legacy `packageId: null` (or an absent field) over
+  the effects socket and maps it to `start-os`.
 - **OS Logs and Kernel Logs moved into System settings.** The top-level Logs tab
   is removed; OS Logs and Kernel Logs are now entries at the bottom of the System
   menu.
