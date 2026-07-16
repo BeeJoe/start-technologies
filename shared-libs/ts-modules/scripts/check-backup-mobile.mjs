@@ -314,37 +314,65 @@ assertContainerRule(
 assertContainerRule(
   home,
   homeFile,
-  '.automatic-heading.single-job',
-  { 'grid-template-columns': 'minmax(0, 1fr)' },
-  'card (max-width: 34rem)',
-)
-assertContainerRule(
-  home,
-  homeFile,
-  '.automatic-heading.single-job .card-actions',
-  {
-    'grid-column': '1',
-    'grid-row': '2',
-    'justify-content': 'flex-end',
-  },
-  'card (max-width: 34rem)',
-)
-assertContainerRule(
-  home,
-  homeFile,
   '.automatic-heading.single-job .card-actions',
   {
     'grid-column': '2',
     'grid-row': '1',
     'justify-content': 'flex-end',
+    'align-self': 'start',
   },
   'card (max-width: 44rem)',
+)
+assertContainerRule(
+  home,
+  homeFile,
+  '.automatic-heading.single-job .card-toggle b',
+  { 'white-space': 'normal' },
+  'card (max-width: 44rem)',
+)
+assertNotSource(homeFile, [/@container card \(max-width: 34rem\)/])
+assertRule(
+  home,
+  homeFile,
+  '.automatic-heading.single-job .card-toggle',
+  { gap: '0.5rem', 'padding-inline': '0.75rem' },
+  phone,
 )
 assertRule(
   home,
   homeFile,
   '.single-job .card-actions',
-  { 'align-items': 'center', 'flex-direction': 'row' },
+  {
+    display: 'grid',
+    'grid-template-columns': 'auto auto',
+    'align-items': 'start',
+    'padding-inline-end': '0.75rem',
+  },
+  phone,
+)
+assertRule(
+  home,
+  homeFile,
+  '.single-job .card-actions > [tuiBadge]',
+  {
+    'grid-column': '1 / -1',
+    'grid-row': '2',
+    'justify-self': 'end',
+  },
+  phone,
+)
+assertRule(
+  home,
+  homeFile,
+  '.single-job .simple-switch',
+  { 'grid-column': '1', 'grid-row': '1' },
+  phone,
+)
+assertRule(
+  home,
+  homeFile,
+  '.single-job .card-actions > button',
+  { 'grid-column': '2', 'grid-row': '1' },
   phone,
 )
 

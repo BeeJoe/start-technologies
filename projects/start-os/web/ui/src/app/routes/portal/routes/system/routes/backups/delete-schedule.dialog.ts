@@ -31,7 +31,12 @@ export interface DeleteScheduleDecision {
     </p>
 
     <label class="delete-option">
-      <input tuiCheckbox type="checkbox" [(ngModel)]="deleteCheckpoints" />
+      <input
+        tuiCheckbox
+        type="checkbox"
+        [ngModel]="deleteCheckpoints()"
+        (ngModelChange)="deleteCheckpoints.set($event)"
+      />
       <span tuiTitle>
         <b>{{ 'Delete related backups' | i18n }}</b>
         <span tuiSubtitle>

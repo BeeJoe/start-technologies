@@ -574,8 +574,13 @@ const WEEKDAYS = [
       .automatic-heading.single-job .card-actions {
         grid-column: 2;
         grid-row: 1;
+        align-self: start;
         justify-content: flex-end;
         padding: 0.75rem 1.25rem 0.75rem 0;
+      }
+
+      .automatic-heading.single-job .card-toggle b {
+        white-space: normal;
       }
 
       .automatic-heading .expand-toggle {
@@ -584,22 +589,14 @@ const WEEKDAYS = [
       }
     }
 
-    @container card (max-width: 34rem) {
-      .automatic-heading.single-job {
-        grid-template-columns: minmax(0, 1fr);
-      }
-
-      .automatic-heading.single-job .card-actions {
-        grid-column: 1;
-        grid-row: 2;
-        justify-content: flex-end;
-        padding: 0 1.25rem 1rem;
-      }
-    }
-
     @media (max-width: 30rem) {
       .card-toggle {
         align-items: flex-start;
+      }
+
+      .automatic-heading.single-job .card-toggle {
+        gap: 0.5rem;
+        padding-inline: 0.75rem;
       }
 
       .card-actions {
@@ -612,12 +609,27 @@ const WEEKDAYS = [
       }
 
       .single-job .card-actions {
-        align-items: center;
-        flex-direction: row;
+        display: grid;
+        grid-template-columns: auto auto;
+        align-items: start;
+        padding-inline-end: 0.75rem;
       }
 
       .single-job .card-actions > button {
+        grid-column: 2;
+        grid-row: 1;
         width: auto;
+      }
+
+      .single-job .card-actions > [tuiBadge] {
+        grid-column: 1 / -1;
+        grid-row: 2;
+        justify-self: end;
+      }
+
+      .single-job .simple-switch {
+        grid-column: 1;
+        grid-row: 1;
       }
 
       .card-body {

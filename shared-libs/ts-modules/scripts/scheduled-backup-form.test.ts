@@ -756,7 +756,10 @@ test('schedule list uses schedule terminology and styled menu actions', () => {
     /protected readonly deleteCheckpoints = signal\(false\)/,
   )
   assert.match(deleteScheduleDialog, /Delete related backups/)
-  assert.match(deleteScheduleDialog, /\[\(ngModel\)\]="deleteCheckpoints"/)
+  assert.match(
+    deleteScheduleDialog,
+    /\[ngModel\]="deleteCheckpoints\(\)"[\s\S]{0,120}\(ngModelChange\)="deleteCheckpoints\.set\(\$event\)"/,
+  )
   assert.match(
     deleteScheduleDialog,
     /protected readonly deleteAction = computed\(\(\) =>[\s\S]{0,160}deleteCheckpoints\(\)[\s\S]{0,120}Delete Schedule and Backups[\s\S]{0,120}Delete Schedule/,
@@ -790,6 +793,27 @@ test('the first schedule keeps its default name hidden until another schedule ex
     advancedComponent,
     /isDefaultJob\(form: JobEditor\)[\s\S]{0,240}form\.id === this\.jobs\(\)\[0\]\?\.id/,
   )
+  assert.match(
+    automaticComponent,
+    /createAutomaticBackup\(\)[\s\S]{0,900}this\.embedded\(\)[\s\S]{0,120}this\.collapseRequested\.emit\(\)/,
+  )
+  assert.match(
+    advancedComponent,
+    /async save\(form: JobEditor\)[\s\S]{0,2200}await this\.reload\(\)[\s\S]{0,160}this\.jobs\(\)\.length === 1[\s\S]{0,120}this\.collapseRequested\.emit\(\)/,
+  )
+})
+
+test('capacity and storage warnings use clear user-facing wording', () => {
+  assert.match(
+    automaticComponent,
+    /Available space unknown[\s\S]{0,300}this\.bytes\(available\)[\s\S]{0,120}available/,
+  )
+  assert.doesNotMatch(
+    automaticComponent,
+    /capacityAvailableLabel\(\)[\s\S]{0,100}\{\{ 'available' \| i18n \}\}/,
+  )
+  assert.match(advancedComponent, /especially on network storage/)
+  assert.doesNotMatch(advancedComponent, /especially on CIFS/)
 })
 
 test('canceling a job edit returns to the appropriate collapsed view', () => {

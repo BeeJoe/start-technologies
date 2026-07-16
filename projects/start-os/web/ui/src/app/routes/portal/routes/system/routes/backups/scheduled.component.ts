@@ -779,7 +779,7 @@ interface JobEditor extends EditableRetentionRule {
           @if (projectedCount(form) > 1) {
             <div tuiNotification appearance="warning">
               {{
-                'Every retained version is a full copy. Each run also makes a full target-side staging copy. This can substantially increase storage use, runtime, and I/O, especially on CIFS and slow external devices.'
+                'Every retained version is a full copy. Each run also makes a full target-side staging copy. This can substantially increase storage use, runtime, and I/O, especially on network storage and slow external devices.'
                   | i18n
               }}
               <label class="check-row">
@@ -1809,6 +1809,7 @@ export class ScheduledBackupsComponent implements OnInit {
       this.editorBaseline = null
       this.showSingleJobList = true
       await this.reload()
+      if (this.jobs().length === 1) this.collapseRequested.emit()
     } catch (error: any) {
       this.errors.handleError(getErrorMessage(error))
     } finally {

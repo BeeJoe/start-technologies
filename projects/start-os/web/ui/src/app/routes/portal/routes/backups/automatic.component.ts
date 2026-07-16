@@ -464,8 +464,7 @@ interface AutomaticRetentionRule {
           @if (capacityNeeded() !== null) {
             <div tuiNotification [appearance]="capacityAppearance()">
               {{ 'About' | i18n }} {{ bytes(capacityNeeded()!) }}
-              {{ 'needed' | i18n }}; {{ capacityAvailableLabel() }}
-              {{ 'available' | i18n }}.
+              {{ 'needed' | i18n }}; {{ capacityAvailableLabel() }}.
               @if (capacityBlocked()) {
                 <span class="block-helper">
                   {{ 'Choose a location with more free space.' | i18n }}
@@ -1267,8 +1266,8 @@ export default class AutomaticBackupsComponent implements OnInit {
   capacityAvailableLabel(): string {
     const available = this.capacityAvailable()
     return available === null
-      ? this.i18n.transform('Availability unknown')
-      : this.bytes(available)
+      ? this.i18n.transform('Available space unknown')
+      : `${this.bytes(available)} ${this.i18n.transform('available')}`
   }
 
   capacityBlocked(): boolean {
@@ -1297,7 +1296,11 @@ export default class AutomaticBackupsComponent implements OnInit {
         runNow: this.editor.firstBackupNow,
       })
       this.backupService.showQueuedNotification(created)
-      if (!this.embedded()) await this.router.navigate(['/system/backups'])
+      if (this.embedded()) {
+        this.collapseRequested.emit()
+      } else {
+        await this.router.navigate(['/system/backups'])
+      }
     } catch (error: any) {
       this.errors.handleError(getErrorMessage(error))
     } finally {

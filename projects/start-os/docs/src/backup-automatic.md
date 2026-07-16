@@ -41,7 +41,8 @@ Backups`.
 1. Review the estimated storage, decide whether to **Create the first backup
    now**, and enter the master password. The password field follows that choice;
    use its eye icon to check what you typed. Select **Turn on automatic
-   backups**, or press Enter while the password field is focused.
+   backups**, or press Enter while the password field is focused. After StartOS
+   saves the first schedule, the **Automatic backups** card collapses.
 
 StartOS uses the password to initialize or unlock the encrypted backup and does
 not store the password. Changing the server password does not change the
@@ -57,7 +58,8 @@ schedules, expanding the card first shows the unboxed schedules list. Each row
 keeps an unlabeled switch and a three-dot menu containing the purple **Run
 now**, **View/Edit**, and red **Delete schedule** action, and reports how many
 currently installed services it protects. Select **View/Edit** to collapse the
-list and open that schedule. Saving closes the editor and returns to the list.
+list and open that schedule. Saving the only schedule fully collapses the card;
+saving one of several schedules closes the editor and returns to the list.
 Select **Cancel** or **View all schedules** to close without saving and return
 to the list; StartOS warns that changes were not saved if that discards edits.
 When there is only one schedule, **Cancel** collapses the Automatic backups
@@ -97,7 +99,9 @@ the last schedule returns **Automatic backups** to its initial setup state.
 Every retained automatic version is a full target-side copy, not a small
 incremental delta. A run also needs temporary staging space. More frequent
 version history therefore increases required space, run time, and I/O,
-especially on network folders and slower external drives.
+especially on network storage and slower external drives. When a network
+location cannot report its free space, the review says **Available space
+unknown** instead of presenting the unknown value as an amount.
 
 When version history contains several retention tiers, the collapsed summary
 lists every tier so the editor never hides part of the active policy.

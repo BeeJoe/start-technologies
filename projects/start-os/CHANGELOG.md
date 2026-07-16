@@ -8,7 +8,7 @@ Full per-release notes are published on the
 [GitHub releases page](https://github.com/Start9Labs/start-technologies/releases). This
 file tracks notable changes since the move to the monorepo.
 
-## [Unreleased]
+## [0.4.0-beta.10]
 
 ### Added
 
@@ -81,7 +81,10 @@ file tracks notable changes since the move to the monorepo.
   the navigation bar, first-run setup only reports a queued backup when another
   backup or restore is actually blocking it, mobile service-selection headings
   remain visible, and version-history switches stay to the right of their labels
-  on desktop without overlapping narrow layouts. Backup navigation uses white
+  on desktop without overlapping narrow layouts. The one-schedule mobile card
+  lets its heading wrap while keeping the switch and menu at the top, and the
+  card fully collapses after first setup or a single-schedule save instead of
+  exposing the internal **Default** name. Backup navigation uses white
   back actions, paused top-level card controls stay right-aligned on mobile, and
   duration values retain clear spacing below their labels. The first schedule's
   name stays hidden from editing and becomes **Default** when more schedules are
@@ -89,7 +92,9 @@ file tracks notable changes since the move to the monorepo.
   single-schedule edits to the collapsed card. The delete confirmation now
   immediately and reversibly changes between **Delete Schedule** and **Delete
   Schedule and Backups** with its checkbox. Capacity estimates show one service
-  total until **More Info** expands the labeled breakdown.
+  total until **More Info** expands the labeled breakdown, and unknown network
+  capacity now reads **Available space unknown**. Storage warnings use
+  **network storage** instead of the protocol label **CIFS**.
 
 - **Automatic backup directory traversal.** `backup-fs` now preserves every
   returned directory cursor and rejects unknown nonzero cursors instead of
