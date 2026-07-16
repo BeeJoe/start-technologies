@@ -1622,6 +1622,18 @@ pub async fn create(
         .await
         .result?;
     sync_archive_states(&ctx, &job.target_id).await.log_err();
+    if job.status.run_requested {
+        super::scheduler::dispatch_due_jobs(&ctx).await.log_err();
+        let db = ctx.db.peek().await;
+        let current: BackupJob = db
+            .as_public()
+            .as_scheduled_backups()
+            .as_jobs()
+            .as_idx(&id)
+            .or_not_found(&id)?
+            .de()?;
+        return Ok(current);
+    }
     Ok(job)
 }
 

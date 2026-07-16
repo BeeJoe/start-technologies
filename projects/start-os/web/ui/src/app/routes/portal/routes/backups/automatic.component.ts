@@ -20,7 +20,6 @@ import {
   TuiIcon,
   TuiInput,
   TuiNotification,
-  TuiNotificationService,
   TuiTitle,
 } from '@taiga-ui/core'
 import {
@@ -94,6 +93,7 @@ interface AutomaticRetentionRule {
         <a
           routerLink="/system/backups"
           tuiIconButton
+          appearance="flat-grayscale"
           iconStart="@tui.arrow-left"
         >
           {{ 'Back' | i18n }}
@@ -274,7 +274,7 @@ interface AutomaticRetentionRule {
             </div>
           }
 
-          <tui-accordion>
+          <tui-accordion class="services-accordion">
             <button
               [tuiAccordion]="showServices()"
               (tuiAccordionChange)="showServices.set(!!$event)"
@@ -282,10 +282,7 @@ interface AutomaticRetentionRule {
               <span tuiTitle>
                 <b>{{ 'Services' | i18n }}</b>
                 <span tuiSubtitle>
-                  {{
-                    'All current and future services are included unless you exclude them.'
-                      | i18n
-                  }}
+                  {{ selectedServiceSummary() }}
                 </span>
               </span>
             </button>
@@ -507,7 +504,7 @@ interface AutomaticRetentionRule {
 
       <footer class="wizard-actions">
         @if (step() > 1) {
-          <button tuiButton appearance="primary" (click)="previous()">
+          <button tuiButton appearance="flat-grayscale" (click)="previous()">
             {{ 'Back' | i18n }}
           </button>
         }
@@ -555,7 +552,11 @@ interface AutomaticRetentionRule {
             </header>
           </section>
         }
-        <section scheduledBackups mode="manage"></section>
+        <section
+          scheduledBackups
+          mode="manage"
+          [createRequest]="createRequest()"
+        ></section>
       } @else {
         <div tuiNotification appearance="info">
           {{ 'Automatic backups are not set up yet.' | i18n }}
@@ -666,6 +667,25 @@ interface AutomaticRetentionRule {
     .services-options {
       display: grid;
       gap: 1rem;
+    }
+
+    .services-accordion,
+    .services-accordion > button,
+    .services-accordion > button [tuiTitle] {
+      width: 100%;
+      min-width: 0;
+    }
+
+    .services-accordion > button {
+      height: auto;
+      min-height: 3.5rem;
+      white-space: normal;
+    }
+
+    .services-accordion > button [tuiSubtitle] {
+      display: block;
+      white-space: normal;
+      overflow: visible;
     }
 
     .schedule-controls {
@@ -938,7 +958,6 @@ export default class AutomaticBackupsComponent implements OnInit {
   private readonly backupService = inject(BackupService)
   private readonly errors = inject(ErrorService)
   private readonly i18n = inject(i18nPipe)
-  private readonly alerts = inject(TuiNotificationService)
   private readonly router = inject(Router)
   private readonly patch = inject<PatchDB<DataModel>>(PatchDB)
   private readonly packageData = toSignal(this.patch.watch$('packageData'))
@@ -946,6 +965,7 @@ export default class AutomaticBackupsComponent implements OnInit {
 
   readonly mode = input<'setup' | 'manage'>()
   readonly embedded = input(false)
+  readonly createRequest = input(0)
   readonly manageLocations = output<void>()
   private readonly route = inject(ActivatedRoute)
   readonly setupMode = computed(
@@ -1201,13 +1221,13 @@ export default class AutomaticBackupsComponent implements OnInit {
 
   selectedServiceSummary(): string {
     const selected = this.editor.services.filter(service => service.checked)
-    if (
-      selected.length === this.editor.services.length &&
+    const count = `${selected.length} / ${this.editor.services.length} ${this.i18n.transform('Services')}`
+    const future = this.i18n.transform(
       this.editor.includeFuture
-    ) {
-      return this.i18n.transform('All current and future services')
-    }
-    return `${selected.length} / ${this.editor.services.length} ${this.i18n.transform('Services')}`
+        ? 'Future services included'
+        : 'Future services not included',
+    )
+    return `${count} · ${future}`
   }
 
   selectedTargetName(): string {
@@ -1296,7 +1316,7 @@ export default class AutomaticBackupsComponent implements OnInit {
     this.saving.set(true)
     try {
       const created = await this.api.createScheduledBackupJob({
-        name: 'Automatic backups',
+        name: 'Default',
         targetId: this.targetId(),
         services: this.serviceScope(),
         schedule: serializeBackupSchedule(this.editor),
@@ -1306,19 +1326,7 @@ export default class AutomaticBackupsComponent implements OnInit {
         enabled: true,
         runNow: this.editor.firstBackupNow,
       })
-      if (created.status.runRequested) {
-        this.alerts
-          .open(
-            this.i18n.transform(
-              'The first backup is queued and will start automatically when no backup or restore is in progress.',
-            ),
-            {
-              appearance: 'info',
-              label: this.i18n.transform('Automatic backup'),
-            },
-          )
-          .subscribe()
-      }
+      this.backupService.showQueuedNotification(created)
       if (!this.embedded()) await this.router.navigate(['/system/backups'])
     } catch (error: any) {
       this.errors.handleError(getErrorMessage(error))

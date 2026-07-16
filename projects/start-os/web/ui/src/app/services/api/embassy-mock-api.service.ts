@@ -1069,7 +1069,7 @@ export class MockApiService extends ApiService {
         lastAttemptedAt: null,
         lastSucceededAt: null,
         nextRunAt: now,
-        runRequested: params.enabled && runNow,
+        runRequested: false,
         consecutiveFailures: 0,
         lastResult: null,
       },

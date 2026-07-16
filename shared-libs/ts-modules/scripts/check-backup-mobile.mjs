@@ -236,6 +236,13 @@ assertRule(home, homeFile, '.card-heading', {
   position: 'static',
   height: 'auto',
 })
+assertRule(home, homeFile, '.automatic-heading.single-job', {
+  'grid-template-columns': 'minmax(0, 1fr) auto',
+})
+assertRule(home, homeFile, '.single-job .card-actions', {
+  'flex-wrap': 'nowrap',
+  'padding-inline-end': '1.25rem',
+})
 assertRule(home, homeFile, '.progress-prominent', {
   position: 'static',
   width: '100%',
@@ -304,6 +311,42 @@ assertContainerRule(
   { 'justify-content': 'flex-start' },
   'card (max-width: 44rem)',
 )
+assertContainerRule(
+  home,
+  homeFile,
+  '.automatic-heading.single-job',
+  { 'grid-template-columns': 'minmax(0, 1fr)' },
+  'card (max-width: 34rem)',
+)
+assertContainerRule(
+  home,
+  homeFile,
+  '.automatic-heading.single-job .card-actions',
+  {
+    'grid-column': '1',
+    'grid-row': '2',
+    'justify-content': 'flex-start',
+  },
+  'card (max-width: 34rem)',
+)
+assertContainerRule(
+  home,
+  homeFile,
+  '.automatic-heading.single-job .card-actions',
+  {
+    'grid-column': '2',
+    'grid-row': '1',
+    'justify-content': 'flex-end',
+  },
+  'card (max-width: 44rem)',
+)
+assertRule(
+  home,
+  homeFile,
+  '.single-job .card-actions',
+  { 'align-items': 'center', 'flex-direction': 'row' },
+  phone,
+)
 
 for (const selector of ['[tuiTitle]', '.schedule-controls > *']) {
   assertRule(editor, editorFile, selector, {
@@ -341,6 +384,44 @@ assertRule(editor, editorFile, '.panel', {
   width: '100%',
   'min-width': '0',
 })
+assertRule(editor, editorFile, '.services-accordion > button', {
+  height: 'auto',
+  'min-height': '3.5rem',
+  'white-space': 'normal',
+})
+assertRule(editor, editorFile, '.services-accordion > button [tuiSubtitle]', {
+  display: 'block',
+  'white-space': 'normal',
+  overflow: 'visible',
+})
+assertRule(advanced, advancedFile, '.capacity-summary', {
+  width: '100%',
+  'min-width': '0',
+})
+assertRule(advanced, advancedFile, '.capacity-details div', {
+  'grid-template-columns': 'minmax(10rem, 1fr) auto',
+})
+assertRule(
+  advanced,
+  advancedFile,
+  '.capacity-details div',
+  { 'grid-template-columns': '1fr' },
+  phone,
+)
+assertRule(
+  advanced,
+  advancedFile,
+  '.capacity-summary',
+  { 'flex-wrap': 'wrap' },
+  phone,
+)
+assertRule(
+  advanced,
+  advancedFile,
+  '.capacity-summary .more-info',
+  { 'flex-basis': '100%', 'text-align': 'right' },
+  phone,
+)
 assertRule(history, historyFile, ':host', {
   width: '100%',
   'min-width': '0',
@@ -794,7 +875,15 @@ assertSource(routesFile, [
 assertSource(editorFile, [
   /selector:\s*'automatic-backups'/,
   /readonly embedded = input\(false\)/,
-  /<section scheduledBackups mode="manage"><\/section>/,
+  /<section[\s\S]{0,100}scheduledBackups[\s\S]{0,100}mode="manage"[\s\S]{0,100}\[createRequest\]="createRequest\(\)"/,
+  /routerLink="\/system\/backups"[\s\S]{0,120}appearance="flat-grayscale"[\s\S]{0,120}Back/,
+  /appearance="flat-grayscale"[\s\S]{0,120}\(click\)="previous\(\)"[\s\S]{0,120}Back/,
+])
+assertSource(locationsFile, [
+  /routerLink="\/system\/backups"[\s\S]{0,120}appearance="flat-grayscale"[\s\S]{0,120}Back/,
+])
+assertSource(manualPageFile, [
+  /routerLink="\.\."[\s\S]{0,120}appearance="flat-grayscale"[\s\S]{0,120}Back/,
 ])
 assertNotSource(editorFile, [
   /<nav class="tabs">/,

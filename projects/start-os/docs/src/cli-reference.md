@@ -355,9 +355,9 @@ Enable or disable a specific address binding for a service.
 
 ## Backups
 
-Create manual backups; manage automatic jobs, checkpoint history, and retention;
-restore checkpoints; and manage backup targets. Commands that return records
-accept the standard `--format` option. Use `start-cli backup -h` and the
+Create manual backups; manage automatic schedules, checkpoint history, and
+retention; restore checkpoints; and manage backup targets. Commands that return
+records accept the standard `--format` option. Use `start-cli backup -h` and the
 committed man pages for the complete generated command surface.
 
 ### `start-cli backup create <TARGET_ID> <PASSWORD>`
@@ -370,13 +370,13 @@ Create a backup of all or selected packages.
 ### `start-cli backup estimate-capacity <TARGET_ID>`
 
 Estimate per-service automatic-backup storage and next-run staging requirements
-before creating a job. With no service filters it includes every currently
+before creating a schedule. With no service filters it includes every currently
 installed service; with no version-history rules it estimates latest-only
 retention.
 The result separates live data, retained and archived checkpoints, staging
-headroom, and the conservative projected peak. A job created without filters
-also includes services installed in the future, whose size cannot yet be
-estimated.
+headroom, and the conservative projected peak. A schedule created without
+filters also includes services installed in the future, whose size cannot yet
+be estimated.
 
 - `--package-ids <IDS>` — Include only comma-separated package IDs
 - `--exclude-package-ids <IDS>` — Include current and future services except
@@ -388,17 +388,17 @@ estimated.
 - `--service-latest-only <PACKAGE_ID>` — Estimate latest-checkpoint-only
   retention for one or more comma-separated service IDs
 
-### Automatic backup jobs
+### Automatic backup schedules
 
 #### `start-cli backup job list`
 
-List automatic backup jobs, their IDs, schedules, target state, and next-run
+List automatic backup schedules, their IDs, timing, target state, and next-run
 status.
 
 #### `start-cli backup job add <NAME> <TARGET_ID> <PASSWORD>`
 
-Create an automatic backup job. It defaults to all current and future services,
-daily at 03:00 UTC, and latest-checkpoint-only retention.
+Create an automatic backup schedule. It defaults to all current and future
+services, daily at 03:00 UTC, and latest-checkpoint-only retention.
 
 - `--cron <CRON>` — Five-field cron schedule. For example, `15 * * * *` runs at
   15 minutes past every hour.
@@ -414,15 +414,15 @@ daily at 03:00 UTC, and latest-checkpoint-only retention.
   one service. Repeat it to build multiple rules or configure more services.
 - `--service-latest-only <PACKAGE_ID>` — Override one or more comma-separated
   services to retain only their latest checkpoint.
-- `--disabled` — Create the job paused
+- `--disabled` — Create the schedule paused
 
-Run `start-cli backup job run-now <ID>` after creating the job when you want the
-first backup immediately.
+Run `start-cli backup job run-now <ID>` after creating the schedule when you
+want the first backup immediately.
 
 #### `start-cli backup job edit <ID>`
 
-Update only the supplied job settings. Schedule flags, service-selection flags,
-and repeated `--keep-rule` values use the same forms as `job add`.
+Update only the supplied schedule settings. Timing flags, service-selection
+flags, and repeated `--keep-rule` values use the same forms as `job add`.
 
 - `--name <NAME>` — Change the display name
 - `--all-services` — Include every current and future service
@@ -432,18 +432,19 @@ and repeated `--keep-rule` values use the same forms as `job add`.
 - `--service-latest-only <PACKAGE_ID>` — Set comma-separated services to
   latest-checkpoint-only retention
 - `--use-default-retention <PACKAGE_ID>` — Remove service-specific overrides
-  from comma-separated services so they inherit the job default
+  from comma-separated services so they inherit the schedule default
 
-#### Job state and target recovery
+#### Schedule state and target recovery
 
-- `start-cli backup job enable <ID>` — Resume an automatic job
-- `start-cli backup job disable <ID>` — Pause an automatic job
-- `start-cli backup job delete <ID>` — Delete the job definition
-- `start-cli backup job run-now <ID>` — Run the job immediately
+- `start-cli backup job enable <ID>` — Resume an automatic schedule
+- `start-cli backup job disable <ID>` — Pause an automatic schedule
+- `start-cli backup job delete <ID>` — Delete the schedule definition
+- `start-cli backup job run-now <ID>` — Run the schedule immediately
 - `start-cli backup job retry-target <TARGET_ID> <PASSWORD>` — Reconnect a
-  target and resume its paused jobs
+  target and resume its paused schedules
 - `start-cli backup job reassign-target <ID> <TARGET_ID> <PASSWORD>` — Move a
-  job to another target. Pass `--wait-for-schedule` to avoid an immediate run.
+  schedule to another target. Pass `--wait-for-schedule` to avoid an immediate
+  run.
 
 ### Activity and checkpoint history
 
@@ -484,7 +485,7 @@ Every backup action exposed by the StartOS UI has a `start-cli` command:
 - backup locations use `backup target list`, `backup target cifs add|update|remove`,
   and `backup target delete-legacy`;
 - one-time backups use `backup create`;
-- automatic jobs use `backup job list|add|edit|enable|disable|run-now|delete`,
+- automatic schedules use `backup job list|add|edit|enable|disable|run-now|delete`,
   with `retry-target` and `reassign-target` for repair;
 - estimates, activity, history, version-history changes, and new-service
   decisions use `backup estimate-capacity`, `backup activity`, `backup history`,
@@ -497,10 +498,10 @@ backup restore-checkpoint`, and a UI-style selection mixing manual and
 ### New-service reviews
 
 - `start-cli backup review list` — List newly installed services awaiting a
-  decision for selective automatic jobs
+  decision for selective automatic schedules
 - `start-cli backup review decide <PACKAGE_ID> --decision <JOB_ID=add|skip>` —
-  Add or skip the service for an affected job. Repeat `--decision` for every
-  listed job.
+  Add or skip the service for an affected schedule. Repeat `--decision` for every
+  listed schedule.
 
 ### Backup targets
 

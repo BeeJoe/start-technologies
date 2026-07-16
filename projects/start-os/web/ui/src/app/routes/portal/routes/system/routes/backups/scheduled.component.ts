@@ -4,6 +4,7 @@ import {
   Component,
   computed,
   ElementRef,
+  effect,
   inject,
   Injector,
   input,
@@ -21,6 +22,7 @@ import {
 } from '@start9labs/shared'
 import { T } from '@start9labs/start-core'
 import {
+  TuiAppearance,
   TuiButton,
   TuiCell,
   TuiCheckbox,
@@ -65,10 +67,7 @@ import {
   serializeBackupServiceSelection,
   serializeBackupSchedule,
 } from './scheduled.utils'
-import {
-  DELETE_SCHEDULE_DIALOG,
-  DeleteScheduleDecision,
-} from './delete-schedule.dialog'
+import { DeleteScheduleService } from './delete-schedule.dialog'
 
 interface EditableRetentionRule extends BackupRetentionTierEditor {
   preserved: {
@@ -176,7 +175,7 @@ interface JobEditor extends EditableRetentionRule {
           {{ packageName(review.packageId) }}
           <div tuiSubtitle>
             {{
-              'Choose whether to add this service to every selective job. The service cannot start until this is resolved.'
+              'Choose whether to add this service to every selective schedule. The service cannot start until this is resolved.'
                 | i18n
             }}
           </div>
@@ -194,8 +193,12 @@ interface JobEditor extends EditableRetentionRule {
               <option [ngValue]="null" disabled>
                 {{ 'Choose action' | i18n }}
               </option>
-              <option [ngValue]="true">{{ 'Add to this job' | i18n }}</option>
-              <option [ngValue]="false">{{ 'Skip this job' | i18n }}</option>
+              <option [ngValue]="true">
+                {{ 'Add to this schedule' | i18n }}
+              </option>
+              <option [ngValue]="false">
+                {{ 'Skip this schedule' | i18n }}
+              </option>
             </select>
           </label>
         }
@@ -224,7 +227,7 @@ interface JobEditor extends EditableRetentionRule {
         >
           <tui-icon icon="@tui.list" />
           <span tuiTitle>
-            <b>{{ 'View all jobs' | i18n }}</b>
+            <b>{{ 'View all schedules' | i18n }}</b>
           </span>
           <tui-icon icon="@tui.chevron-left" />
         </button>
@@ -279,6 +282,7 @@ interface JobEditor extends EditableRetentionRule {
                     <tui-data-list *tuiDropdown="let close" (click)="close()">
                       <button
                         tuiOption
+                        tuiAppearance="flat"
                         [disabled]="!!job.pause || !job.enabled"
                         (click)="runNow(job)"
                       >
@@ -286,6 +290,13 @@ interface JobEditor extends EditableRetentionRule {
                       </button>
                       <button tuiOption (click)="edit(job)">
                         {{ 'View/Edit' | i18n }}
+                      </button>
+                      <button
+                        tuiOption
+                        tuiAppearance="flat-destructive"
+                        (click)="deleteJob(job)"
+                      >
+                        {{ 'Delete schedule' | i18n }}
                       </button>
                     </tui-data-list>
                   </button>
@@ -303,7 +314,7 @@ interface JobEditor extends EditableRetentionRule {
             iconStart="@tui.plus"
             (click)="create()"
           >
-            {{ 'Add new backup schedule' | i18n }}
+            {{ 'Add schedule' | i18n }}
           </button>
         </div>
       }
@@ -383,21 +394,23 @@ interface JobEditor extends EditableRetentionRule {
             </div>
           }
 
-          <div class="setting-row vertical">
-            <span tuiTitle>
-              <b>{{ 'Job name' | i18n }}</b>
-            </span>
-            <tui-textfield>
-              <label tuiLabel>{{ 'Job name' | i18n }}</label>
-              <input
-                #jobNameInput
-                tuiInput
-                name="name"
-                required
-                [(ngModel)]="form.name"
-              />
-            </tui-textfield>
-          </div>
+          @if (!form.id || jobs().length > 1) {
+            <div class="setting-row vertical">
+              <span tuiTitle>
+                <b>{{ 'Schedule name' | i18n }}</b>
+              </span>
+              <tui-textfield>
+                <label tuiLabel>{{ 'Schedule name' | i18n }}</label>
+                <input
+                  #jobNameInput
+                  tuiInput
+                  name="name"
+                  required
+                  [(ngModel)]="form.name"
+                />
+              </tui-textfield>
+            </div>
+          }
 
           <div class="setting-row vertical">
             <span tuiTitle>
@@ -527,7 +540,7 @@ interface JobEditor extends EditableRetentionRule {
           </div>
 
           <div class="setting-row vertical services-setting">
-            <tui-accordion>
+            <tui-accordion class="services-accordion">
               <button
                 [tuiAccordion]="showServices()"
                 (tuiAccordionChange)="showServices.set(!!$event)"
@@ -673,63 +686,94 @@ interface JobEditor extends EditableRetentionRule {
                 {{ 'Refresh estimates' | i18n }}
               </button>
             </div>
-            <div class="table-wrap">
-              <table class="g-table">
-                <thead>
-                  <tr>
-                    <th>{{ 'Service' | i18n }}</th>
-                    <th>{{ 'Live data estimate' | i18n }}</th>
-                    <th>{{ 'Checkpoints' | i18n }}</th>
-                    <th>{{ 'Automatic storage' | i18n }}</th>
-                    <th>{{ 'Manual checkpoint' | i18n }}</th>
-                    <th>{{ 'Archived storage' | i18n }}</th>
-                    <th>{{ 'Next-run staging' | i18n }}</th>
-                    <th>{{ 'Last changed bytes' | i18n }}</th>
-                    <th>{{ 'Projected peak' | i18n }}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  @for (pkg of selectedPackages(form); track pkg.id) {
-                    @if (capacityEstimate(pkg.id); as estimate) {
-                      <tr>
-                        <td>{{ pkg.name }}</td>
-                        <td>{{ bytes(estimate.liveLogicalBytes) }}</td>
-                        <td>
-                          {{ estimate.retainedSnapshotCount }} /
-                          {{ estimate.maximumProjectedSnapshotCount }}
-                        </td>
-                        <td>{{ bytes(estimate.scheduledRetainedBytes) }}</td>
-                        <td>
-                          @if (estimate.manualCheckpointBytes === null) {
-                            {{ 'Unknown' | i18n }}
-                          } @else {
-                            {{ bytes(estimate.manualCheckpointBytes) }}
-                          }
-                        </td>
-                        <td>{{ bytes(estimate.archivedBytes) }}</td>
-                        <td>{{ bytes(estimate.stagingHeadroomBytes) }}</td>
-                        <td>
-                          @if (estimate.lastChangedBytes === null) {
-                            {{ 'Unknown' | i18n }}
-                          } @else {
-                            {{ bytes(estimate.lastChangedBytes) }}
-                          }
-                        </td>
-                        <td>
+            <div class="capacity-list">
+              @for (pkg of selectedPackages(form); track pkg.id) {
+                <tui-accordion class="capacity-service">
+                  <button
+                    class="capacity-summary"
+                    [tuiAccordion]="capacityDetailsOpen().has(pkg.id)"
+                    (tuiAccordionChange)="
+                      setCapacityDetailsOpen(pkg.id, !!$event)
+                    "
+                  >
+                    <span tuiTitle>
+                      <b>{{ pkg.name }}</b>
+                      <span tuiSubtitle>
+                        {{ 'Maximum required space' | i18n }}:
+                        @if (capacityEstimate(pkg.id); as estimate) {
                           {{
                             bytes(estimate.conservativePeakExcludingManualBytes)
                           }}
-                        </td>
-                      </tr>
+                        } @else {
+                          {{ 'Unknown' | i18n }}
+                        }
+                      </span>
+                    </span>
+                    <span class="more-info">{{ 'More Info' | i18n }}</span>
+                  </button>
+                  <tui-expand>
+                    @if (capacityEstimate(pkg.id); as estimate) {
+                      <dl class="capacity-details">
+                        <div>
+                          <dt>{{ 'Live data estimate' | i18n }}</dt>
+                          <dd>{{ bytes(estimate.liveLogicalBytes) }}</dd>
+                        </div>
+                        <div>
+                          <dt>{{ 'Checkpoints' | i18n }}</dt>
+                          <dd>
+                            {{ estimate.retainedSnapshotCount }} /
+                            {{ estimate.maximumProjectedSnapshotCount }}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt>{{ 'Automatic storage' | i18n }}</dt>
+                          <dd>{{ bytes(estimate.scheduledRetainedBytes) }}</dd>
+                        </div>
+                        <div>
+                          <dt>{{ 'Manual checkpoint' | i18n }}</dt>
+                          <dd>
+                            @if (estimate.manualCheckpointBytes === null) {
+                              {{ 'Unknown' | i18n }}
+                            } @else {
+                              {{ bytes(estimate.manualCheckpointBytes) }}
+                            }
+                          </dd>
+                        </div>
+                        <div>
+                          <dt>{{ 'Archived storage' | i18n }}</dt>
+                          <dd>{{ bytes(estimate.archivedBytes) }}</dd>
+                        </div>
+                        <div>
+                          <dt>{{ 'Next-run staging' | i18n }}</dt>
+                          <dd>{{ bytes(estimate.stagingHeadroomBytes) }}</dd>
+                        </div>
+                        <div>
+                          <dt>{{ 'Last changed bytes' | i18n }}</dt>
+                          <dd>
+                            @if (estimate.lastChangedBytes === null) {
+                              {{ 'Unknown' | i18n }}
+                            } @else {
+                              {{ bytes(estimate.lastChangedBytes) }}
+                            }
+                          </dd>
+                        </div>
+                        <div>
+                          <dt>{{ 'Projected peak' | i18n }}</dt>
+                          <dd>
+                            {{
+                              bytes(
+                                estimate.conservativePeakExcludingManualBytes
+                              )
+                            }}
+                          </dd>
+                        </div>
+                      </dl>
                     } @else {
-                      <tr>
-                        <td>{{ pkg.name }}</td>
-                        <td colspan="8">{{ 'Unknown' | i18n }}</td>
-                      </tr>
+                      <p class="capacity-unknown">{{ 'Unknown' | i18n }}</p>
                     }
-                  }
-                </tbody>
-              </table>
+                  </tui-expand>
+                </tui-accordion>
+              }
             </div>
           </fieldset>
 
@@ -818,7 +862,7 @@ interface JobEditor extends EditableRetentionRule {
             iconStart="@tui.plus"
             (click)="create()"
           >
-            {{ 'Add new backup schedule' | i18n }}
+            {{ 'Add schedule' | i18n }}
           </button>
         </div>
       }
@@ -933,6 +977,10 @@ interface JobEditor extends EditableRetentionRule {
       justify-content: flex-end;
       flex-wrap: wrap;
       gap: 0.5rem;
+    }
+
+    .more-info {
+      color: var(--tui-text-action);
     }
 
     .services-options {
@@ -1198,6 +1246,78 @@ interface JobEditor extends EditableRetentionRule {
       margin: 0 0 0.5rem;
     }
 
+    .capacity-list,
+    .capacity-details {
+      display: grid;
+      min-width: 0;
+    }
+
+    .capacity-list {
+      gap: 0.5rem;
+    }
+
+    .capacity-service {
+      min-width: 0;
+      overflow: hidden;
+      border: 1px solid var(--tui-border-normal);
+      border-radius: var(--tui-radius-m);
+    }
+
+    .capacity-summary {
+      width: 100%;
+      min-width: 0;
+      min-height: 3.5rem;
+      height: auto;
+      white-space: normal;
+    }
+
+    .capacity-summary [tuiTitle] {
+      flex: 1;
+      min-width: 0;
+      text-align: left;
+    }
+
+    .capacity-summary [tuiSubtitle] {
+      display: block;
+      margin-top: 0.2rem;
+      white-space: normal;
+    }
+
+    .more-info {
+      flex: 0 0 auto;
+      margin-inline-start: auto;
+      white-space: nowrap;
+    }
+
+    .capacity-details {
+      margin: 0;
+      padding: 0 1rem 1rem;
+    }
+
+    .capacity-details div {
+      display: grid;
+      grid-template-columns: minmax(10rem, 1fr) auto;
+      gap: 1rem;
+      padding-block: 0.65rem;
+      border-top: 1px solid var(--tui-border-normal);
+    }
+
+    .capacity-details dt {
+      color: var(--tui-text-secondary);
+      font-weight: 600;
+    }
+
+    .capacity-details dd {
+      margin: 0;
+      text-align: right;
+    }
+
+    .capacity-unknown {
+      margin: 0;
+      padding: 0 1rem 1rem;
+      color: var(--tui-text-secondary);
+    }
+
     @media (max-width: 30rem) {
       .heading,
       .jobs-toolbar,
@@ -1281,6 +1401,24 @@ interface JobEditor extends EditableRetentionRule {
       .retention-heading .retention-toggle-label {
         display: none;
       }
+
+      .capacity-details div {
+        grid-template-columns: 1fr;
+        gap: 0.2rem;
+      }
+
+      .capacity-details dd {
+        text-align: left;
+      }
+
+      .capacity-summary {
+        flex-wrap: wrap;
+      }
+
+      .capacity-summary .more-info {
+        flex-basis: 100%;
+        text-align: right;
+      }
     }
   `,
   host: { class: 'backup-settings' },
@@ -1289,6 +1427,7 @@ interface JobEditor extends EditableRetentionRule {
     FormsModule,
     NgTemplateOutlet,
     TuiAccordion,
+    TuiAppearance,
     TuiBadge,
     TuiBlock,
     TuiButton,
@@ -1311,19 +1450,20 @@ interface JobEditor extends EditableRetentionRule {
 })
 export class ScheduledBackupsComponent implements OnInit {
   readonly mode = input.required<'manage' | 'restore'>()
+  readonly createRequest = input(0)
 
   private readonly api = inject(ApiService)
   private readonly backupService = inject(BackupService)
   private readonly dialogs = inject(DialogService)
+  private readonly deleteSchedule = inject(DeleteScheduleService)
   private readonly errors = inject(ErrorService)
   private readonly i18n = inject(i18nPipe)
   private readonly alerts = inject(TuiNotificationService)
   private readonly injector = inject(Injector)
   private readonly jobNameInput =
     viewChild<ElementRef<HTMLInputElement>>('jobNameInput')
-  private readonly packageData = toSignal(
-    inject<PatchDB<DataModel>>(PatchDB).watch$('packageData'),
-  )
+  private readonly patch = inject<PatchDB<DataModel>>(PatchDB)
+  private readonly packageData = toSignal(this.patch.watch$('packageData'))
 
   readonly jobs = signal<T.BackupJob[]>([])
   readonly histories = signal<T.ServiceTargetHistory[]>([])
@@ -1339,12 +1479,27 @@ export class ScheduledBackupsComponent implements OnInit {
   readonly policyTiers = signal<EditableRetentionRule[]>([])
   readonly policyPreview = signal<T.RetentionPolicyChangePreview | null>(null)
   readonly estimates = signal<T.BackupServiceCapacityEstimate[]>([])
+  protected readonly capacityDetailsOpen = signal<ReadonlySet<string>>(
+    new Set(),
+  )
 
   reassignTargetId = ''
   reassignPassword = ''
   waitForSchedule = false
   confirmPrune = false
   private editorBaseline: string | null = null
+  private handledCreateRequest = 0
+
+  constructor() {
+    effect(() => {
+      const request = this.createRequest()
+      if (!request || request === this.handledCreateRequest || this.loading()) {
+        return
+      }
+      this.handledCreateRequest = request
+      this.create()
+    })
+  }
 
   private readonly reviewDecisions = new Map<
     string,
@@ -1511,7 +1666,7 @@ export class ScheduledBackupsComponent implements OnInit {
       this.editorSnapshot(form) !== this.editorBaseline
     ) {
       this.alerts
-        .open(this.i18n.transform('Unsaved changes were not saved'), {
+        .open(this.i18n.transform('Changes were not saved'), {
           appearance: 'warning',
         })
         .subscribe()
@@ -1630,6 +1785,7 @@ export class ScheduledBackupsComponent implements OnInit {
           ...common,
         })
       } else {
+        await this.normalizeDefaultScheduleName()
         const created = await this.api.createScheduledBackupJob({
           ...common,
           targetId: form.targetId,
@@ -1638,19 +1794,7 @@ export class ScheduledBackupsComponent implements OnInit {
           runNow: form.firstBackupNow,
         })
         this.selectedJobId.set(created.id)
-        if (created.status.runRequested) {
-          this.alerts
-            .open(
-              this.i18n.transform(
-                'The first backup is queued and will start automatically when no backup or restore is in progress.',
-              ),
-              {
-                appearance: 'info',
-                label: this.i18n.transform('Automatic backup'),
-              },
-            )
-            .subscribe()
-        }
+        this.backupService.showQueuedNotification(created)
       }
       this.selectedJobId.set('')
       this.editor.set(null)
@@ -1662,6 +1806,20 @@ export class ScheduledBackupsComponent implements OnInit {
     } finally {
       this.saving.set(false)
     }
+  }
+
+  private async normalizeDefaultScheduleName() {
+    const [first] = this.jobs()
+    if (this.jobs().length !== 1 || !first || first.name === 'Default') return
+
+    await this.api.updateScheduledBackupJob({
+      id: first.id,
+      name: 'Default',
+      services: first.services,
+      schedule: first.schedule,
+      defaultRetention: first.defaultRetention,
+      retentionOverrides: first.retentionOverrides,
+    })
   }
 
   async runNow(job: T.BackupJob) {
@@ -1679,48 +1837,13 @@ export class ScheduledBackupsComponent implements OnInit {
   }
 
   async deleteJob(job: T.BackupJob) {
-    const unreferenced = this.histories().filter(
-      history =>
-        history.snapshots.length > 0 &&
-        history.feedingJobs.length === 1 &&
-        history.feedingJobs[0] === job.id,
-    )
-    const checkpointCount = unreferenced.reduce(
-      (sum, history) => sum + history.snapshots.length,
-      0,
-    )
-    const reclaimable = unreferenced.reduce(
-      (sum, history) => sum + this.historyBytes(history),
-      0,
-    )
-    const decision = await firstValueFrom(
-      this.dialogs.openComponent<DeleteScheduleDecision | null>(
-        DELETE_SCHEDULE_DIALOG,
-        {
-          label: 'Delete scheduled job?',
-          size: 's',
-          data: {
-            checkpointCount,
-            reclaimable: this.bytes(reclaimable),
-          },
-        },
-      ),
-      { defaultValue: null },
-    )
-    if (!decision) return
-
-    await this.perform(async () => {
-      await this.api.deleteScheduledBackupJob({ id: job.id })
-      if (decision.deleteCheckpoints) {
-        for (const history of unreferenced) {
-          await this.api.deleteArchivedBackupSnapshots({
-            targetId: history.targetId,
-            packageId: history.packageId,
-            snapshotIds: history.snapshots.map(snapshot => snapshot.id),
-          })
-        }
+    try {
+      if (await this.deleteSchedule.delete(job, this.histories())) {
+        await this.reload()
       }
-    })
+    } catch (error: any) {
+      this.errors.handleError(getErrorMessage(error))
+    }
   }
 
   async retry(job: T.BackupJob) {
@@ -1952,10 +2075,13 @@ export class ScheduledBackupsComponent implements OnInit {
   }
 
   selectedServiceSummary(form: JobEditor): string {
-    if (this.allPackagesSelected(form) && form.includeFuture) {
-      return this.i18n.transform('All current and future services')
-    }
-    return `${form.packageIds.length} / ${this.packages().length} ${this.i18n.transform('Services')}`
+    const count = `${form.packageIds.length} / ${this.packages().length} ${this.i18n.transform('Services')}`
+    const future = this.i18n.transform(
+      form.includeFuture
+        ? 'Future services included'
+        : 'Future services not included',
+    )
+    return `${count} · ${future}`
   }
 
   retentionSummary(form: JobEditor): string {
@@ -2058,6 +2184,15 @@ export class ScheduledBackupsComponent implements OnInit {
     return this.estimates().find(estimate => estimate.packageId === packageId)
   }
 
+  setCapacityDetailsOpen(packageId: string, open: boolean) {
+    this.capacityDetailsOpen.update(current => {
+      const next = new Set(current)
+      if (open) next.add(packageId)
+      else next.delete(packageId)
+      return next
+    })
+  }
+
   async refreshEstimates(form: JobEditor) {
     if (!form.targetId) return
     try {
@@ -2092,13 +2227,6 @@ export class ScheduledBackupsComponent implements OnInit {
           sum + Math.ceil(tier.coverageSeconds / tier.intervalSeconds),
         0,
       )
-    )
-  }
-
-  historyBytes(history: T.ServiceTargetHistory): number {
-    return history.snapshots.reduce(
-      (sum, snapshot) => sum + (snapshot.physicalSize ?? snapshot.logicalSize),
-      0,
     )
   }
 

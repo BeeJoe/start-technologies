@@ -10,6 +10,7 @@ import {
 } from '@start9labs/shared'
 import { T } from '@start9labs/start-core'
 import {
+  TuiAppearance,
   TuiButton,
   TuiCell,
   TuiDataList,
@@ -25,6 +26,7 @@ import { DataModel } from 'src/app/services/patch-db/data-model'
 import { TitleDirective } from 'src/app/services/title.service'
 import { BackupService } from '../system/routes/backups/backup.service'
 import SystemBackupComponent from '../system/routes/backups/backups.component'
+import { DeleteScheduleService } from '../system/routes/backups/delete-schedule.dialog'
 import { BackupProgressComponent } from '../system/routes/backups/progress.component'
 import {
   backupJobNeedsAttention,
@@ -110,7 +112,10 @@ const WEEKDAYS = [
       class="backup-card g-card"
       [class.expanded]="expanded() === 'automatic'"
     >
-      <header class="card-heading automatic-heading">
+      <header
+        class="card-heading automatic-heading"
+        [class.single-job]="jobs().length === 1"
+      >
         <button
           type="button"
           class="card-toggle"
@@ -141,13 +146,16 @@ const WEEKDAYS = [
 
         @if (jobs().length === 1) {
           <div class="card-actions">
+            @if (!primary()?.enabled) {
+              <span tuiBadge>{{ 'Paused' | i18n }}</span>
+            }
             <label class="simple-switch">
               <input
                 tuiSwitch
                 type="checkbox"
                 [showIcons]="false"
                 [attr.aria-label]="'Automatic backups' | i18n"
-                [ngModel]="automaticOn()"
+                [ngModel]="primary()?.enabled ?? false"
                 [disabled]="changingAutomatic"
                 (ngModelChange)="setAutomatic($event)"
               />
@@ -163,28 +171,45 @@ const WEEKDAYS = [
             >
               {{ 'More' | i18n }}
               <tui-data-list *tuiDropdown="let close" (click)="close()">
-                <button tuiOption [disabled]="!canRunNow()" (click)="runNow()">
+                <button
+                  tuiOption
+                  tuiAppearance="flat"
+                  [disabled]="!canRunNow()"
+                  (click)="runNow()"
+                >
                   {{ 'Run now' | i18n }}
                 </button>
                 <button tuiOption (click)="openAutomaticEditor()">
                   {{ 'View/Edit' | i18n }}
                 </button>
+                <button tuiOption (click)="addSchedule()">
+                  {{ 'Add schedule' | i18n }}
+                </button>
+                <button
+                  tuiOption
+                  tuiAppearance="flat-destructive"
+                  (click)="deleteSchedule()"
+                >
+                  {{ 'Delete schedule' | i18n }}
+                </button>
               </tui-data-list>
             </button>
           </div>
         }
-        <button
-          type="button"
-          class="expand-toggle"
-          [attr.aria-label]="'Automatic backups' | i18n"
-          [attr.aria-expanded]="expanded() === 'automatic'"
-          (click)="togglePanel('automatic')"
-        >
-          <tui-icon
-            icon="@tui.chevron-down"
-            [class.rotated]="expanded() === 'automatic'"
-          />
-        </button>
+        @if (jobs().length !== 1) {
+          <button
+            type="button"
+            class="expand-toggle"
+            [attr.aria-label]="'Automatic backups' | i18n"
+            [attr.aria-expanded]="expanded() === 'automatic'"
+            (click)="togglePanel('automatic')"
+          >
+            <tui-icon
+              icon="@tui.chevron-down"
+              [class.rotated]="expanded() === 'automatic'"
+            />
+          </button>
+        }
       </header>
 
       @if (expanded() === 'automatic') {
@@ -192,6 +217,7 @@ const WEEKDAYS = [
           <automatic-backups
             [embedded]="true"
             [mode]="jobs().length ? 'manage' : 'setup'"
+            [createRequest]="createScheduleRequest()"
             (manageLocations)="openLocations()"
           />
         </div>
@@ -432,6 +458,15 @@ const WEEKDAYS = [
       grid-template-columns: minmax(0, 1fr) auto auto;
     }
 
+    .automatic-heading.single-job {
+      grid-template-columns: minmax(0, 1fr) auto;
+    }
+
+    .single-job .card-actions {
+      flex-wrap: nowrap;
+      padding-inline-end: 1.25rem;
+    }
+
     .expand-toggle {
       display: grid;
       place-items: center;
@@ -535,9 +570,29 @@ const WEEKDAYS = [
         grid-row: 2;
       }
 
+      .automatic-heading.single-job .card-actions {
+        grid-column: 2;
+        grid-row: 1;
+        justify-content: flex-end;
+        padding: 0.75rem 1.25rem 0.75rem 0;
+      }
+
       .automatic-heading .expand-toggle {
         grid-column: 2;
         grid-row: 1;
+      }
+    }
+
+    @container card (max-width: 34rem) {
+      .automatic-heading.single-job {
+        grid-template-columns: minmax(0, 1fr);
+      }
+
+      .automatic-heading.single-job .card-actions {
+        grid-column: 1;
+        grid-row: 2;
+        justify-content: flex-start;
+        padding: 0 1.25rem 1rem;
       }
     }
 
@@ -553,6 +608,15 @@ const WEEKDAYS = [
 
       .card-actions > button {
         width: 100%;
+      }
+
+      .single-job .card-actions {
+        align-items: center;
+        flex-direction: row;
+      }
+
+      .single-job .card-actions > button {
+        width: auto;
       }
 
       .card-body {
@@ -573,6 +637,7 @@ const WEEKDAYS = [
   host: { class: 'backup-page' },
   imports: [
     FormsModule,
+    TuiAppearance,
     TuiBadge,
     TuiButton,
     TuiCell,
@@ -595,6 +660,7 @@ export default class BackupsComponent implements OnInit {
   private readonly api = inject(ApiService)
   private readonly errors = inject(ErrorService)
   private readonly backupService = inject(BackupService)
+  private readonly deleteScheduleService = inject(DeleteScheduleService)
   private readonly os = inject(OSService)
   private readonly router = inject(Router)
   private readonly state = toSignal(
@@ -602,6 +668,7 @@ export default class BackupsComponent implements OnInit {
   )
 
   readonly expanded = signal<BackupPanel | null>(null)
+  protected readonly createScheduleRequest = signal(0)
   readonly manualRunning = toSignal(this.os.backingUp$, { initialValue: false })
   changingAutomatic = false
 
@@ -642,6 +709,11 @@ export default class BackupsComponent implements OnInit {
 
   openAutomaticEditor() {
     this.expanded.set('automatic')
+  }
+
+  addSchedule() {
+    this.expanded.set('automatic')
+    this.createScheduleRequest.update(request => request + 1)
   }
 
   goToServices() {
@@ -709,8 +781,21 @@ export default class BackupsComponent implements OnInit {
     }
   }
 
+  async deleteSchedule() {
+    const job = this.primary()
+    if (!job) return
+    try {
+      await this.deleteScheduleService.delete(
+        job,
+        Object.values(this.state()?.histories || {}),
+      )
+    } catch (error: any) {
+      this.errors.handleError(getErrorMessage(error))
+    }
+  }
+
   async setAutomatic(enabled: boolean) {
-    if (enabled === this.automaticOn()) return
+    if (enabled === this.jobs().every(job => job.enabled)) return
     this.changingAutomatic = true
     try {
       await Promise.all(

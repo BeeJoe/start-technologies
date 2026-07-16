@@ -29,27 +29,34 @@ file tracks notable changes since the move to the monorepo.
 
 ### Changed
 
-- **Unified automatic schedule editing.** Multiple jobs now expand first into a
-  compact, unboxed jobs list with icon-only switches, three-dot menus containing
-  **Run now** and **View/Edit**, and selected-service counts. The one-job card
-  also moves **Run now** and **View/Edit** into a three-dot menu. Opening one job
-  collapses the list to a **View all jobs** card, which warns before discarding
-  unsaved edits, while **Add new backup schedule** sits below the list and
-  focuses the job name.
+- **Unified automatic schedule editing.** Multiple schedules now expand first
+  into a compact, unboxed schedules list with icon-only switches, three-dot
+  menus containing **Run now**, **View/Edit**, and a red **Delete schedule**
+  action, plus selected-service counts. The one-schedule card right-aligns its
+  switch, shows a **Paused** badge when off, and replaces its expand arrow with
+  a three-dot menu that also offers **Add schedule** and **Delete schedule**.
+  Opening one schedule collapses the list to a **View all schedules** card,
+  which warns that changes were not saved before discarding edits, while **Add
+  schedule** sits below the list and focuses the schedule name. The first
+  schedule hides its name while alone and appears as **Default** once another
+  schedule is added.
   Saving returns to the list. Monthly schedules add a day-of-month choice and
   use the month's last available day when the 30th or 31st does not exist. The
-  collapsed main card surfaces enabled jobs needing attention and clears the
-  warning after success or when a failed job is turned off. Service selection
-  is collapsed by default behind its clickable heading. Version history requires a frequency, removes the
-  custom option and retention-overrides editor, aligns repeated **Keep one
-  backup every** rows, summarizes every configured tier, and lets every row be
-  removed; removing the last row restores the latest-only default. Existing
+  collapsed main card surfaces enabled schedules needing attention and clears
+  the warning after success or when a failed schedule is turned off. Service
+  selection is collapsed by default behind a heading that summarizes the
+  selected-service count and future-service policy. Version history requires a
+  frequency, removes the custom option and retention-overrides editor, aligns
+  repeated **Keep one backup every** rows, summarizes every configured tier,
+  and lets every row be removed; removing the last row restores the latest-only
+  default. Existing
   nonstandard CLI-created retention tiers remain exact until their row is
   changed. Hour and minute choices can no longer be cleared to an invalid null
   value. Every schedule, including the first or only one, puts **Delete
   schedule** opposite **Save**, with a confirmation option that changes the
-  action to **Delete schedule and backups** when deleting checkpoints used only
-  by that schedule. Turning automatic backups off now directly pauses schedules
+  action to **Delete Schedule and Backups** when deleting checkpoints used only
+  by that schedule, under the **Delete backup schedule?** heading. Turning
+  automatic backups off now directly pauses schedules
   without a deletion dialog. Deleting the final schedule returns automatic
   backups to initial setup.
 - **Simplified Automatic Backups.** The expanded card now uses a flat settings
@@ -62,13 +69,22 @@ file tracks notable changes since the move to the monorepo.
   Version history now offers hour, day, week, and month intervals (day remains
   the default), labels the duration with the selected singular or plural unit,
   and lets additional rules be added with a plus button.
-- **Automatic backup CLI coverage.** `start-cli` now manages automatic jobs,
+- **Automatic backup CLI coverage.** `start-cli` now manages automatic schedules,
   capacity estimates, activity, checkpoint history, target recovery,
   per-service retention overrides, new-service reviews, safe retention-policy
   changes, selected automatic-checkpoint restores, and mixed manual/automatic
   restore selections matching the UI.
 
 ### Fixed
+
+- **Automatic backup UI feedback.** Active backups no longer add a red badge to
+  the navigation bar, first-run setup only reports a queued backup when another
+  backup or restore is actually blocking it, mobile service-selection headings
+  remain visible, and version-history switches stay to the right of their labels
+  on desktop without overlapping narrow layouts. Backup navigation uses white
+  back actions, paused cards keep their title clear at narrow widths, and
+  capacity estimates show one service total until **More Info** expands the
+  labeled breakdown.
 
 - **Automatic backup directory traversal.** `backup-fs` now preserves every
   returned directory cursor and rejects unknown nonzero cursors instead of
@@ -99,7 +115,7 @@ file tracks notable changes since the move to the monorepo.
   Empty network-folder and no-drive content is centered across the full table
   frame on desktop and mobile. Location choices also share the action button's
   centered width and keep long location names horizontal on phones, including
-  automatic-backup setup. Automatic job rows are inset from phone edges and
+  automatic-backup setup. Automatic schedule rows are inset from phone edges and
   keep icon-only switches and action menus clear of schedule text. The overall progress
   spinner and percentage align with each service's status, and service progress
   is right-aligned within the card.
@@ -129,13 +145,14 @@ file tracks notable changes since the move to the monorepo.
   failure cannot leave the backup progress card visible or keep backup controls
   busy while idle.
 - **Concurrent backup and restore requests.** StartOS now serializes scheduled
-  jobs and rejects a second manual backup, explicit automatic run, or restore
-  request while another operation owns the backup coordinator. Saving a new job
-  with **Create the first backup now** is the deliberate exception: the schedule
-  saves successfully, a notification explains the delay, and its requested
-  first run is durably queued until the active backup or restore finishes.
+  runs and rejects a second manual backup, explicit automatic run, or restore
+  request while another operation owns the backup coordinator. Saving a new
+  schedule with **Create the first backup now** is the deliberate exception:
+  the schedule saves successfully, a notification explains the delay, and its
+  requested first run is durably queued until the active backup or restore
+  finishes.
 - **Automatic backup failure notifications.** Scheduled-backup warnings show
-  the backup location's user-facing name without exposing internal job or
+  the backup location's user-facing name without exposing internal schedule or
   target identifiers through a meaningless **View details** action.
 - **StartOS UI network metadata.** The built-in UI now stores a valid host ID,
   preventing an existing server database from failing validation and entering

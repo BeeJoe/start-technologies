@@ -49,6 +49,34 @@ const deleteScheduleDialog = readFileSync(
   ),
   'utf8',
 )
+const badgeService = readFileSync(
+  new URL(
+    '../../../projects/start-os/web/ui/src/app/services/badge.service.ts',
+    import.meta.url,
+  ),
+  'utf8',
+)
+const backupService = readFileSync(
+  new URL(
+    '../../../projects/start-os/web/ui/src/app/routes/portal/routes/system/routes/backups/backup.service.ts',
+    import.meta.url,
+  ),
+  'utf8',
+)
+const scheduledBackupRpc = readFileSync(
+  new URL(
+    '../../../shared-libs/crates/start-core/src/backup/scheduled/rpc.rs',
+    import.meta.url,
+  ),
+  'utf8',
+)
+const createBackupJobRpc = scheduledBackupRpc.slice(
+  scheduledBackupRpc.indexOf('pub async fn create('),
+  scheduledBackupRpc.indexOf(
+    '#[derive(Deserialize, Serialize, TS)]',
+    scheduledBackupRpc.indexOf('pub async fn create('),
+  ),
+)
 
 test('serializes hourly through monthly controls as five-field cron', () => {
   assert.equal(
@@ -273,6 +301,21 @@ test('version history supports hourly through monthly intervals', () => {
   assert.equal(retentionIntervalFromSeconds(30 * 24 * 60 * 60), 'month')
 })
 
+test('version-history toggles follow their labels on desktop', () => {
+  for (const component of [automaticComponent, advancedComponent]) {
+    const headingClass = component.indexOf('retention-heading')
+    const headingStart = component.lastIndexOf('<div', headingClass)
+    const headingEnd = component.indexOf('</div>', headingStart)
+    const heading = component.slice(headingStart, headingEnd)
+
+    assert.ok(headingStart >= 0)
+    assert.ok(
+      heading.indexOf('Keep additional versions') <
+        heading.indexOf('tuiSwitch'),
+    )
+  }
+})
+
 test('version history names the selected period and pluralizes it', () => {
   assert.equal(retentionPeriodLabel('hour', 1), 'hour')
   assert.equal(retentionPeriodLabel('hour', 2), 'hours')
@@ -309,8 +352,9 @@ test('automatic setup places its toggleable password after the first-run choice 
   )
   assert.match(
     automaticComponent,
-    /if \(created\.status\.runRequested\)[\s\S]{0,300}The first backup is queued and will start automatically when no backup or restore is in progress\./,
+    /this\.backupService\.showQueuedNotification\(created\)/,
   )
+  assert.doesNotMatch(automaticComponent, /wasBlocked/)
 })
 
 test('retention summary translates the sentence as well as its units', () => {
@@ -349,7 +393,7 @@ test('first-time setup shares the collapsed service and repeatable version-histo
   assert.doesNotMatch(services, /Select services|>\s*Done\s*</)
   assert.match(
     automaticComponent,
-    /<tui-accordion>[\s\S]{0,160}\[tuiAccordion\]="showServices\(\)"/,
+    /<tui-accordion class="services-accordion">[\s\S]{0,160}\[tuiAccordion\]="showServices\(\)"/,
   )
   assert.match(services, /<tui-expand>/)
   assert.doesNotMatch(services, /section-toggle|@tui\.chevron-down/)
@@ -400,8 +444,8 @@ test('all backup schedules share one selected-job editor', () => {
     advancedComponent,
     /readonly mode = input\.required<'manage' \| 'restore'>\(\)/,
   )
-  assert.match(advancedComponent, /Add new backup schedule/)
-  assert.match(advancedComponent, /View all jobs/)
+  assert.match(advancedComponent, /Add schedule/)
+  assert.match(advancedComponent, /View all schedules/)
   assert.match(
     advancedComponent,
     /class="schedule-list"[\s\S]{0,1200}@for \(job of jobs\(\); track job\.id\)/,
@@ -432,7 +476,7 @@ test('all backup schedules share one selected-job editor', () => {
   assert.doesNotMatch(services, /Select services|>\s*Done\s*</)
   assert.match(
     advancedComponent,
-    /<tui-accordion>[\s\S]{0,160}\[tuiAccordion\]="showServices\(\)"/,
+    /<tui-accordion class="services-accordion">[\s\S]{0,160}\[tuiAccordion\]="showServices\(\)"/,
   )
   assert.match(services, /<tui-expand>/)
   assert.doesNotMatch(services, /section-toggle|@tui\.chevron-down/)
@@ -497,7 +541,16 @@ test('all backup schedules share one selected-job editor', () => {
   )
   assert.match(
     advancedComponent,
-    /if \(created\.status\.runRequested\)[\s\S]{0,300}The first backup is queued and will start automatically when no backup or restore is in progress\./,
+    /this\.backupService\.showQueuedNotification\(created\)/,
+  )
+  assert.doesNotMatch(advancedComponent, /wasBlocked/)
+  assert.match(
+    backupService,
+    /showQueuedNotification\(job: T\.BackupJob\)[\s\S]{0,100}if \(!job\.status\.runRequested\) return[\s\S]{0,500}The first backup is queued and will start automatically when no backup or restore is in progress\./,
+  )
+  assert.match(
+    createBackupJobRpc,
+    /if job\.status\.run_requested[\s\S]{0,160}scheduler::dispatch_due_jobs\(&ctx\)[\s\S]{0,300}as_idx\(&id\)/,
   )
   assert.match(advancedComponent, /#jobNameInput[\s\S]{0,120}name="name"/)
   assert.match(
@@ -525,24 +578,45 @@ test('multiple automatic jobs expand as a list before an individual editor', () 
   )
   assert.match(
     advancedComponent,
-    /@if \(jobs\(\)\.length > 1 && editor\(\)\)[\s\S]{0,800}View all jobs/,
+    /@if \(jobs\(\)\.length > 1 && editor\(\)\)[\s\S]{0,800}View all schedules/,
   )
   assert.match(
     backupsComponent,
     /jobs\(\)\.length === 1[\s\S]{0,500}simple-switch/,
   )
   const automaticHeading = backupsComponent.slice(
-    backupsComponent.indexOf('<header class="card-heading automatic-heading">'),
+    backupsComponent.lastIndexOf(
+      '<header',
+      backupsComponent.indexOf('class="card-heading automatic-heading"'),
+    ),
     backupsComponent.indexOf(
       '</header>',
-      backupsComponent.indexOf(
-        '<header class="card-heading automatic-heading">',
-      ),
+      backupsComponent.indexOf('class="card-heading automatic-heading"'),
     ),
   )
   assert.match(
     automaticHeading,
     /jobs\(\)\.length === 1[\s\S]{0,900}iconStart="@tui\.ellipsis-vertical"[\s\S]{0,500}Run now[\s\S]{0,500}View\/Edit/,
+  )
+  assert.match(
+    automaticHeading,
+    /@if \(!primary\(\)\?\.enabled\)[\s\S]{0,100}Paused[\s\S]{0,1400}Add schedule/,
+  )
+  assert.match(
+    automaticHeading,
+    /tuiAppearance="flat-destructive"[\s\S]{0,100}deleteSchedule\(\)/,
+  )
+  assert.match(
+    automaticHeading,
+    /@if \(jobs\(\)\.length !== 1\)[\s\S]{0,400}expand-toggle/,
+  )
+  assert.match(
+    backupsComponent,
+    /\[createRequest\]="createScheduleRequest\(\)"/,
+  )
+  assert.match(
+    advancedComponent,
+    /readonly createRequest = input\(0\)[\s\S]{0,6000}this\.create\(\)/,
   )
   assert.match(
     backupsComponent,
@@ -566,7 +640,7 @@ test('multiple automatic jobs expand as a list before an individual editor', () 
   )
   assert.match(
     advancedComponent,
-    /viewAllJobs\(\)[\s\S]{0,500}Unsaved changes were not saved/,
+    /viewAllJobs\(\)[\s\S]{0,500}Changes were not saved/,
   )
   assert.doesNotMatch(
     advancedComponent,
@@ -576,12 +650,13 @@ test('multiple automatic jobs expand as a list before an individual editor', () 
 
 test('collapsed automatic card surfaces attention without leaking one schedule into a multi-job summary', () => {
   const heading = backupsComponent.slice(
-    backupsComponent.indexOf('<header class="card-heading automatic-heading">'),
+    backupsComponent.lastIndexOf(
+      '<header',
+      backupsComponent.indexOf('class="card-heading automatic-heading"'),
+    ),
     backupsComponent.indexOf(
       '</header>',
-      backupsComponent.indexOf(
-        '<header class="card-heading automatic-heading">',
-      ),
+      backupsComponent.indexOf('class="card-heading automatic-heading"'),
     ),
   )
   const body = backupsComponent.slice(
@@ -629,7 +704,15 @@ test('collapsed automatic card surfaces attention without leaking one schedule i
   )
 })
 
-test('job list shows service counts and keeps destructive editing actions at the bottom', () => {
+test('backup activity does not create a red system navigation badge', () => {
+  assert.match(badgeService, /private readonly system\$ = this\.general\$/)
+  assert.doesNotMatch(
+    badgeService,
+    /private readonly system\$ = combineLatest\(\[this\.general\$, this\.backups\$\]\)/,
+  )
+})
+
+test('schedule list uses schedule terminology and styled menu actions', () => {
   const list = advancedComponent.slice(
     advancedComponent.indexOf('class="schedule-list"'),
     advancedComponent.indexOf(
@@ -659,6 +742,15 @@ test('job list shows service counts and keeps destructive editing actions at the
   assert.match(footer, /appearance="primary-destructive"/)
   assert.match(footer, /deleteJob\(job\)/)
   assert.match(footer, /Delete schedule/)
+  assert.match(list, /tuiAppearance="flat"[\s\S]{0,120}runNow\(job\)/)
+  assert.match(
+    list,
+    /tuiAppearance="flat-destructive"[\s\S]{0,120}deleteJob\(job\)/,
+  )
+  assert.match(advancedComponent, /View all schedules/)
+  assert.match(advancedComponent, /Schedule name/)
+  assert.doesNotMatch(advancedComponent, /View all jobs|Job name/)
+  assert.match(deleteScheduleDialog, /Delete backup schedule\?/)
   assert.match(deleteScheduleDialog, /deleteCheckpoints/)
   assert.match(deleteScheduleDialog, /Delete related backups/)
   assert.match(
@@ -669,6 +761,62 @@ test('job list shows service counts and keeps destructive editing actions at the
     deleteScheduleDialog,
     /@if \(context\.data\.checkpointCount\)/,
   )
+})
+
+test('the first schedule keeps its default name hidden until another schedule exists', () => {
+  assert.match(automaticComponent, /name: 'Default'/)
+  assert.match(
+    advancedComponent,
+    /normalizeDefaultScheduleName\(\)[\s\S]{0,1200}name: 'Default'/,
+  )
+  assert.match(
+    advancedComponent,
+    /@if \(!form\.id \|\| jobs\(\)\.length > 1\)[\s\S]{0,500}Schedule name/,
+  )
+  assert.match(
+    advancedComponent,
+    /form\.id && jobs\(\)\.length === 1[\s\S]{0,160}Edit automatic schedule/,
+  )
+})
+
+test('service summary includes its count and future-service policy', () => {
+  assert.match(
+    advancedComponent,
+    /selectedServiceSummary\(form: JobEditor\)[\s\S]{0,500}Future services included[\s\S]{0,200}Future services not included/,
+  )
+  assert.match(
+    automaticComponent,
+    /selectedServiceSummary\(\): string[\s\S]{0,500}Future services included[\s\S]{0,200}Future services not included/,
+  )
+})
+
+test('capacity estimates collapse details beneath each service', () => {
+  const capacity = advancedComponent.slice(
+    advancedComponent.indexOf("{{ 'Capacity estimates' | i18n }}"),
+    advancedComponent.indexOf(
+      '@if (projectedCount(form) > 1)',
+      advancedComponent.indexOf("{{ 'Capacity estimates' | i18n }}"),
+    ),
+  )
+
+  assert.match(capacity, /class="capacity-service"/)
+  assert.match(capacity, /class="capacity-summary"/)
+  assert.match(capacity, /Maximum required space/)
+  assert.match(capacity, /More Info/)
+  assert.match(capacity, /<tui-expand>/)
+  for (const label of [
+    'Live data estimate',
+    'Checkpoints',
+    'Automatic storage',
+    'Manual checkpoint',
+    'Archived storage',
+    'Next-run staging',
+    'Last changed bytes',
+    'Projected peak',
+  ]) {
+    assert.match(capacity, new RegExp(label))
+  }
+  assert.doesNotMatch(capacity, /<table|<thead|<th>/)
 })
 
 test('turning off automatic backups directly pauses schedules without a delete dialog', () => {

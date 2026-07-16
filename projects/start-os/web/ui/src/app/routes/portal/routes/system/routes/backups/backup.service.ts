@@ -1,6 +1,7 @@
 import { inject, Injectable, signal } from '@angular/core'
-import { ErrorService, getErrorMessage } from '@start9labs/shared'
+import { ErrorService, getErrorMessage, i18nPipe } from '@start9labs/shared'
 import { T, Version } from '@start9labs/start-core'
+import { TuiNotificationService } from '@taiga-ui/core'
 import { PatchDB } from 'patch-db-client'
 import { firstValueFrom } from 'rxjs'
 import {
@@ -28,7 +29,9 @@ export function formatCifsLocation(target: CifsBackupTarget): string {
 export class BackupService {
   private readonly api = inject(ApiService)
   private readonly errorService = inject(ErrorService)
+  private readonly i18n = inject(i18nPipe)
   private readonly patch = inject<PatchDB<DataModel>>(PatchDB)
+  private readonly alerts = inject(TuiNotificationService)
 
   private serverId = ''
 
@@ -113,5 +116,22 @@ export class BackupService {
         t.id === id ? { ...t, entry: { ...t.entry, legacyBackup: false } } : t,
       ),
     )
+  }
+
+  /** Announces an immediate first backup only when the scheduler left it queued. */
+  showQueuedNotification(job: T.BackupJob): void {
+    if (!job.status.runRequested) return
+
+    this.alerts
+      .open(
+        this.i18n.transform(
+          'The first backup is queued and will start automatically when no backup or restore is in progress.',
+        ),
+        {
+          appearance: 'info',
+          label: this.i18n.transform('Automatic backup'),
+        },
+      )
+      .subscribe()
   }
 }

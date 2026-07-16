@@ -31,9 +31,7 @@ export class BadgeService {
           ).length,
       ),
     )
-  private readonly system$ = combineLatest([this.general$, this.backups$]).pipe(
-    map(([general, backups]) => general + backups),
-  )
+  private readonly system$ = this.general$
   private readonly filterUpdatesPipe = inject(FilterUpdatesPipe)
   private readonly hiddenUpdates = inject(HiddenUpdatesService)
   private readonly refinement = inject(UpdatesRefinementService)

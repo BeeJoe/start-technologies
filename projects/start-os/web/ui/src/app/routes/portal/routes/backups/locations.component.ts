@@ -15,6 +15,7 @@ import { BackupService } from '../system/routes/backups/backup.service'
         <a
           routerLink="/system/backups"
           tuiIconButton
+          appearance="flat-grayscale"
           iconStart="@tui.arrow-left"
         >
           {{ 'Back' | i18n }}

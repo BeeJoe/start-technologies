@@ -31,7 +31,12 @@ import { BACKUP_RESTORE } from './restore.component'
     @if (!embedded()) {
       <ng-container *title>
         <div>
-          <a routerLink=".." tuiIconButton iconStart="@tui.arrow-left">
+          <a
+            routerLink=".."
+            tuiIconButton
+            appearance="flat-grayscale"
+            iconStart="@tui.arrow-left"
+          >
             {{ 'Back' | i18n }}
           </a>
           {{

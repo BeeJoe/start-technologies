@@ -149,7 +149,7 @@ fn reconcile_interrupted_activities(
     repaired
 }
 
-async fn dispatch_due_jobs(ctx: &RpcContext) -> Result<(), Error> {
+pub(super) async fn dispatch_due_jobs(ctx: &RpcContext) -> Result<(), Error> {
     let now = Utc::now();
     let has_due_job = ctx
         .db

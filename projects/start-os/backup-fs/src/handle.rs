@@ -501,9 +501,11 @@ fn cursor_for_offset(
         return Ok(None);
     }
 
-    cursors.get(&offset).cloned().map(Some).ok_or_else(|| {
-        BkfsError::wrap_notrace(io::Error::from_raw_os_error(libc::EINVAL))
-    })
+    cursors
+        .get(&offset)
+        .cloned()
+        .map(Some)
+        .ok_or_else(|| BkfsError::wrap_notrace(io::Error::from_raw_os_error(libc::EINVAL)))
 }
 
 #[cfg(test)]

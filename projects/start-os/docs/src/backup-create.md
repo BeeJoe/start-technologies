@@ -52,11 +52,10 @@ one page. Select a card to expand it; opening another card closes the current
 one.
 
 - **Automatic backups** creates or manages scheduled backups. The collapsed
-  card summarizes the primary schedule. A single job keeps its On switch and
-  **Run now** action at card level. Multiple jobs expand first into a jobs list;
-  select one to reveal its controls and editor, or select **Add new backup
-  schedule**. Service selection is collapsed under **Select services** by
-  default.
+  card summarizes the primary schedule. A single schedule keeps its On switch
+  and **Run now** action at card level. Multiple schedules expand first into a
+  schedule list; select one to reveal its controls and editor, or select **Add
+  schedule**. Service selection is collapsed under **Services** by default.
 - **Create a manual backup** creates a one-time backup for selected services.
 - **Restore from a backup** chooses a manual or automatic checkpoint.
 - **Manage backup locations** adds or repairs physical drives and network
@@ -82,10 +81,10 @@ older interrupted record cannot keep the card visible after a newer attempt has
 failed. StartOS reconciles interrupted activity during startup, while the backup
 system is idle, and before the next backup or restore. While a backup or restore
 is genuinely active, expanding **Create a manual backup** shows a busy message
-rather than an empty panel or another location picker. Scheduled jobs wait for
-the active operation without advancing their schedule, while a second manual
-backup, automatic backup, or restore request is rejected instead of being queued
-to run afterward.
+rather than an empty panel or another location picker. Automatic schedules wait
+for the active operation without advancing their schedule, while a second
+manual backup, automatic backup, or restore request is rejected instead of
+being queued to run afterward.
 
 Whenever a backup workflow asks for a master password, select the eye icon in
 the password field to show or hide what you typed. This applies to manual

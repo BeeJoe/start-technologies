@@ -200,11 +200,8 @@ impl<G: GenericMountGuard> ScheduledBackupMountGuard<G> {
         tokio::fs::create_dir_all(&crypt_path)
             .await
             .with_ctx(|_| (ErrorKind::Filesystem, crypt_path.display()))?;
-        let encrypted_guard = TmpMountGuard::mount(
-            &BackupFS::new(&crypt_path, encryption_key, vec![(100000, 65536)]),
-            ReadWrite,
-        )
-        .await?;
+        let encrypted_guard =
+            TmpMountGuard::mount(&BackupFS::new(&crypt_path, encryption_key), ReadWrite).await?;
         let metadata_path = encrypted_guard.path().join("metadata.json");
         let metadata = if tokio::fs::metadata(&metadata_path).await.is_ok() {
             read_json(&metadata_path).await?
