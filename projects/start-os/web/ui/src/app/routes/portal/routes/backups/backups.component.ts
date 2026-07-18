@@ -1,7 +1,7 @@
 import { Component, computed, inject, OnInit, signal } from '@angular/core'
 import { toSignal } from '@angular/core/rxjs-interop'
 import { FormsModule } from '@angular/forms'
-import { Router } from '@angular/router'
+import { ActivatedRoute, Router } from '@angular/router'
 import {
   DocsLinkDirective,
   ErrorService,
@@ -218,6 +218,7 @@ const WEEKDAYS = [
             [embedded]="true"
             [mode]="jobs().length ? 'manage' : 'setup'"
             [createRequest]="createScheduleRequest()"
+            [reviewPackageId]="reviewPackageId"
             (manageLocations)="openLocations()"
             (collapseRequested)="expanded.set(null)"
           />
@@ -611,7 +612,8 @@ const WEEKDAYS = [
       .single-job .card-actions {
         display: grid;
         grid-template-columns: auto auto;
-        align-items: start;
+        align-items: center;
+        row-gap: 0.5rem;
         padding-inline-end: 0.75rem;
       }
 
@@ -676,11 +678,16 @@ export default class BackupsComponent implements OnInit {
   private readonly deleteScheduleService = inject(DeleteScheduleService)
   private readonly os = inject(OSService)
   private readonly router = inject(Router)
+  private readonly route = inject(ActivatedRoute)
   private readonly state = toSignal(
     inject<PatchDB<DataModel>>(PatchDB).watch$('scheduledBackups'),
   )
 
-  readonly expanded = signal<BackupPanel | null>(null)
+  protected readonly reviewPackageId =
+    this.route.snapshot.queryParamMap.get('addService') || ''
+  readonly expanded = signal<BackupPanel | null>(
+    this.reviewPackageId ? 'automatic' : null,
+  )
   protected readonly createScheduleRequest = signal(0)
   readonly manualRunning = toSignal(this.os.backingUp$, { initialValue: false })
   changingAutomatic = false

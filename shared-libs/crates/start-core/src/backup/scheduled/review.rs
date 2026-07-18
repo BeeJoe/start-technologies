@@ -8,9 +8,12 @@ use ts_rs::TS;
 use super::{BackupJob, BackupJobId, BackupServiceScope, NewServiceBackupReview};
 use crate::PackageId;
 use crate::context::RpcContext;
-use crate::notifications::{NotificationLevel, notify};
+use crate::db::model::package::{Task, TaskEntry, TaskSeverity};
 use crate::prelude::*;
 use crate::util::serde::HandlerExtSerde;
+
+pub const BACKUP_REVIEW_ACTION_ID: &str = "add-to-backup-schedule";
+pub const BACKUP_REVIEW_REPLAY_ID: &str = "startos-add-to-backup-schedule";
 
 pub fn review<C: Context>() -> ParentHandler<C> {
     ParentHandler::new()
@@ -117,6 +120,12 @@ pub async fn resolve(
                 .as_scheduled_backups_mut()
                 .as_pending_service_reviews_mut()
                 .remove(&package_id)?;
+            db.as_public_mut()
+                .as_package_data_mut()
+                .as_idx_mut(&package_id)
+                .or_not_found(&package_id)?
+                .as_tasks_mut()
+                .remove(&BACKUP_REVIEW_REPLAY_ID.into())?;
             Ok(())
         })
         .await
@@ -136,6 +145,14 @@ pub(crate) fn create_review_for_new_service(
         .map(|(_, job)| job.de())
         .collect::<Result<Vec<BackupJob>, Error>>()?;
     jobs.sort_by_key(|job| job.created_at);
+    let has_jobs = !jobs.is_empty();
+    let included_by_future_policy = jobs.iter().any(|job| match &job.services {
+        BackupServiceScope::All => true,
+        BackupServiceScope::AllExcept {
+            excluded_package_ids,
+        } => !excluded_package_ids.contains(package_id),
+        BackupServiceScope::Selected { .. } => false,
+    });
 
     let package_ids = BTreeSet::from([package_id.clone()]);
     let configured_jobs: Vec<_> = jobs
@@ -165,6 +182,9 @@ pub(crate) fn create_review_for_new_service(
         )?;
         super::rpc::refresh_archive_state(db, &job.target_id)?;
     }
+    if included_by_future_policy {
+        return Ok(());
+    }
 
     let affected_jobs: BTreeSet<BackupJobId> = jobs
         .into_iter()
@@ -175,10 +195,9 @@ pub(crate) fn create_review_for_new_service(
             _ => None,
         })
         .collect();
-    if affected_jobs.is_empty() {
+    if affected_jobs.is_empty() && has_jobs {
         return Ok(());
     }
-
     db.as_public_mut()
         .as_scheduled_backups_mut()
         .as_pending_service_reviews_mut()
@@ -190,35 +209,24 @@ pub(crate) fn create_review_for_new_service(
                 created_at: Utc::now(),
             },
         )?;
-    notify(
-        db,
-        None,
-        NotificationLevel::Warning,
-        t!("backup.scheduled.review-title").to_string(),
-        t!("backup.scheduled.review-message", package = package_id).to_string(),
-        package_id.to_string(),
-    )
-}
-
-pub(crate) fn ensure_review_resolved(
-    db: &crate::db::model::DatabaseModel,
-    package_id: &PackageId,
-) -> Result<(), Error> {
-    if db
-        .as_public()
-        .as_scheduled_backups()
-        .as_pending_service_reviews()
-        .as_idx(package_id)
-        .is_some()
-    {
-        Err(Error::new(
-            eyre!(
-                "{}",
-                t!("backup.scheduled.review-required", package = package_id)
-            ),
-            ErrorKind::InvalidRequest,
-        ))
-    } else {
-        Ok(())
-    }
+    db.as_public_mut()
+        .as_package_data_mut()
+        .as_idx_mut(package_id)
+        .or_not_found(package_id)?
+        .as_tasks_mut()
+        .insert(
+            &BACKUP_REVIEW_REPLAY_ID.into(),
+            &TaskEntry {
+                active: true,
+                task: Task {
+                    package_id: package_id.clone(),
+                    action_id: BACKUP_REVIEW_ACTION_ID.parse()?,
+                    severity: TaskSeverity::Important,
+                    reason: Some(t!("backup.scheduled.review-task-reason").to_string()),
+                    when: None,
+                    input: None,
+                },
+            },
+        )
+        .map(|_| ())
 }

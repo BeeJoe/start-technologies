@@ -1057,4 +1057,7 @@ export const ENGLISH: Record<string, number> = {
   'Future services not included': 1169,
   'Maximum required space': 1170,
   'More Info': 1171,
+  'Add to backup schedule': 1175,
+  'Choose which automatic backup schedules should include this service.': 1176,
+  'Save backup schedules': 1177,
 }

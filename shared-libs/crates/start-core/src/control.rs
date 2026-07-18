@@ -34,7 +34,6 @@ pub struct StartParams {
 pub async fn start(ctx: RpcContext, StartParams { id, force }: StartParams) -> Result<(), Error> {
     ctx.db
         .mutate(|db| {
-            crate::backup::scheduled::ensure_review_resolved(db, &id)?;
             let entry = db
                 .as_public_mut()
                 .as_package_data_mut()

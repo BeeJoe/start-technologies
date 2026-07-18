@@ -1055,5 +1055,8 @@ export default {
   1169: 'Servicios futuros no incluidos',
   1170: 'Espacio máximo requerido',
   1171: 'Más información',
+  1175: 'Añadir a la programación de copias',
+  1176: 'Elija qué programaciones de copias automáticas deben incluir este servicio.',
+  1177: 'Guardar programaciones de copias',
   908: 'El servicio debe estar en ejecución para realizar esta prueba. Estado actual:',
 } satisfies i18n

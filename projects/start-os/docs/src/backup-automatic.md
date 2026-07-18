@@ -58,13 +58,12 @@ schedules, expanding the card first shows the unboxed schedules list. Each row
 keeps an unlabeled switch and a three-dot menu containing the purple **Run
 now**, **View/Edit**, and red **Delete schedule** action, and reports how many
 currently installed services it protects. Select **View/Edit** to collapse the
-list and open that schedule. Saving the only schedule fully collapses the card;
-saving one of several schedules closes the editor and returns to the list.
-Select **Cancel** or **View all schedules** to close without saving and return
-to the list; StartOS warns that changes were not saved if that discards edits.
-When there is only one schedule, **Cancel** collapses the Automatic backups
-card instead. **Add schedule** appears below the list and moves focus directly
-to the schedule name field.
+list and open that schedule. Saving or canceling an edit fully collapses the
+Automatic backups card. Expanding a card with several schedules returns to the
+schedules list; expanding a card with one schedule returns directly to that
+schedule. **View all schedules** closes an unsaved editor and returns to the
+list after warning that changes were not saved. **Add schedule** appears below
+the list and moves focus directly to the schedule name field.
 
 The first schedule never shows an editable name field. If you add another, the
 first appears as **Default** and each additional schedule has its own name. Each
@@ -78,10 +77,12 @@ schedule runs successfully or is turned off. With several schedules, the
 collapsed summary reports the number of schedules without presenting one
 schedule's time as though it applied to every schedule.
 
-When a selective schedule does not automatically include future services,
-StartOS asks whether a newly installed service should be added to each affected
-schedule. Resolve the review before starting that service; this prevents a new
-service from silently running without the protection you intended.
+When no automatic schedule is configured to include future services, a newly
+installed service gets a dismissible **Add to backup schedule** recommended
+task on its service page. The task does not block starting the service. Run it
+to open Backups and select the schedules that should include the service, using
+**Toggle all** when appropriate. If automatic backups are not configured yet,
+the task opens initial setup instead.
 
 Turning off automatic backups immediately pauses the schedules and keeps their
 settings and checkpoints. Delete a schedule from its editor when you want to
@@ -99,9 +100,8 @@ the last schedule returns **Automatic backups** to its initial setup state.
 Every retained automatic version is a full target-side copy, not a small
 incremental delta. A run also needs temporary staging space. More frequent
 version history therefore increases required space, run time, and I/O,
-especially on network storage and slower external drives. When a network
-location cannot report its free space, the review says **Available space
-unknown** instead of presenting the unknown value as an amount.
+especially on network storage and slower external drives. The setup review
+mentions available space only when the selected location reports it.
 
 When version history contains several retention tiers, the collapsed summary
 lists every tier so the editor never hides part of the active policy.
@@ -166,8 +166,8 @@ explain the next action:
   current master password or move the schedule.
 - **Backup Target Identity Changed** — reconnect the original device or folder,
   or explicitly reassign the schedule before it writes to the replacement.
-- **Backup Selection Requires Review** — decide whether a newly installed
-  service belongs in each selective schedule.
+- **Add to backup schedule** — on the newly installed service, decide whether
+  it belongs in each selective schedule or dismiss the recommendation.
 
 For deeper troubleshooting, `start-cli server logs` shows structured run-level
 and service-level entries, including **automatic backup service started**,

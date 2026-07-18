@@ -1619,33 +1619,19 @@ backup.scheduled.identity-message:
   fr_FR: "La tâche %{job} est en pause car %{target} n'est pas la cible attribuée initialement. Reconnectez la cible d'origine, réessayez, réaffectez ou supprimez la tâche."
   pl_PL: "Zadanie %{job} jest wstrzymane, ponieważ %{target} nie jest pierwotnie przypisanym celem. Podłącz pierwotny cel, ponów próbę, przenieś lub usuń zadanie."
 
-backup.scheduled.review-title:
-  en_US: "Backup Selection Requires Review"
-  de_DE: "Sicherungsauswahl muss überprüft werden"
-  es_ES: "Debe revisar la selección de copia"
-  fr_FR: "La sélection de sauvegarde doit être vérifiée"
-  pl_PL: "Wymagany przegląd wyboru kopii"
-
-backup.scheduled.review-message:
-  en_US: "Review whether newly installed service %{package} should be added to each selective backup job before starting it."
-  de_DE: "Prüfen Sie vor dem Start, ob der neu installierte Dienst %{package} zu jedem selektiven Sicherungsauftrag hinzugefügt werden soll."
-  es_ES: "Revise si el nuevo servicio %{package} debe añadirse a cada tarea selectiva antes de iniciarlo."
-  fr_FR: "Vérifiez si le nouveau service %{package} doit être ajouté à chaque tâche sélective avant de le démarrer."
-  pl_PL: "Przed uruchomieniem zdecyduj, czy nowa usługa %{package} ma zostać dodana do każdego selektywnego zadania kopii."
-
-backup.scheduled.review-required:
-  en_US: "Resolve the backup selection review for %{package} before starting or restarting it"
-  de_DE: "Schließen Sie die Sicherungsauswahl für %{package} vor dem Start oder Neustart ab"
-  es_ES: "Resuelva la revisión de copia de %{package} antes de iniciarlo o reiniciarlo"
-  fr_FR: "Résolvez la sélection de sauvegarde pour %{package} avant de le démarrer ou redémarrer"
-  pl_PL: "Rozwiąż przegląd wyboru kopii dla %{package} przed uruchomieniem lub restartem"
-
 backup.scheduled.review-incomplete:
   en_US: "A decision is required for every affected backup job"
   de_DE: "Für jeden betroffenen Sicherungsauftrag ist eine Entscheidung erforderlich"
   es_ES: "Se requiere una decisión para cada tarea de copia afectada"
   fr_FR: "Une décision est requise pour chaque tâche de sauvegarde concernée"
   pl_PL: "Wymagana jest decyzja dla każdego zadania kopii"
+
+backup.scheduled.review-task-reason:
+  en_US: "This service is not included in every automatic backup schedule."
+  de_DE: "Dieser Dienst ist nicht in jedem automatischen Sicherungszeitplan enthalten."
+  es_ES: "Este servicio no está incluido en todas las programaciones de copias automáticas."
+  fr_FR: "Ce service n'est pas inclus dans toutes les planifications de sauvegarde automatique."
+  pl_PL: "Ta usługa nie jest uwzględniona w każdym harmonogramie automatycznych kopii zapasowych."
 
 backup.scheduled.retry-before-resume:
   en_US: "Verify the backup target with Retry before resuming this job"

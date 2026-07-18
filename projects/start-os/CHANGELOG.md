@@ -40,7 +40,9 @@ file tracks notable changes since the move to the monorepo.
   schedule** sits below the list and focuses the schedule name. The first
   schedule hides its name while alone and appears as **Default** once another
   schedule is added.
-  Saving returns to the list. Monthly schedules add a day-of-month choice and
+  Saving or canceling an edit collapses the full Automatic backups card; the
+  schedules list appears when a multi-schedule card is expanded again. Monthly
+  schedules add a day-of-month choice and
   use the month's last available day when the 30th or 31st does not exist. The
   collapsed main card surfaces enabled schedules needing attention and clears
   the warning after success or when a failed schedule is turned off. Service
@@ -92,9 +94,9 @@ file tracks notable changes since the move to the monorepo.
   single-schedule edits to the collapsed card. The delete confirmation now
   immediately and reversibly changes between **Delete Schedule** and **Delete
   Schedule and Backups** with its checkbox. Capacity estimates show one service
-  total until **More Info** expands the labeled breakdown, and unknown network
-  capacity now reads **Available space unknown**. Storage warnings use
-  **network storage** instead of the protocol label **CIFS**.
+  total until **More Info** expands the labeled breakdown and only mention
+  available space when the location reports it. Storage warnings use **network
+  storage** instead of the protocol label **CIFS**.
 
 - **Automatic backup directory traversal.** `backup-fs` now preserves every
   returned directory cursor and rejects unknown nonzero cursors instead of
@@ -125,7 +127,9 @@ file tracks notable changes since the move to the monorepo.
   Empty network-folder and no-drive content is centered across the full table
   frame on desktop and mobile. Location choices also share the action button's
   centered width and keep long location names horizontal on phones, including
-  automatic-backup setup. Automatic schedule rows are inset from phone edges and
+  automatic-backup setup. Physical-location refresh exposes its active state,
+  and phone layouts place reported network free space beside the location.
+  Automatic schedule rows are inset from phone edges and
   keep icon-only switches and action menus clear of schedule text. The overall progress
   spinner and percentage align with each service's status, and service progress
   is right-aligned within the card.
@@ -137,7 +141,9 @@ file tracks notable changes since the move to the monorepo.
   names no longer overlap their backup status; the status wraps to the next
   right-aligned line inside the progress card. While another backup or restore
   is running, the manual-backup card now shows a clear busy state instead of
-  expanding to an empty panel.
+  expanding to an empty panel. Newly installed services not covered by a
+  future-services policy get a dismissible, nonblocking **Add to backup
+  schedule** task that opens a plain schedule selector or initial setup.
 - **Backup-location removal.** Schedule deletion can also remove the automatic
   checkpoints used only by that schedule, allowing unused network backup
   locations to be forgotten. The confirmation action clearly distinguishes
@@ -153,7 +159,9 @@ file tracks notable changes since the move to the monorepo.
   system is idle, and before each new operation. A newer terminal attempt now
   takes precedence over an older orphaned activity, so an insufficient-space
   failure cannot leave the backup progress card visible or keep backup controls
-  busy while idle.
+  busy while idle. Subsequent scheduled runs also use measured target-side
+  growth for their free-space preflight instead of overestimating from logical
+  snapshot size.
 - **Concurrent backup and restore requests.** StartOS now serializes scheduled
   runs and rejects a second manual backup, explicit automatic run, or restore
   request while another operation owns the backup coordinator. Saving a new

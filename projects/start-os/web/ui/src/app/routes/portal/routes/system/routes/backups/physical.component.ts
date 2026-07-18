@@ -2,6 +2,7 @@ import { Component, inject, output } from '@angular/core'
 import { ActivatedRoute } from '@angular/router'
 import { ConvertBytesPipe, DialogService, i18nPipe } from '@start9labs/shared'
 import { TuiButton } from '@taiga-ui/core'
+import { TuiButtonLoading } from '@taiga-ui/kit'
 import { PlaceholderComponent } from 'src/app/routes/portal/components/placeholder.component'
 import { TableComponent } from 'src/app/routes/portal/components/table.component'
 import { DiskBackupTarget } from 'src/app/services/api/api.types'
@@ -55,6 +56,7 @@ import { BackupStatusComponent } from './status.component'
               <button
                 tuiButton
                 iconStart="@tui.refresh-cw"
+                [loading]="service.loading()"
                 (click)="service.getBackupTargets()"
               >
                 {{ 'Refresh' | i18n }}
@@ -187,6 +189,7 @@ import { BackupStatusComponent } from './status.component'
   host: { class: 'g-card' },
   imports: [
     TuiButton,
+    TuiButtonLoading,
     PlaceholderComponent,
     BackupStatusComponent,
     BackupLegacyWarningComponent,

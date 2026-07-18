@@ -1055,5 +1055,8 @@ export default {
   1169: 'Przyszłe usługi nieuwzględnione',
   1170: 'Maksymalna wymagana przestrzeń',
   1171: 'Więcej informacji',
+  1175: 'Dodaj do harmonogramu kopii zapasowych',
+  1176: 'Wybierz harmonogramy automatycznych kopii zapasowych, które mają obejmować tę usługę.',
+  1177: 'Zapisz harmonogramy kopii zapasowych',
   908: 'Serwis musi być uruchomiony, aby wykonać ten test. Aktualny status:',
 } satisfies i18n

@@ -345,7 +345,8 @@ assertRule(
   {
     display: 'grid',
     'grid-template-columns': 'auto auto',
-    'align-items': 'start',
+    'align-items': 'center',
+    'row-gap': '0.5rem',
     'padding-inline-end': '0.75rem',
   },
   phone,
@@ -820,7 +821,7 @@ assertNestedRule(
 )
 
 for (const [sheet, file, columns] of [
-  [network, networkFile, 'minmax(0, 1fr) auto'],
+  [network, networkFile, 'minmax(0, 1fr) auto auto'],
   [physical, physicalFile, 'minmax(0, 1fr) minmax(7rem, 45%)'],
 ]) {
   assertRule(
@@ -850,7 +851,7 @@ for (const file of [editorFile, manualFile, recoverFile]) {
 assertSource(homeFile, [
   /docsLink[\s\S]{0,120}path="\/start-os\/"[\s\S]{0,80}fragment="#backups"/,
   /iconStart="@tui\.book-open-text"/,
-  /readonly expanded = signal<BackupPanel \| null>\(null\)/,
+  /readonly expanded = signal<BackupPanel \| null>\([\s\S]{0,120}reviewPackageId \? 'automatic' : null/,
   /<automatic-backups[\s\S]*\[embedded\]="true"/,
   /<system-backup[\s\S]{0,100}mode="create"[\s\S]{0,100}\[embedded\]="true"/,
   /<system-backup[\s\S]{0,100}mode="restore"[\s\S]{0,100}\[embedded\]="true"/,
@@ -972,6 +973,16 @@ assertNestedRule(
   {
     'grid-area': '2 / 1 / 3 / -1',
     'justify-self': 'start',
+  },
+)
+assertNestedRule(
+  network,
+  networkFile,
+  ':host-context(tui-root._mobile)',
+  'td.free',
+  {
+    'grid-area': '1 / 2',
+    'justify-self': 'end',
   },
 )
 assertNestedRule(

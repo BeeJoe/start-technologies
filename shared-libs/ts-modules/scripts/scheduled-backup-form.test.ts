@@ -49,6 +49,27 @@ const deleteScheduleDialog = readFileSync(
   ),
   'utf8',
 )
+const serviceTaskComponent = readFileSync(
+  new URL(
+    '../../../projects/start-os/web/ui/src/app/routes/portal/routes/services/components/task.component.ts',
+    import.meta.url,
+  ),
+  'utf8',
+)
+const scheduledBackupReview = readFileSync(
+  new URL(
+    '../../../shared-libs/crates/start-core/src/backup/scheduled/review.rs',
+    import.meta.url,
+  ),
+  'utf8',
+)
+const serviceControl = readFileSync(
+  new URL(
+    '../../../shared-libs/crates/start-core/src/control.rs',
+    import.meta.url,
+  ),
+  'utf8',
+)
 const badgeService = readFileSync(
   new URL(
     '../../../projects/start-os/web/ui/src/app/services/badge.service.ts',
@@ -648,6 +669,30 @@ test('multiple automatic jobs expand as a list before an individual editor', () 
   )
 })
 
+test('new services get a dismissible recommended backup task without blocking start', () => {
+  assert.match(scheduledBackupReview, /BACKUP_REVIEW_ACTION_ID/)
+  assert.match(scheduledBackupReview, /TaskSeverity::Important/)
+  assert.match(
+    scheduledBackupReview,
+    /included_by_future_policy[\s\S]{0,1800}if included_by_future_policy[\s\S]{0,80}return Ok\(\(\)\)/,
+  )
+  assert.doesNotMatch(scheduledBackupReview, /NotificationLevel|notify\(/)
+  assert.doesNotMatch(serviceControl, /ensure_review_resolved/)
+  assert.match(serviceTaskComponent, /Add to backup schedule/)
+  assert.match(
+    serviceTaskComponent,
+    /if \(this\.backupReview\(\)\)[\s\S]{0,220}queryParams: \{ addService: task\.packageId \}/,
+  )
+  assert.match(
+    serviceTaskComponent,
+    /getNewServiceBackupReviews[\s\S]{0,800}resolveNewServiceBackupReview/,
+  )
+  assert.match(
+    advancedComponent,
+    /visibleReviews\(\)[\s\S]{0,900}Toggle all[\s\S]{0,900}Save backup schedules/,
+  )
+})
+
 test('collapsed automatic card surfaces attention without leaking one schedule into a multi-job summary', () => {
   const heading = backupsComponent.slice(
     backupsComponent.lastIndexOf(
@@ -756,15 +801,12 @@ test('schedule list uses schedule terminology and styled menu actions', () => {
     /protected readonly deleteCheckpoints = signal\(false\)/,
   )
   assert.match(deleteScheduleDialog, /Delete related backups/)
+  assert.match(deleteScheduleDialog, /\[\(ngModel\)\]="deleteCheckpoints"/)
   assert.match(
     deleteScheduleDialog,
-    /\[ngModel\]="deleteCheckpoints\(\)"[\s\S]{0,120}\(ngModelChange\)="deleteCheckpoints\.set\(\$event\)"/,
+    /deleteCheckpoints\(\)[\s\S]{0,120}Delete Schedule and Backups[\s\S]{0,120}Delete Schedule/,
   )
-  assert.match(
-    deleteScheduleDialog,
-    /protected readonly deleteAction = computed\(\(\) =>[\s\S]{0,160}deleteCheckpoints\(\)[\s\S]{0,120}Delete Schedule and Backups[\s\S]{0,120}Delete Schedule/,
-  )
-  assert.match(deleteScheduleDialog, /\{\{ deleteAction\(\) \| i18n \}\}/)
+  assert.doesNotMatch(deleteScheduleDialog, /deleteAction/)
   assert.doesNotMatch(
     deleteScheduleDialog,
     /@if \(context\.data\.checkpointCount\)/,
@@ -795,22 +837,25 @@ test('the first schedule keeps its default name hidden until another schedule ex
   )
   assert.match(
     automaticComponent,
-    /createAutomaticBackup\(\)[\s\S]{0,900}this\.embedded\(\)[\s\S]{0,120}this\.collapseRequested\.emit\(\)/,
+    /createAutomaticBackup\(\)[\s\S]{0,1800}this\.embedded\(\)[\s\S]{0,120}this\.collapseRequested\.emit\(\)/,
   )
   assert.match(
     advancedComponent,
-    /async save\(form: JobEditor\)[\s\S]{0,2200}await this\.reload\(\)[\s\S]{0,160}this\.jobs\(\)\.length === 1[\s\S]{0,120}this\.collapseRequested\.emit\(\)/,
+    /async save\(form: JobEditor\)[\s\S]{0,2200}this\.collapseRequested\.emit\(\)[\s\S]{0,240}this\.editor\.set\(null\)[\s\S]{0,240}await this\.reload\(\)/,
   )
 })
 
 test('capacity and storage warnings use clear user-facing wording', () => {
-  assert.match(
-    automaticComponent,
-    /Available space unknown[\s\S]{0,300}this\.bytes\(available\)[\s\S]{0,120}available/,
-  )
+  assert.doesNotMatch(automaticComponent, /Available space unknown/)
+  assert.doesNotMatch(automaticComponent, /capacityAvailableLabel/)
+  assert.match(automaticComponent, /capacityAvailable\(\) !== null/)
   assert.doesNotMatch(
     automaticComponent,
-    /capacityAvailableLabel\(\)[\s\S]{0,100}\{\{ 'available' \| i18n \}\}/,
+    /Every retained version is a full copy and each run also needs temporary staging space/,
+  )
+  assert.doesNotMatch(
+    advancedComponent,
+    /Every retained version is a full copy and each run also needs temporary staging space/,
   )
   assert.match(advancedComponent, /especially on network storage/)
   assert.doesNotMatch(advancedComponent, /especially on CIFS/)
@@ -827,7 +872,7 @@ test('canceling a job edit returns to the appropriate collapsed view', () => {
   )
   assert.match(
     advancedComponent,
-    /cancelEditor\(\)[\s\S]{0,260}jobs\(\)\.length > 1[\s\S]{0,120}viewAllJobs\(\)[\s\S]{0,240}collapseRequested\.emit\(\)/,
+    /cancelEditor\(\)[\s\S]{0,120}collapseRequested\.emit\(\)[\s\S]{0,180}editor\.set\(null\)/,
   )
   assert.match(
     automaticComponent,

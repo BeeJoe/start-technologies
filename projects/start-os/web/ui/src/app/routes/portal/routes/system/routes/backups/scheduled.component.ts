@@ -32,6 +32,7 @@ import {
   TuiGroup,
   TuiIcon,
   TuiInput,
+  TuiLabel,
   TuiNotification,
   TuiNotificationService,
   TuiTitle,
@@ -169,49 +170,49 @@ interface JobEditor extends EditableRetentionRule {
       </div>
     }
 
-    @for (review of reviews(); track review.packageId) {
-      <article class="review" tuiNotification appearance="warning">
+    @for (review of visibleReviews(); track review.packageId) {
+      <section class="review" tuiAppearance="floating">
         <div tuiTitle>
-          {{ 'New service backup review' | i18n }}:
-          {{ packageName(review.packageId) }}
+          <b>{{ 'Add to backup schedule' | i18n }}</b>
           <div tuiSubtitle>
             {{
-              'Choose whether to add this service to every selective schedule. The service cannot start until this is resolved.'
+              'Choose which automatic backup schedules should include this service.'
                 | i18n
             }}
           </div>
         </div>
+        <label tuiLabel class="checkbox-row toggle-all">
+          <input
+            tuiCheckbox
+            type="checkbox"
+            [ngModelOptions]="{ standalone: true }"
+            [ngModel]="allReviewJobsSelected(review)"
+            (ngModelChange)="setAllReviewJobs(review, $event)"
+          />
+          <span tuiTitle>
+            <b>{{ 'Toggle all' | i18n }}</b>
+          </span>
+        </label>
         @for (jobId of review.affectedJobs; track jobId) {
-          <label>
-            <span>{{ jobName(jobId) }}</span>
-            <select
+          <label tuiLabel class="checkbox-row review-job">
+            <input
+              tuiCheckbox
+              type="checkbox"
+              [ngModelOptions]="{ standalone: true }"
               [ngModel]="reviewDecision(review.packageId, jobId)"
               (ngModelChange)="
                 setReviewDecision(review.packageId, jobId, $event)
               "
-              [ngModelOptions]="{ standalone: true }"
-            >
-              <option [ngValue]="null" disabled>
-                {{ 'Choose action' | i18n }}
-              </option>
-              <option [ngValue]="true">
-                {{ 'Add to this schedule' | i18n }}
-              </option>
-              <option [ngValue]="false">
-                {{ 'Skip this schedule' | i18n }}
-              </option>
-            </select>
+            />
+            <span tuiTitle>
+              <b>{{ jobName(jobId) }}</b>
+            </span>
           </label>
         }
-        <button
-          tuiButton
-          size="s"
-          [disabled]="!reviewComplete(review)"
-          (click)="resolveReview(review)"
-        >
-          {{ 'Resolve review' | i18n }}
+        <button tuiButton size="s" (click)="resolveReview(review)">
+          {{ 'Save backup schedules' | i18n }}
         </button>
-      </article>
+      </section>
     }
 
     @if (mode() === 'manage') {
@@ -663,12 +664,6 @@ interface JobEditor extends EditableRetentionRule {
                   {{ 'Add' | i18n }}
                 </button>
               </div>
-              <div tuiNotification appearance="warning">
-                {{
-                  'Every retained version is a full copy and each run also needs temporary staging space.'
-                    | i18n
-                }}
-              </div>
             }
           </div>
 
@@ -1037,14 +1032,22 @@ interface JobEditor extends EditableRetentionRule {
       flex: 1 1 16rem;
     }
 
-    .editor,
-    .review {
+    .editor {
       display: grid;
       gap: 1rem;
       margin-top: 1rem;
       padding: 1rem;
       border: 1px solid var(--tui-border-normal);
       border-radius: 0.75rem;
+      min-width: 0;
+      overflow: hidden;
+    }
+
+    .review {
+      display: grid;
+      gap: 1rem;
+      margin-top: 1rem;
+      padding: 1rem;
       min-width: 0;
       overflow: hidden;
     }
@@ -1438,6 +1441,7 @@ interface JobEditor extends EditableRetentionRule {
     TuiGroup,
     TuiIcon,
     TuiInput,
+    TuiLabel,
     TuiInputNumber,
     TuiNotification,
     TuiPassword,
@@ -1450,6 +1454,7 @@ interface JobEditor extends EditableRetentionRule {
 export class ScheduledBackupsComponent implements OnInit {
   readonly mode = input.required<'manage' | 'restore'>()
   readonly createRequest = input(0)
+  readonly reviewPackageId = input('')
   readonly collapseRequested = output<void>()
 
   private readonly api = inject(ApiService)
@@ -1468,6 +1473,11 @@ export class ScheduledBackupsComponent implements OnInit {
   readonly jobs = signal<T.BackupJob[]>([])
   readonly histories = signal<T.ServiceTargetHistory[]>([])
   readonly reviews = signal<T.NewServiceBackupReview[]>([])
+  protected readonly visibleReviews = computed(() =>
+    this.reviews().filter(
+      review => review.packageId === this.reviewPackageId(),
+    ),
+  )
   readonly loading = signal(true)
   readonly saving = signal(false)
   readonly editor = signal<JobEditor | null>(null)
@@ -1501,10 +1511,7 @@ export class ScheduledBackupsComponent implements OnInit {
     })
   }
 
-  private readonly reviewDecisions = new Map<
-    string,
-    Record<string, boolean | null>
-  >()
+  private readonly reviewDecisions = new Map<string, Record<string, boolean>>()
 
   readonly targets = computed(() => [
     ...this.backupService.cifs().map(target => ({
@@ -1604,7 +1611,7 @@ export class ScheduledBackupsComponent implements OnInit {
       for (const review of reviews) {
         this.reviewDecisions.set(
           review.packageId,
-          Object.fromEntries(review.affectedJobs.map(id => [id, null])),
+          Object.fromEntries(review.affectedJobs.map(id => [id, false])),
         )
       }
       const selected = this.jobs().find(job => job.id === this.selectedJobId())
@@ -1680,15 +1687,11 @@ export class ScheduledBackupsComponent implements OnInit {
   }
 
   cancelEditor() {
-    if (this.jobs().length > 1) {
-      this.viewAllJobs()
-    } else {
-      this.selectedJobId.set('')
-      this.editor.set(null)
-      this.editorBaseline = null
-      this.showServices.set(false)
-      this.collapseRequested.emit()
-    }
+    this.collapseRequested.emit()
+    this.selectedJobId.set('')
+    this.editor.set(null)
+    this.editorBaseline = null
+    this.showServices.set(false)
   }
 
   isDefaultJob(form: JobEditor): boolean {
@@ -1804,12 +1807,12 @@ export class ScheduledBackupsComponent implements OnInit {
         this.selectedJobId.set(created.id)
         this.backupService.showQueuedNotification(created)
       }
+      this.collapseRequested.emit()
       this.selectedJobId.set('')
       this.editor.set(null)
       this.editorBaseline = null
       this.showSingleJobList = true
       await this.reload()
-      if (this.jobs().length === 1) this.collapseRequested.emit()
     } catch (error: any) {
       this.errors.handleError(getErrorMessage(error))
     } finally {
@@ -1905,8 +1908,8 @@ export class ScheduledBackupsComponent implements OnInit {
     this.reassigning.set(null)
   }
 
-  reviewDecision(packageId: string, jobId: string): boolean | null {
-    return this.reviewDecisions.get(packageId)?.[jobId] ?? null
+  reviewDecision(packageId: string, jobId: string): boolean {
+    return this.reviewDecisions.get(packageId)?.[jobId] ?? false
   }
 
   setReviewDecision(packageId: string, jobId: string, value: boolean) {
@@ -1915,13 +1918,22 @@ export class ScheduledBackupsComponent implements OnInit {
     this.reviewDecisions.set(packageId, decisions)
   }
 
-  reviewComplete(review: T.NewServiceBackupReview): boolean {
+  allReviewJobsSelected(review: T.NewServiceBackupReview): boolean {
     const decisions = this.reviewDecisions.get(review.packageId)
-    return review.affectedJobs.every(jobId => decisions?.[jobId] != null)
+    return (
+      review.affectedJobs.length > 0 &&
+      review.affectedJobs.every(jobId => decisions?.[jobId] === true)
+    )
+  }
+
+  setAllReviewJobs(review: T.NewServiceBackupReview, checked: boolean) {
+    this.reviewDecisions.set(
+      review.packageId,
+      Object.fromEntries(review.affectedJobs.map(jobId => [jobId, checked])),
+    )
   }
 
   async resolveReview(review: T.NewServiceBackupReview) {
-    if (!this.reviewComplete(review)) return
     const decisions = Object.fromEntries(
       Object.entries(this.reviewDecisions.get(review.packageId) || {}).map(
         ([jobId, decision]) => [jobId, decision === true],
@@ -2029,10 +2041,6 @@ export class ScheduledBackupsComponent implements OnInit {
         snapshots: { [history.packageId]: snapshot.id },
       }),
     )
-  }
-
-  packageName(id: string): string {
-    return this.packages().find(pkg => pkg.id === id)?.name || id
   }
 
   jobName(id: string): string {

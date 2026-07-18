@@ -311,6 +311,9 @@ async fn run_job_inner(
 
     for package_id in &package_ids {
         let started = Instant::now();
+        let available_before = crate::disk::util::get_available(scheduled_guard.path())
+            .await
+            .ok();
         let mut phase = phases.remove(package_id).expect("backup phase exists");
         phase.start();
         tracing::info!(
@@ -323,6 +326,12 @@ async fn run_job_inner(
             match scheduled_guard.staging(&run.id, package_id).await {
                 Ok(staging) => match service.backup(staging, phase).await {
                     Ok(output) => {
+                        let physical_size = consumed_capacity(
+                            available_before,
+                            crate::disk::util::get_available(scheduled_guard.path())
+                                .await
+                                .ok(),
+                        );
                         let manifest = db
                             .as_public()
                             .as_package_data()
@@ -343,7 +352,7 @@ async fn run_job_inner(
                             run_id: run.id.clone(),
                             completed_at,
                             logical_size: 0,
-                            physical_size: None,
+                            physical_size,
                             changed_bytes: output.changed_bytes,
                             measured_at: completed_at,
                             archived: false,
@@ -706,12 +715,12 @@ async fn preflight_capacity<G: GenericMountGuard>(
             .flat_map(|history| history.snapshots.iter())
             .filter(|snapshot| !snapshot.archived)
             .collect();
-        let copy_bytes = active
-            .iter()
-            .max_by_key(|snapshot| snapshot.completed_at)
-            .map(|snapshot| snapshot.physical_size.unwrap_or(snapshot.logical_size))
-            .unwrap_or(live_logical)
-            .max(live_logical);
+        let latest = active.iter().max_by_key(|snapshot| snapshot.completed_at);
+        let copy_bytes = projected_copy_bytes(
+            live_logical,
+            latest.map(|snapshot| snapshot.logical_size),
+            latest.and_then(|snapshot| snapshot.physical_size),
+        );
         requirements.push((copy_bytes, active.len() as u64, maximum_count));
     }
 
@@ -759,6 +768,21 @@ fn complete_run_required_capacity(
         .checked_add(retained_growth)
         .and_then(|bytes| bytes.checked_add(temporary_headroom))
         .ok_or_else(capacity_overflow)
+}
+
+fn consumed_capacity(before: Option<u64>, after: Option<u64>) -> Option<u64> {
+    before
+        .zip(after)
+        .and_then(|(before, after)| before.checked_sub(after))
+        .filter(|consumed| *consumed > 0)
+}
+
+fn projected_copy_bytes(
+    live_logical: u64,
+    latest_logical: Option<u64>,
+    latest_physical: Option<u64>,
+) -> u64 {
+    latest_physical.unwrap_or_else(|| latest_logical.unwrap_or(0).max(live_logical))
 }
 
 fn capacity_overflow() -> Error {
@@ -953,6 +977,20 @@ mod tests {
         let reversed = complete_run_required_capacity([(200, 1, 1), (100, 0, 1)]).unwrap();
         assert_eq!(first, reversed);
         assert_eq!(first, PREFLIGHT_METADATA_BYTES + 100 + 220);
+    }
+
+    #[test]
+    fn subsequent_preflight_uses_measured_target_consumption() {
+        let physical_size = consumed_capacity(Some(1_000), Some(960)).unwrap();
+        assert_eq!(physical_size, 40);
+        let copy_bytes = projected_copy_bytes(1_000, Some(900), Some(physical_size));
+        assert_eq!(copy_bytes, 40);
+        assert_eq!(
+            complete_run_required_capacity([(copy_bytes, 1, 1)]).unwrap(),
+            PREFLIGHT_METADATA_BYTES + 44,
+        );
+        assert_eq!(projected_copy_bytes(1_000, Some(900), None), 1_000);
+        assert_eq!(consumed_capacity(Some(960), Some(1_000)), None);
     }
 
     #[tokio::test]

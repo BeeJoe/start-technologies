@@ -410,12 +410,6 @@ interface AutomaticRetentionRule {
                 {{ 'Add' | i18n }}
               </button>
             </div>
-            <div tuiNotification appearance="warning">
-              {{
-                'Every retained version is a full copy and each run also needs temporary staging space.'
-                  | i18n
-              }}
-            </div>
           }
         </section>
       }
@@ -464,7 +458,11 @@ interface AutomaticRetentionRule {
           @if (capacityNeeded() !== null) {
             <div tuiNotification [appearance]="capacityAppearance()">
               {{ 'About' | i18n }} {{ bytes(capacityNeeded()!) }}
-              {{ 'needed' | i18n }}; {{ capacityAvailableLabel() }}.
+              {{ 'needed' | i18n }}
+              @if (capacityAvailable() !== null) {
+                ; {{ bytes(capacityAvailable()!) }} {{ 'available' | i18n }}
+              }
+              .
               @if (capacityBlocked()) {
                 <span class="block-helper">
                   {{ 'Choose a location with more free space.' | i18n }}
@@ -555,6 +553,7 @@ interface AutomaticRetentionRule {
           scheduledBackups
           mode="manage"
           [createRequest]="createRequest()"
+          [reviewPackageId]="reviewPackageId()"
           (collapseRequested)="collapseRequested.emit()"
         ></section>
       } @else {
@@ -934,6 +933,7 @@ export default class AutomaticBackupsComponent implements OnInit {
   readonly mode = input<'setup' | 'manage'>()
   readonly embedded = input(false)
   readonly createRequest = input(0)
+  readonly reviewPackageId = input('')
   readonly manageLocations = output<void>()
   readonly collapseRequested = output<void>()
   private readonly route = inject(ActivatedRoute)
@@ -1263,13 +1263,6 @@ export default class AutomaticBackupsComponent implements OnInit {
       : null
   }
 
-  capacityAvailableLabel(): string {
-    const available = this.capacityAvailable()
-    return available === null
-      ? this.i18n.transform('Available space unknown')
-      : `${this.bytes(available)} ${this.i18n.transform('available')}`
-  }
-
   capacityBlocked(): boolean {
     const needed = this.capacityNeeded()
     const available = this.capacityAvailable()
@@ -1296,9 +1289,22 @@ export default class AutomaticBackupsComponent implements OnInit {
         runNow: this.editor.firstBackupNow,
       })
       this.backupService.showQueuedNotification(created)
-      if (this.embedded()) {
-        this.collapseRequested.emit()
-      } else {
+      if (this.embedded()) this.collapseRequested.emit()
+      const packageId = this.reviewPackageId()
+      if (packageId) {
+        const review = (await this.api.getNewServiceBackupReviews({})).find(
+          item => item.packageId === packageId,
+        )
+        if (review) {
+          await this.api.resolveNewServiceBackupReview({
+            packageId,
+            decisions: Object.fromEntries(
+              review.affectedJobs.map(jobId => [jobId, false]),
+            ),
+          })
+        }
+      }
+      if (!this.embedded()) {
         await this.router.navigate(['/system/backups'])
       }
     } catch (error: any) {

@@ -1055,5 +1055,8 @@ export default {
   1169: 'Zukünftige Dienste nicht eingeschlossen',
   1170: 'Maximal benötigter Speicherplatz',
   1171: 'Weitere Informationen',
+  1175: 'Zum Sicherungszeitplan hinzufügen',
+  1176: 'Wählen Sie aus, welche automatischen Sicherungszeitpläne diesen Dienst enthalten sollen.',
+  1177: 'Sicherungszeitpläne speichern',
   908: 'Der Dienst muss laufen, um diesen Test durchzuführen. Aktueller Status:',
 } satisfies i18n

@@ -1,4 +1,5 @@
 import { Component, computed, inject, input } from '@angular/core'
+import { Router } from '@angular/router'
 import { DialogService, i18nPipe, TaskService } from '@start9labs/shared'
 import { T } from '@start9labs/start-core'
 import { TuiButton } from '@taiga-ui/core'
@@ -29,9 +30,13 @@ import { getManifest } from 'src/app/utils/get-package-data'
         <img [src]="pkg()?.icon || fallback()?.icon" alt="" />
       </i>
       <strong>
-        {{
-          pkg()?.actions?.[task().actionId]?.name || ('Not installed' | i18n)
-        }}
+        @if (backupReview()) {
+          {{ 'Add to backup schedule' | i18n }}
+        } @else {
+          {{
+            pkg()?.actions?.[task().actionId]?.name || ('Not installed' | i18n)
+          }}
+        }
       </strong>
     </td>
     <td class="severity">
@@ -138,6 +143,7 @@ export class ServiceTaskComponent {
   private readonly actionService = inject(ActionService)
   private readonly dialog = inject(DialogService)
   private readonly api = inject(ApiService)
+  private readonly router = inject(Router)
   private readonly tasks = inject(TaskService)
   private readonly component = inject(ServiceTasksComponent)
   private readonly i18n = inject(i18nPipe)
@@ -146,6 +152,9 @@ export class ServiceTaskComponent {
   readonly services = input.required<Record<string, PackageDataEntry>>()
 
   readonly pkg = computed(() => this.services()[this.task().packageId])
+  protected readonly backupReview = computed(
+    () => this.task().actionId === 'add-to-backup-schedule',
+  )
   readonly title = computed((pkg = this.pkg()) => pkg && getManifest(pkg).title)
 
   readonly fallback = computed(
@@ -153,6 +162,8 @@ export class ServiceTaskComponent {
   )
 
   readonly disabled = computed(() => {
+    if (this.backupReview()) return false
+
     const pkg = this.pkg()
     if (!pkg) return this.i18n.transform('Not installed')!
 
@@ -181,15 +192,38 @@ export class ServiceTaskComponent {
       .openConfirm(DISMISS)
       .pipe(filter(Boolean))
       .subscribe(() =>
-        this.tasks.run(
-          async () =>
-            await this.api.clearTask({ packageId, replayId, force: false }),
-        ),
+        this.tasks.run(async () => {
+          if (!this.backupReview()) {
+            await this.api.clearTask({ packageId, replayId, force: false })
+            return
+          }
+
+          const review = (await this.api.getNewServiceBackupReviews({})).find(
+            item => item.packageId === packageId,
+          )
+          if (!review) {
+            await this.api.clearTask({ packageId, replayId, force: false })
+            return
+          }
+          await this.api.resolveNewServiceBackupReview({
+            packageId,
+            decisions: Object.fromEntries(
+              review.affectedJobs.map(jobId => [jobId, false]),
+            ),
+          })
+        }),
       )
   }
 
   async handle() {
     const task = this.task()
+    if (this.backupReview()) {
+      await this.router.navigate(['/system/backups'], {
+        queryParams: { addService: task.packageId },
+      })
+      return
+    }
+
     const title = this.title()
     const pkg = this.pkg()
     const metadata = pkg?.actions[task.actionId]

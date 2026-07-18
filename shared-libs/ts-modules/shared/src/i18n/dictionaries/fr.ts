@@ -1055,5 +1055,8 @@ export default {
   1169: 'Services futurs non inclus',
   1170: 'Espace maximal requis',
   1171: 'Plus d’informations',
+  1175: 'Ajouter au planning de sauvegarde',
+  1176: 'Choisissez les planifications de sauvegarde automatique qui doivent inclure ce service.',
+  1177: 'Enregistrer les planifications de sauvegarde',
   908: 'Le service doit être en fonctionnement pour effectuer ce test. Statut actuel :',
 } satisfies i18n

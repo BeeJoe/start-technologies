@@ -244,7 +244,7 @@ const ERROR =
       }
 
       tr {
-        grid-template-columns: minmax(0, 1fr) auto;
+        grid-template-columns: minmax(0, 1fr) auto auto;
         width: 100%;
         min-width: 0;
         white-space: normal;
@@ -267,7 +267,7 @@ const ERROR =
         }
 
         &:last-child {
-          grid-area: 1 / 2;
+          grid-area: 1 / 3;
           align-self: center;
           justify-self: end;
         }
@@ -286,7 +286,9 @@ const ERROR =
       }
 
       td.free {
-        grid-area: 3 / 1;
+        grid-area: 1 / 2;
+        align-self: center;
+        justify-self: end;
       }
 
       .desktop-name,
@@ -327,12 +329,7 @@ const ERROR =
       }
 
       .free {
-        grid-column: 2;
         max-width: 100%;
-      }
-
-      .free {
-        grid-row: 2;
       }
 
       .empty-row > td.empty-state {
