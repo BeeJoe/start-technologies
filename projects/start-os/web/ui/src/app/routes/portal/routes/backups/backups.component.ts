@@ -1,4 +1,11 @@
-import { Component, computed, inject, OnInit, signal } from '@angular/core'
+import {
+  Component,
+  computed,
+  inject,
+  OnInit,
+  signal,
+  viewChild,
+} from '@angular/core'
 import { toSignal } from '@angular/core/rxjs-interop'
 import { FormsModule } from '@angular/forms'
 import { ActivatedRoute, Router } from '@angular/router'
@@ -220,7 +227,7 @@ const WEEKDAYS = [
             [createRequest]="createScheduleRequest()"
             [reviewPackageId]="reviewPackageId"
             (manageLocations)="openLocations()"
-            (collapseRequested)="expanded.set(null)"
+            (collapseRequested)="collapseAutomatic()"
           />
         </div>
       }
@@ -672,6 +679,7 @@ const WEEKDAYS = [
   ],
 })
 export default class BackupsComponent implements OnInit {
+  private readonly automatic = viewChild(AutomaticBackupsComponent)
   private readonly api = inject(ApiService)
   private readonly errors = inject(ErrorService)
   private readonly backupService = inject(BackupService)
@@ -721,12 +729,24 @@ export default class BackupsComponent implements OnInit {
     void this.backupService.getBackupTargets()
   }
 
-  togglePanel(panel: BackupPanel) {
+  async togglePanel(panel: BackupPanel) {
+    if (
+      this.expanded() === 'automatic' &&
+      !((await this.automatic()?.confirmDiscardChanges()) ?? true)
+    ) {
+      return
+    }
     this.expanded.update(current => (current === panel ? null : panel))
   }
 
-  openLocations() {
+  async openLocations() {
+    if (!((await this.automatic()?.confirmDiscardChanges()) ?? true)) return
     this.expanded.set('locations')
+  }
+
+  async collapseAutomatic() {
+    if (!((await this.automatic()?.confirmDiscardChanges()) ?? true)) return
+    this.expanded.set(null)
   }
 
   openAutomaticEditor() {
@@ -738,8 +758,13 @@ export default class BackupsComponent implements OnInit {
     this.createScheduleRequest.update(request => request + 1)
   }
 
-  goToServices() {
-    void this.router.navigate(['/services'])
+  async goToServices() {
+    if (!(await this.canDeactivate())) return
+    await this.router.navigate(['/services'])
+  }
+
+  async canDeactivate(): Promise<boolean> {
+    return (await this.automatic()?.confirmDiscardChanges()) ?? true
   }
 
   automaticSummary(): string {

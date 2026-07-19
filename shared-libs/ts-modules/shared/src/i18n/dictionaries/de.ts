@@ -1061,5 +1061,6 @@ export default {
   1178: 'Neuen Zeitplan hinzufügen',
   1179: 'Zum aktuellen Zeitplan hinzufügen',
   1180: 'Neuen Zeitplan erstellen',
+  1181: 'Änderungen verwerfen',
   908: 'Der Dienst muss laufen, um diesen Test durchzuführen. Aktueller Status:',
 } satisfies i18n

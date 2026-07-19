@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.0.7 — StartOS 0.4.0-beta.10 (2026-07-19)
+
+### Changed
+
+- **Backup reports now include rsync transfer size when it can be measured.**
+  Standard volume and sync backups return the number of bytes transferred so
+  StartOS can estimate the target space required by later automatic runs.
+  Packages with custom pre/post-backup behavior, or rsync output without the
+  structured statistic, report the value as unknown instead of inventing an
+  estimate.
+
 ## 2.0.6 — StartOS 0.4.0-beta.10 (2026-07-17)
 
 ### Fixed

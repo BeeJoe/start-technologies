@@ -9,6 +9,9 @@ Use `sdk.setupBackups()` with the appropriate builder. `sdk.Backups.ofVolumes('m
 > [!NOTE]
 > Because the service is stopped for the duration of the backup, your backup logic runs against a quiescent volume — nothing is writing to the data while it is copied or dumped. StartOS restarts the service automatically once the backup finishes, but only if it was running when the backup began; a service that was already stopped stays stopped.
 
+> [!NOTE]
+> Standard volume and sync backups report the bytes transferred to StartOS so later automatic runs can estimate target capacity from actual usage. Adding custom pre- or post-backup behavior makes that transfer size unknown because the SDK cannot measure storage written by custom code.
+
 **Reference:** [Main](main.md) · [File Models](file-models.md)
 
 ## Examples

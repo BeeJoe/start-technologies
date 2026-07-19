@@ -3,7 +3,6 @@ import {
   afterNextRender,
   Component,
   computed,
-  DestroyRef,
   ElementRef,
   effect,
   inject,
@@ -35,7 +34,6 @@ import {
   TuiInput,
   TuiLabel,
   TuiNotification,
-  TuiNotificationService,
   TuiTitle,
 } from '@taiga-ui/core'
 import {
@@ -186,6 +184,9 @@ interface JobEditor extends EditableRetentionRule {
           </div>
         </div>
         <label tuiLabel class="checkbox-row toggle-all">
+          <span tuiTitle>
+            <b>{{ 'Toggle all' | i18n }}</b>
+          </span>
           <input
             tuiCheckbox
             type="checkbox"
@@ -193,12 +194,12 @@ interface JobEditor extends EditableRetentionRule {
             [ngModel]="allReviewJobsSelected(review)"
             (ngModelChange)="setAllReviewJobs(review, $event)"
           />
-          <span tuiTitle>
-            <b>{{ 'Toggle all' | i18n }}</b>
-          </span>
         </label>
         @for (jobId of review.affectedJobs; track jobId) {
           <label tuiLabel class="checkbox-row review-job">
+            <span tuiTitle>
+              <b>{{ jobName(jobId) }}</b>
+            </span>
             <input
               tuiCheckbox
               type="checkbox"
@@ -208,9 +209,6 @@ interface JobEditor extends EditableRetentionRule {
                 setReviewDecision(review.packageId, jobId, $event)
               "
             />
-            <span tuiTitle>
-              <b>{{ jobName(jobId) }}</b>
-            </span>
           </label>
         }
         <footer class="review-actions">
@@ -1460,7 +1458,6 @@ export class ScheduledBackupsComponent implements OnInit {
   private readonly deleteSchedule = inject(DeleteScheduleService)
   private readonly errors = inject(ErrorService)
   private readonly i18n = inject(i18nPipe)
-  private readonly alerts = inject(TuiNotificationService)
   private readonly injector = inject(Injector)
   private readonly jobNameInput =
     viewChild<ElementRef<HTMLInputElement>>('jobNameInput')
@@ -1499,7 +1496,6 @@ export class ScheduledBackupsComponent implements OnInit {
   private pendingReview: T.NewServiceBackupReview | null = null
 
   constructor() {
-    inject(DestroyRef).onDestroy(() => this.warnUnsavedChanges())
     effect(() => {
       const request = this.createRequest()
       if (!request || request === this.handledCreateRequest || this.loading()) {
@@ -1508,9 +1504,9 @@ export class ScheduledBackupsComponent implements OnInit {
       this.handledCreateRequest = request
       const review = this.visibleReviews()[0]
       if (review) {
-        this.createForReview(review)
+        void this.createForReview(review)
       } else {
-        this.create()
+        void this.create()
       }
     })
   }
@@ -1622,9 +1618,9 @@ export class ScheduledBackupsComponent implements OnInit {
       if (this.editor()?.id && !selected) this.editor.set(null)
       if (!this.editor()) {
         if (selected) {
-          this.edit(selected)
+          void this.edit(selected)
         } else if (this.jobs().length === 1 && !this.showSingleJobList) {
-          this.edit(this.jobs()[0])
+          void this.edit(this.jobs()[0])
         }
       }
     } catch (error: any) {
@@ -1634,8 +1630,8 @@ export class ScheduledBackupsComponent implements OnInit {
     }
   }
 
-  create() {
-    this.warnUnsavedChanges()
+  async create(): Promise<boolean> {
+    if (!(await this.confirmDiscardChanges())) return false
     const now = new Date()
     const form: JobEditor = {
       name: '',
@@ -1669,10 +1665,11 @@ export class ScheduledBackupsComponent implements OnInit {
     afterNextRender(() => this.jobNameInput()?.nativeElement.focus(), {
       injector: this.injector,
     })
+    return true
   }
 
-  viewAllJobs() {
-    this.warnUnsavedChanges()
+  async viewAllJobs() {
+    if (!(await this.confirmDiscardChanges())) return
     this.reassigning.set(null)
     this.showSingleJobList = true
     this.selectedJobId.set('')
@@ -1682,8 +1679,8 @@ export class ScheduledBackupsComponent implements OnInit {
     this.showServices.set(false)
   }
 
-  cancelEditor() {
-    this.warnUnsavedChanges()
+  async cancelEditor() {
+    if (!(await this.confirmDiscardChanges())) return
     this.selectedJobId.set('')
     this.editor.set(null)
     this.editorBaseline = null
@@ -1707,18 +1704,29 @@ export class ScheduledBackupsComponent implements OnInit {
     )
   }
 
-  private warnUnsavedChanges(): boolean {
-    if (!this.hasUnsavedChanges()) return false
-    this.alerts
-      .open(this.i18n.transform('Changes were not saved'), {
-        appearance: 'warning',
-      })
-      .subscribe()
-    return true
+  async confirmDiscardChanges(): Promise<boolean> {
+    if (!this.hasUnsavedChanges()) return true
+    const confirmed = await firstValueFrom(
+      this.dialogs.openConfirm({
+        label: 'Unsaved changes',
+        size: 's',
+        data: {
+          content: 'Changes were not saved',
+          yes: 'Discard changes',
+          no: 'Cancel',
+        },
+      }),
+      { defaultValue: false },
+    )
+    if (confirmed) {
+      const form = this.editor()
+      this.editorBaseline = form ? this.editorSnapshot(form) : null
+    }
+    return confirmed
   }
 
-  createForReview(review: T.NewServiceBackupReview) {
-    this.create()
+  async createForReview(review: T.NewServiceBackupReview) {
+    if (!(await this.create())) return
     const form = this.editor()
     if (!form) return
     form.packageIds = [review.packageId]
@@ -1732,8 +1740,9 @@ export class ScheduledBackupsComponent implements OnInit {
     return !!form.id && form.id === this.jobs()[0]?.id
   }
 
-  edit(job?: T.BackupJob) {
+  async edit(job?: T.BackupJob) {
     if (!job) return
+    if (!(await this.confirmDiscardChanges())) return
     this.showSingleJobList = false
     this.showServices.set(false)
     this.pendingReview = null
@@ -1937,8 +1946,8 @@ export class ScheduledBackupsComponent implements OnInit {
     )
   }
 
-  beginReassign(job: T.BackupJob) {
-    this.warnUnsavedChanges()
+  async beginReassign(job: T.BackupJob) {
+    if (!(await this.confirmDiscardChanges())) return
     this.editor.set(null)
     this.editorBaseline = null
     this.pendingReview = null
@@ -1952,7 +1961,7 @@ export class ScheduledBackupsComponent implements OnInit {
 
   cancelReassign(job: T.BackupJob) {
     this.reassigning.set(null)
-    this.edit(job)
+    void this.edit(job)
   }
 
   async reassign(job: T.BackupJob) {

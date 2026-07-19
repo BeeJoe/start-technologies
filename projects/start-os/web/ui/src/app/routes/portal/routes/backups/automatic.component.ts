@@ -6,11 +6,17 @@ import {
   OnInit,
   output,
   signal,
+  viewChild,
 } from '@angular/core'
 import { toSignal } from '@angular/core/rxjs-interop'
 import { FormsModule } from '@angular/forms'
 import { ActivatedRoute, Router, RouterLink } from '@angular/router'
-import { ErrorService, getErrorMessage, i18nPipe } from '@start9labs/shared'
+import {
+  DialogService,
+  ErrorService,
+  getErrorMessage,
+  i18nPipe,
+} from '@start9labs/shared'
 import { T } from '@start9labs/start-core'
 import {
   TuiButton,
@@ -32,6 +38,7 @@ import {
   TuiSwitch,
 } from '@taiga-ui/kit'
 import { PatchDB } from 'patch-db-client'
+import { firstValueFrom } from 'rxjs'
 import { ApiService } from 'src/app/services/api/embassy-api.service'
 import { DataModel } from 'src/app/services/patch-db/data-model'
 import { TitleDirective } from 'src/app/services/title.service'
@@ -937,11 +944,13 @@ export default class AutomaticBackupsComponent implements OnInit {
   private readonly api = inject(ApiService)
   private readonly backupService = inject(BackupService)
   private readonly errors = inject(ErrorService)
+  private readonly dialogs = inject(DialogService)
   private readonly i18n = inject(i18nPipe)
   private readonly router = inject(Router)
   private readonly patch = inject<PatchDB<DataModel>>(PatchDB)
   private readonly packageData = toSignal(this.patch.watch$('packageData'))
   private readonly state = toSignal(this.patch.watch$('scheduledBackups'))
+  private readonly scheduled = viewChild(ScheduledBackupsComponent)
 
   readonly mode = input<'setup' | 'manage'>()
   readonly embedded = input(false)
@@ -1011,12 +1020,41 @@ export default class AutomaticBackupsComponent implements OnInit {
   ])
 
   editor: AutomaticEditor = this.defaultEditor()
+  private setupBaseline = ''
   readonly estimates = signal<T.BackupServiceCapacityEstimate[]>([])
 
   async ngOnInit() {
     await this.backupService.getBackupTargets()
     this.targetId.set(this.targets().find(target => target.available)?.id || '')
+    this.setupBaseline = this.setupSnapshot()
     this.loading.set(false)
+  }
+
+  async confirmDiscardChanges(): Promise<boolean> {
+    if (!this.setupMode()) {
+      return (await this.scheduled()?.confirmDiscardChanges()) ?? true
+    }
+    if (!this.setupBaseline || this.setupSnapshot() === this.setupBaseline) {
+      return true
+    }
+    const confirmed = await firstValueFrom(
+      this.dialogs.openConfirm({
+        label: 'Unsaved changes',
+        size: 's',
+        data: {
+          content: 'Changes were not saved',
+          yes: 'Discard changes',
+          no: 'Cancel',
+        },
+      }),
+      { defaultValue: false },
+    )
+    if (confirmed) this.setupBaseline = this.setupSnapshot()
+    return confirmed
+  }
+
+  private setupSnapshot(): string {
+    return JSON.stringify({ targetId: this.targetId(), editor: this.editor })
   }
 
   private defaultEditor(): AutomaticEditor {
@@ -1316,6 +1354,7 @@ export default class AutomaticBackupsComponent implements OnInit {
         runNow: this.editor.firstBackupNow,
       })
       this.backupService.showQueuedNotification(created)
+      this.setupBaseline = this.setupSnapshot()
       if (this.embedded()) this.collapseRequested.emit()
       const packageId = this.reviewPackageId()
       if (packageId) {

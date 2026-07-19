@@ -1061,5 +1061,6 @@ export default {
   1178: 'Dodaj nowy harmonogram',
   1179: 'Dodaj do bieżącego harmonogramu',
   1180: 'Utwórz nowy harmonogram',
+  1181: 'Odrzuć zmiany',
   908: 'Serwis musi być uruchomiony, aby wykonać ten test. Aktualny status:',
 } satisfies i18n

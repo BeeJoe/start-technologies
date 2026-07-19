@@ -1061,5 +1061,6 @@ export default {
   1178: 'Añadir nueva programación',
   1179: 'Añadir a la programación actual',
   1180: 'Crear una nueva programación',
+  1181: 'Descartar cambios',
   908: 'El servicio debe estar en ejecución para realizar esta prueba. Estado actual:',
 } satisfies i18n

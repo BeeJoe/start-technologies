@@ -1063,4 +1063,5 @@ export const ENGLISH: Record<string, number> = {
   'Add new schedule': 1178,
   'Add to current schedule': 1179,
   'Create a new schedule': 1180,
+  'Discard changes': 1181,
 }

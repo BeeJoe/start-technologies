@@ -1061,5 +1061,6 @@ export default {
   1178: 'Ajouter une nouvelle planification',
   1179: 'Ajouter à la planification actuelle',
   1180: 'Créer une nouvelle planification',
+  1181: 'Ignorer les modifications',
   908: 'Le service doit être en fonctionnement pour effectuer ce test. Statut actuel :',
 } satisfies i18n

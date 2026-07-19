@@ -94,8 +94,9 @@ file tracks notable changes since the move to the monorepo.
   a three-dot menu that also offers **Add schedule** and **Delete schedule**.
   Opening one schedule collapses the list to a **View all schedules** card,
   while **Add schedule** sits below the list and focuses the schedule name. Any
-  exit from a changed editor other than **Save** now warns that changes were not
-  saved, including Cancel, changing panels, navigating, and closing the page.
+  exit from a changed editor other than **Save** now asks for confirmation before
+  discarding changes, including Cancel, changing panels, navigating, and closing
+  the page.
   The first schedule hides its name while alone and appears as **Default** once
   another schedule is added.
   Saving or canceling an edit collapses the full Automatic backups card; the
@@ -136,10 +137,14 @@ file tracks notable changes since the move to the monorepo.
   copy are full copies before a multi-version policy can be saved. Capacity
   details now focus on live data, retained automatic storage, checkpoint count,
   and next-run staging instead of unrelated or duplicate figures.
+  Capacity checks and transfer measurements use the underlying drive or network
+  mount, avoiding the encrypted filesystem's synthetic 40.96 MB capacity.
 - **New-service backup review.** A service task with one automatic schedule now
   offers to add the service directly without leaving Services or create a new
   schedule. Several schedules retain the aligned selection list and add an
   **Add new schedule** action; no configured schedule opens initial setup.
+  Selective schedules whose services have all been uninstalled now notify the
+  user to pause, delete, or edit the empty schedule.
 - **Automatic backup CLI coverage.** `start-cli` now manages automatic schedules,
   capacity estimates, activity, checkpoint history, target recovery,
   per-service retention overrides, new-service reviews, safe retention-policy

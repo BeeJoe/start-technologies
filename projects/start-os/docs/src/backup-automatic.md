@@ -61,8 +61,8 @@ currently installed services it protects. Select **View/Edit** to collapse the
 list and open that schedule. Saving or canceling an edit fully collapses the
 Automatic backups card. Expanding a card with several schedules returns to the
 schedules list; expanding a card with one schedule returns directly to that
-schedule. **View all schedules** closes an unsaved editor and returns to the
-list after warning that changes were not saved. **Add schedule** appears below
+schedule. **View all schedules** asks before discarding an unsaved editor and
+returning to the list. **Add schedule** appears below
 the list and moves focus directly to the schedule name field.
 
 The first schedule never shows an editable name field. If you add another, the
@@ -179,6 +179,9 @@ explain the next action:
   or explicitly reassign the schedule before it writes to the replacement.
 - **Add to backup schedule** — on the newly installed service, decide whether
   it belongs in each selective schedule or dismiss the recommendation.
+- **Backup Schedule Has No Services** — all explicitly selected services have
+  been uninstalled; pause or delete the schedule, or edit it to select an
+  installed service.
 
 For deeper troubleshooting, `start-cli server logs` shows structured run-level
 and service-level entries, including **automatic backup service started**,

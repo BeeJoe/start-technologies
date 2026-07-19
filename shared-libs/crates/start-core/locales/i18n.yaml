@@ -1627,11 +1627,32 @@ backup.scheduled.review-incomplete:
   pl_PL: "Wymagana jest decyzja dla każdego zadania kopii"
 
 backup.scheduled.review-task-reason:
-  en_US: "This service is not included in every automatic backup schedule."
-  de_DE: "Dieser Dienst ist nicht in jedem automatischen Sicherungszeitplan enthalten."
-  es_ES: "Este servicio no está incluido en todas las programaciones de copias automáticas."
-  fr_FR: "Ce service n'est pas inclus dans toutes les planifications de sauvegarde automatique."
-  pl_PL: "Ta usługa nie jest uwzględniona w każdym harmonogramie automatycznych kopii zapasowych."
+  en_US: "This service is not included in an automatic backup schedule."
+  de_DE: "Dieser Dienst ist nicht in einem automatischen Sicherungszeitplan enthalten."
+  es_ES: "Este servicio no está incluido en una programación de copias automáticas."
+  fr_FR: "Ce service n'est pas inclus dans une planification de sauvegarde automatique."
+  pl_PL: "Ta usługa nie jest uwzględniona w harmonogramie automatycznych kopii zapasowych."
+
+backup.scheduled.no-installed-services:
+  en_US: "The schedule has no installed services to back up"
+  de_DE: "Der Zeitplan enthält keine installierten Dienste zum Sichern"
+  es_ES: "La programación no tiene servicios instalados para respaldar"
+  fr_FR: "La planification ne contient aucun service installé à sauvegarder"
+  pl_PL: "Harmonogram nie zawiera zainstalowanych usług do utworzenia kopii"
+
+backup.scheduled.no-installed-services-title:
+  en_US: "Backup Schedule Has No Services"
+  de_DE: "Sicherungszeitplan enthält keine Dienste"
+  es_ES: "La programación de copias no tiene servicios"
+  fr_FR: "La planification de sauvegarde ne contient aucun service"
+  pl_PL: "Harmonogram kopii nie zawiera usług"
+
+backup.scheduled.no-installed-services-message:
+  en_US: "All services selected by %{job} have been uninstalled. Pause or delete this schedule, or edit it to select installed services."
+  de_DE: "Alle von %{job} ausgewählten Dienste wurden deinstalliert. Pausieren oder löschen Sie diesen Zeitplan oder wählen Sie installierte Dienste aus."
+  es_ES: "Todos los servicios seleccionados por %{job} se han desinstalado. Pause o elimine esta programación, o edítela para seleccionar servicios instalados."
+  fr_FR: "Tous les services sélectionnés par %{job} ont été désinstallés. Mettez cette planification en pause, supprimez-la ou sélectionnez des services installés."
+  pl_PL: "Wszystkie usługi wybrane przez %{job} zostały odinstalowane. Wstrzymaj lub usuń harmonogram albo wybierz zainstalowane usługi."
 
 backup.scheduled.retry-before-resume:
   en_US: "Verify the backup target with Retry before resuming this job"

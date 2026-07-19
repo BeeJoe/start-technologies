@@ -110,6 +110,35 @@ async fn run_job_inner(
     }
     let target_name = job.target_id.user_facing_name(&db);
     let package_ids = selected_services(&db, &job.services)?;
+    if matches!(
+        &job.services,
+        BackupServiceScope::Selected { package_ids } if !package_ids.is_empty()
+    ) && package_ids.is_empty()
+    {
+        let error = Error::new(
+            eyre!("{}", t!("backup.scheduled.no-installed-services")),
+            ErrorKind::InvalidRequest,
+        );
+        ctx.db
+            .mutate(|db| {
+                notify(
+                    db,
+                    None,
+                    NotificationLevel::Warning,
+                    t!("backup.scheduled.no-installed-services-title").to_string(),
+                    t!(
+                        "backup.scheduled.no-installed-services-message",
+                        job = job.name
+                    )
+                    .to_string(),
+                    (),
+                )
+            })
+            .await
+            .result?;
+        record_failed_run(ctx, &job, &package_ids, trigger, error.to_string()).await?;
+        return Err(error);
+    }
     tracing::info!(
         job_id = %job.id,
         job_name = %job.name,
@@ -198,15 +227,16 @@ async fn run_job_inner(
         }
     };
     mark_target_connected(ctx, &job.target_id).await?;
-    let target_available = match crate::disk::util::get_available(scheduled_guard.path()).await {
-        Ok(available) => available,
-        Err(error) => {
-            let message = error.to_string();
-            record_connectivity_failure(ctx, &job).await?;
-            record_failed_run(ctx, &job, &package_ids, trigger, message).await?;
-            return Err(error);
-        }
-    };
+    let target_available =
+        match crate::disk::util::get_available(scheduled_guard.target_path()).await {
+            Ok(available) => available,
+            Err(error) => {
+                let message = error.to_string();
+                record_connectivity_failure(ctx, &job).await?;
+                record_failed_run(ctx, &job, &package_ids, trigger, message).await?;
+                return Err(error);
+            }
+        };
     if let Err(error) =
         preflight_capacity(&db, &job, &package_ids, &scheduled_guard, target_available).await
     {
@@ -311,7 +341,7 @@ async fn run_job_inner(
 
     for package_id in &package_ids {
         let started = Instant::now();
-        let available_before = crate::disk::util::get_available(scheduled_guard.path())
+        let available_before = crate::disk::util::get_available(scheduled_guard.target_path())
             .await
             .ok();
         let mut phase = phases.remove(package_id).expect("backup phase exists");
@@ -328,7 +358,7 @@ async fn run_job_inner(
                     Ok(output) => {
                         let physical_size = consumed_capacity(
                             available_before,
-                            crate::disk::util::get_available(scheduled_guard.path())
+                            crate::disk::util::get_available(scheduled_guard.target_path())
                                 .await
                                 .ok(),
                         );
@@ -620,27 +650,25 @@ fn selected_services(
     db: &crate::db::model::DatabaseModel,
     scope: &BackupServiceScope,
 ) -> Result<BTreeSet<PackageId>, Error> {
+    let installed: BTreeSet<_> = db
+        .as_public()
+        .as_package_data()
+        .as_entries()?
+        .into_iter()
+        .filter(|(_, package)| package.as_state_info().expect_installed().is_ok())
+        .map(|(id, _)| id)
+        .collect();
     Ok(match scope {
-        BackupServiceScope::All => db
-            .as_public()
-            .as_package_data()
-            .as_entries()?
-            .into_iter()
-            .filter(|(_, package)| package.as_state_info().expect_installed().is_ok())
-            .map(|(id, _)| id)
-            .collect(),
+        BackupServiceScope::All => installed,
         BackupServiceScope::AllExcept {
             excluded_package_ids,
-        } => db
-            .as_public()
-            .as_package_data()
-            .as_entries()?
+        } => installed
             .into_iter()
-            .filter(|(_, package)| package.as_state_info().expect_installed().is_ok())
-            .map(|(id, _)| id)
             .filter(|id| !excluded_package_ids.contains(id))
             .collect(),
-        BackupServiceScope::Selected { package_ids } => package_ids.clone(),
+        BackupServiceScope::Selected { package_ids } => {
+            package_ids.intersection(&installed).cloned().collect()
+        }
     })
 }
 

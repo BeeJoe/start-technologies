@@ -9,7 +9,7 @@ Because `start-cli` is a thin client over `start-core`, most user-visible CLI ch
 in `start-core`; record here anything that changes this crate's entrypoint, features, packaging,
 or the CLI's externally observable behavior.
 
-## [Unreleased]
+## [1.1.0]
 
 ### Added
 

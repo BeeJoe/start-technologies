@@ -18,7 +18,7 @@ use crate::hostname::ServerHostname;
 use crate::prelude::*;
 use crate::rpc_continuations::Guid;
 use crate::util::crypto::{decrypt_slice, encrypt_slice};
-use crate::util::io::{AtomicFile, delete_dir, dir_copy, dir_size, rename};
+use crate::util::io::{AtomicFile, delete_dir, delete_file, dir_copy, dir_size, rename};
 use crate::util::serde::IoFormat;
 use crate::version::VersionT;
 
@@ -59,6 +59,14 @@ pub struct ScheduledBackupMountGuard<G: GenericMountGuard> {
 }
 
 impl<G: GenericMountGuard> ScheduledBackupMountGuard<G> {
+    /// Returns the underlying backup target path rather than the synthetic BackupFS mount.
+    pub(crate) fn target_path(&self) -> &Path {
+        self.target_guard
+            .as_ref()
+            .expect("scheduled backup target is mounted")
+            .path()
+    }
+
     pub async fn initialize(
         target_guard: G,
         server_id: &str,
@@ -460,7 +468,7 @@ impl<G: GenericMountGuard> ScheduledBackupMountGuard<G> {
             let name = name.to_string_lossy();
             let run_id = name.split('.').next().unwrap_or_default();
             if !referenced.contains(run_id) {
-                tokio::fs::remove_file(entry.path()).await?;
+                delete_file(entry.path()).await?;
             }
         }
         Ok(())
