@@ -79,10 +79,13 @@ schedule's time as though it applied to every schedule.
 
 When no automatic schedule is configured to include future services, a newly
 installed service gets a dismissible **Add to backup schedule** recommended
-task on its service page. The task does not block starting the service. Run it
-to open Backups and select the schedules that should include the service, using
-**Toggle all** when appropriate. If automatic backups are not configured yet,
-the task opens initial setup instead.
+task on its service page. The task does not block starting the service. With one
+schedule, run the task and choose either **Add to current schedule** to update
+it without leaving Services or **Create a new schedule** to open a new schedule
+editor. With several schedules, select the schedules that should include the
+service, using **Toggle all** when appropriate, or use **Add new schedule** at
+the bottom of the selection screen. If automatic backups are not configured
+yet, the task opens initial setup instead.
 
 Turning off automatic backups immediately pauses the schedules and keeps their
 settings and checkpoints. Delete a schedule from its editor when you want to
@@ -93,7 +96,14 @@ including the first or only schedule. The **Delete backup schedule?** dialog
 uses **Delete Schedule** by default and immediately changes the button to
 **Delete Schedule and Backups** when you select **Delete related backups**.
 Leaving that option off keeps unreferenced checkpoints as an archive. Deleting
-the last schedule returns **Automatic backups** to its initial setup state.
+from a multi-schedule editor returns to the schedule list; when one schedule
+remains, the Automatic backups card collapses. Deleting the last schedule
+returns **Automatic backups** to its initial setup state.
+
+Every detailed schedule editor also offers **Run now**. Select it before
+**Save** to apply the changes and immediately request a run. If an edited
+schedule is left through Cancel, the schedule list, another Backups panel,
+navigation, or closing the page, StartOS warns that the changes were not saved.
 
 ## Version History and Storage
 
@@ -101,7 +111,9 @@ Every retained automatic version is a full target-side copy, not a small
 incremental delta. A run also needs temporary staging space. More frequent
 version history therefore increases required space, run time, and I/O,
 especially on network storage and slower external drives. The setup review
-mentions available space only when the selected location reports it.
+and every schedule editor require acknowledging this full-copy impact before a
+multi-version policy can be saved. The setup review mentions available space
+only when the selected location reports it.
 
 When version history contains several retention tiers, the collapsed summary
 lists every tier so the editor never hides part of the active policy.
@@ -110,9 +122,8 @@ Capacity estimates initially show only each service's maximum required space.
 Select **More Info** on a service to expand clearly labeled details for:
 
 - current service data;
-- the latest manual checkpoint;
 - retained automatic checkpoints;
-- archived checkpoints; and
+- the number of checkpoints retained by the policy; and
 - staging for the next run.
 
 **Backup history** shows active and archived automatic checkpoints by service

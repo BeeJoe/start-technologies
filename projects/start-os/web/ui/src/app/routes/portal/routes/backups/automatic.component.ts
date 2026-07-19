@@ -78,6 +78,7 @@ interface AutomaticEditor {
   additionalRules: AutomaticRetentionRule[]
   password: string
   firstBackupNow: boolean
+  capacityConfirmed: boolean
 }
 
 interface AutomaticRetentionRule {
@@ -457,17 +458,29 @@ interface AutomaticRetentionRule {
 
           @if (capacityNeeded() !== null) {
             <div tuiNotification [appearance]="capacityAppearance()">
-              {{ 'About' | i18n }} {{ bytes(capacityNeeded()!) }}
-              {{ 'needed' | i18n }}
-              @if (capacityAvailable() !== null) {
-                ; {{ bytes(capacityAvailable()!) }} {{ 'available' | i18n }}
-              }
-              .
+              {{ capacitySummary() }}
               @if (capacityBlocked()) {
                 <span class="block-helper">
                   {{ 'Choose a location with more free space.' | i18n }}
                 </span>
               }
+            </div>
+          }
+
+          @if (editor.keepAdditional) {
+            <div tuiNotification appearance="warning">
+              {{
+                'Every retained version is a full copy. Each run also makes a full target-side staging copy. This can substantially increase storage use, runtime, and I/O, especially on network storage and slow external devices.'
+                  | i18n
+              }}
+              <label class="check-row">
+                <input
+                  tuiCheckbox
+                  type="checkbox"
+                  [(ngModel)]="editor.capacityConfirmed"
+                />
+                {{ 'I understand the full-copy storage impact' | i18n }}
+              </label>
             </div>
           }
 
@@ -1025,6 +1038,7 @@ export default class AutomaticBackupsComponent implements OnInit {
       additionalRules: [],
       password: '',
       firstBackupNow: true,
+      capacityConfirmed: false,
     }
   }
 
@@ -1075,6 +1089,7 @@ export default class AutomaticBackupsComponent implements OnInit {
       this.validSchedule() &&
       this.validRetention() &&
       !this.capacityBlocked() &&
+      (!this.editor.keepAdditional || this.editor.capacityConfirmed) &&
       this.editor.services.some(service => service.checked)
     )
   }
@@ -1087,6 +1102,7 @@ export default class AutomaticBackupsComponent implements OnInit {
   }
 
   previous() {
+    if (this.step() === 3) this.editor.capacityConfirmed = false
     this.step.update(step => Math.max(1, step - 1))
   }
 
@@ -1154,6 +1170,7 @@ export default class AutomaticBackupsComponent implements OnInit {
       this.editor.keepAdditional = false
       Object.assign(this.editor, this.newRetentionRule())
     }
+    this.editor.capacityConfirmed = false
   }
 
   private validSchedule(): boolean {
@@ -1271,6 +1288,16 @@ export default class AutomaticBackupsComponent implements OnInit {
 
   capacityAppearance(): 'info' | 'negative' {
     return this.capacityBlocked() ? 'negative' : 'info'
+  }
+
+  capacitySummary(): string {
+    const needed = this.capacityNeeded()
+    if (needed === null) return ''
+    const available = this.capacityAvailable()
+    const summary = `${this.i18n.transform('About')} ${this.bytes(needed)} ${this.i18n.transform('needed')}`
+    return available === null
+      ? `${summary}.`
+      : `${summary}; ${this.bytes(available)} ${this.i18n.transform('available')}.`
   }
 
   async createAutomaticBackup() {

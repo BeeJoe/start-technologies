@@ -688,7 +688,9 @@ export default class BackupsComponent implements OnInit {
   readonly expanded = signal<BackupPanel | null>(
     this.reviewPackageId ? 'automatic' : null,
   )
-  protected readonly createScheduleRequest = signal(0)
+  protected readonly createScheduleRequest = signal(
+    this.route.snapshot.queryParamMap.has('createSchedule') ? 1 : 0,
+  )
   readonly manualRunning = toSignal(this.os.backingUp$, { initialValue: false })
   changingAutomatic = false
 

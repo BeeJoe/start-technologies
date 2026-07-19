@@ -1058,5 +1058,8 @@ export default {
   1175: 'Zum Sicherungszeitplan hinzufügen',
   1176: 'Wählen Sie aus, welche automatischen Sicherungszeitpläne diesen Dienst enthalten sollen.',
   1177: 'Sicherungszeitpläne speichern',
+  1178: 'Neuen Zeitplan hinzufügen',
+  1179: 'Zum aktuellen Zeitplan hinzufügen',
+  1180: 'Neuen Zeitplan erstellen',
   908: 'Der Dienst muss laufen, um diesen Test durchzuführen. Aktueller Status:',
 } satisfies i18n

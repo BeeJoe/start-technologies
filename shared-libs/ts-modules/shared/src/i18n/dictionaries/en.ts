@@ -1060,4 +1060,7 @@ export const ENGLISH: Record<string, number> = {
   'Add to backup schedule': 1175,
   'Choose which automatic backup schedules should include this service.': 1176,
   'Save backup schedules': 1177,
+  'Add new schedule': 1178,
+  'Add to current schedule': 1179,
+  'Create a new schedule': 1180,
 }

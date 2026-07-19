@@ -13,12 +13,69 @@ file tracks notable changes since the move to the monorepo.
 ### Added
 
 - **Automatic backups.** StartOS can protect selected current and future
-  services on one or more hourly, daily, or weekly schedules; estimate required
+  services on one or more hourly, daily, weekly, or monthly schedules; estimate required
   capacity; retain configurable version history; preserve unreferenced
   checkpoints as archives; recover or reassign unavailable locations; and
   restore a different manual or automatic checkpoint for each service. Backup
   activity, actionable notifications, and new-service selection reviews keep
   the scheduled lifecycle visible and recoverable.
+- **In-place 0.3.5.1 → 0.4.0 update path.** Updating the OS from 0.3.5.1 no longer
+  requires syncing a whole root filesystem file-by-file — the step that grew
+  flakier the more files a device had. StartOS 0.3.5.1's existing over-the-air
+  updater instead receives a compact migration payload (the 0.4.0 base image plus
+  a boot-time rewire) and the 0.4.0 initramfs converts the on-disk layout to the
+  0.4.0 format on first boot. The data partition is preserved and the existing
+  package/database migration runs afterward as before.
+
+- **IPv6 GUA exposure control.** On a service interface, an IPv6 global-unicast
+  address (GUA) keeps the usual on/off toggle and adds a **Local / Public**
+  dropdown in the access column. **Local** (the default) keeps it reachable on
+  the local network only — traffic from outside the subnet is rejected;
+  **Public** exposes it to the Internet and attempts an automatic gateway
+  pinhole (PCP). The choice is carried by the address's `public` flag, so
+  services selecting addresses for P2P see the correct reachability. A GUA on a
+  StartOS-terminated SSL port is served by the host's own TLS listener; a port
+  StartOS does not terminate is forwarded (DNAT) directly to the service
+  container. IPv6 ULAs and IPv4 are unchanged.
+- **DualStack public domains.** A public (clearnet) domain is now reachable over
+  both IPv4 and IPv6 whenever its gateway has an IPv6 global-unicast address
+  (GUA). StartOS advertises an `AAAA` target (the GUA) alongside the `A` target,
+  opens an inbound IPv6 firewall pinhole for the domain's port (via PCP — v6 is
+  NAT-free, so there is nothing to forward), and serves the domain on the GUA
+  through its existing SNI-routed TLS listener. The bare GUA itself is not
+  exposed — only traffic matching the domain by SNI is accepted — so an SSL
+  domain needs no separate GUA WAN opt-in (a plaintext domain, which has no SNI
+  to filter on, exposes the GUA the same way it exposes the WAN IPv4). The
+  add-domain DNS check and the domain setup modal now verify and display both
+  the `A`/IPv4 and `AAAA`/IPv6 records and reachability; IPv6 reachability is its
+  own `net.gateway.check-port-v6` endpoint (separate from the IPv4
+  `net.gateway.check-port`) so each family is probed independently.
+- **`--force` on service start.** `start-cli package start <id> --force` (and the
+  `package.start` RPC `force` flag) starts a service even when it has an unresolved
+  critical task.
+- **Automatic gateway configuration (#3306).** A StartOS server now opens its own public ports and publishes its private-domain DNS by talking to its gateway — a home router or a StartTunnel — instead of leaving it as a manual step.
+  - **Automatic port forwarding.** When a public address needs a port open, StartOS opens it by speaking a port-control protocol to the gateway: PCP (RFC 6887) → NAT-PMP → UPnP IGD, in that order. Mappings are reference-counted and withdrawn when the address is disabled or deleted; each active mapping is renewed at about half its gateway-granted lease, well before it would expire, so a still-wanted forward is never dropped, and letting a mapping lapse (no further renewal) is itself a teardown path once an exposure goes away. A single shared `PortMapController` also answers reachability, so `check_port` skips the remote echo probe when an automatic mapping is already active and reports the gateway-assigned external IP directly. Port mapping is scoped to the gateway each exposure actually routes through (the interface's own subnet gateway), so the box never probes an unrelated LAN router. A port's forwards and mappings are driven only by the addresses advertised at that exact port — exposing an SSL address never opens its plaintext sibling.
+  - **Private-domain DNS injection (RFC 2136).** When a private domain is enabled on a gateway, StartOS pushes an `A` record (domain → this host's IP on that subnet) to the gateway's DNS server via DNS UPDATE so LAN devices that don't use StartOS's resolver can still resolve it, and withdraws it on disable/delete. `check_dns` now verifies a private domain by resolving the specific FQDN against the LAN's DNS server(s) and confirming it returns one of this server's LAN addresses.
+  - **PCP HOSTNAME extension (SNI demux).** SSL/TLS services can share a single external port (443) across many hostnames: the gateway demultiplexes inbound TLS by SNI. StartOS emits PCP HOSTNAME mappings for public-domain vhosts (PCP-only — NAT-PMP/UPnP can't demux), gated by a PCP ANNOUNCE capability probe so the option is only sent to gateways that understand it. The protocol is documented as an Internet-Draft (`rfcs/draft-start9-pcp-hostname`).
+  - **PCP PORT_SET (RFC 7753).** A contiguous port range maps in a single PCP MAP instead of per-port sweeps.
+  - **In-place WireGuard gateway updates.** `start-cli net tunnel update <id> <config>` (and a per-gateway **Update config** UI action) re-issues a WireGuard config onto the existing interface without churning the gateway identity, so forwards and public/private domains keyed to it survive the swap — primarily to add a `DNS =` line to an existing config. The update path uses NetworkManager `Update2` + `Device.Reapply`, so updating the gateway carrying the request no longer drops its own transport. Because NetworkManager (≤ 1.52) strips WireGuard peer preshared-keys on `Reapply` even when they are passed to it explicitly, StartOS re-applies each peer's PSK straight to the kernel device (over stdin, never argv) after the reapply, so the tunnel keeps its shared secret.
+  - **Best-effort HTTP→HTTPS redirect (IPv6).** When a service is publicly exposed on 443 over an IPv6 GUA, StartOS asks the gateway for an `80→443` redirect pinhole so plain `http://` auto-redirects to `https`. Over IPv4 no such map is requested — the upstream gateway (e.g. StartTunnel, which serves a port-80 redirect by default) handles it.
+  - **Insecure exposures never reach the WAN.** A port is opened to the public internet (an IPv4 WAN forward, an IPv6 GUA pinhole/forward, or an upstream port-map) only when the exposure is itself secure — TLS on the wire or a self-securing protocol. A plaintext exposure can still reach the LAN over a gateway explicitly marked secure, but the WAN is treated as never secure regardless of the gateway's setting.
+- **Private domains on StartTunnel gateways (ba5396f49).** Now that a StartTunnel proxies DNS per subnet, a private domain resolves for tunnel clients (their DNS forwards to this server, which answers with the gateway's tunnel address), so the UI no longer restricts the public/private domain picker to router gateways — all gateways can use it. The "DNS Server Config" guidance is now gateway-aware: for a tunnel gateway it instructs you to point the StartTunnel subnet's DNS at this server. The private-domain and clearnet setup dialogs also surface the automatic alternatives (enable DNS Injection for the device; automatic UPnP/NAT-PMP/PCP port forwarding) instead of describing only the manual paths.
+- **`MultiHost.bindPortRange` backend (#3270).** Host support for reserving a contiguous TCP+UDP port range (2–500 ports) in one call, stored as a single `RangeBindInfo` record under `Host.binding_ranges` and installed as one nftables rule per chain (via `PortForward.count`). Intended for real-time / WebRTC servers (coturn, RTP, SIP). Backed by the new `bindRange` effect.
+- **Package init progress reporting (#3323).** A service can stream progress during the install/update finalization phase via the new `setInitProgress` effect; the host nests it inside the install's finalization phase using the standard `FullProgress` wire format, and `setupInit` auto-reports one step per composed init handler.
+- **Phased backup progress (#3250).** `serverInfo.statusInfo.backupProgress` now uses the standard `FullProgress` shape (matching update/install progress). `NamedProgress.progress` is generalized to `PhaseProgress` so a phase can carry sub-phases, and the new `setBackupProgress` effect lets a service container stream its own backup sub-progress.
+- **Backup format v2 (#3289).** Backups are written to a new `StartOSBackupsV2` directory, and the backup report now includes per-package duration. The backup targets list shows the free space available on every drive and network folder so the user can confirm a backup will fit before starting it. When this server's pre-v2 `StartOSBackups/<server-id>` backup is present on the selected target, the UI additionally warns before backup, then confirms the format change (#3324, `backup.target.legacy-info` RPC). Once migrated, StartOS also helps remove the now-obsolete V1 data: after a backup completes, if the target still holds this server's V1 backup, a warning notification reminds the user it is no longer needed; and the backup-create page shows a **Delete old backup** action for any target holding this server's V1 backup — whether or not a new (V2) backup exists yet — removing only this server's old backup to reclaim space; other servers' backups and `StartOSBackupsV2` are untouched (`backup.target.delete-legacy` RPC). Deleting requires a confirmation, plus an extra confirmation when this server has no current (V2) backup on the target (so the user can't unknowingly delete their only backup). Legacy detection and deletion are scoped to the current server's ID, so a target shared by several servers no longer flags or removes another server's backup.
+- **Direct cross-package action runs via `access` (#3267).** Action metadata gains an `access` field (`'public' | 'dependent' | 'user'`, default `'user'`) controlling who may invoke an action directly through `effects.action.run`. Public/dependent actions give dependents a direct path instead of only creating a task; direct runs still honor the action's `visibility` and `allowedStatuses`.
+- **`input-not-matches` tasks accept multiple values (#3310).** `TaskInput` splits into `accept` (a list of acceptable partial inputs) and `set` (the value to prefill when none match); the cross-package critical-conflict guard fires only when the input conflicts with every `accept` entry. The host still accepts the legacy `{ value }` shape over the effects socket for s9pks built on the pre-2.0 SDK.
+- **Service interfaces tab.** Service interfaces are promoted to a dedicated sidebar tab; the dashboard interfaces card and per-interface detail route are removed, sidebar nav labels are decoupled from route paths, and the tasks table is redesigned (action-first, service rendered as an icon).
+- **Unified marketplace + brochure.** The in-OS marketplace and the public brochure now share `@start9labs/marketplace` components behind an `AbstractMarketplaceService` (the OS persists to patch-db, the brochure to localStorage), so both ship the identical detail/preview UI. The brochure app is ported into the workspace and auto-deployed to `marketplace.start9.com` on master. The registry-selection modal is replaced by an inline registry-select dropdown (switch/add/delete inline), and custom registries can now be added by bare domain (https default; http for `.onion`) (#3349). Empty categories are hidden (snapping back to "all" on a registry switch that empties the selection), category icons are refreshed for the current set, and a "Package a service" link sits beneath the sidebar categories.
+- **Nested idmapped mounts (#3248).** StartOS gains syscall-based mount primitives (`open_tree`/`move_mount`/`fsopen`/`mount_setattr`) and a `start-container mount` path, wiring up the SDK's `idmap` field on volume/asset/dependency/backup mounts end-to-end. See [`../start-sdk/CHANGELOG.md`](../start-sdk/CHANGELOG.md) for the SDK-facing surface.
+- **Raspberry Pi image hardening (#3249).** Vendor kernel bumped to 6.18.33+rpt with apt pins so `/boot` stays vendor-only, `earlycon` for first-boot diagnostics, a loop-safe self-diagnosing `init_resize`, and data-drive-only setup for pre-installed devices.
+- **Graceful shutdown on external power events (#3319).** Two systemd pre-shutdown barrier units (`startos-shutdown.service` / `startos-restart.service`) call `start-cli server shutdown/restart` and wait for graceful container teardown, so externally-initiated shutdowns (UPS / `qm` / ACPI) tear services down cleanly. The shutdown/restart RPC gains an opt-in `wait` param.
+- **iOS root-CA install via configuration profile (#3240).** A new endpoint serves an unsigned Apple Configuration Profile (`PayloadType com.apple.security.root`); iOS/iPadOS download links are UA-sniffed and routed to `.mobileconfig`, fixing the broken `.crt` install flow on iOS 26.5 Safari.
+- **`diagnose-hang` capture script (#3236).** Captures startd runtime state entirely via `/proc` and basic tools (per-thread kernel stacks, fds/sockets, journal tail, dmesg, disk health, lxc status) when startd is unresponsive and `start-cli` can't help.
+- **`lo` and `lxcbr0` treated as secure networks (#3297)** for insecure (plain-HTTP) traffic, since loopback and the container bridge never leave the host; an explicit secure setting still overrides the intrinsic default.
 - **In-place 0.3.5.1 → 0.4.0 update path.** Updating the OS from 0.3.5.1 no longer
   requires syncing a whole root filesystem file-by-file — the step that grew
   flakier the more files a device had. StartOS 0.3.5.1's existing over-the-air
@@ -36,10 +93,11 @@ file tracks notable changes since the move to the monorepo.
   switch, shows a **Paused** badge when off, and replaces its expand arrow with
   a three-dot menu that also offers **Add schedule** and **Delete schedule**.
   Opening one schedule collapses the list to a **View all schedules** card,
-  which warns that changes were not saved before discarding edits, while **Add
-  schedule** sits below the list and focuses the schedule name. The first
-  schedule hides its name while alone and appears as **Default** once another
-  schedule is added.
+  while **Add schedule** sits below the list and focuses the schedule name. Any
+  exit from a changed editor other than **Save** now warns that changes were not
+  saved, including Cancel, changing panels, navigating, and closing the page.
+  The first schedule hides its name while alone and appears as **Default** once
+  another schedule is added.
   Saving or canceling an edit collapses the full Automatic backups card; the
   schedules list appears when a multi-schedule card is expanded again. Monthly
   schedules add a day-of-month choice and
@@ -59,8 +117,11 @@ file tracks notable changes since the move to the monorepo.
   action to **Delete Schedule and Backups** when deleting checkpoints used only
   by that schedule, under the **Delete backup schedule?** heading. Turning
   automatic backups off now directly pauses schedules
-  without a deletion dialog. Deleting the final schedule returns automatic
-  backups to initial setup.
+  without a deletion dialog. After deletion, StartOS returns to the schedules
+  list or collapses the Automatic backups card when one schedule remains;
+  deleting the final schedule returns automatic backups to initial setup. The
+  detailed editor can also request **Run now** while saving an existing
+  schedule.
 - **Simplified Automatic Backups.** The expanded card now uses a flat settings
   layout, keeps **Run now** with the detailed actions, and leaves checkpoint
   browsing and restore actions in the dedicated **Backup history** and restore
@@ -70,12 +131,82 @@ file tracks notable changes since the move to the monorepo.
   turn automatic backups on, and provides a show/hide-password control.
   Version history now offers hour, day, week, and month intervals (day remains
   the default), labels the duration with the selected singular or plural unit,
-  and lets additional rules be added with a plus button.
+  and lets additional rules be added with a plus button. Setup and schedule
+  editing require acknowledging that every retained version and the staging
+  copy are full copies before a multi-version policy can be saved. Capacity
+  details now focus on live data, retained automatic storage, checkpoint count,
+  and next-run staging instead of unrelated or duplicate figures.
+- **New-service backup review.** A service task with one automatic schedule now
+  offers to add the service directly without leaving Services or create a new
+  schedule. Several schedules retain the aligned selection list and add an
+  **Add new schedule** action; no configured schedule opens initial setup.
 - **Automatic backup CLI coverage.** `start-cli` now manages automatic schedules,
   capacity estimates, activity, checkpoint history, target recovery,
   per-service retention overrides, new-service reviews, safe retention-policy
   changes, selected automatic-checkpoint restores, and mixed manual/automatic
   restore selections matching the UI.
+
+- **Stable, predictable IPv6 address (EUI-64).** NetworkManager is set to derive
+  each interface's IPv6 address from its MAC (modified EUI-64) with RFC 4941
+  privacy extensions off. StartOS applies this to existing network connections
+  on every boot, not just newly-created ones, so upgraded servers pick it up too.
+  The server therefore keeps one stable global-unicast address (GUA) across
+  reboots instead of the default rotating stable-privacy address, giving the
+  GUA-based clearnet and public-domain features a predictable address to
+  advertise (`AAAA`) and pinhole.
+- **External ports 9050 and 9051 are no longer restricted (#3407).** The port
+  allocator reserved 9050/9051 for the 0.3.x host Tor daemon, which no longer
+  exists. Freeing 9050 lets the tor service bind its SOCKS proxy with
+  `preferredExternalPort: 9050` (without exporting an interface), giving every
+  service a stable, always-valid service-to-service address for Tor SOCKS on
+  the internal bridge — `10.0.3.1:9050` — with no reactive watch on the tor
+  package and therefore no dependent restarts when tor is installed, updated,
+  or removed. 9051 (the old control port) is freed as well; 0.4.x tor uses a
+  Unix control socket, so nothing binds it host-side.
+- **The StartOS admin UI is now addressed like a regular service interface (#3387).**
+  At the SDK/effects layer the server's own host is identified by the reserved
+  package id `start-os`, host id `admin`, and interface id `admin-ui` (renamed
+  from `startos-ui`) — no more `null`/`STARTOS` sentinels.
+  `host_for`, the host RPC APIs, and the `getHostInfo` / `getServicePortForward` /
+  `getServiceInterface` / `listServiceInterfaces` effects all resolve
+  `start-os` to the server host, `start-os.startos` resolves like any package
+  hostname, and the UI passes `start-os` wherever a package id is expected.
+  Installing a package with the id `start-os` is rejected. The migration
+  re-points the tor package's persisted hidden-service identity for the admin
+  UI (`STARTOS`/`startos-ui` → `start-os`/`admin`), preserving the server's
+  existing `.onion` address across the identity change.
+- **SDK:** `PluginHostnameInfo.packageId` is required in the type — url plugins
+  (e.g. tor) should export the StartOS UI's urls as `start-os`/`admin` instead of
+  `packageId: null`. For backwards compatibility during the beta.10 transition,
+  the host still accepts the legacy `packageId: null` (or an absent field) over
+  the effects socket and maps it to `start-os`.
+- **OS Logs and Kernel Logs moved into System settings.** The top-level Logs tab
+  is removed; OS Logs and Kernel Logs are now entries at the bottom of the System
+  menu.
+- **Migrated `startos-backup-fs` into the monorepo** as the `start-os/backup-fs`
+  workspace member (from the former `Start9Labs/start-fs` repo); it is no longer
+  built as an external `cargo install --git` dependency.
+- **Monorepo reorganization.** `start-os` is now the monorepo for all Start9
+  products. The OS product moved into its own `start-os/` directory as a thin
+  wrapper: the `startbox` and `start-container` entry points live in
+  `src/bin/`, the admin UI and setup wizard in `web/`, and the container runtime
+  in `container-runtime/`. Backend logic moved from the old `core/` crate to the
+  shared `start-core` crate (`shared-libs/crates/start-core`); shared Angular
+  libraries moved to `shared-libs/ts-modules`; the SDK to `start-sdk`; and the `patch-db`
+  submodule to `shared-libs/crates/patch-db`. Builds now run against the root Cargo and
+  Angular workspaces (`cargo build -p start-os`, web from `shared-libs/ts-modules`).
+- **Firewall migrated from iptables to native nftables (5b9cf7313).** Every StartOS-managed rule now lives in a single `table ip startos` with stable comment tags for handle-based, idempotent teardown (per-forward DNAT/hairpin/masquerade, the FORWARD `policy drop`, lxcbr0 container-egress accept, and the mangle policy-routing marks). lxc-net and wg-quick keep their own iptables-nft rules in separate tables. The `nftables` package is added to dependencies.
+- **Manifest capability flags split (#3271, #3275).** The misleading `nestedRuntime` flag is replaced by two independent capabilities: `userspaceFilesystems` (mounts `/dev/fuse` for fuse-overlayfs storage) and `virtualNetworking` (mounts `/dev/net/tun` for VPN / WireGuard / tun workloads). Both are device grants only — the service LXC already retains `CAP_NET_ADMIN` within its user namespace via the standard `userns.conf` include, so no capability machinery is needed (an earlier `lxc.cap.drop` snippet that was wrongly framed as "re-granting `CAP_NET_ADMIN`" — and actually dropped five caps that were otherwise kept — was removed). Hard rename — packages using `nestedRuntime` must republish.
+- **Service-container memory isolation (#3304).** Every service container is placed in a `services.slice` opted into systemd-oomd PSI monitoring, capped at total RAM minus a fixed 1 GiB host reservation; `system.slice`/`user.slice` get `MemoryMin` floors. A burst of concurrent installs can no longer overcommit RAM and wedge the host.
+- **Container-runtime RPC/action logging is gated behind a dev build (#3325)** — production builds no longer log full RPC inputs/responses (which can contain action secrets) to service logs.
+- **Web platform upgraded to Angular 22, TypeScript 6, and Taiga UI 5.11**, with a unified, version-pinned Prettier config enforced in CI.
+- **SDK 2.0.0** ships alongside this release (see [`../start-sdk/CHANGELOG.md`](../start-sdk/CHANGELOG.md)); StartOS 0.4.0-beta.10 is its minimum host version.
+- Backup progress is surfaced as a dialog with a percentage rather than a notification.
+- **Dialogs and alerts no longer steal focus when they open.** `tuiAutoFocus` is
+  gone from every surface that used it — the shared prompt dialog, the refresh
+  alert, the OS-update dialog, the marketplace package drawer, and the setup
+  wizard's password page. On mobile, autofocusing raised the keyboard the
+  instant the sheet appeared, on top of the dialog's own buttons.
 
 ### Fixed
 
@@ -175,133 +306,6 @@ file tracks notable changes since the move to the monorepo.
 - **StartOS UI network metadata.** The built-in UI now stores a valid host ID,
   preventing an existing server database from failing validation and entering
   diagnostic mode after the upstream service-interface migration.
-
-## [0.4.0-beta.10]
-
-### Added
-
-- **IPv6 GUA exposure control.** On a service interface, an IPv6 global-unicast
-  address (GUA) keeps the usual on/off toggle and adds a **Local / Public**
-  dropdown in the access column. **Local** (the default) keeps it reachable on
-  the local network only — traffic from outside the subnet is rejected;
-  **Public** exposes it to the Internet and attempts an automatic gateway
-  pinhole (PCP). The choice is carried by the address's `public` flag, so
-  services selecting addresses for P2P see the correct reachability. A GUA on a
-  StartOS-terminated SSL port is served by the host's own TLS listener; a port
-  StartOS does not terminate is forwarded (DNAT) directly to the service
-  container. IPv6 ULAs and IPv4 are unchanged.
-- **DualStack public domains.** A public (clearnet) domain is now reachable over
-  both IPv4 and IPv6 whenever its gateway has an IPv6 global-unicast address
-  (GUA). StartOS advertises an `AAAA` target (the GUA) alongside the `A` target,
-  opens an inbound IPv6 firewall pinhole for the domain's port (via PCP — v6 is
-  NAT-free, so there is nothing to forward), and serves the domain on the GUA
-  through its existing SNI-routed TLS listener. The bare GUA itself is not
-  exposed — only traffic matching the domain by SNI is accepted — so an SSL
-  domain needs no separate GUA WAN opt-in (a plaintext domain, which has no SNI
-  to filter on, exposes the GUA the same way it exposes the WAN IPv4). The
-  add-domain DNS check and the domain setup modal now verify and display both
-  the `A`/IPv4 and `AAAA`/IPv6 records and reachability; IPv6 reachability is its
-  own `net.gateway.check-port-v6` endpoint (separate from the IPv4
-  `net.gateway.check-port`) so each family is probed independently.
-- **`--force` on service start.** `start-cli package start <id> --force` (and the
-  `package.start` RPC `force` flag) starts a service even when it has an unresolved
-  critical task.
-- **Automatic gateway configuration (#3306).** A StartOS server now opens its own public ports and publishes its private-domain DNS by talking to its gateway — a home router or a StartTunnel — instead of leaving it as a manual step.
-  - **Automatic port forwarding.** When a public address needs a port open, StartOS opens it by speaking a port-control protocol to the gateway: PCP (RFC 6887) → NAT-PMP → UPnP IGD, in that order. Mappings are reference-counted and withdrawn when the address is disabled or deleted; each active mapping is renewed at about half its gateway-granted lease, well before it would expire, so a still-wanted forward is never dropped, and letting a mapping lapse (no further renewal) is itself a teardown path once an exposure goes away. A single shared `PortMapController` also answers reachability, so `check_port` skips the remote echo probe when an automatic mapping is already active and reports the gateway-assigned external IP directly. Port mapping is scoped to the gateway each exposure actually routes through (the interface's own subnet gateway), so the box never probes an unrelated LAN router. A port's forwards and mappings are driven only by the addresses advertised at that exact port — exposing an SSL address never opens its plaintext sibling.
-  - **Private-domain DNS injection (RFC 2136).** When a private domain is enabled on a gateway, StartOS pushes an `A` record (domain → this host's IP on that subnet) to the gateway's DNS server via DNS UPDATE so LAN devices that don't use StartOS's resolver can still resolve it, and withdraws it on disable/delete. `check_dns` now verifies a private domain by resolving the specific FQDN against the LAN's DNS server(s) and confirming it returns one of this server's LAN addresses.
-  - **PCP HOSTNAME extension (SNI demux).** SSL/TLS services can share a single external port (443) across many hostnames: the gateway demultiplexes inbound TLS by SNI. StartOS emits PCP HOSTNAME mappings for public-domain vhosts (PCP-only — NAT-PMP/UPnP can't demux), gated by a PCP ANNOUNCE capability probe so the option is only sent to gateways that understand it. The protocol is documented as an Internet-Draft (`rfcs/draft-start9-pcp-hostname`).
-  - **PCP PORT_SET (RFC 7753).** A contiguous port range maps in a single PCP MAP instead of per-port sweeps.
-  - **In-place WireGuard gateway updates.** `start-cli net tunnel update <id> <config>` (and a per-gateway **Update config** UI action) re-issues a WireGuard config onto the existing interface without churning the gateway identity, so forwards and public/private domains keyed to it survive the swap — primarily to add a `DNS =` line to an existing config. The update path uses NetworkManager `Update2` + `Device.Reapply`, so updating the gateway carrying the request no longer drops its own transport. Because NetworkManager (≤ 1.52) strips WireGuard peer preshared-keys on `Reapply` even when they are passed to it explicitly, StartOS re-applies each peer's PSK straight to the kernel device (over stdin, never argv) after the reapply, so the tunnel keeps its shared secret.
-  - **Best-effort HTTP→HTTPS redirect (IPv6).** When a service is publicly exposed on 443 over an IPv6 GUA, StartOS asks the gateway for an `80→443` redirect pinhole so plain `http://` auto-redirects to `https`. Over IPv4 no such map is requested — the upstream gateway (e.g. StartTunnel, which serves a port-80 redirect by default) handles it.
-  - **Insecure exposures never reach the WAN.** A port is opened to the public internet (an IPv4 WAN forward, an IPv6 GUA pinhole/forward, or an upstream port-map) only when the exposure is itself secure — TLS on the wire or a self-securing protocol. A plaintext exposure can still reach the LAN over a gateway explicitly marked secure, but the WAN is treated as never secure regardless of the gateway's setting.
-- **Private domains on StartTunnel gateways (ba5396f49).** Now that a StartTunnel proxies DNS per subnet, a private domain resolves for tunnel clients (their DNS forwards to this server, which answers with the gateway's tunnel address), so the UI no longer restricts the public/private domain picker to router gateways — all gateways can use it. The "DNS Server Config" guidance is now gateway-aware: for a tunnel gateway it instructs you to point the StartTunnel subnet's DNS at this server. The private-domain and clearnet setup dialogs also surface the automatic alternatives (enable DNS Injection for the device; automatic UPnP/NAT-PMP/PCP port forwarding) instead of describing only the manual paths.
-- **`MultiHost.bindPortRange` backend (#3270).** Host support for reserving a contiguous TCP+UDP port range (2–500 ports) in one call, stored as a single `RangeBindInfo` record under `Host.binding_ranges` and installed as one nftables rule per chain (via `PortForward.count`). Intended for real-time / WebRTC servers (coturn, RTP, SIP). Backed by the new `bindRange` effect.
-- **Package init progress reporting (#3323).** A service can stream progress during the install/update finalization phase via the new `setInitProgress` effect; the host nests it inside the install's finalization phase using the standard `FullProgress` wire format, and `setupInit` auto-reports one step per composed init handler.
-- **Phased backup progress (#3250).** `serverInfo.statusInfo.backupProgress` now uses the standard `FullProgress` shape (matching update/install progress). `NamedProgress.progress` is generalized to `PhaseProgress` so a phase can carry sub-phases, and the new `setBackupProgress` effect lets a service container stream its own backup sub-progress.
-- **Backup format v2 (#3289).** Backups are written to a new `StartOSBackupsV2` directory, and the backup report now includes per-package duration. The backup targets list shows the free space available on every drive and network folder so the user can confirm a backup will fit before starting it. When this server's pre-v2 `StartOSBackups/<server-id>` backup is present on the selected target, the UI additionally warns before backup, then confirms the format change (#3324, `backup.target.legacy-info` RPC). Once migrated, StartOS also helps remove the now-obsolete V1 data: after a backup completes, if the target still holds this server's V1 backup, a warning notification reminds the user it is no longer needed; and the backup-create page shows a **Delete old backup** action for any target holding this server's V1 backup — whether or not a new (V2) backup exists yet — removing only this server's old backup to reclaim space; other servers' backups and `StartOSBackupsV2` are untouched (`backup.target.delete-legacy` RPC). Deleting requires a confirmation, plus an extra confirmation when this server has no current (V2) backup on the target (so the user can't unknowingly delete their only backup). Legacy detection and deletion are scoped to the current server's ID, so a target shared by several servers no longer flags or removes another server's backup.
-- **Direct cross-package action runs via `access` (#3267).** Action metadata gains an `access` field (`'public' | 'dependent' | 'user'`, default `'user'`) controlling who may invoke an action directly through `effects.action.run`. Public/dependent actions give dependents a direct path instead of only creating a task; direct runs still honor the action's `visibility` and `allowedStatuses`.
-- **`input-not-matches` tasks accept multiple values (#3310).** `TaskInput` splits into `accept` (a list of acceptable partial inputs) and `set` (the value to prefill when none match); the cross-package critical-conflict guard fires only when the input conflicts with every `accept` entry. The host still accepts the legacy `{ value }` shape over the effects socket for s9pks built on the pre-2.0 SDK.
-- **Service interfaces tab.** Service interfaces are promoted to a dedicated sidebar tab; the dashboard interfaces card and per-interface detail route are removed, sidebar nav labels are decoupled from route paths, and the tasks table is redesigned (action-first, service rendered as an icon).
-- **Unified marketplace + brochure.** The in-OS marketplace and the public brochure now share `@start9labs/marketplace` components behind an `AbstractMarketplaceService` (the OS persists to patch-db, the brochure to localStorage), so both ship the identical detail/preview UI. The brochure app is ported into the workspace and auto-deployed to `marketplace.start9.com` on master. The registry-selection modal is replaced by an inline registry-select dropdown (switch/add/delete inline), and custom registries can now be added by bare domain (https default; http for `.onion`) (#3349). Empty categories are hidden (snapping back to "all" on a registry switch that empties the selection), category icons are refreshed for the current set, and a "Package a service" link sits beneath the sidebar categories.
-- **Nested idmapped mounts (#3248).** StartOS gains syscall-based mount primitives (`open_tree`/`move_mount`/`fsopen`/`mount_setattr`) and a `start-container mount` path, wiring up the SDK's `idmap` field on volume/asset/dependency/backup mounts end-to-end. See [`../start-sdk/CHANGELOG.md`](../start-sdk/CHANGELOG.md) for the SDK-facing surface.
-- **Raspberry Pi image hardening (#3249).** Vendor kernel bumped to 6.18.33+rpt with apt pins so `/boot` stays vendor-only, `earlycon` for first-boot diagnostics, a loop-safe self-diagnosing `init_resize`, and data-drive-only setup for pre-installed devices.
-- **Graceful shutdown on external power events (#3319).** Two systemd pre-shutdown barrier units (`startos-shutdown.service` / `startos-restart.service`) call `start-cli server shutdown/restart` and wait for graceful container teardown, so externally-initiated shutdowns (UPS / `qm` / ACPI) tear services down cleanly. The shutdown/restart RPC gains an opt-in `wait` param.
-- **iOS root-CA install via configuration profile (#3240).** A new endpoint serves an unsigned Apple Configuration Profile (`PayloadType com.apple.security.root`); iOS/iPadOS download links are UA-sniffed and routed to `.mobileconfig`, fixing the broken `.crt` install flow on iOS 26.5 Safari.
-- **`diagnose-hang` capture script (#3236).** Captures startd runtime state entirely via `/proc` and basic tools (per-thread kernel stacks, fds/sockets, journal tail, dmesg, disk health, lxc status) when startd is unresponsive and `start-cli` can't help.
-- **`lo` and `lxcbr0` treated as secure networks (#3297)** for insecure (plain-HTTP) traffic, since loopback and the container bridge never leave the host; an explicit secure setting still overrides the intrinsic default.
-- **In-place 0.3.5.1 → 0.4.0 update path.** Updating the OS from 0.3.5.1 no longer
-  requires syncing a whole root filesystem file-by-file — the step that grew
-  flakier the more files a device had. StartOS 0.3.5.1's existing over-the-air
-  updater instead receives a compact migration payload (the 0.4.0 base image plus
-  a boot-time rewire) and the 0.4.0 initramfs converts the on-disk layout to the
-  0.4.0 format on first boot. The data partition is preserved and the existing
-  package/database migration runs afterward as before.
-
-### Changed
-
-- **Stable, predictable IPv6 address (EUI-64).** NetworkManager is set to derive
-  each interface's IPv6 address from its MAC (modified EUI-64) with RFC 4941
-  privacy extensions off. StartOS applies this to existing network connections
-  on every boot, not just newly-created ones, so upgraded servers pick it up too.
-  The server therefore keeps one stable global-unicast address (GUA) across
-  reboots instead of the default rotating stable-privacy address, giving the
-  GUA-based clearnet and public-domain features a predictable address to
-  advertise (`AAAA`) and pinhole.
-- **External ports 9050 and 9051 are no longer restricted (#3407).** The port
-  allocator reserved 9050/9051 for the 0.3.x host Tor daemon, which no longer
-  exists. Freeing 9050 lets the tor service bind its SOCKS proxy with
-  `preferredExternalPort: 9050` (without exporting an interface), giving every
-  service a stable, always-valid service-to-service address for Tor SOCKS on
-  the internal bridge — `10.0.3.1:9050` — with no reactive watch on the tor
-  package and therefore no dependent restarts when tor is installed, updated,
-  or removed. 9051 (the old control port) is freed as well; 0.4.x tor uses a
-  Unix control socket, so nothing binds it host-side.
-- **The StartOS admin UI is now addressed like a regular service interface (#3387).**
-  At the SDK/effects layer the server's own host is identified by the reserved
-  package id `start-os`, host id `admin`, and interface id `admin-ui` (renamed
-  from `startos-ui`) — no more `null`/`STARTOS` sentinels.
-  `host_for`, the host RPC APIs, and the `getHostInfo` / `getServicePortForward` /
-  `getServiceInterface` / `listServiceInterfaces` effects all resolve
-  `start-os` to the server host, `start-os.startos` resolves like any package
-  hostname, and the UI passes `start-os` wherever a package id is expected.
-  Installing a package with the id `start-os` is rejected. The migration
-  re-points the tor package's persisted hidden-service identity for the admin
-  UI (`STARTOS`/`startos-ui` → `start-os`/`admin`), preserving the server's
-  existing `.onion` address across the identity change.
-- **SDK:** `PluginHostnameInfo.packageId` is required in the type — url plugins
-  (e.g. tor) should export the StartOS UI's urls as `start-os`/`admin` instead of
-  `packageId: null`. For backwards compatibility during the beta.10 transition,
-  the host still accepts the legacy `packageId: null` (or an absent field) over
-  the effects socket and maps it to `start-os`.
-- **OS Logs and Kernel Logs moved into System settings.** The top-level Logs tab
-  is removed; OS Logs and Kernel Logs are now entries at the bottom of the System
-  menu.
-- **Migrated `startos-backup-fs` into the monorepo** as the `start-os/backup-fs`
-  workspace member (from the former `Start9Labs/start-fs` repo); it is no longer
-  built as an external `cargo install --git` dependency.
-- **Monorepo reorganization.** `start-os` is now the monorepo for all Start9
-  products. The OS product moved into its own `start-os/` directory as a thin
-  wrapper: the `startbox` and `start-container` entry points live in
-  `src/bin/`, the admin UI and setup wizard in `web/`, and the container runtime
-  in `container-runtime/`. Backend logic moved from the old `core/` crate to the
-  shared `start-core` crate (`shared-libs/crates/start-core`); shared Angular
-  libraries moved to `shared-libs/ts-modules`; the SDK to `start-sdk`; and the `patch-db`
-  submodule to `shared-libs/crates/patch-db`. Builds now run against the root Cargo and
-  Angular workspaces (`cargo build -p start-os`, web from `shared-libs/ts-modules`).
-- **Firewall migrated from iptables to native nftables (5b9cf7313).** Every StartOS-managed rule now lives in a single `table ip startos` with stable comment tags for handle-based, idempotent teardown (per-forward DNAT/hairpin/masquerade, the FORWARD `policy drop`, lxcbr0 container-egress accept, and the mangle policy-routing marks). lxc-net and wg-quick keep their own iptables-nft rules in separate tables. The `nftables` package is added to dependencies.
-- **Manifest capability flags split (#3271, #3275).** The misleading `nestedRuntime` flag is replaced by two independent capabilities: `userspaceFilesystems` (mounts `/dev/fuse` for fuse-overlayfs storage) and `virtualNetworking` (mounts `/dev/net/tun` for VPN / WireGuard / tun workloads). Both are device grants only — the service LXC already retains `CAP_NET_ADMIN` within its user namespace via the standard `userns.conf` include, so no capability machinery is needed (an earlier `lxc.cap.drop` snippet that was wrongly framed as "re-granting `CAP_NET_ADMIN`" — and actually dropped five caps that were otherwise kept — was removed). Hard rename — packages using `nestedRuntime` must republish.
-- **Service-container memory isolation (#3304).** Every service container is placed in a `services.slice` opted into systemd-oomd PSI monitoring, capped at total RAM minus a fixed 1 GiB host reservation; `system.slice`/`user.slice` get `MemoryMin` floors. A burst of concurrent installs can no longer overcommit RAM and wedge the host.
-- **Container-runtime RPC/action logging is gated behind a dev build (#3325)** — production builds no longer log full RPC inputs/responses (which can contain action secrets) to service logs.
-- **Web platform upgraded to Angular 22, TypeScript 6, and Taiga UI 5.11**, with a unified, version-pinned Prettier config enforced in CI.
-- **SDK 2.0.0** ships alongside this release (see [`../start-sdk/CHANGELOG.md`](../start-sdk/CHANGELOG.md)); StartOS 0.4.0-beta.10 is its minimum host version.
-- Backup progress is surfaced as a dialog with a percentage rather than a notification.
-- **Dialogs and alerts no longer steal focus when they open.** `tuiAutoFocus` is
-  gone from every surface that used it — the shared prompt dialog, the refresh
-  alert, the OS-update dialog, the marketplace package drawer, and the setup
-  wizard's password page. On mobile, autofocusing raised the keyboard the
-  instant the sheet appeared, on top of the dialog's own buttons.
-
-### Fixed
 
 - **Enabling a public IPv4 address on an SSL service interface now opens the
   gateway port automatically.** Only a public _domain_ on an SSL-terminated port

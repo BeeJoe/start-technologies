@@ -3,6 +3,7 @@ import {
   afterNextRender,
   Component,
   computed,
+  DestroyRef,
   ElementRef,
   effect,
   inject,
@@ -170,7 +171,10 @@ interface JobEditor extends EditableRetentionRule {
       </div>
     }
 
-    @for (review of visibleReviews(); track review.packageId) {
+    @for (
+      review of jobs().length > 1 && !editor() ? visibleReviews() : [];
+      track review.packageId
+    ) {
       <section class="review" tuiAppearance="floating">
         <div tuiTitle>
           <b>{{ 'Add to backup schedule' | i18n }}</b>
@@ -209,9 +213,20 @@ interface JobEditor extends EditableRetentionRule {
             </span>
           </label>
         }
-        <button tuiButton size="s" (click)="resolveReview(review)">
-          {{ 'Save backup schedules' | i18n }}
-        </button>
+        <footer class="review-actions">
+          <button
+            tuiButton
+            type="button"
+            size="s"
+            appearance="flat"
+            (click)="createForReview(review)"
+          >
+            {{ 'Add new schedule' | i18n }}
+          </button>
+          <button tuiButton size="s" (click)="resolveReview(review)">
+            {{ 'Save backup schedules' | i18n }}
+          </button>
+        </footer>
       </section>
     }
 
@@ -724,42 +739,8 @@ interface JobEditor extends EditableRetentionRule {
                           <dd>{{ bytes(estimate.scheduledRetainedBytes) }}</dd>
                         </div>
                         <div>
-                          <dt>{{ 'Manual checkpoint' | i18n }}</dt>
-                          <dd>
-                            @if (estimate.manualCheckpointBytes === null) {
-                              {{ 'Unknown' | i18n }}
-                            } @else {
-                              {{ bytes(estimate.manualCheckpointBytes) }}
-                            }
-                          </dd>
-                        </div>
-                        <div>
-                          <dt>{{ 'Archived storage' | i18n }}</dt>
-                          <dd>{{ bytes(estimate.archivedBytes) }}</dd>
-                        </div>
-                        <div>
                           <dt>{{ 'Next-run staging' | i18n }}</dt>
                           <dd>{{ bytes(estimate.stagingHeadroomBytes) }}</dd>
-                        </div>
-                        <div>
-                          <dt>{{ 'Last changed bytes' | i18n }}</dt>
-                          <dd>
-                            @if (estimate.lastChangedBytes === null) {
-                              {{ 'Unknown' | i18n }}
-                            } @else {
-                              {{ bytes(estimate.lastChangedBytes) }}
-                            }
-                          </dd>
-                        </div>
-                        <div>
-                          <dt>{{ 'Projected peak' | i18n }}</dt>
-                          <dd>
-                            {{
-                              bytes(
-                                estimate.conservativePeakExcludingManualBytes
-                              )
-                            }}
-                          </dd>
                         </div>
                       </dl>
                     } @else {
@@ -789,22 +770,28 @@ interface JobEditor extends EditableRetentionRule {
             </div>
           }
 
-          @if (!form.id) {
-            <label class="checkbox-row first-backup">
-              <input
-                tuiCheckbox
-                type="checkbox"
-                name="firstBackupNow"
-                [(ngModel)]="form.firstBackupNow"
-              />
-              <span tuiTitle>
-                <b>{{ 'Create the first backup now' | i18n }}</b>
+          <label class="checkbox-row first-backup">
+            <input
+              tuiCheckbox
+              type="checkbox"
+              name="firstBackupNow"
+              [(ngModel)]="form.firstBackupNow"
+            />
+            <span tuiTitle>
+              <b>
+                {{
+                  (form.id ? 'Run now' : 'Create the first backup now') | i18n
+                }}
+              </b>
+              @if (!form.id) {
                 <span tuiSubtitle>
                   {{ 'Recommended so protection begins immediately.' | i18n }}
                 </span>
-              </span>
-            </label>
+              }
+            </span>
+          </label>
 
+          @if (!form.id) {
             <tui-textfield>
               <label tuiLabel>{{ 'Master Password' | i18n }}</label>
               <input
@@ -1050,6 +1037,13 @@ interface JobEditor extends EditableRetentionRule {
       padding: 1rem;
       min-width: 0;
       overflow: hidden;
+    }
+
+    .review-actions {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 0.75rem;
     }
 
     .editor.panel {
@@ -1423,7 +1417,10 @@ interface JobEditor extends EditableRetentionRule {
       }
     }
   `,
-  host: { class: 'backup-settings' },
+  host: {
+    class: 'backup-settings',
+    '(window:beforeunload)': 'confirmBrowserExit($event)',
+  },
   imports: [
     DatePipe,
     FormsModule,
@@ -1499,15 +1496,22 @@ export class ScheduledBackupsComponent implements OnInit {
   confirmPrune = false
   private editorBaseline: string | null = null
   private handledCreateRequest = 0
+  private pendingReview: T.NewServiceBackupReview | null = null
 
   constructor() {
+    inject(DestroyRef).onDestroy(() => this.warnUnsavedChanges())
     effect(() => {
       const request = this.createRequest()
       if (!request || request === this.handledCreateRequest || this.loading()) {
         return
       }
       this.handledCreateRequest = request
-      this.create()
+      const review = this.visibleReviews()[0]
+      if (review) {
+        this.createForReview(review)
+      } else {
+        this.create()
+      }
     })
   }
 
@@ -1631,6 +1635,7 @@ export class ScheduledBackupsComponent implements OnInit {
   }
 
   create() {
+    this.warnUnsavedChanges()
     const now = new Date()
     const form: JobEditor = {
       name: '',
@@ -1656,6 +1661,7 @@ export class ScheduledBackupsComponent implements OnInit {
     this.showServices.set(false)
     this.showSingleJobList = false
     this.reassigning.set(null)
+    this.pendingReview = null
     this.selectedJobId.set('')
     this.editor.set(form)
     this.editorBaseline = this.editorSnapshot(form)
@@ -1666,32 +1672,60 @@ export class ScheduledBackupsComponent implements OnInit {
   }
 
   viewAllJobs() {
-    const form = this.editor()
-    if (
-      form &&
-      this.editorBaseline !== null &&
-      this.editorSnapshot(form) !== this.editorBaseline
-    ) {
-      this.alerts
-        .open(this.i18n.transform('Changes were not saved'), {
-          appearance: 'warning',
-        })
-        .subscribe()
-    }
+    this.warnUnsavedChanges()
     this.reassigning.set(null)
     this.showSingleJobList = true
     this.selectedJobId.set('')
     this.editor.set(null)
     this.editorBaseline = null
+    this.pendingReview = null
     this.showServices.set(false)
   }
 
   cancelEditor() {
-    this.collapseRequested.emit()
+    this.warnUnsavedChanges()
     this.selectedJobId.set('')
     this.editor.set(null)
     this.editorBaseline = null
+    this.pendingReview = null
     this.showServices.set(false)
+    this.collapseRequested.emit()
+  }
+
+  protected confirmBrowserExit(event: BeforeUnloadEvent) {
+    if (!this.hasUnsavedChanges()) return
+    event.preventDefault()
+    event.returnValue = ''
+  }
+
+  private hasUnsavedChanges(): boolean {
+    const form = this.editor()
+    return !!(
+      form &&
+      this.editorBaseline !== null &&
+      this.editorSnapshot(form) !== this.editorBaseline
+    )
+  }
+
+  private warnUnsavedChanges(): boolean {
+    if (!this.hasUnsavedChanges()) return false
+    this.alerts
+      .open(this.i18n.transform('Changes were not saved'), {
+        appearance: 'warning',
+      })
+      .subscribe()
+    return true
+  }
+
+  createForReview(review: T.NewServiceBackupReview) {
+    this.create()
+    const form = this.editor()
+    if (!form) return
+    form.packageIds = [review.packageId]
+    form.includeFuture = false
+    this.pendingReview = review
+    this.editorBaseline = this.editorSnapshot(form)
+    void this.refreshEstimates(form)
   }
 
   isDefaultJob(form: JobEditor): boolean {
@@ -1702,6 +1736,7 @@ export class ScheduledBackupsComponent implements OnInit {
     if (!job) return
     this.showSingleJobList = false
     this.showServices.set(false)
+    this.pendingReview = null
     const schedule = parseBackupSchedule(job.schedule)
     const selection = parseBackupServiceSelection(
       job.services,
@@ -1795,6 +1830,9 @@ export class ScheduledBackupsComponent implements OnInit {
           id: form.id,
           ...common,
         })
+        if (form.firstBackupNow) {
+          await this.api.runScheduledBackupJob({ id: form.id })
+        }
       } else {
         await this.normalizeDefaultScheduleName()
         const created = await this.api.createScheduledBackupJob({
@@ -1806,12 +1844,24 @@ export class ScheduledBackupsComponent implements OnInit {
         })
         this.selectedJobId.set(created.id)
         this.backupService.showQueuedNotification(created)
+        if (
+          this.pendingReview &&
+          form.packageIds.includes(this.pendingReview.packageId)
+        ) {
+          await this.api.resolveNewServiceBackupReview({
+            packageId: this.pendingReview.packageId,
+            decisions: Object.fromEntries(
+              this.pendingReview.affectedJobs.map(jobId => [jobId, false]),
+            ),
+          })
+        }
       }
-      this.collapseRequested.emit()
       this.selectedJobId.set('')
       this.editor.set(null)
       this.editorBaseline = null
+      this.pendingReview = null
       this.showSingleJobList = true
+      this.collapseRequested.emit()
       await this.reload()
     } catch (error: any) {
       this.errors.handleError(getErrorMessage(error))
@@ -1851,7 +1901,13 @@ export class ScheduledBackupsComponent implements OnInit {
   async deleteJob(job: T.BackupJob) {
     try {
       if (await this.deleteSchedule.delete(job, this.histories())) {
+        this.showSingleJobList = true
+        this.selectedJobId.set('')
+        this.editor.set(null)
+        this.editorBaseline = null
+        this.pendingReview = null
         await this.reload()
+        if (this.jobs().length <= 1) this.collapseRequested.emit()
       }
     } catch (error: any) {
       this.errors.handleError(getErrorMessage(error))
@@ -1882,7 +1938,10 @@ export class ScheduledBackupsComponent implements OnInit {
   }
 
   beginReassign(job: T.BackupJob) {
+    this.warnUnsavedChanges()
     this.editor.set(null)
+    this.editorBaseline = null
+    this.pendingReview = null
     this.showServices.set(false)
     this.reassigning.set(job)
     this.reassignTargetId =

@@ -2,9 +2,10 @@ import { Component, computed, inject, input } from '@angular/core'
 import { Router } from '@angular/router'
 import { DialogService, i18nPipe, TaskService } from '@start9labs/shared'
 import { T } from '@start9labs/start-core'
-import { TuiButton } from '@taiga-ui/core'
+import { TuiButton, TuiDialogContext, TuiTitle } from '@taiga-ui/core'
 import { TuiAvatar, TuiFade } from '@taiga-ui/kit'
-import { filter } from 'rxjs'
+import { injectContext, PolymorpheusComponent } from '@taiga-ui/polymorpheus'
+import { filter, firstValueFrom } from 'rxjs'
 import { ServiceTasksComponent } from 'src/app/routes/portal/routes/services/components/tasks.component'
 import { ActionService } from 'src/app/services/action.service'
 import { ApiService } from 'src/app/services/api/embassy-api.service'
@@ -15,6 +16,56 @@ import {
   INACTIVE_STATUSES,
 } from 'src/app/services/pkg-status-rendering.service'
 import { getManifest } from 'src/app/utils/get-package-data'
+
+type BackupReviewDecision = 'add' | 'create'
+
+@Component({
+  template: `
+    <span tuiTitle>
+      <b>{{ context.data.scheduleName }}</b>
+      <span tuiSubtitle>
+        {{
+          'Choose which automatic backup schedules should include this service.'
+            | i18n
+        }}
+      </span>
+    </span>
+    <footer>
+      <button tuiButton appearance="primary" (click)="choose('add')">
+        {{ 'Add to current schedule' | i18n }}
+      </button>
+      <button tuiButton appearance="flat" (click)="choose('create')">
+        {{ 'Create a new schedule' | i18n }}
+      </button>
+    </footer>
+  `,
+  styles: `
+    :host {
+      display: grid;
+      gap: 1.25rem;
+    }
+
+    footer {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 0.75rem;
+    }
+  `,
+  imports: [TuiButton, TuiTitle, i18nPipe],
+})
+class BackupReviewDialog {
+  protected readonly context =
+    injectContext<
+      TuiDialogContext<BackupReviewDecision, { scheduleName: string }>
+    >()
+
+  protected choose(decision: BackupReviewDecision) {
+    this.context.completeWith(decision)
+  }
+}
+
+const BACKUP_REVIEW_DIALOG = new PolymorpheusComponent(BackupReviewDialog)
 
 @Component({
   selector: 'tr[task]',
@@ -218,6 +269,36 @@ export class ServiceTaskComponent {
   async handle() {
     const task = this.task()
     if (this.backupReview()) {
+      const jobs = await this.api.getScheduledBackupJobs({})
+      if (jobs.length === 1) {
+        const decision = await firstValueFrom(
+          this.dialog.openComponent<BackupReviewDecision>(
+            BACKUP_REVIEW_DIALOG,
+            {
+              label: this.i18n.transform('Add to backup schedule'),
+              size: 's',
+              data: { scheduleName: jobs[0]!.name },
+            },
+          ),
+          { defaultValue: null },
+        )
+        if (decision === 'add') {
+          await this.tasks.run(async () => {
+            await this.api.resolveNewServiceBackupReview({
+              packageId: task.packageId,
+              decisions: { [jobs[0]!.id]: true },
+            })
+          })
+        } else if (decision === 'create') {
+          await this.router.navigate(['/system/backups'], {
+            queryParams: {
+              addService: task.packageId,
+              createSchedule: true,
+            },
+          })
+        }
+        return
+      }
       await this.router.navigate(['/system/backups'], {
         queryParams: { addService: task.packageId },
       })

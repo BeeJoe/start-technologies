@@ -1058,5 +1058,8 @@ export default {
   1175: 'Ajouter au planning de sauvegarde',
   1176: 'Choisissez les planifications de sauvegarde automatique qui doivent inclure ce service.',
   1177: 'Enregistrer les planifications de sauvegarde',
+  1178: 'Ajouter une nouvelle planification',
+  1179: 'Ajouter à la planification actuelle',
+  1180: 'Créer une nouvelle planification',
   908: 'Le service doit être en fonctionnement pour effectuer ce test. Statut actuel :',
 } satisfies i18n

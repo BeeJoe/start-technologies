@@ -661,7 +661,11 @@ test('multiple automatic jobs expand as a list before an individual editor', () 
   )
   assert.match(
     advancedComponent,
-    /viewAllJobs\(\)[\s\S]{0,500}Changes were not saved/,
+    /viewAllJobs\(\)[\s\S]{0,120}warnUnsavedChanges\(\)/,
+  )
+  assert.match(
+    advancedComponent,
+    /warnUnsavedChanges\(\)[\s\S]{0,500}Changes were not saved/,
   )
   assert.doesNotMatch(
     advancedComponent,
@@ -681,7 +685,7 @@ test('new services get a dismissible recommended backup task without blocking st
   assert.match(serviceTaskComponent, /Add to backup schedule/)
   assert.match(
     serviceTaskComponent,
-    /if \(this\.backupReview\(\)\)[\s\S]{0,220}queryParams: \{ addService: task\.packageId \}/,
+    /if \(this\.backupReview\(\)\)[\s\S]{0,2600}queryParams: \{ addService: task\.packageId \}/,
   )
   assert.match(
     serviceTaskComponent,
@@ -689,7 +693,35 @@ test('new services get a dismissible recommended backup task without blocking st
   )
   assert.match(
     advancedComponent,
-    /visibleReviews\(\)[\s\S]{0,900}Toggle all[\s\S]{0,900}Save backup schedules/,
+    /visibleReviews\(\)[\s\S]{0,900}Toggle all[\s\S]{0,1500}Save backup schedules/,
+  )
+  assert.match(
+    advancedComponent,
+    /jobs\(\)\.length > 1 && !editor\(\) \? visibleReviews\(\) : \[\]/,
+  )
+  assert.match(
+    serviceTaskComponent,
+    /getScheduledBackupJobs[\s\S]{0,1800}jobs\.length === 1/,
+  )
+  assert.match(
+    serviceTaskComponent,
+    /Add to current schedule[\s\S]{0,500}Create a new schedule/,
+  )
+  assert.match(
+    serviceTaskComponent,
+    /decision === 'add'[\s\S]{0,900}resolveNewServiceBackupReview/,
+  )
+  assert.match(
+    serviceTaskComponent,
+    /decision === 'create'[\s\S]{0,500}createSchedule: true/,
+  )
+  assert.match(
+    advancedComponent,
+    /visibleReviews\(\)[\s\S]{0,1800}Add new schedule/,
+  )
+  assert.match(
+    advancedComponent,
+    /createForReview\(review[\s\S]{0,500}packageIds = \[review\.packageId\]/,
   )
 })
 
@@ -841,22 +873,21 @@ test('the first schedule keeps its default name hidden until another schedule ex
   )
   assert.match(
     advancedComponent,
-    /async save\(form: JobEditor\)[\s\S]{0,2200}this\.collapseRequested\.emit\(\)[\s\S]{0,240}this\.editor\.set\(null\)[\s\S]{0,240}await this\.reload\(\)/,
+    /async save\(form: JobEditor\)[\s\S]{0,3000}this\.editor\.set\(null\)[\s\S]{0,240}this\.collapseRequested\.emit\(\)[\s\S]{0,240}await this\.reload\(\)/,
   )
 })
 
 test('capacity and storage warnings use clear user-facing wording', () => {
   assert.doesNotMatch(automaticComponent, /Available space unknown/)
   assert.doesNotMatch(automaticComponent, /capacityAvailableLabel/)
-  assert.match(automaticComponent, /capacityAvailable\(\) !== null/)
-  assert.doesNotMatch(
+  assert.match(
     automaticComponent,
-    /Every retained version is a full copy and each run also needs temporary staging space/,
+    /const available = this\.capacityAvailable\(\)[\s\S]{0,240}available === null/,
   )
-  assert.doesNotMatch(
-    advancedComponent,
-    /Every retained version is a full copy and each run also needs temporary staging space/,
-  )
+  for (const component of [automaticComponent, advancedComponent]) {
+    assert.match(component, /Every retained version is a full copy/)
+    assert.match(component, /I understand the full-copy storage impact/)
+  }
   assert.match(advancedComponent, /especially on network storage/)
   assert.doesNotMatch(advancedComponent, /especially on CIFS/)
 })
@@ -872,7 +903,7 @@ test('canceling a job edit returns to the appropriate collapsed view', () => {
   )
   assert.match(
     advancedComponent,
-    /cancelEditor\(\)[\s\S]{0,120}collapseRequested\.emit\(\)[\s\S]{0,180}editor\.set\(null\)/,
+    /cancelEditor\(\)[\s\S]{0,120}warnUnsavedChanges\(\)[\s\S]{0,240}editor\.set\(null\)[\s\S]{0,180}collapseRequested\.emit\(\)/,
   )
   assert.match(
     automaticComponent,
@@ -881,6 +912,29 @@ test('canceling a job edit returns to the appropriate collapsed view', () => {
   assert.match(
     backupsComponent,
     /\(collapseRequested\)="expanded\.set\(null\)"/,
+  )
+})
+
+test('all unsaved schedule exit paths warn before discarding edits', () => {
+  assert.match(
+    advancedComponent,
+    /hasUnsavedChanges\(\)[\s\S]{0,500}editorSnapshot\(form\) !== this\.editorBaseline/,
+  )
+  assert.match(
+    advancedComponent,
+    /warnUnsavedChanges\(\)[\s\S]{0,500}Changes were not saved/,
+  )
+  assert.match(
+    advancedComponent,
+    /\(window:beforeunload\)[\s\S]{0,120}confirmBrowserExit/,
+  )
+  assert.match(
+    advancedComponent,
+    /confirmBrowserExit\(event: BeforeUnloadEvent\)[\s\S]{0,260}hasUnsavedChanges\(\)[\s\S]{0,180}event\.preventDefault\(\)/,
+  )
+  assert.match(
+    advancedComponent,
+    /onDestroy\([\s\S]{0,160}warnUnsavedChanges\(\)/,
   )
 })
 
@@ -919,15 +973,41 @@ test('capacity estimates collapse details beneath each service', () => {
     'Live data estimate',
     'Checkpoints',
     'Automatic storage',
-    'Manual checkpoint',
-    'Archived storage',
     'Next-run staging',
-    'Last changed bytes',
-    'Projected peak',
   ]) {
     assert.match(capacity, new RegExp(label))
   }
+  for (const label of [
+    'Manual checkpoint',
+    'Archived storage',
+    'Last changed bytes',
+    'Projected peak',
+  ]) {
+    assert.doesNotMatch(capacity, new RegExp(label))
+  }
   assert.doesNotMatch(capacity, /<table|<thead|<th>/)
+})
+
+test('saving an edited schedule can queue a run immediately', () => {
+  assert.match(
+    advancedComponent,
+    /name="firstBackupNow"[\s\S]{0,220}form\.firstBackupNow/,
+  )
+  assert.match(
+    advancedComponent,
+    /form\.id[\s\S]{0,180}Run now[\s\S]{0,260}Create the first backup now/,
+  )
+  assert.match(
+    advancedComponent,
+    /updateScheduledBackupJob\([\s\S]{0,800}form\.firstBackupNow[\s\S]{0,180}runScheduledBackupJob/,
+  )
+})
+
+test('deleting a schedule returns to the list or collapses the last schedule', () => {
+  assert.match(
+    advancedComponent,
+    /deleteJob\(job: T\.BackupJob\)[\s\S]{0,600}showSingleJobList = true[\s\S]{0,500}jobs\(\)\.length <= 1[\s\S]{0,180}collapseRequested\.emit\(\)/,
+  )
 })
 
 test('turning off automatic backups directly pauses schedules without a delete dialog', () => {

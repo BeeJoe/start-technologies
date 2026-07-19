@@ -1058,5 +1058,8 @@ export default {
   1175: 'Añadir a la programación de copias',
   1176: 'Elija qué programaciones de copias automáticas deben incluir este servicio.',
   1177: 'Guardar programaciones de copias',
+  1178: 'Añadir nueva programación',
+  1179: 'Añadir a la programación actual',
+  1180: 'Crear una nueva programación',
   908: 'El servicio debe estar en ejecución para realizar esta prueba. Estado actual:',
 } satisfies i18n
