@@ -1,5 +1,6 @@
 use std::future::Future;
 use std::io::SeekFrom;
+use std::os::fd::AsRawFd;
 use std::path::Path;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -14,7 +15,7 @@ use futures::{Stream, StreamExt, ready};
 use http::header::{CONTENT_LENGTH, CONTENT_RANGE};
 use http::{HeaderMap, StatusCode};
 use imbl_value::InternedString;
-use tokio::io::{AsyncRead, AsyncSeek, AsyncSeekExt, AsyncWrite, AsyncWriteExt};
+use tokio::io::{AsyncRead, AsyncSeek, AsyncSeekExt, AsyncWriteExt};
 use tokio::sync::watch;
 
 use crate::context::RpcContext;
@@ -23,8 +24,8 @@ use crate::progress::{PhaseProgressTrackerHandle, ProgressUnits};
 use crate::rpc_continuations::{Guid, RpcContinuation};
 use crate::s9pk::merkle_archive::source::ArchiveSource;
 use crate::s9pk::merkle_archive::source::multi_cursor_file::{FileCursor, MultiCursorFile};
-use crate::util::direct_io::DirectIoFile;
 use crate::util::io::{TmpDir, create_file};
+use crate::util::writeback::{self, WritebackPacer};
 
 pub async fn upload(
     ctx: &RpcContext,
@@ -186,9 +187,10 @@ impl UploadingFile {
             error: None,
             complete: false,
         });
-        let file = create_file(path).await?;
+        let file = create_file(&path).await?;
+        writeback::set_no_cow(&path).await;
         let multi_cursor = MultiCursorFile::open(&file).await?;
-        let direct_file = DirectIoFile::from_tokio_file(file).await?;
+        let pacer = WritebackPacer::new(file.as_raw_fd());
         let uploading = Self {
             tmp_dir: None,
             file: multi_cursor,
@@ -197,9 +199,9 @@ impl UploadingFile {
         Ok((
             UploadHandle {
                 tmp_dir: None,
-                file: direct_file,
+                file,
+                pacer,
                 progress: progress.0,
-                last_synced: 0,
             },
             uploading,
         ))
@@ -223,8 +225,10 @@ impl UploadingFile {
             error: None,
             complete: false,
         });
-        let file = create_file(path).await?;
+        let file = create_file(&path).await?;
+        writeback::set_no_cow(&path).await;
         let multi_cursor = MultiCursorFile::open(&file).await?;
+        let pacer = WritebackPacer::new(file.as_raw_fd());
         let uploading = Self {
             tmp_dir: None,
             file: multi_cursor,
@@ -234,6 +238,7 @@ impl UploadingFile {
             DownloadHandle {
                 tmp_dir: None,
                 file,
+                pacer,
                 progress: progress.0,
             },
             uploading,
@@ -397,7 +402,7 @@ impl AsyncSeek for UploadingFileReader {
                             (this.progress.borrow().expected_size.ok_or_else(|| {
                                 std::io::Error::new(
                                     std::io::ErrorKind::Other,
-                                    eyre!("upload maked complete without expected size"),
+                                    eyre!("upload marked complete without expected size"),
                                 )
                             })? as i64
                                 + n) as u64
@@ -417,13 +422,11 @@ impl AsyncSeek for UploadingFileReader {
     }
 }
 
-#[pin_project::pin_project(PinnedDrop)]
 pub struct UploadHandle {
     tmp_dir: Option<Arc<TmpDir>>,
-    #[pin]
-    file: DirectIoFile,
+    file: tokio::fs::File,
+    pacer: WritebackPacer,
     progress: watch::Sender<Progress>,
-    last_synced: u64,
 }
 impl UploadHandle {
     pub async fn upload(&mut self, request: Request) {
@@ -438,105 +441,50 @@ impl UploadHandle {
             .and_then(|a| a.to_str().log_err())
             .and_then(|a| a.parse::<u64>().log_err())
         {
-            self.progress.send_modify(|p| {
-                p.expected_size = Some(content_length);
-                p.tracker.set_total(content_length);
-            });
+            self.progress
+                .send_modify(|p| p.expected_size = Some(content_length));
         }
     }
     async fn process_body<E: Into<Box<dyn std::error::Error + Send + Sync + 'static>>>(
         &mut self,
         mut body: impl Stream<Item = Result<Bytes, E>> + Unpin,
     ) {
+        let expected = self.progress.borrow().expected_size;
+        if let Some(total) = expected {
+            // See set_expected_size: reserve before set_total so the phase spins.
+            writeback::preallocate(self.file.as_raw_fd(), total)
+                .await
+                .log_err();
+            self.progress.send_modify(|p| p.tracker.set_total(total));
+        }
         while let Some(next) = body.next().await {
-            if let Err(e) = async {
-                self.write_all(&next.map_err(std::io::Error::other)?)
-                    .await?;
-                Ok(())
-            }
-            .await
-            {
+            let chunk = match next.map_err(std::io::Error::other) {
+                Ok(chunk) => chunk,
+                Err(e) => {
+                    self.progress.send_if_modified(|p| p.handle_error(&e));
+                    break;
+                }
+            };
+            if let Err(e) = self.file.write_all(&chunk).await {
                 self.progress.send_if_modified(|p| p.handle_error(&e));
                 break;
             }
+            let len = chunk.len() as u64;
+            self.progress.send_modify(|p| {
+                p.written += len;
+                p.tracker += len;
+            });
+            let written = self.progress.borrow().written;
+            self.pacer.pace(written).await.log_err();
         }
         if let Err(e) = self.file.sync_all().await {
             self.progress.send_if_modified(|p| p.handle_error(&e));
         }
-        self.update_sync_progress();
-    }
-    fn update_sync_progress(&mut self) {
-        let synced = self.file.bytes_synced();
-        let delta = synced - self.last_synced;
-        if delta > 0 {
-            self.last_synced = synced;
-            self.progress.send_modify(|p| {
-                p.written += delta;
-                p.tracker += delta;
-            });
-        }
     }
 }
-#[pin_project::pinned_drop]
-impl PinnedDrop for UploadHandle {
-    fn drop(self: Pin<&mut Self>) {
-        let this = self.project();
-        this.progress.send_if_modified(|p| p.complete());
-    }
-}
-impl AsyncWrite for UploadHandle {
-    fn poll_write(
-        self: Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-        buf: &[u8],
-    ) -> Poll<Result<usize, std::io::Error>> {
-        let this = self.project();
-        // Update progress based on bytes actually flushed to disk
-        let synced = this.file.bytes_synced();
-        let delta = synced - *this.last_synced;
-        if delta > 0 {
-            *this.last_synced = synced;
-            this.progress.send_modify(|p| {
-                p.written += delta;
-                p.tracker += delta;
-            });
-        }
-        match this.file.poll_write(cx, buf) {
-            Poll::Ready(Err(e)) => {
-                this.progress
-                    .send_if_modified(|progress| progress.handle_error(&e));
-                Poll::Ready(Err(e))
-            }
-            a => a,
-        }
-    }
-    fn poll_flush(
-        self: Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-    ) -> Poll<Result<(), std::io::Error>> {
-        let this = self.project();
-        match this.file.poll_flush(cx) {
-            Poll::Ready(Err(e)) => {
-                this.progress
-                    .send_if_modified(|progress| progress.handle_error(&e));
-                Poll::Ready(Err(e))
-            }
-            a => a,
-        }
-    }
-    fn poll_shutdown(
-        self: Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-    ) -> Poll<Result<(), std::io::Error>> {
-        let this = self.project();
-        match this.file.poll_shutdown(cx) {
-            Poll::Ready(Err(e)) => {
-                this.progress
-                    .send_if_modified(|progress| progress.handle_error(&e));
-                Poll::Ready(Err(e))
-            }
-            a => a,
-        }
+impl Drop for UploadHandle {
+    fn drop(&mut self) {
+        self.progress.send_if_modified(|p| p.complete());
     }
 }
 
@@ -549,9 +497,38 @@ pub struct DownloadAttemptContext {
 pub struct DownloadHandle {
     tmp_dir: Option<Arc<TmpDir>>,
     file: tokio::fs::File,
+    pacer: WritebackPacer,
     progress: watch::Sender<Progress>,
 }
 impl DownloadHandle {
+    async fn set_expected_size(&mut self, total: u64) {
+        // Reserve before setting the total so the phase shows a spinner during
+        // the reserve (which can stall on fragmented btrfs) rather than a frozen 0%.
+        writeback::preallocate(self.file.as_raw_fd(), total)
+            .await
+            .log_err();
+        self.progress.send_modify(|p| {
+            p.expected_size = Some(total);
+            p.tracker.set_total(total);
+        });
+    }
+    async fn restart(&mut self) -> Result<(), Error> {
+        self.file
+            .set_len(0)
+            .await
+            .map_err(|e| Error::new(e, ErrorKind::Filesystem))?;
+        self.file
+            .seek(SeekFrom::Start(0))
+            .await
+            .map_err(|e| Error::new(e, ErrorKind::Filesystem))?;
+        self.pacer.reset();
+        self.progress.send_modify(|p| {
+            p.written = 0;
+            p.expected_size = None;
+            p.tracker.set_done(0);
+        });
+        Ok(())
+    }
     pub async fn download_from<F, Fut>(&mut self, mut next_response: F)
     where
         F: FnMut(DownloadAttemptContext) -> Fut,
@@ -581,35 +558,36 @@ impl DownloadHandle {
                 }
             };
 
-            if response.status() == StatusCode::PARTIAL_CONTENT {
-                if let Some(total) = parse_content_range_total(response.headers()) {
-                    self.progress.send_modify(|p| {
-                        p.expected_size = Some(total);
-                        p.tracker.set_total(total);
-                    });
+            let new_size = if response.status() == StatusCode::PARTIAL_CONTENT {
+                // Re-sync the write head: a failed write may have committed
+                // bytes past `bytes_written` before erroring.
+                if let Err(e) = self.file.seek(SeekFrom::Start(bytes_written)).await {
+                    break Err(Error::new(e, ErrorKind::Filesystem));
                 }
+                parse_content_range_total(response.headers())
             } else {
-                if let Err(e) = self.file.set_len(0).await {
-                    break Err(Error::new(e, ErrorKind::Filesystem));
-                }
-                if let Err(e) = self.file.seek(SeekFrom::Start(0)).await {
-                    break Err(Error::new(e, ErrorKind::Filesystem));
-                }
-                self.progress.send_modify(|p| {
-                    p.written = 0;
-                    p.tracker.set_done(0);
-                });
-                if let Some(content_length) = response
+                let content_length = response
                     .headers()
                     .get(CONTENT_LENGTH)
                     .and_then(|a| a.to_str().log_err())
-                    .and_then(|a| a.parse::<u64>().log_err())
-                {
-                    self.progress.send_modify(|p| {
-                        p.expected_size = Some(content_length);
-                        p.tracker.set_total(content_length);
-                    });
+                    .and_then(|a| a.parse::<u64>().log_err());
+                if let Err(e) = self.restart().await {
+                    break Err(e);
                 }
+                content_length
+            };
+            // A size change between attempts means the mirror's file changed
+            // mid-download. Already-consumed bytes (here and in concurrent
+            // readers) may be from another generation, so fail rather than
+            // splice them together.
+            if matches!((expected_size, new_size), (Some(prev), Some(new)) if prev != new) {
+                break Err(Error::new(
+                    eyre!("file changed on mirror mid-download"),
+                    ErrorKind::Network,
+                ));
+            }
+            if let Some(size) = new_size {
+                self.set_expected_size(size).await;
             }
 
             let stream_result: Result<(), Error> = async {
@@ -625,6 +603,8 @@ impl DownloadHandle {
                         p.written += len;
                         p.tracker += len;
                     });
+                    let written = self.progress.borrow().written;
+                    self.pacer.pace(written).await.log_err();
                 }
                 Ok(())
             }

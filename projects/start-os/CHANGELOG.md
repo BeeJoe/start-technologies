@@ -59,6 +59,7 @@ file tracks notable changes since the move to the monorepo.
   - **Private-domain DNS injection (RFC 2136).** When a private domain is enabled on a gateway, StartOS pushes an `A` record (domain → this host's IP on that subnet) to the gateway's DNS server via DNS UPDATE so LAN devices that don't use StartOS's resolver can still resolve it, and withdraws it on disable/delete. `check_dns` now verifies a private domain by resolving the specific FQDN against the LAN's DNS server(s) and confirming it returns one of this server's LAN addresses.
   - **PCP HOSTNAME extension (SNI demux).** SSL/TLS services can share a single external port (443) across many hostnames: the gateway demultiplexes inbound TLS by SNI. StartOS emits PCP HOSTNAME mappings for public-domain vhosts (PCP-only — NAT-PMP/UPnP can't demux), gated by a PCP ANNOUNCE capability probe so the option is only sent to gateways that understand it. The protocol is documented as an Internet-Draft (`rfcs/draft-start9-pcp-hostname`).
   - **PCP PORT_SET (RFC 7753).** A contiguous port range maps in a single PCP MAP instead of per-port sweeps.
+  - **Per-gateway capability tracking, sharding, and backoff.** Each gateway's PCP/NAT-PMP/UPnP support (and the PCP HOSTNAME extension) is recorded on the gateway in the database — fed by periodic watcher probes and by the outcome of every mapping attempt — so a gateway that refuses a protocol stops being asked instead of paying a timeout per attempt (a yes is trusted for an hour, a no re-probed after five minutes). Mapping work is sharded per gateway interface, so one gateway's slow or absent answers never delay another gateway's mappings, and a mapping that keeps failing backs off exponentially (15 seconds, doubling to a 16-minute cap) rather than retrying on a fixed interval.
   - **In-place WireGuard gateway updates.** `start-cli net tunnel update <id> <config>` (and a per-gateway **Update config** UI action) re-issues a WireGuard config onto the existing interface without churning the gateway identity, so forwards and public/private domains keyed to it survive the swap — primarily to add a `DNS =` line to an existing config. The update path uses NetworkManager `Update2` + `Device.Reapply`, so updating the gateway carrying the request no longer drops its own transport. Because NetworkManager (≤ 1.52) strips WireGuard peer preshared-keys on `Reapply` even when they are passed to it explicitly, StartOS re-applies each peer's PSK straight to the kernel device (over stdin, never argv) after the reapply, so the tunnel keeps its shared secret.
   - **Best-effort HTTP→HTTPS redirect (IPv6).** When a service is publicly exposed on 443 over an IPv6 GUA, StartOS asks the gateway for an `80→443` redirect pinhole so plain `http://` auto-redirects to `https`. Over IPv4 no such map is requested — the upstream gateway (e.g. StartTunnel, which serves a port-80 redirect by default) handles it.
   - **Insecure exposures never reach the WAN.** A port is opened to the public internet (an IPv4 WAN forward, an IPv6 GUA pinhole/forward, or an upstream port-map) only when the exposure is itself secure — TLS on the wire or a self-securing protocol. A plaintext exposure can still reach the LAN over a gateway explicitly marked secure, but the WAN is treated as never secure regardless of the gateway's setting.
@@ -66,7 +67,7 @@ file tracks notable changes since the move to the monorepo.
 - **`MultiHost.bindPortRange` backend (#3270).** Host support for reserving a contiguous TCP+UDP port range (2–500 ports) in one call, stored as a single `RangeBindInfo` record under `Host.binding_ranges` and installed as one nftables rule per chain (via `PortForward.count`). Intended for real-time / WebRTC servers (coturn, RTP, SIP). Backed by the new `bindRange` effect.
 - **Package init progress reporting (#3323).** A service can stream progress during the install/update finalization phase via the new `setInitProgress` effect; the host nests it inside the install's finalization phase using the standard `FullProgress` wire format, and `setupInit` auto-reports one step per composed init handler.
 - **Phased backup progress (#3250).** `serverInfo.statusInfo.backupProgress` now uses the standard `FullProgress` shape (matching update/install progress). `NamedProgress.progress` is generalized to `PhaseProgress` so a phase can carry sub-phases, and the new `setBackupProgress` effect lets a service container stream its own backup sub-progress.
-- **Backup format v2 (#3289).** Backups are written to a new `StartOSBackupsV2` directory, and the backup report now includes per-package duration. The backup targets list shows the free space available on every drive and network folder so the user can confirm a backup will fit before starting it. When this server's pre-v2 `StartOSBackups/<server-id>` backup is present on the selected target, the UI additionally warns before backup, then confirms the format change (#3324, `backup.target.legacy-info` RPC). Once migrated, StartOS also helps remove the now-obsolete V1 data: after a backup completes, if the target still holds this server's V1 backup, a warning notification reminds the user it is no longer needed; and the backup-create page shows a **Delete old backup** action for any target holding this server's V1 backup — whether or not a new (V2) backup exists yet — removing only this server's old backup to reclaim space; other servers' backups and `StartOSBackupsV2` are untouched (`backup.target.delete-legacy` RPC). Deleting requires a confirmation, plus an extra confirmation when this server has no current (V2) backup on the target (so the user can't unknowingly delete their only backup). Legacy detection and deletion are scoped to the current server's ID, so a target shared by several servers no longer flags or removes another server's backup.
+- **Backup format v2 (#3289).** Backups are written to a new `StartOSBackupsV2` directory, and the backup report now includes per-package duration. The backup targets list shows the free space available on every drive and network folder so the user can confirm a backup will fit before starting it. When this server's pre-v2 `StartOSBackups/<server-id>` backup is present on the selected target, the UI additionally warns before backup, then confirms the format change (#3324, `backup.target.legacy-info` RPC). Once migrated, StartOS also helps remove the now-obsolete V1 data: after a backup completes, if the target still holds this server's V1 backup, a warning notification reminds the user it is no longer needed; and the backup-create page shows a **Delete old backup** action for any target holding this server's V1 backup — whether or not a new (V2) backup exists yet — removing only this server's old backup; other servers' backups and `StartOSBackupsV2` are untouched (`backup.target.delete-legacy` RPC). Deletion returns immediately — the backup is atomically moved to a hidden trash folder on the target — and its space is reclaimed by a background sweep that posts a notification when it finishes (unlinking a large backup can take hours on some filesystems); a backup started while reclamation is pending finishes it first, shown as a `Reclaiming Space` phase in the backup's progress. Deleting requires a confirmation, plus an extra confirmation when this server has no current (V2) backup on the target (so the user can't unknowingly delete their only backup). Legacy detection and deletion are scoped to the current server's ID, so a target shared by several servers no longer flags or removes another server's backup.
 - **Direct cross-package action runs via `access` (#3267).** Action metadata gains an `access` field (`'public' | 'dependent' | 'user'`, default `'user'`) controlling who may invoke an action directly through `effects.action.run`. Public/dependent actions give dependents a direct path instead of only creating a task; direct runs still honor the action's `visibility` and `allowedStatuses`.
 - **`input-not-matches` tasks accept multiple values (#3310).** `TaskInput` splits into `accept` (a list of acceptable partial inputs) and `set` (the value to prefill when none match); the cross-package critical-conflict guard fires only when the input conflicts with every `accept` entry. The host still accepts the legacy `{ value }` shape over the effects socket for s9pks built on the pre-2.0 SDK.
 - **Service interfaces tab.** Service interfaces are promoted to a dedicated sidebar tab; the dashboard interfaces card and per-interface detail route are removed, sidebar nav labels are decoupled from route paths, and the tasks table is redesigned (action-first, service rendered as an icon).
@@ -179,8 +180,9 @@ file tracks notable changes since the move to the monorepo.
   hostname, and the UI passes `start-os` wherever a package id is expected.
   Installing a package with the id `start-os` is rejected. The migration
   re-points the tor package's persisted hidden-service identity for the admin
-  UI (`STARTOS`/`startos-ui` → `start-os`/`admin`), preserving the server's
-  existing `.onion` address across the identity change.
+  UI (`STARTOS`/`startos-ui` → `start-os`/`admin`) — including the onion-address
+  import handoff written into tor's volume before tor is installed — preserving
+  the server's existing `.onion` address across the identity change.
 - **SDK:** `PluginHostnameInfo.packageId` is required in the type — url plugins
   (e.g. tor) should export the StartOS UI's urls as `start-os`/`admin` instead of
   `packageId: null`. For backwards compatibility during the beta.10 transition,
@@ -312,7 +314,40 @@ file tracks notable changes since the move to the monorepo.
 - **StartOS UI network metadata.** The built-in UI now stores a valid host ID,
   preventing an existing server database from failing validation and entering
   diagnostic mode after the upstream service-interface migration.
-
+- **Login rate limiter no longer degrades logins to one per 20 seconds (#3512).**
+  The password-login throttle used a single process-wide counter that only ever
+  incremented and never reset, so after three logins since boot the entire box
+  was capped at one login per 20 seconds across all clients (UI, CLI, API) for
+  the rest of uptime. The counter now resets once 20 seconds pass without a
+  further accepted login attempt — and a rejected attempt no longer advances the
+  window — so the limit is a genuine three-attempts-per-20-seconds window rather
+  than a permanent cap.
+- **Large package installs no longer stall or freeze the box.** Downloading and
+  unpacking a big s9pk streamed through the page cache with no writeback pacing,
+  so on a fragmented copy-on-write btrfs filesystem the temporary and installed
+  archives scattered across thousands of extents and their accumulated dirty
+  pages flushed in one enormous final `fdatasync` — a stall lasting seconds to
+  minutes whose victim varied by package size and each box's on-disk layout.
+  Package transfers now reserve their space up front (`fallocate`), write to
+  `nodatacow` files so they stay contiguous on btrfs, and pace writeback
+  (`sync_file_range`) so only a bounded amount is ever left unsynced — keeping
+  memory use flat and the final flush cheap.
+- **DNS forwarder no longer wedges box-wide after an upstream blip (#3473).**
+  After a WAN, tunnel, or DHCP event degraded the currently-configured upstream
+  resolvers, container DNS could go dark for every service on the box — external
+  lookups failing with `Temporary failure in name resolution` — until the
+  upstreams recovered or the box was rebooted. The forwarder held a read lock on
+  its upstream catalog across each upstream query (up to 30s) while the task
+  installing new upstreams gave up after 10s and retried, starving the very
+  update that would have replaced the dead upstreams. The resolver now snapshots
+  the catalog and releases the lock before forwarding, and installs new upstreams
+  by atomic swap — no lock wait, no timeout, no retry — so a pending upstream
+  change always applies immediately. Forward queries also use a 5-second
+  per-attempt upstream timeout (matching what container clients wait) rather than
+  30 seconds, and names in the private `.startos`/`.embassy` zones that no
+  running service claims are answered
+  authoritatively (`NXDOMAIN`) instead of being forwarded to — and leaked at —
+  upstream resolvers.
 - **Enabling a public IPv4 address on an SSL service interface now opens the
   gateway port automatically.** Only a public _domain_ on an SSL-terminated port
   used to trigger automatic port forwarding (PCP/NAT-PMP/UPnP); turning on the
@@ -320,6 +355,7 @@ file tracks notable changes since the move to the monorepo.
   now requests the pinhole for the SSL port the same way it already did for
   public domains and IPv6 GUAs, so a public IPv4 on an `addSsl` interface (the
   StartOS UI included) is reachable from the Internet without a manual forward.
+- **Installer: "Preserve" selections that cannot keep your data are now refused instead of silently erasing the data drive.** During a USB install, choosing **Preserve** for a drive whose StartOS data pool lives on a _partition_ of the drive (the 0.3.x single-drive layout) while installing the OS to a _different_ drive fell through to creating a fresh, empty pool on the data drive — permanently destroying the data the user asked to keep, with no error. The installer now validates the preserve selection before writing anything and fails with an actionable error instead: a drive whose pool lives on a partition must be selected for **both** the OS drive and the data drive, and a drive whose pool spans the entire disk must be paired with a different OS drive. The setup wizard applies the same rules up front: when the selected drives cannot keep the data, the **StartOS Data Detected** dialog says why and disables **Preserve**, so an unpreservable selection is caught with guidance to fix it rather than surfacing as an error once the install is already under way.
 - **IPv6 services exposed through a tunnel are now reachable, and outbound IPv6 no longer leaks around a gateway.** StartOS now applies the full IPv4 policy-routing layer to IPv6, including CONNMARK reply-routing: a reply to an inbound IPv6 connection that arrived over a tunnel — whether terminated on the host or DNAT'd to a service container — is pinned back out the interface it arrived on, so exposing a service over a StartTunnel's delegated IPv6 actually works. Previously those replies had no route back and were blackholed, so inbound IPv6 over a tunnel was dead. Outbound, the server's IPv6 default is now chosen by route metric exactly like IPv4, and leak prevention is per-gateway: an outbound gateway that is explicitly selected but can't carry IPv6 drops the server's IPv6 via a blackhole in that gateway's own routing table — so your real address never leaks out the ISP link — without blackholing the reply traffic that keeps inbound tunnel services working.
 - **Updating a WireGuard gateway's config no longer drops its preshared key.** The in-place update path (`net tunnel update` / the **Update config** UI action, NetworkManager `Update2` + `Reapply`) persisted the interface private key but silently dropped each peer's preshared key, so a re-issued PSK-using tunnel failed its handshake and went dead (taking tunnel-routed DNS down with it). The peer secret is now flagged system-owned so the update persists it, and the settings (peer secrets inline) are passed to `Reapply` explicitly — an empty-dict `Reapply` still stripped the PSK from the _running_ device even with the profile persisted correctly, hanging all traffic through the tunnel (e.g. forwarded ports) until the next reboot.
 - **Dev builds bricked by an empty persisted host id (#3387).** Builds between
@@ -395,6 +431,25 @@ file tracks notable changes since the move to the monorepo.
   on the version it had. Previously the old version was started against the
   partially-migrated data and failed its downgrade migration with a "cannot
   migrate" error, leaving the service stuck until its container was rebuilt.
+- **EFI system partitions are no longer listed as backup drives.** A GPT drive
+  formatted on macOS or Windows (or a former boot drive) carries a small hidden
+  EFI System Partition alongside its data partition, so the backup drive list
+  showed the same physical drive twice — the second entry an unusable ~200 MB
+  partition displayed as "0 GB". Partitions whose partition type marks them as
+  an EFI System Partition are now skipped everywhere drives are listed (backup
+  targets, setup-wizard drive lists, `start-cli disk list`), and a sub-gigabyte
+  partition that does remain shows its capacity in MB instead of rounding down
+  to "0 GB".
+- **A transient failure querying clock-sync status no longer aborts boot or
+  strands the clock-sync warning.** StartOS asks systemd (`timedatectl`) whether
+  NTP has synchronized — once per second during the boot-time sync wait, then
+  every 30 seconds in the background until the first sync lands. Both callers
+  treated a failed query as fatal: during init it aborted boot into Diagnostic
+  Mode, and in the background poller it silently killed the polling task,
+  leaving the "Clock sync failure" warning up for the rest of the boot even
+  after time synchronized. A failed query (e.g. a D-Bus activation timeout
+  under boot load) is now treated as "not synchronized yet" — logged and
+  retried on the existing cadence.
 
 ### Removed
 

@@ -787,7 +787,7 @@ export const ENGLISH: Record<string, number> = {
   'Internal Range': 884,
   'Or enable automatic port forwarding (PCP) on the gateway. UPnP and NAT-PMP do not support port ranges.': 885,
   'Delete old backup': 887,
-  'Old backup deleted': 888,
+  'Old backup deleted. Space will be reclaimed in the background.': 888,
   'Delete old backup?': 889,
   'Permanently delete the old (V1) backup from this target? This cannot be undone. Your current (V2) backup will not be affected.': 890,
   'Permanently delete the old (V1) backup from this target? This cannot be undone.': 904,
@@ -799,8 +799,6 @@ export const ENGLISH: Record<string, number> = {
   'Your personal StartOS web user interface.': 893,
   'create these DNS records': 894,
   'IPv6 Firewall': 895,
-  'External': 896, // as in, external socket address
-  'Internal': 897, // as in, internal socket address
   'Address': 898, // as in, a socket address (ip:port)
   'IPv6 has no port forwarding — your server is reachable directly at its global address. Your gateway firewall must allow inbound connections to it, or enable automatic firewall configuration (PCP) on the gateway.': 899,
   'Not enough free space for a new backup': 866,
@@ -1064,4 +1062,9 @@ export const ENGLISH: Record<string, number> = {
   'Add to current schedule': 1179,
   'Create a new schedule': 1180,
   'Discard changes': 1181,
+  'Cannot Preserve Data': 1182,
+  'No StartOS data was found on the selected data drive. If your data is on a different drive, select that drive instead. To erase this drive and start fresh, choose "Overwrite".': 1183,
+  'The StartOS data on the selected data drive is stored on a partition alongside an older OS installation, and cannot be preserved while the OS is installed to a different drive. To keep your data, select this same drive for both the OS drive and the data drive. To erase it instead, choose "Overwrite".': 1184,
+  'The StartOS data on the selected data drive is stored on a partition alongside an older OS installation, and cannot be preserved on this device. To erase the drive and start fresh, choose "Overwrite".': 1185,
+  'The StartOS data on the selected data drive spans the entire drive, so the OS cannot be installed to the same drive without erasing it. To preserve your data, select a different OS drive. To erase it, choose "Overwrite".': 1186,
 }

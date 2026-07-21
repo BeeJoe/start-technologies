@@ -1,3 +1,4 @@
+use std::os::fd::AsRawFd;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
@@ -7,6 +8,7 @@ use exver::VersionRange;
 use futures::future::{BoxFuture, Fuse};
 use futures::{Future, FutureExt, StreamExt, TryFutureExt, stream};
 use imbl::OrdMap;
+use tokio::io::AsyncSeekExt;
 use tokio::sync::{OwnedRwLockReadGuard, OwnedRwLockWriteGuard, RwLock, oneshot};
 use tracing::instrument;
 use url::Url;
@@ -188,9 +190,6 @@ impl ServiceMap {
         let developer_key = s9pk.as_archive().signer();
         let mut service = self.get_mut(&id).await;
         let size = s9pk.size();
-        if let Some(size) = size {
-            unpack_progress.set_total(size);
-        }
         let op_name = if recovery_source.is_none() {
             if service.is_none() {
                 "Installing"
@@ -292,13 +291,33 @@ impl ServiceMap {
                             Some(Duration::from_millis(100)),
                         )));
 
+                    let out = crate::util::io::create_file(&download_path).await?;
+                    // `+C` before any extents exist, so fallocate lands nodatacow.
+                    crate::util::writeback::set_no_cow(&download_path).await;
+                    // Reserve while the phase is still indeterminate, so it shows a spinner
+                    // during the reserve (which can stall on fragmented btrfs) not a frozen 0%.
                     unpack_progress.start();
+                    if let Some(size) = size {
+                        crate::util::writeback::preallocate(out.as_raw_fd(), size)
+                            .await
+                            .log_err();
+                        unpack_progress.set_total(size);
+                    }
                     let mut progress_writer = ProgressTrackerWriter::new(
-                        crate::util::io::create_file(&download_path).await?,
+                        crate::util::writeback::PacedWriter::new(out),
                         unpack_progress,
                     );
                     s9pk.serialize(&mut progress_writer, true).await?;
-                    let (file, mut unpack_progress) = progress_writer.into_inner();
+                    let (paced_writer, mut unpack_progress) = progress_writer.into_inner();
+                    let mut file = paced_writer.into_inner();
+                    // `size` is the pre-filter source size; free the reserved tail that
+                    // arch-filtering didn't use.
+                    let written = file.stream_position().await?;
+                    if let Some(size) = size {
+                        crate::util::writeback::release_beyond(file.as_raw_fd(), written, size)
+                            .await
+                            .log_err();
+                    }
                     file.sync_all().await?;
 
                     crate::util::io::rename(&download_path, &installed_path).await?;

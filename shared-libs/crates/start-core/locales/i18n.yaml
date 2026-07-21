@@ -1064,6 +1064,20 @@ disk.util.could-not-get-capacity:
   fr_FR: "Impossible d'obtenir la capacité de %{disk} : %{error}"
   pl_PL: "Nie można pobrać pojemności %{disk}: %{error}"
 
+disk.util.could-not-get-part-type:
+  en_US: "Could not get partition type of %{part}: %{error}"
+  de_DE: "Konnte Partitionstyp von %{part} nicht abrufen: %{error}"
+  es_ES: "No se pudo obtener el tipo de partición de %{part}: %{error}"
+  fr_FR: "Impossible d'obtenir le type de partition de %{part} : %{error}"
+  pl_PL: "Nie można pobrać typu partycji %{part}: %{error}"
+
+disk.util.skipping-efi-partition:
+  en_US: "Skipping EFI system partition %{part}"
+  de_DE: "Überspringe EFI-Systempartition %{part}"
+  es_ES: "Omitiendo partición del sistema EFI %{part}"
+  fr_FR: "Partition système EFI %{part} ignorée"
+  pl_PL: "Pomijanie partycji systemowej EFI %{part}"
+
 disk.util.could-not-get-label:
   en_US: "Could not get label of %{part}: %{error}"
   de_DE: "Konnte Bezeichnung von %{part} nicht abrufen: %{error}"
@@ -1165,6 +1179,29 @@ os-install.no-free-space-for-os-root:
   fr_FR: "Plus d'espace libre sur le périphérique pour la partition racine du système"
   pl_PL: "Brak wolnego miejsca na urządzeniu dla partycji głównej systemu"
 
+# os_install/mod.rs
+os-install.no-startos-data-to-preserve:
+  en_US: "\"Preserve\" was selected, but no StartOS data was found on %{disk}. If your data is on a different drive, select that drive instead. To erase %{disk} and start fresh, go back and choose \"Overwrite\"."
+  de_DE: "\"Beibehalten\" wurde ausgewählt, aber auf %{disk} wurden keine StartOS-Daten gefunden. Wenn sich Ihre Daten auf einem anderen Laufwerk befinden, wählen Sie stattdessen dieses Laufwerk. Um %{disk} zu löschen und neu zu beginnen, gehen Sie zurück und wählen Sie \"Überschreiben\"."
+  es_ES: "Se seleccionó \"Conservar\", pero no se encontraron datos de StartOS en %{disk}. Si sus datos están en otra unidad, seleccione esa unidad. Para borrar %{disk} y empezar de nuevo, vuelva atrás y elija \"Sobrescribir\"."
+  fr_FR: "« Conserver » a été sélectionné, mais aucune donnée StartOS n'a été trouvée sur %{disk}. Si vos données se trouvent sur un autre disque, sélectionnez ce disque. Pour effacer %{disk} et repartir à zéro, revenez en arrière et choisissez « Écraser »."
+  pl_PL: "Wybrano „Zachowaj”, ale na %{disk} nie znaleziono danych StartOS. Jeśli Twoje dane znajdują się na innym dysku, wybierz tamten dysk. Aby wymazać %{disk} i zacząć od nowa, wróć i wybierz „Nadpisz”."
+
+os-install.partitioned-pool-needs-same-drive:
+  en_US: "The StartOS data on %{disk} is stored on partition %{partition} alongside an older OS installation, and cannot be preserved while the OS is installed to a different drive. To keep your data, select %{disk} for both the OS drive and the data drive. To erase it instead, go back and choose \"Overwrite\"."
+  de_DE: "Die StartOS-Daten auf %{disk} befinden sich auf der Partition %{partition} neben einer älteren OS-Installation und können nicht beibehalten werden, wenn das OS auf einem anderen Laufwerk installiert wird. Um Ihre Daten zu behalten, wählen Sie %{disk} sowohl als OS- als auch als Datenlaufwerk. Um sie stattdessen zu löschen, gehen Sie zurück und wählen Sie \"Überschreiben\"."
+  es_ES: "Los datos de StartOS en %{disk} están en la partición %{partition} junto a una instalación de SO anterior, y no pueden conservarse si el SO se instala en otra unidad. Para conservar sus datos, seleccione %{disk} tanto para la unidad del SO como para la unidad de datos. Para borrarlos, vuelva atrás y elija \"Sobrescribir\"."
+  fr_FR: "Les données StartOS de %{disk} se trouvent sur la partition %{partition} aux côtés d'une ancienne installation de l'OS et ne peuvent pas être conservées si l'OS est installé sur un autre disque. Pour garder vos données, sélectionnez %{disk} à la fois comme disque OS et comme disque de données. Pour les effacer, revenez en arrière et choisissez « Écraser »."
+  pl_PL: "Dane StartOS na %{disk} znajdują się na partycji %{partition} obok starszej instalacji systemu i nie można ich zachować, gdy system jest instalowany na innym dysku. Aby zachować dane, wybierz %{disk} zarówno jako dysk systemowy, jak i dysk danych. Aby je wymazać, wróć i wybierz „Nadpisz”."
+
+os-install.partitioned-pool-unsupported-layout:
+  en_US: "The StartOS data on %{disk} is stored on partition %{partition} alongside an older OS installation, and cannot be preserved on this device. To erase the drive and start fresh, choose \"Overwrite\"."
+  de_DE: "Die StartOS-Daten auf %{disk} befinden sich auf der Partition %{partition} neben einer älteren OS-Installation und können auf diesem Gerät nicht beibehalten werden. Um das Laufwerk zu löschen und neu zu beginnen, wählen Sie \"Überschreiben\"."
+  es_ES: "Los datos de StartOS en %{disk} están en la partición %{partition} junto a una instalación de SO anterior, y no pueden conservarse en este dispositivo. Para borrar la unidad y empezar de nuevo, elija \"Sobrescribir\"."
+  fr_FR: "Les données StartOS de %{disk} se trouvent sur la partition %{partition} aux côtés d'une ancienne installation de l'OS et ne peuvent pas être conservées sur cet appareil. Pour effacer le disque et repartir à zéro, choisissez « Écraser »."
+  pl_PL: "Dane StartOS na %{disk} znajdują się na partycji %{partition} obok starszej instalacji systemu i nie można ich zachować na tym urządzeniu. Aby wymazać dysk i zacząć od nowa, wybierz „Nadpisz”."
+
+# os_install/gpt.rs
 os-install.protected-partition-overlaps-os-root-bytes:
   en_US: "Protected partition %{path} starts at sector %{first_lba}, leaving only %{available_bytes} bytes for the OS root partition (minimum is %{min_bytes} bytes)"
   de_DE: "Geschützte Partition %{path} beginnt bei Sektor %{first_lba} und lässt nur %{available_bytes} Bytes für die OS-Root-Partition übrig (Minimum ist %{min_bytes} Bytes)"
@@ -1179,6 +1216,14 @@ os-install.protected-partition-overlaps-os-root-sectors:
   es_ES: "La partición protegida %{path} comienza en el sector %{first_lba}, dejando menos del espacio mínimo para la partición raíz del sistema operativo (debe terminar en o antes del sector %{first_lba}, sector final mínimo es %{min_end_sector})"
   fr_FR: "La partition protégée %{path} commence au secteur %{first_lba}, laissant moins que la place minimale pour la partition racine du système (doit se terminer au plus tard au secteur %{first_lba}, secteur de fin minimum %{min_end_sector})"
   pl_PL: "Chroniona partycja %{path} zaczyna się w sektorze %{first_lba}, pozostawiając mniej niż minimalne miejsce na partycję główną systemu (musi kończyć się w sektorze %{first_lba} lub wcześniej, minimalny sektor końcowy to %{min_end_sector})"
+
+# os_install/mod.rs
+os-install.whole-disk-pool-cannot-share-drive:
+  en_US: "The StartOS data on %{disk} spans the entire drive, so the OS cannot be installed to the same drive without erasing it. To preserve your data, select a different OS drive. To erase it, go back and choose \"Overwrite\"."
+  de_DE: "Die StartOS-Daten auf %{disk} erstrecken sich über das gesamte Laufwerk, sodass das OS nicht auf demselben Laufwerk installiert werden kann, ohne sie zu löschen. Um Ihre Daten zu behalten, wählen Sie ein anderes OS-Laufwerk. Um sie zu löschen, gehen Sie zurück und wählen Sie \"Überschreiben\"."
+  es_ES: "Los datos de StartOS en %{disk} ocupan toda la unidad, por lo que el SO no puede instalarse en la misma unidad sin borrarlos. Para conservar sus datos, seleccione otra unidad para el SO. Para borrarlos, vuelva atrás y elija \"Sobrescribir\"."
+  fr_FR: "Les données StartOS de %{disk} occupent l'intégralité du disque : l'OS ne peut donc pas être installé sur le même disque sans les effacer. Pour conserver vos données, sélectionnez un autre disque pour l'OS. Pour les effacer, revenez en arrière et choisissez « Écraser »."
+  pl_PL: "Dane StartOS na %{disk} zajmują cały dysk, więc system nie może zostać zainstalowany na tym samym dysku bez ich wymazania. Aby zachować dane, wybierz inny dysk systemowy. Aby je wymazać, wróć i wybierz „Nadpisz”."
 
 hostname.empty:
   en_US: "Hostname cannot be empty"
@@ -1468,6 +1513,49 @@ backup.bulk.service-not-ready:
   es_ES: "No se puede crear una copia de seguridad de un servicio que aún se está inicializando o está en estado de error"
   fr_FR: "Impossible de créer une sauvegarde d'un service encore en cours d'initialisation ou en état d'erreur"
   pl_PL: "Nie można utworzyć kopii zapasowej usługi, która jest jeszcze inicjalizowana lub znajduje się w stanie błędu"
+
+backup.bulk.reclaim-failed:
+  en_US: "Failed to reclaim old-backup space: %{error}"
+  de_DE: "Speicherplatz der alten Sicherung konnte nicht freigegeben werden: %{error}"
+  es_ES: "No se pudo recuperar el espacio de la copia de seguridad antigua: %{error}"
+  fr_FR: "Impossible de récupérer l'espace de l'ancienne sauvegarde : %{error}"
+  pl_PL: "Nie udało się odzyskać miejsca po starej kopii zapasowej: %{error}"
+
+backup.bulk.reclaiming-space:
+  en_US: "Reclaiming Space"
+  de_DE: "Speicherplatz wird freigegeben"
+  es_ES: "Recuperando espacio"
+  fr_FR: "Récupération de l'espace"
+  pl_PL: "Odzyskiwanie miejsca"
+
+# backup/trash.rs
+backup.trash.reclaim-failed-message:
+  en_US: "Deleting the old backup on %{target} did not finish: %{error}. The remaining space will be reclaimed automatically the next time this target is used for a backup."
+  de_DE: "Das Löschen der alten Sicherung auf %{target} wurde nicht abgeschlossen: %{error}. Der verbleibende Speicherplatz wird automatisch freigegeben, wenn dieses Ziel das nächste Mal für eine Sicherung verwendet wird."
+  es_ES: "La eliminación de la copia de seguridad antigua en %{target} no finalizó: %{error}. El espacio restante se recuperará automáticamente la próxima vez que este destino se use para una copia de seguridad."
+  fr_FR: "La suppression de l'ancienne sauvegarde sur %{target} ne s'est pas terminée : %{error}. L'espace restant sera récupéré automatiquement la prochaine fois que cette cible sera utilisée pour une sauvegarde."
+  pl_PL: "Usuwanie starej kopii zapasowej na %{target} nie zostało zakończone: %{error}. Pozostałe miejsce zostanie odzyskane automatycznie przy następnej kopii zapasowej na ten cel."
+
+backup.trash.reclaim-failed-title:
+  en_US: "Space Reclamation Incomplete"
+  de_DE: "Speicherfreigabe unvollständig"
+  es_ES: "Recuperación de espacio incompleta"
+  fr_FR: "Récupération d'espace incomplète"
+  pl_PL: "Odzyskiwanie miejsca niezakończone"
+
+backup.trash.reclaimed-message:
+  en_US: "The old (V1) backup on %{target} has been fully deleted, and the space it occupied is now available."
+  de_DE: "Die alte (V1) Sicherung auf %{target} wurde vollständig gelöscht und der von ihr belegte Speicherplatz ist jetzt verfügbar."
+  es_ES: "La copia de seguridad antigua (V1) en %{target} se ha eliminado por completo y el espacio que ocupaba ya está disponible."
+  fr_FR: "L'ancienne sauvegarde (V1) sur %{target} a été entièrement supprimée et l'espace qu'elle occupait est désormais disponible."
+  pl_PL: "Stara kopia zapasowa (V1) na %{target} została całkowicie usunięta, a zajmowane przez nią miejsce jest teraz dostępne."
+
+backup.trash.reclaimed-title:
+  en_US: "Backup Space Reclaimed"
+  de_DE: "Sicherungsspeicher freigegeben"
+  es_ES: "Espacio de copia de seguridad recuperado"
+  fr_FR: "Espace de sauvegarde récupéré"
+  pl_PL: "Odzyskano miejsce po kopii zapasowej"
 
 # backup/restore.rs
 backup.restore.duplicate-checkpoint:
@@ -2187,13 +2275,6 @@ net.gateway.no-configured-echoip-urls:
   pl_PL: "Brak skonfigurowanych adresów URL echoip"
 
 # net/dns.rs
-net.dns.timeout-updating-catalog:
-  en_US: "timed out waiting to update dns catalog"
-  de_DE: "Zeitüberschreitung beim Warten auf Aktualisierung des DNS-Katalogs"
-  es_ES: "tiempo de espera agotado esperando actualizar catálogo DNS"
-  fr_FR: "délai d'attente dépassé pour la mise à jour du catalogue DNS"
-  pl_PL: "przekroczono limit czasu oczekiwania na aktualizację katalogu DNS"
-
 net.dns.could-not-determine-source-interface:
   en_US: "Could not determine source interface of %{src}"
   de_DE: "Quellschnittstelle von %{src} konnte nicht ermittelt werden"
@@ -5629,11 +5710,11 @@ about.delete-automatic-backup-job:
   pl_PL: "Usuń zadanie automatycznej kopii zapasowej"
 
 about.delete-legacy-backup:
-  en_US: "Delete the legacy (V1) backup from a backup target"
-  de_DE: "Die alte (V1) Sicherung von einem Sicherungsziel löschen"
-  es_ES: "Eliminar la copia de seguridad heredada (V1) de un destino de copia de seguridad"
-  fr_FR: "Supprimer la sauvegarde héritée (V1) d'une cible de sauvegarde"
-  pl_PL: "Usuń starą kopię zapasową (V1) z celu kopii zapasowej"
+  en_US: "Delete the legacy (V1) backup from a backup target; its space is reclaimed in the background"
+  de_DE: "Die alte (V1) Sicherung von einem Sicherungsziel löschen; ihr Speicherplatz wird im Hintergrund freigegeben"
+  es_ES: "Eliminar la copia de seguridad heredada (V1) de un destino de copia de seguridad; su espacio se recupera en segundo plano"
+  fr_FR: "Supprimer la sauvegarde héritée (V1) d'une cible de sauvegarde ; son espace est récupéré en arrière-plan"
+  pl_PL: "Usuń starą kopię zapasową (V1) z celu kopii zapasowej; jej miejsce jest odzyskiwane w tle"
 
 about.disable-automatic-backup-job:
   en_US: "Disable an automatic backup job without deleting its checkpoints"
