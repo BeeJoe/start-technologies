@@ -1,4 +1,4 @@
-import { Component, inject, Injectable, signal } from '@angular/core'
+import { Component, inject, Service, signal } from '@angular/core'
 import { DialogService, i18nPipe } from '@start9labs/shared'
 import { T } from '@start9labs/start-core'
 import {
@@ -133,7 +133,7 @@ export const DELETE_SCHEDULE_DIALOG = new PolymorpheusComponent(
 )
 
 /** Deletes a schedule and optionally removes archives no other schedule uses. */
-@Injectable({ providedIn: 'root' })
+@Service()
 export class DeleteScheduleService {
   private readonly api = inject(ApiService)
   private readonly dialogs = inject(DialogService)

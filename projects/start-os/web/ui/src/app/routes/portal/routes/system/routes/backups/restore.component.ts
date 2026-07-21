@@ -59,6 +59,7 @@ export class BackupRestoreComponent implements OnInit {
   private readonly tasks = inject(TaskService)
   private readonly api = inject(ApiService)
   private readonly context = injectContext<BackupContext>()
+  private readonly i18n = inject(i18nPipe)
 
   readonly target = this.context.data
   readonly servers = Object.entries(this.target.entry.startOs)
@@ -114,7 +115,9 @@ export class BackupRestoreComponent implements OnInit {
         !Object.keys(backupInfo.packageBackups).length &&
         !scheduledHistories.length
       ) {
-        throw new Error('No restorable checkpoints were found')
+        throw new Error(
+          this.i18n.transform('No restorable checkpoints were found'),
+        )
       }
 
       const data = {
