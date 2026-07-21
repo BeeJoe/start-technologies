@@ -175,7 +175,10 @@ interface JobEditor extends EditableRetentionRule {
     ) {
       <section class="review" tuiAppearance="floating">
         <div tuiTitle>
-          <b>{{ 'Add to backup schedule' | i18n }}</b>
+          <b>
+            {{ 'Add to backup schedule' | i18n }} —
+            {{ packageName(review.packageId) }}
+          </b>
           <div tuiSubtitle>
             {{
               'Choose which automatic backup schedules should include this service.'
@@ -1044,6 +1047,12 @@ interface JobEditor extends EditableRetentionRule {
       gap: 0.75rem;
     }
 
+    .review .toggle-all {
+      width: 100%;
+      padding-inline: 0;
+      justify-content: space-between;
+    }
+
     .editor.panel {
       width: 100%;
       padding: 1.25rem;
@@ -1369,9 +1378,11 @@ interface JobEditor extends EditableRetentionRule {
       }
 
       .job-list-actions {
-        grid-column: 2 / -1;
-        grid-row: 3;
+        grid-column: 3;
+        grid-row: 1;
+        align-self: start;
         justify-self: end;
+        flex-wrap: nowrap;
       }
 
       .job-switch {
@@ -1713,7 +1724,7 @@ export class ScheduledBackupsComponent implements OnInit {
         data: {
           content: 'Changes were not saved',
           yes: 'Discard changes',
-          no: 'Cancel',
+          no: 'Back',
         },
       }),
       { defaultValue: false },
@@ -1737,7 +1748,7 @@ export class ScheduledBackupsComponent implements OnInit {
   }
 
   isDefaultJob(form: JobEditor): boolean {
-    return !!form.id && form.id === this.jobs()[0]?.id
+    return !!form.id && this.jobs().length === 1 && form.name === 'Default'
   }
 
   async edit(job?: T.BackupJob) {
@@ -1843,7 +1854,6 @@ export class ScheduledBackupsComponent implements OnInit {
           await this.api.runScheduledBackupJob({ id: form.id })
         }
       } else {
-        await this.normalizeDefaultScheduleName()
         const created = await this.api.createScheduledBackupJob({
           ...common,
           targetId: form.targetId,
@@ -1877,20 +1887,6 @@ export class ScheduledBackupsComponent implements OnInit {
     } finally {
       this.saving.set(false)
     }
-  }
-
-  private async normalizeDefaultScheduleName() {
-    const [first] = this.jobs()
-    if (this.jobs().length !== 1 || !first || first.name === 'Default') return
-
-    await this.api.updateScheduledBackupJob({
-      id: first.id,
-      name: 'Default',
-      services: first.services,
-      schedule: first.schedule,
-      defaultRetention: first.defaultRetention,
-      retentionOverrides: first.retentionOverrides,
-    })
   }
 
   async runNow(job: T.BackupJob) {
@@ -2113,6 +2109,10 @@ export class ScheduledBackupsComponent implements OnInit {
 
   jobName(id: string): string {
     return this.jobs().find(job => job.id === id)?.name || id
+  }
+
+  packageName(id: string): string {
+    return this.packages().find(pkg => pkg.id === id)?.name || id
   }
 
   affectedJobNames(history: T.ServiceTargetHistory): string[] {

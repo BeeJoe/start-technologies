@@ -8,7 +8,9 @@ use ts_rs::TS;
 use super::{BackupJob, BackupJobId, BackupServiceScope, NewServiceBackupReview};
 use crate::PackageId;
 use crate::context::RpcContext;
+use crate::db::model::DatabaseModel;
 use crate::db::model::package::{Task, TaskEntry, TaskSeverity};
+use crate::notifications::{NotificationLevel, notify};
 use crate::prelude::*;
 use crate::util::serde::HandlerExtSerde;
 
@@ -229,4 +231,115 @@ pub(crate) fn create_review_for_new_service(
             },
         )
         .map(|_| ())
+}
+
+pub(crate) fn pause_empty_selected_jobs(db: &mut DatabaseModel) -> Result<(), Error> {
+    let installed: BTreeSet<PackageId> = db
+        .as_public()
+        .as_package_data()
+        .as_entries()?
+        .into_iter()
+        .filter(|(_, package)| package.as_state_info().expect_installed().is_ok())
+        .map(|(package_id, _)| package_id)
+        .collect();
+    pause_jobs_where(db, |job| {
+        selected_scope_has_no_installed_services(&job.services, &installed)
+    })
+}
+
+pub(crate) fn pause_job_without_services(
+    db: &mut DatabaseModel,
+    job_id: &BackupJobId,
+) -> Result<(), Error> {
+    pause_jobs_where(db, |job| &job.id == job_id)
+}
+
+fn pause_jobs_where(
+    db: &mut DatabaseModel,
+    should_pause: impl Fn(&BackupJob) -> bool,
+) -> Result<(), Error> {
+    let jobs = db
+        .as_public()
+        .as_scheduled_backups()
+        .as_jobs()
+        .as_entries()?
+        .into_iter()
+        .map(|(_, job)| job.de())
+        .collect::<Result<Vec<BackupJob>, Error>>()?;
+    let mut affected_targets = BTreeSet::new();
+
+    for mut job in jobs {
+        if !job.enabled || job.pause.is_some() || !should_pause(&job) {
+            continue;
+        }
+
+        job.enabled = false;
+        job.pause = Some(super::BackupJobPause::User);
+        job.status.next_run_at = None;
+        job.status.run_requested = false;
+        job.updated_at = Utc::now();
+        affected_targets.insert(job.target_id.clone());
+        db.as_public_mut()
+            .as_scheduled_backups_mut()
+            .as_jobs_mut()
+            .insert(&job.id, &job)?;
+        notify(
+            db,
+            None,
+            NotificationLevel::Warning,
+            t!("backup.scheduled.no-installed-services-title").to_string(),
+            t!(
+                "backup.scheduled.no-installed-services-message",
+                job = job.name
+            )
+            .to_string(),
+            (),
+        )?;
+    }
+
+    for target_id in affected_targets {
+        super::rpc::refresh_archive_state(db, &target_id)?;
+    }
+    Ok(())
+}
+
+fn selected_scope_has_no_installed_services(
+    scope: &BackupServiceScope,
+    installed: &BTreeSet<PackageId>,
+) -> bool {
+    matches!(
+        scope,
+        BackupServiceScope::Selected { package_ids }
+            if !package_ids.is_empty() && package_ids.is_disjoint(installed)
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_nonempty_selected_scopes_without_installed_services_are_empty() {
+        let installed = BTreeSet::from(["installed".parse().unwrap()]);
+        let selected = |ids: &[&str]| BackupServiceScope::Selected {
+            package_ids: ids.iter().map(|id| id.parse().unwrap()).collect(),
+        };
+
+        assert!(selected_scope_has_no_installed_services(
+            &selected(&["removed"]),
+            &installed,
+        ));
+        assert!(!selected_scope_has_no_installed_services(
+            &selected(&["installed", "removed"]),
+            &installed,
+        ));
+        assert!(!selected_scope_has_no_installed_services(
+            &selected(&[]),
+            &installed,
+        ));
+        assert!(!selected_scope_has_no_installed_services(
+            &BackupServiceScope::All,
+            &installed,
+        ));
+    }
 }

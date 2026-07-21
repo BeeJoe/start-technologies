@@ -110,30 +110,13 @@ async fn run_job_inner(
     }
     let target_name = job.target_id.user_facing_name(&db);
     let package_ids = selected_services(&db, &job.services)?;
-    if matches!(
-        &job.services,
-        BackupServiceScope::Selected { package_ids } if !package_ids.is_empty()
-    ) && package_ids.is_empty()
-    {
+    if package_ids.is_empty() {
         let error = Error::new(
             eyre!("{}", t!("backup.scheduled.no-installed-services")),
             ErrorKind::InvalidRequest,
         );
         ctx.db
-            .mutate(|db| {
-                notify(
-                    db,
-                    None,
-                    NotificationLevel::Warning,
-                    t!("backup.scheduled.no-installed-services-title").to_string(),
-                    t!(
-                        "backup.scheduled.no-installed-services-message",
-                        job = job.name
-                    )
-                    .to_string(),
-                    (),
-                )
-            })
+            .mutate(|db| super::pause_job_without_services(db, &job.id))
             .await
             .result?;
         record_failed_run(ctx, &job, &package_ids, trigger, error.to_string()).await?;

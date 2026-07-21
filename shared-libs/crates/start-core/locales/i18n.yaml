@@ -1736,11 +1736,11 @@ backup.scheduled.no-installed-services-title:
   pl_PL: "Harmonogram kopii nie zawiera usług"
 
 backup.scheduled.no-installed-services-message:
-  en_US: "All services selected by %{job} have been uninstalled. Pause or delete this schedule, or edit it to select installed services."
-  de_DE: "Alle von %{job} ausgewählten Dienste wurden deinstalliert. Pausieren oder löschen Sie diesen Zeitplan oder wählen Sie installierte Dienste aus."
-  es_ES: "Todos los servicios seleccionados por %{job} se han desinstalado. Pause o elimine esta programación, o edítela para seleccionar servicios instalados."
-  fr_FR: "Tous les services sélectionnés par %{job} ont été désinstallés. Mettez cette planification en pause, supprimez-la ou sélectionnez des services installés."
-  pl_PL: "Wszystkie usługi wybrane przez %{job} zostały odinstalowane. Wstrzymaj lub usuń harmonogram albo wybierz zainstalowane usługi."
+  en_US: "The schedule %{job} has no installed services to back up, so it was paused. Delete it if it is no longer needed, or edit it to select installed services."
+  de_DE: "Der Zeitplan %{job} enthält keine installierten Dienste zum Sichern und wurde daher pausiert. Löschen Sie ihn, wenn er nicht mehr benötigt wird, oder wählen Sie installierte Dienste aus."
+  es_ES: "La programación %{job} no tiene servicios instalados que respaldar, por lo que se ha pausado. Elimínela si ya no la necesita o edítela para seleccionar servicios instalados."
+  fr_FR: "La planification %{job} ne contient aucun service installé à sauvegarder et a donc été mise en pause. Supprimez-la si elle n'est plus nécessaire ou sélectionnez des services installés."
+  pl_PL: "Harmonogram %{job} nie zawiera zainstalowanych usług do utworzenia kopii, więc został wstrzymany. Usuń go, jeśli nie jest już potrzebny, albo wybierz zainstalowane usługi."
 
 backup.scheduled.retry-before-resume:
   en_US: "Verify the backup target with Retry before resuming this job"

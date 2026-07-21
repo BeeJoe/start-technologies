@@ -97,10 +97,11 @@ file tracks notable changes since the move to the monorepo.
   Opening one schedule collapses the list to a **View all schedules** card,
   while **Add schedule** sits below the list and focuses the schedule name. Any
   exit from a changed editor other than **Save** now asks for confirmation before
-  discarding changes, including Cancel, changing panels, navigating, and closing
+  discarding changes, including **Back**, changing panels, navigating, and closing
   the page.
-  The first schedule hides its name while alone and appears as **Default** once
-  another schedule is added.
+  The unchanged **Default** name stays hidden while it is the only schedule;
+  renamed schedules remain editable, and every name is editable once multiple
+  schedules exist.
   Saving or canceling an edit collapses the full Automatic backups card; the
   schedules list appears when a multi-schedule card is expanded again. Monthly
   schedules add a day-of-month choice and
@@ -145,8 +146,10 @@ file tracks notable changes since the move to the monorepo.
   offers to add the service directly without leaving Services or create a new
   schedule. Several schedules retain the aligned selection list and add an
   **Add new schedule** action; no configured schedule opens initial setup.
-  Selective schedules whose services have all been uninstalled now notify the
-  user to pause, delete, or edit the empty schedule.
+  Selective schedules whose services have all been uninstalled now pause
+  automatically and notify the user to delete or edit the empty schedule; any
+  schedule that reaches a run with no installed services is paused as a
+  fallback.
 - **Automatic backup CLI coverage.** `start-cli` now manages automatic schedules,
   capacity estimates, activity, checkpoint history, target recovery,
   per-service retention overrides, new-service reviews, safe retention-policy
@@ -227,10 +230,11 @@ file tracks notable changes since the move to the monorepo.
   card fully collapses after first setup or a single-schedule save instead of
   exposing the internal **Default** name. Backup navigation uses white
   back actions, paused top-level card controls stay right-aligned on mobile, and
-  duration values retain clear spacing below their labels. The first schedule's
-  name stays hidden from editing and becomes **Default** when more schedules are
-  added. **Cancel** returns multi-schedule edits to the schedule list and
-  single-schedule edits to the collapsed card. The delete confirmation now
+  duration values retain clear spacing below their labels. Only the unchanged
+  **Default** name stays hidden while it is the sole schedule; custom and
+  multi-schedule names remain editable. **Back** returns multi-schedule edits
+  to the schedule list and single-schedule edits to the collapsed card. The
+  delete confirmation now
   immediately and reversibly changes between **Delete Schedule** and **Delete
   Schedule and Backups** with its checkbox. Capacity estimates show one service
   total until **More Info** expands the labeled breakdown and only mention
@@ -268,8 +272,9 @@ file tracks notable changes since the move to the monorepo.
   centered width and keep long location names horizontal on phones, including
   automatic-backup setup. Physical-location refresh exposes its active state,
   and phone layouts place reported network free space beside the location.
-  Automatic schedule rows are inset from phone edges and
-  keep icon-only switches and action menus clear of schedule text. The overall progress
+  Automatic schedule rows are inset from phone edges, keep icon-only switches
+  and action menus level with the schedule name, and place details below. The
+  overall progress
   spinner and percentage align with each service's status, and service progress
   is right-aligned within the card.
   Manual and custom automatic runs no longer force-scroll or place a blocking

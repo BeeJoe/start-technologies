@@ -1044,7 +1044,7 @@ export default class AutomaticBackupsComponent implements OnInit {
         data: {
           content: 'Changes were not saved',
           yes: 'Discard changes',
-          no: 'Cancel',
+          no: 'Back',
         },
       }),
       { defaultValue: false },

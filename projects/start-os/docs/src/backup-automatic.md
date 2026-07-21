@@ -55,9 +55,10 @@ and replaces the expand arrow with a three-dot menu containing **Run now**,
 **View/Edit**, **Add schedule**, and **Delete schedule**. The card shows a
 **Paused** badge when that only schedule is switched off. With multiple
 schedules, expanding the card first shows the unboxed schedules list. Each row
-keeps an unlabeled switch and a three-dot menu containing the purple **Run
-now**, **View/Edit**, and red **Delete schedule** action, and reports how many
-currently installed services it protects. Select **View/Edit** to collapse the
+keeps its unlabeled switch and three-dot menu level with the schedule name,
+places the location, service count, and next run below, and offers the purple
+**Run now**, **View/Edit**, and red **Delete schedule** actions. Select
+**View/Edit** to collapse the
 list and open that schedule. Saving or canceling an edit fully collapses the
 Automatic backups card. Expanding a card with several schedules returns to the
 schedules list; expanding a card with one schedule returns directly to that
@@ -65,11 +66,12 @@ schedule. **View all schedules** asks before discarding an unsaved editor and
 returning to the list. **Add schedule** appears below
 the list and moves focus directly to the schedule name field.
 
-The first schedule never shows an editable name field. If you add another, the
-first appears as **Default** and each additional schedule has its own name. Each
-schedule can use a different exact time, backup location, service selection, or
-version-history rules. StartOS validates enabled schedules together so their
-frequency can support the version history they feed.
+The unchanged **Default** name stays hidden while it is the only schedule. If
+you rename that schedule, its name remains editable; once there is more than
+one schedule, every schedule name is editable. Each schedule can use a
+different exact time, backup location, service selection, or version-history
+rules. StartOS validates enabled schedules together so their frequency can
+support the version history they feed.
 
 When an enabled schedule needs attention, the collapsed main **Automatic
 backups** card says so and explains the problem. The warning clears after the
@@ -80,11 +82,12 @@ schedule's time as though it applied to every schedule.
 When no automatic schedule is configured to include future services, a newly
 installed service gets a dismissible **Add to backup schedule** recommended
 task on its service page. The task does not block starting the service. With one
-schedule, run the task and choose either **Add to current schedule** to update
-it without leaving Services or **Create a new schedule** to open a new schedule
-editor. With several schedules, select the schedules that should include the
-service, using **Toggle all** when appropriate, or use **Add new schedule** at
-the bottom of the selection screen. If automatic backups are not configured
+schedule, run the compact task dialog and choose either **Add to current
+schedule** to update it without leaving Services or **Create a new schedule**
+to open a new schedule editor. With several schedules, the service name appears
+in the heading; schedule names stay on the left while **Toggle all** and the
+individual checkboxes align on the right. Use **Add new schedule** at the bottom
+of the selection screen when needed. If automatic backups are not configured
 yet, the task opens initial setup instead.
 
 Turning off automatic backups immediately pauses the schedules and keeps their
@@ -102,7 +105,7 @@ returns **Automatic backups** to its initial setup state.
 
 Every detailed schedule editor also offers **Run now**. Select it before
 **Save** to apply the changes and immediately request a run. If an edited
-schedule is left through Cancel, the schedule list, another Backups panel,
+schedule is left through **Back**, the schedule list, another Backups panel,
 navigation, or closing the page, StartOS warns that the changes were not saved.
 
 ## Version History and Storage
@@ -184,8 +187,10 @@ explain the next action:
 - **Add to backup schedule** — on the newly installed service, decide whether
   it belongs in each selective schedule or dismiss the recommendation.
 - **Backup Schedule Has No Services** — all explicitly selected services have
-  been uninstalled; pause or delete the schedule, or edit it to select an
-  installed service.
+  been uninstalled; StartOS pauses the schedule and notifies you to delete it
+  if it is no longer needed or edit it to select an installed service. A
+  schedule that reaches its run time with no installed services to back up is
+  also paused with this notification.
 
 For deeper troubleshooting, `start-cli server logs` shows structured run-level
 and service-level entries, including **automatic backup service started**,

@@ -683,9 +683,11 @@ assertRule(
   advancedFile,
   '.job-list-actions',
   {
-    'grid-column': '2 / -1',
-    'grid-row': '3',
+    'grid-column': '3',
+    'grid-row': '1',
+    'align-self': 'start',
     'justify-self': 'end',
+    'flex-wrap': 'nowrap',
   },
   phone,
 )
@@ -719,7 +721,13 @@ assertSource(editorFile, [
 ])
 assertSource(advancedFile, [
   /class="retention-heading setting-row"[\s\S]{0,180}'Version history'/,
+  /'Add to backup schedule' \| i18n[\s\S]{0,100}packageName\(review\.packageId\)/,
 ])
+assertRule(advanced, advancedFile, '.review .toggle-all', {
+  width: '100%',
+  'padding-inline': '0',
+  'justify-content': 'space-between',
+})
 
 for (const [sheet, file] of [
   [editor, editorFile],

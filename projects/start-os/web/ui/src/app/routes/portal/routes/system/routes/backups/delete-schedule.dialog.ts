@@ -1,5 +1,4 @@
 import { Component, inject, Injectable, signal } from '@angular/core'
-import { FormsModule } from '@angular/forms'
 import { DialogService, i18nPipe } from '@start9labs/shared'
 import { T } from '@start9labs/start-core'
 import {
@@ -31,7 +30,12 @@ export interface DeleteScheduleDecision {
     </p>
 
     <label class="delete-option">
-      <input tuiCheckbox type="checkbox" [(ngModel)]="deleteCheckpoints" />
+      <input
+        tuiCheckbox
+        type="checkbox"
+        [checked]="deleteCheckpoints()"
+        (change)="setDeleteCheckpoints($event)"
+      />
       <span tuiTitle>
         <b>{{ 'Delete related backups' | i18n }}</b>
         <span tuiSubtitle>
@@ -97,7 +101,7 @@ export interface DeleteScheduleDecision {
       gap: 0.75rem;
     }
   `,
-  imports: [FormsModule, TuiButton, TuiCheckbox, TuiTitle, i18nPipe],
+  imports: [TuiButton, TuiCheckbox, TuiTitle, i18nPipe],
 })
 export class DeleteScheduleDialog {
   readonly context =
@@ -106,6 +110,12 @@ export class DeleteScheduleDialog {
     >()
 
   protected readonly deleteCheckpoints = signal(false)
+
+  protected setDeleteCheckpoints(event: Event) {
+    this.deleteCheckpoints.set(
+      (event.currentTarget as HTMLInputElement).checked,
+    )
+  }
 
   cancel() {
     this.context.completeWith(null)
