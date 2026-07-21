@@ -115,6 +115,10 @@ and every schedule editor require acknowledging this full-copy impact before a
 multi-version policy can be saved. The setup review mentions available space
 only when the selected location reports it.
 
+Changing version history on an existing schedule applies to the shared history
+it already feeds. Reusing an archived history also applies the new schedule's
+version-history policy instead of silently keeping the archive's old policy.
+
 When version history contains several retention tiers, the collapsed summary
 lists every tier so the editor never hides part of the active policy.
 

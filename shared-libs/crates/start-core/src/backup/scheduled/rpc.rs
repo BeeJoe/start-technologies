@@ -1912,15 +1912,18 @@ pub(crate) fn validate_new_job_coverage(
             .as_idx(&key)
             .map(|history| history.de())
             .transpose()?;
-        let policy = existing
-            .as_ref()
-            .map(|history| history.policy.clone())
-            .unwrap_or_else(|| {
-                overrides
-                    .get(package_id)
-                    .unwrap_or(default_retention)
-                    .clone()
-            });
+        let candidate_policy = || {
+            overrides
+                .get(package_id)
+                .unwrap_or(default_retention)
+                .clone()
+        };
+        let policy = match &existing {
+            Some(history) if !candidate_controls_history(history, replacing) => {
+                history.policy.clone()
+            }
+            _ => candidate_policy(),
+        };
         let timezone: chrono_tz::Tz = existing
             .as_ref()
             .map(|history| history.timezone.as_str())
@@ -2045,19 +2048,22 @@ pub(crate) fn associate_histories(
         .as_histories_mut();
     for package_id in package_ids {
         let key = history_key(&job.target_id, package_id);
-        if let Some(history) = histories.as_idx_mut(&key) {
-            history
-                .as_feeding_jobs_mut()
-                .mutate(|jobs| Ok(jobs.insert(job.id.clone())))?;
-            if job_is_active {
-                history.as_archived_mut().ser(&false)?;
+        let policy = job
+            .retention_overrides
+            .get(package_id)
+            .unwrap_or(&job.default_retention)
+            .clone();
+        if let Some(history) = histories.as_idx(&key) {
+            let mut history: ServiceTargetHistory = history.de()?;
+            if candidate_controls_history(&history, Some(&job.id)) {
+                history.policy = policy;
             }
+            history.feeding_jobs.insert(job.id.clone());
+            if job_is_active {
+                history.archived = false;
+            }
+            histories.insert(&key, &history)?;
         } else {
-            let policy = job
-                .retention_overrides
-                .get(package_id)
-                .unwrap_or(&job.default_retention)
-                .clone();
             histories.insert(
                 &key,
                 &ServiceTargetHistory {
@@ -2074,6 +2080,14 @@ pub(crate) fn associate_histories(
         }
     }
     Ok(())
+}
+
+fn candidate_controls_history(
+    history: &ServiceTargetHistory,
+    replacing: Option<&BackupJobId>,
+) -> bool {
+    history.feeding_jobs.is_empty()
+        || replacing.is_some_and(|job_id| history.feeding_jobs.contains(job_id))
 }
 
 fn disassociate_histories(
@@ -2195,6 +2209,32 @@ const fn default_true() -> bool {
 #[cfg(test)]
 mod cli_tests {
     use super::*;
+
+    #[test]
+    fn retention_changes_control_existing_or_reactivated_histories() {
+        let controlling_job = BackupJobId::new();
+        let other_job = BackupJobId::new();
+        let history = |feeding_jobs| ServiceTargetHistory {
+            target_id: "cifs-0".parse().unwrap(),
+            target_instance_id: "instance".to_owned(),
+            package_id: "hello-world".parse().unwrap(),
+            timezone: "UTC".to_owned(),
+            policy: RetentionPolicy::latest_only(),
+            feeding_jobs,
+            snapshots: Vec::new(),
+            archived: false,
+        };
+
+        assert!(candidate_controls_history(&history(BTreeSet::new()), None));
+        assert!(candidate_controls_history(
+            &history(BTreeSet::from([controlling_job.clone()])),
+            Some(&controlling_job)
+        ));
+        assert!(!candidate_controls_history(
+            &history(BTreeSet::from([other_job])),
+            Some(&controlling_job)
+        ));
+    }
 
     #[test]
     fn retention_tier_accepts_human_duration_suffixes() {

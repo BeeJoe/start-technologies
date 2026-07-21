@@ -14,7 +14,8 @@ file tracks notable changes since the move to the monorepo.
 
 - **Automatic backups.** StartOS can protect selected current and future
   services on one or more hourly, daily, weekly, or monthly schedules; estimate required
-  capacity; retain configurable version history; preserve unreferenced
+  capacity; retain configurable version history, including when a schedule
+  reuses or changes an existing history; preserve unreferenced
   checkpoints as archives; recover or reassign unavailable locations; and
   restore a different manual or automatic checkpoint for each service. Backup
   activity, actionable notifications, and new-service selection reviews keep
