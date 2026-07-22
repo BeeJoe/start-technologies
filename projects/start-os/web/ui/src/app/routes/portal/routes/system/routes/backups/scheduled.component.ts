@@ -67,6 +67,7 @@ import {
   serializeBackupRetentionTier,
   serializeBackupServiceSelection,
   serializeBackupSchedule,
+  SYSTEM_PACKAGE_ID,
 } from './scheduled.utils'
 import { DeleteScheduleService } from './delete-schedule.dialog'
 
@@ -254,12 +255,14 @@ interface JobEditor extends EditableRetentionRule {
           <div class="schedule-list">
             @for (job of jobs(); track job.id) {
               <div tuiCell class="schedule-job">
+                @let serviceCount = jobServiceCount(job);
                 <tui-icon icon="@tui.calendar-clock" />
                 <span tuiTitle>
                   <b>{{ job.name }}</b>
                   <span tuiSubtitle>
-                    {{ targetName(job.targetId) }} · {{ jobServiceCount(job) }}
-                    {{ 'Services' | i18n }} · {{ 'Next run' | i18n }}:
+                    {{ targetName(job.targetId) }} · {{ serviceCount }}
+                    {{ serviceCountLabel(serviceCount) }} ·
+                    {{ 'Next run' | i18n }}:
                     {{
                       job.status.nextRunAt
                         ? (job.status.nextRunAt | date: 'medium')
@@ -607,9 +610,14 @@ interface JobEditor extends EditableRetentionRule {
                           type="checkbox"
                           [ngModelOptions]="{ standalone: true }"
                           [ngModel]="form.packageIds.includes(pkg.id)"
+                          [disabled]="pkg.id === systemPackageId"
                           (ngModelChange)="togglePackage(form, pkg.id, $event)"
                         />
-                        <img alt="" [src]="pkg.icon" />
+                        @if (pkg.id === systemPackageId) {
+                          <tui-icon icon="@tui.settings" />
+                        } @else {
+                          <img alt="" [src]="pkg.icon" />
+                        }
                         <span tuiTitle>
                           <b>{{ pkg.name }}</b>
                         </span>
@@ -1047,10 +1055,15 @@ interface JobEditor extends EditableRetentionRule {
       gap: 0.75rem;
     }
 
-    .review .toggle-all {
-      width: 100%;
+    .review .checkbox-row {
+      inline-size: 100%;
+      max-inline-size: 100%;
       padding-inline: 0;
       justify-content: space-between;
+    }
+
+    .review .checkbox-row > input {
+      margin-inline-start: auto;
     }
 
     .editor.panel {
@@ -1215,8 +1228,8 @@ interface JobEditor extends EditableRetentionRule {
 
     .schedule-job,
     .view-all-jobs {
-      width: 100%;
-      min-width: 0;
+      inline-size: 100%;
+      min-inline-size: 0;
       text-align: left;
       box-sizing: border-box;
     }
@@ -1321,6 +1334,7 @@ interface JobEditor extends EditableRetentionRule {
       color: var(--tui-text-secondary);
     }
 
+    /* Embedded schedule cards need the narrow layout below the app-wide mobile breakpoint. */
     @media (max-width: 30rem) {
       .heading,
       .jobs-toolbar,
@@ -1363,17 +1377,31 @@ interface JobEditor extends EditableRetentionRule {
 
       .schedule-job > tui-icon:first-child {
         grid-column: 1;
-        grid-row: 1 / span 2;
-      }
-
-      .schedule-job > [tuiTitle] {
-        grid-column: 2;
         grid-row: 1;
       }
 
-      .schedule-job > [tuiBadge] {
+      .schedule-job > [tuiTitle] {
+        display: contents;
+      }
+
+      .schedule-job > [tuiTitle] > b {
         grid-column: 2;
+        grid-row: 1;
+        min-inline-size: 0;
+        overflow-wrap: anywhere;
+      }
+
+      .schedule-job > [tuiTitle] > [tuiSubtitle] {
+        grid-column: 1 / -1;
         grid-row: 2;
+        min-inline-size: 0;
+        white-space: normal;
+        overflow-wrap: anywhere;
+      }
+
+      .schedule-job > [tuiBadge] {
+        grid-column: 1 / -1;
+        grid-row: 3;
         justify-self: start;
       }
 
@@ -1523,6 +1551,7 @@ export class ScheduledBackupsComponent implements OnInit {
   }
 
   private readonly reviewDecisions = new Map<string, Record<string, boolean>>()
+  protected readonly systemPackageId = SYSTEM_PACKAGE_ID
 
   readonly targets = computed(() => [
     ...this.backupService.cifs().map(target => ({
@@ -1537,8 +1566,13 @@ export class ScheduledBackupsComponent implements OnInit {
     })),
   ])
 
-  readonly packages = computed(() =>
-    Object.entries(this.packageData() || {}).flatMap(([id, entry]) => {
+  readonly packages = computed(() => [
+    {
+      id: SYSTEM_PACKAGE_ID,
+      name: this.i18n.transform('System'),
+      icon: '',
+    },
+    ...Object.entries(this.packageData() || {}).flatMap(([id, entry]) => {
       const state = entry.stateInfo
       const manifest =
         state.state === 'installed' || state.state === 'removing'
@@ -1546,7 +1580,7 @@ export class ScheduledBackupsComponent implements OnInit {
           : state.installingInfo?.newManifest
       return manifest ? [{ id, name: manifest.title, icon: entry.icon }] : []
     }),
-  )
+  ])
   protected readonly selectedJob = computed(() =>
     this.jobs().find(job => job.id === this.selectedJobId()),
   )
@@ -1740,7 +1774,7 @@ export class ScheduledBackupsComponent implements OnInit {
     if (!(await this.create())) return
     const form = this.editor()
     if (!form) return
-    form.packageIds = [review.packageId]
+    form.packageIds = [SYSTEM_PACKAGE_ID, review.packageId]
     form.includeFuture = false
     this.pendingReview = review
     this.editorBaseline = this.editorSnapshot(form)
@@ -1762,6 +1796,9 @@ export class ScheduledBackupsComponent implements OnInit {
       job.services,
       this.packages().map(pkg => pkg.id),
     )
+    selection.packageIds = [
+      ...new Set([SYSTEM_PACKAGE_ID, ...selection.packageIds]),
+    ]
     const [tier, ...additionalTiers] = job.defaultRetention.tiers
     const retention = this.editableRetentionTier(tier)
     const form: JobEditor = {
@@ -1807,6 +1844,7 @@ export class ScheduledBackupsComponent implements OnInit {
   }
 
   togglePackage(form: JobEditor, packageId: string, checked: boolean) {
+    if (packageId === SYSTEM_PACKAGE_ID) return
     form.packageIds = checked
       ? [...new Set([...form.packageIds, packageId])]
       : form.packageIds.filter(id => id !== packageId)
@@ -1822,7 +1860,9 @@ export class ScheduledBackupsComponent implements OnInit {
   }
 
   setAllPackages(form: JobEditor, checked: boolean) {
-    form.packageIds = checked ? this.packages().map(pkg => pkg.id) : []
+    form.packageIds = checked
+      ? this.packages().map(pkg => pkg.id)
+      : [SYSTEM_PACKAGE_ID]
     if (!checked) form.retentionOverrides = {}
     form.capacityConfirmed = false
   }
@@ -1846,10 +1886,17 @@ export class ScheduledBackupsComponent implements OnInit {
         ),
       }
       if (form.id) {
+        const selectedJob = this.selectedJob()
         await this.api.updateScheduledBackupJob({
           id: form.id,
           ...common,
         })
+        if (form.firstBackupNow && selectedJob && !selectedJob.enabled) {
+          await this.api.setScheduledBackupJobEnabled({
+            id: form.id,
+            enabled: true,
+          })
+        }
         if (form.firstBackupNow) {
           await this.api.runScheduledBackupJob({ id: form.id })
         }
@@ -1905,7 +1952,7 @@ export class ScheduledBackupsComponent implements OnInit {
 
   async deleteJob(job: T.BackupJob) {
     try {
-      if (await this.deleteSchedule.delete(job, this.histories())) {
+      if (await this.deleteSchedule.delete(job)) {
         this.showSingleJobList = true
         this.selectedJobId.set('')
         this.editor.set(null)
@@ -2112,6 +2159,7 @@ export class ScheduledBackupsComponent implements OnInit {
   }
 
   packageName(id: string): string {
+    if (id === SYSTEM_PACKAGE_ID) return this.i18n.transform('System')
     return this.packages().find(pkg => pkg.id === id)?.name || id
   }
 
@@ -2153,14 +2201,20 @@ export class ScheduledBackupsComponent implements OnInit {
   }
 
   jobServiceCount(job: T.BackupJob): number {
-    return parseBackupServiceSelection(
+    const selection = parseBackupServiceSelection(
       job.services,
       this.packages().map(pkg => pkg.id),
-    ).packageIds.length
+    ).packageIds
+    return new Set([SYSTEM_PACKAGE_ID, ...selection]).size
+  }
+
+  protected serviceCountLabel(count: number): string {
+    return this.i18n.transform(count === 1 ? 'Service' : 'Services')
   }
 
   selectedServiceSummary(form: JobEditor): string {
-    const count = `${form.packageIds.length} / ${this.packages().length} ${this.i18n.transform('Services')}`
+    const total = this.packages().length
+    const count = `${form.packageIds.length} / ${total} ${this.serviceCountLabel(total)}`
     const future = this.i18n.transform(
       form.includeFuture
         ? 'Future services included'

@@ -1,5 +1,4 @@
 use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -9,14 +8,12 @@ use color_eyre::eyre::eyre;
 use imbl::OrdSet;
 use imbl_value::InternedString;
 use serde::{Deserialize, Serialize};
-use tokio::io::AsyncWriteExt;
 use tracing::instrument;
 use ts_rs::TS;
 
 use super::PackageBackupReport;
 use super::target::{BackupTargetId, PackageBackupInfo};
 use crate::PackageId;
-use crate::backup::os::OsBackup;
 use crate::backup::scheduled::{
     BackupActivityId, BackupActivityKind, BackupRunState, complete_activity, insert_activity,
     running_activity,
@@ -32,8 +29,7 @@ use crate::notifications::{NotificationLevel, notify};
 use crate::prelude::*;
 use crate::progress::{FullProgress, FullProgressTracker};
 use crate::util::future::NonDetachingJoinHandle;
-use crate::util::io::{AtomicFile, dir_copy, dir_size};
-use crate::util::serde::IoFormat;
+use crate::util::io::dir_size;
 use crate::version::VersionT;
 
 #[derive(Deserialize, Serialize, Parser, TS)]
@@ -444,28 +440,7 @@ async fn perform_backup(
 
     os_data_phase.start();
 
-    let ui = ctx.db.peek().await.into_public().into_ui().de()?;
-
-    let mut os_backup_file =
-        AtomicFile::new(backup_guard.path().join("os-backup.json"), None::<PathBuf>).await?;
-    os_backup_file
-        .write_all(&IoFormat::Json.to_vec(&OsBackup {
-            account: ctx.account.peek(|a| a.clone()),
-            ui,
-        })?)
-        .await?;
-    os_backup_file.save().await?;
-
-    let luks_folder_old = backup_guard.path().join("luks.old");
-    crate::util::io::delete_dir(&luks_folder_old).await?;
-    let luks_folder_bak = backup_guard.path().join("luks");
-    if tokio::fs::metadata(&luks_folder_bak).await.is_ok() {
-        tokio::fs::rename(&luks_folder_bak, &luks_folder_old).await?;
-    }
-    let luks_folder = Path::new("/media/startos/config/luks");
-    if tokio::fs::metadata(&luks_folder).await.is_ok() {
-        dir_copy(luks_folder, &luks_folder_bak, None).await?;
-    }
+    crate::backup::os::backup_system(ctx, backup_guard.path()).await?;
 
     os_data_phase.complete();
     progress.complete();

@@ -12,8 +12,8 @@ file tracks notable changes since the move to the monorepo.
 
 ### Added
 
-- **Automatic backups.** StartOS can protect selected current and future
-  services on one or more hourly, daily, weekly, or monthly schedules; estimate required
+- **Automatic backups.** StartOS can protect System data plus selected current
+  and future services on one or more hourly, daily, weekly, or monthly schedules; estimate required
   capacity; retain configurable version history, including when a schedule
   reuses or changes an existing history; preserve unreferenced
   checkpoints as archives; recover or reassign unavailable locations; and
@@ -125,7 +125,7 @@ file tracks notable changes since the move to the monorepo.
   list or collapses the Automatic backups card when one schedule remains;
   deleting the final schedule returns automatic backups to initial setup. The
   detailed editor can also request **Run now** while saving an existing
-  schedule.
+  schedule, resuming a user-paused schedule before the requested run.
 - **Simplified Automatic Backups.** The expanded card now uses a flat settings
   layout, keeps **Run now** with the detailed actions, and leaves checkpoint
   browsing and restore actions in the dedicated **Backup history** and restore
@@ -144,12 +144,12 @@ file tracks notable changes since the move to the monorepo.
   mount, avoiding the encrypted filesystem's synthetic 40.96 MB capacity.
 - **New-service backup review.** A service task with one automatic schedule now
   offers to add the service directly without leaving Services or create a new
-  schedule. Several schedules retain the aligned selection list and add an
-  **Add new schedule** action; no configured schedule opens initial setup.
-  Selective schedules whose services have all been uninstalled now pause
-  automatically and notify the user to delete or edit the empty schedule; any
-  schedule that reaches a run with no installed services is paused as a
-  fallback.
+  schedule, submitting a decision for every schedule recorded by the task even
+  when the visible schedule list changed afterward. Several schedules retain
+  the selection list with every checkbox right-aligned and add an **Add new
+  schedule** action; no configured schedule opens initial setup. System data is
+  always included, so a selective schedule remains useful even when all of its
+  installable services have been removed.
 - **Automatic backup CLI coverage.** `start-cli` now manages automatic schedules,
   capacity estimates, activity, checkpoint history, target recovery,
   per-service retention overrides, new-service reviews, safe retention-policy
@@ -236,7 +236,9 @@ file tracks notable changes since the move to the monorepo.
   to the schedule list and single-schedule edits to the collapsed card. The
   delete confirmation now
   immediately and reversibly changes between **Delete Schedule** and **Delete
-  Schedule and Backups** with its checkbox. Capacity estimates show one service
+  Schedule and Backups** with its checkbox and refreshes checkpoint counts and
+  reclaimable space from the server before opening. Service totals use the
+  singular label for one service. Capacity estimates show one service
   total until **More Info** expands the labeled breakdown and only mention
   available space when the location reports it. Storage warnings use **network
   storage** instead of the protocol label **CIFS**.
@@ -273,7 +275,8 @@ file tracks notable changes since the move to the monorepo.
   automatic-backup setup. Physical-location refresh exposes its active state,
   and phone layouts place reported network free space beside the location.
   Automatic schedule rows are inset from phone edges, keep icon-only switches
-  and action menus level with the schedule name, and place details below. The
+  and action menus level with the schedule name, and let details use the full
+  card width below those controls. The
   overall progress
   spinner and percentage align with each service's status, and service progress
   is right-aligned within the card.

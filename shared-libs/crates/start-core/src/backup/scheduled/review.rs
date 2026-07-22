@@ -6,13 +6,13 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 use super::{BackupJob, BackupJobId, BackupServiceScope, NewServiceBackupReview};
-use crate::PackageId;
 use crate::context::RpcContext;
 use crate::db::model::DatabaseModel;
 use crate::db::model::package::{Task, TaskEntry, TaskSeverity};
 use crate::notifications::{NotificationLevel, notify};
 use crate::prelude::*;
 use crate::util::serde::HandlerExtSerde;
+use crate::{PackageId, SYSTEM_PACKAGE_ID};
 
 pub const BACKUP_REVIEW_ACTION_ID: &str = "add-to-backup-schedule";
 pub const BACKUP_REVIEW_REPLAY_ID: &str = "startos-add-to-backup-schedule";
@@ -234,7 +234,7 @@ pub(crate) fn create_review_for_new_service(
 }
 
 pub(crate) fn pause_empty_selected_jobs(db: &mut DatabaseModel) -> Result<(), Error> {
-    let installed: BTreeSet<PackageId> = db
+    let mut installed: BTreeSet<PackageId> = db
         .as_public()
         .as_package_data()
         .as_entries()?
@@ -242,6 +242,7 @@ pub(crate) fn pause_empty_selected_jobs(db: &mut DatabaseModel) -> Result<(), Er
         .filter(|(_, package)| package.as_state_info().expect_installed().is_ok())
         .map(|(package_id, _)| package_id)
         .collect();
+    installed.insert(SYSTEM_PACKAGE_ID.clone());
     pause_jobs_where(db, |job| {
         selected_scope_has_no_installed_services(&job.services, &installed)
     })
@@ -310,7 +311,7 @@ fn selected_scope_has_no_installed_services(
     matches!(
         scope,
         BackupServiceScope::Selected { package_ids }
-            if !package_ids.is_empty() && package_ids.is_disjoint(installed)
+            if !package_ids.is_empty() && !installed.iter().any(|id| scope.includes(id))
     )
 }
 
@@ -325,9 +326,11 @@ mod tests {
             package_ids: ids.iter().map(|id| id.parse().unwrap()).collect(),
         };
 
-        assert!(selected_scope_has_no_installed_services(
+        let installed_with_system =
+            BTreeSet::from(["installed".parse().unwrap(), SYSTEM_PACKAGE_ID.clone()]);
+        assert!(!selected_scope_has_no_installed_services(
             &selected(&["removed"]),
-            &installed,
+            &installed_with_system,
         ));
         assert!(!selected_scope_has_no_installed_services(
             &selected(&["installed", "removed"]),

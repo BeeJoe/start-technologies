@@ -1,4 +1,5 @@
 import { Component, inject, Service, signal } from '@angular/core'
+import { FormsModule } from '@angular/forms'
 import { DialogService, i18nPipe } from '@start9labs/shared'
 import { T } from '@start9labs/start-core'
 import {
@@ -30,12 +31,7 @@ export interface DeleteScheduleDecision {
     </p>
 
     <label class="delete-option">
-      <input
-        tuiCheckbox
-        type="checkbox"
-        [checked]="deleteCheckpoints()"
-        (change)="setDeleteCheckpoints($event)"
-      />
+      <input tuiCheckbox type="checkbox" [(ngModel)]="deleteCheckpoints" />
       <span tuiTitle>
         <b>{{ 'Delete related backups' | i18n }}</b>
         <span tuiSubtitle>
@@ -101,7 +97,7 @@ export interface DeleteScheduleDecision {
       gap: 0.75rem;
     }
   `,
-  imports: [TuiButton, TuiCheckbox, TuiTitle, i18nPipe],
+  imports: [FormsModule, TuiButton, TuiCheckbox, TuiTitle, i18nPipe],
 })
 export class DeleteScheduleDialog {
   readonly context =
@@ -110,12 +106,6 @@ export class DeleteScheduleDialog {
     >()
 
   protected readonly deleteCheckpoints = signal(false)
-
-  protected setDeleteCheckpoints(event: Event) {
-    this.deleteCheckpoints.set(
-      (event.currentTarget as HTMLInputElement).checked,
-    )
-  }
 
   cancel() {
     this.context.completeWith(null)
@@ -139,10 +129,10 @@ export class DeleteScheduleService {
   private readonly dialogs = inject(DialogService)
   private readonly i18n = inject(i18nPipe)
 
-  async delete(
-    job: T.BackupJob,
-    histories: T.ServiceTargetHistory[],
-  ): Promise<boolean> {
+  async delete(job: T.BackupJob): Promise<boolean> {
+    const histories = await this.api.refreshScheduledBackupHistories({
+      targetId: job.targetId,
+    })
     const unreferenced = histories.filter(
       history =>
         history.snapshots.length > 0 &&

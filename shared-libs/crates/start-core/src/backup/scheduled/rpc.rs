@@ -113,6 +113,7 @@ pub fn history<C: Context>() -> ParentHandler<C> {
                 .with_about("about.discover-automatic-backup-history")
                 .with_call_remote::<crate::context::CliContext>(),
         )
+        .subcommand("refresh", from_fn_async(refresh_histories).no_cli())
         .subcommand(
             "delete-archived-snapshots",
             from_fn_async(delete_archived_snapshots).no_cli(),
@@ -246,12 +247,15 @@ pub async fn estimate_capacity(
     for policy in retention_overrides.values() {
         policy.validate()?;
     }
+    let system_logical_bytes = crate::backup::os::system_logical_size(&ctx).await?;
     let db = ctx.db.peek().await;
     let package_ids = selected_installed_services(&db, &services)?;
     let mut estimates = Vec::with_capacity(package_ids.len());
     for package_id in package_ids {
         let live_path = Path::new(DATA_DIR).join(PKG_VOLUME_DIR).join(&package_id);
-        let live_logical_bytes = if tokio::fs::metadata(&live_path).await.is_ok() {
+        let live_logical_bytes = if package_id == *crate::SYSTEM_PACKAGE_ID {
+            system_logical_bytes
+        } else if tokio::fs::metadata(&live_path).await.is_ok() {
             dir_size(&live_path, None).await?
         } else {
             0
@@ -410,6 +414,110 @@ pub async fn list_histories(ctx: RpcContext) -> Result<Vec<ServiceTargetHistory>
         .collect()
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RefreshScheduledBackupHistoriesParams {
+    target_id: BackupTargetId,
+}
+
+async fn refresh_histories(
+    ctx: RpcContext,
+    RefreshScheduledBackupHistoriesParams { target_id }: RefreshScheduledBackupHistoriesParams,
+) -> Result<Vec<ServiceTargetHistory>, Error> {
+    let db = ctx.db.peek().await;
+    let credential: ScheduledBackupCredential = db
+        .as_private()
+        .as_scheduled_backup_credentials()
+        .as_idx(&target_id.to_string())
+        .or_not_found(target_id.to_string())?
+        .de()?;
+    let encryption_key =
+        credential.open(&db.as_private().as_scheduled_backup_device_key().de()?)?;
+    let server_id = db.as_public().as_server_info().as_id().de()?;
+    let target = target_id.clone().load(&db)?;
+    drop(db);
+    let guard = ScheduledBackupMountGuard::mount_with_key(
+        TmpMountGuard::mount(&target, ReadWrite).await?,
+        &server_id,
+        &credential.target_instance_id,
+        &encryption_key,
+    )
+    .await?;
+    let target_instance_id = guard.recovery.target_instance_id.clone();
+    let remote: BTreeMap<PackageId, ServiceTargetHistory> = guard
+        .metadata
+        .services
+        .iter()
+        .map(|(package_id, history)| {
+            (
+                package_id.clone(),
+                service_target_history(
+                    &target_id,
+                    &target_instance_id,
+                    package_id,
+                    history,
+                    BTreeSet::new(),
+                ),
+            )
+        })
+        .collect();
+    guard.unmount().await?;
+
+    let db = ctx.db.peek().await;
+    let jobs = db
+        .as_public()
+        .as_scheduled_backups()
+        .as_jobs()
+        .as_entries()?
+        .into_iter()
+        .map(|(_, job)| job.de())
+        .collect::<Result<Vec<BackupJob>, Error>>()?;
+    let mut merged: BTreeMap<PackageId, ServiceTargetHistory> = db
+        .as_public()
+        .as_scheduled_backups()
+        .as_histories()
+        .as_entries()?
+        .into_iter()
+        .map(|(_, history)| history.de())
+        .collect::<Result<Vec<ServiceTargetHistory>, Error>>()?
+        .into_iter()
+        .filter(|history| history.target_id == target_id)
+        .map(|history| (history.package_id.clone(), history))
+        .collect();
+    for history in merged.values_mut() {
+        if let Some(remote_history) = remote.get(&history.package_id) {
+            *history = remote_history.clone();
+        } else {
+            history.snapshots.clear();
+        }
+    }
+    for (package_id, history) in remote {
+        merged.entry(package_id).or_insert(history);
+    }
+    for history in merged.values_mut() {
+        history.feeding_jobs = jobs
+            .iter()
+            .filter(|job| job.target_id == target_id && job.services.includes(&history.package_id))
+            .map(|job| job.id.clone())
+            .collect();
+    }
+    drop(db);
+    let histories: Vec<_> = merged.into_values().collect();
+    ctx.db
+        .mutate(|db| {
+            let state = db.as_public_mut().as_scheduled_backups_mut();
+            for history in &histories {
+                state
+                    .as_histories_mut()
+                    .insert(&history_key(&target_id, &history.package_id), history)?;
+            }
+            Ok(())
+        })
+        .await
+        .result?;
+    Ok(histories)
+}
+
 #[derive(Deserialize, Serialize, Parser, TS)]
 #[group(skip)]
 #[ts(export)]
@@ -448,23 +556,42 @@ pub async fn discover_histories(
         .metadata
         .services
         .iter()
-        .map(|(package_id, history)| ServiceTargetHistory {
-            target_id: target_id.clone(),
-            target_instance_id: target_instance_id.clone(),
-            package_id: package_id.clone(),
-            timezone: history.timezone.clone(),
-            policy: history.policy.clone(),
-            feeding_jobs: history
+        .map(|(package_id, history)| {
+            let feeding_jobs = history
                 .snapshots
                 .iter()
                 .map(|snapshot| snapshot.job_id.clone())
-                .collect(),
-            snapshots: history.snapshots.clone(),
-            archived: history.archived,
+                .collect();
+            service_target_history(
+                &target_id,
+                &target_instance_id,
+                package_id,
+                history,
+                feeding_jobs,
+            )
         })
         .collect();
     guard.unmount().await?;
     Ok(histories)
+}
+
+fn service_target_history(
+    target_id: &BackupTargetId,
+    target_instance_id: &str,
+    package_id: &PackageId,
+    history: &super::OnTargetServiceHistory,
+    feeding_jobs: BTreeSet<BackupJobId>,
+) -> ServiceTargetHistory {
+    ServiceTargetHistory {
+        target_id: target_id.clone(),
+        target_instance_id: target_instance_id.to_owned(),
+        package_id: package_id.clone(),
+        timezone: history.timezone.clone(),
+        policy: history.policy.clone(),
+        feeding_jobs,
+        snapshots: history.snapshots.clone(),
+        archived: history.archived,
+    }
 }
 
 #[derive(Deserialize, Serialize, TS)]
@@ -734,7 +861,7 @@ pub async fn reassign_target(
         .peek(|account| account.hostname.hostname.clone());
     let target_guard = TmpMountGuard::mount(&target_id.clone().load(&db)?, ReadWrite).await?;
     let available = crate::disk::util::get_available(target_guard.path()).await?;
-    super::runner::preflight_new_target_capacity(&package_ids, available).await?;
+    super::runner::preflight_new_target_capacity(&ctx, &package_ids, available).await?;
     let (guard, encryption_key) =
         ScheduledBackupMountGuard::initialize(target_guard, &server_id, hostname, &password)
             .await?;
@@ -2012,28 +2139,15 @@ fn selected_installed_services(
     db: &DatabaseModel,
     scope: &BackupServiceScope,
 ) -> Result<BTreeSet<PackageId>, Error> {
-    Ok(match scope {
-        BackupServiceScope::All => db
-            .as_public()
-            .as_package_data()
-            .as_entries()?
-            .into_iter()
-            .filter(|(_, package)| package.as_state_info().expect_installed().is_ok())
-            .map(|(id, _)| id)
-            .collect(),
-        BackupServiceScope::AllExcept {
-            excluded_package_ids,
-        } => db
-            .as_public()
-            .as_package_data()
-            .as_entries()?
-            .into_iter()
-            .filter(|(_, package)| package.as_state_info().expect_installed().is_ok())
-            .map(|(id, _)| id)
-            .filter(|id| !excluded_package_ids.contains(id))
-            .collect(),
-        BackupServiceScope::Selected { package_ids } => package_ids.clone(),
-    })
+    let installed = db
+        .as_public()
+        .as_package_data()
+        .as_entries()?
+        .into_iter()
+        .filter(|(_, package)| package.as_state_info().expect_installed().is_ok())
+        .map(|(id, _)| id)
+        .collect();
+    Ok(scope.configured_services(installed))
 }
 
 pub(crate) fn associate_histories(

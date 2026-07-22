@@ -258,7 +258,12 @@ export class ServiceTaskComponent {
   async handle() {
     const task = this.task()
     if (this.backupReview()) {
-      const jobs = await this.api.getScheduledBackupJobs({})
+      const [jobs, reviews] = await Promise.all([
+        this.api.getScheduledBackupJobs({}),
+        this.api.getNewServiceBackupReviews({}),
+      ])
+      const review = reviews.find(item => item.packageId === task.packageId)
+      if (!review) return
       if (jobs.length === 1) {
         const decision = await firstValueFrom(
           this.dialog.openComponent<BackupReviewDecision>(
@@ -274,7 +279,12 @@ export class ServiceTaskComponent {
           await this.tasks.run(async () => {
             await this.api.resolveNewServiceBackupReview({
               packageId: task.packageId,
-              decisions: { [jobs[0]!.id]: true },
+              decisions: Object.fromEntries(
+                review.affectedJobs.map(jobId => [
+                  jobId,
+                  jobId === jobs[0]!.id,
+                ]),
+              ),
             })
           })
         } else if (decision === 'create') {

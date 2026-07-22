@@ -6,11 +6,11 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 use super::{RetentionPolicy, Schedule};
-use crate::PackageId;
 use crate::backup::PackageBackupReport;
 use crate::backup::target::BackupTargetId;
 use crate::prelude::Model;
 use crate::rpc_continuations::Guid;
+use crate::{PackageId, SYSTEM_PACKAGE_ID};
 
 pub type BackupJobId = Guid;
 pub type BackupRunId = Guid;
@@ -36,6 +36,9 @@ pub enum BackupServiceScope {
 
 impl BackupServiceScope {
     pub fn includes(&self, package_id: &PackageId) -> bool {
+        if package_id == &*SYSTEM_PACKAGE_ID {
+            return true;
+        }
         match self {
             Self::All => true,
             Self::AllExcept {
@@ -43,6 +46,35 @@ impl BackupServiceScope {
             } => !excluded_package_ids.contains(package_id),
             Self::Selected { package_ids } => package_ids.contains(package_id),
         }
+    }
+
+    pub(crate) fn configured_services(
+        &self,
+        installed: BTreeSet<PackageId>,
+    ) -> BTreeSet<PackageId> {
+        let mut selected = match self {
+            Self::All => installed,
+            Self::AllExcept {
+                excluded_package_ids,
+            } => installed
+                .into_iter()
+                .filter(|id| !excluded_package_ids.contains(id))
+                .collect(),
+            Self::Selected { package_ids } => package_ids.iter().cloned().collect(),
+        };
+        selected.insert(SYSTEM_PACKAGE_ID.clone());
+        selected
+    }
+
+    pub(crate) fn runnable_services(
+        &self,
+        mut installed: BTreeSet<PackageId>,
+    ) -> BTreeSet<PackageId> {
+        installed.insert(SYSTEM_PACKAGE_ID.clone());
+        self.configured_services(installed.clone())
+            .intersection(&installed)
+            .cloned()
+            .collect()
     }
 }
 
@@ -338,6 +370,7 @@ mod tests {
         .unwrap();
         assert!(selected.includes(&"bitcoind".parse().unwrap()));
         assert!(!selected.includes(&"lnd".parse().unwrap()));
+        assert!(selected.includes(&*SYSTEM_PACKAGE_ID));
 
         let all_except: BackupServiceScope = serde_json::from_value(serde_json::json!({
             "type": "allExcept",
@@ -346,6 +379,29 @@ mod tests {
         .unwrap();
         assert!(all_except.includes(&"bitcoind".parse().unwrap()));
         assert!(!all_except.includes(&"lnd".parse().unwrap()));
+        assert!(all_except.includes(&*SYSTEM_PACKAGE_ID));
+    }
+
+    #[test]
+    fn every_service_scope_includes_system_data() {
+        let installed = BTreeSet::from(["hello-world".parse().unwrap()]);
+        let selected = BackupServiceScope::Selected {
+            package_ids: installed.clone(),
+        };
+        let excluded = BackupServiceScope::AllExcept {
+            excluded_package_ids: BTreeSet::from([SYSTEM_PACKAGE_ID.clone()]),
+        };
+
+        assert!(
+            selected
+                .configured_services(installed.clone())
+                .contains(&*SYSTEM_PACKAGE_ID)
+        );
+        assert!(
+            excluded
+                .runnable_services(installed)
+                .contains(&*SYSTEM_PACKAGE_ID)
+        );
     }
 
     #[test]

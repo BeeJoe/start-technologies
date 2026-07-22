@@ -1616,6 +1616,13 @@ backup.scheduled.service-not-ready:
   fr_FR: "Le service n'est pas prêt pour la sauvegarde"
   pl_PL: "Usługa nie jest gotowa do utworzenia kopii"
 
+backup.scheduled.system:
+  en_US: "System"
+  de_DE: "System"
+  es_ES: "Sistema"
+  fr_FR: "Système"
+  pl_PL: "System"
+
 backup.scheduled.leaked-reference:
   en_US: "Scheduled backup leaked a storage reference"
   de_DE: "Die geplante Sicherung hat eine Speicherreferenz verloren"

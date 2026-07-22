@@ -21,6 +21,7 @@ import { ApiService } from 'src/app/services/api/embassy-api.service'
 import { ConfigService } from 'src/app/services/config.service'
 import { DataModel } from 'src/app/services/patch-db/data-model'
 import { RecoverCheckpoint, RecoverData, RecoverOption } from './backup.types'
+import { SYSTEM_PACKAGE_ID } from './scheduled.utils'
 
 @Component({
   template: `
@@ -216,6 +217,7 @@ export class BackupsRecoverComponent {
           ])
 
           return [...ids]
+            .filter(id => id !== SYSTEM_PACKAGE_ID)
             .map(id => {
               const manual = backups[id]
               const scheduledCheckpoints = scheduled

@@ -1140,6 +1140,12 @@ export class MockApiService extends ApiService {
     return []
   }
 
+  async refreshScheduledBackupHistories(params: {
+    targetId: T.BackupTargetId
+  }): Promise<T.ServiceTargetHistory[]> {
+    return this.getScheduledBackupHistories({})
+  }
+
   async discoverScheduledBackupHistories(
     params: T.DiscoverScheduledBackupsParams,
   ): Promise<T.ServiceTargetHistory[]> {

@@ -482,21 +482,6 @@ impl<G: GenericMountGuard> ScheduledBackupMountGuard<G> {
         .await
     }
 
-    pub async fn save_os_backup(
-        &self,
-        run_id: &Guid,
-        backup: &crate::backup::os::OsBackup,
-    ) -> Result<(), Error> {
-        write_json(
-            &self
-                .path()
-                .join("runs")
-                .join(format!("{run_id}.os-backup.json")),
-            backup,
-        )
-        .await
-    }
-
     pub async fn save(&self) -> Result<(), Error> {
         write_json(&self.path().join("metadata.json"), &self.metadata).await?;
         write_json(&self.recovery_path, &self.recovery).await

@@ -832,10 +832,7 @@ export default class BackupsComponent implements OnInit {
     const job = this.primary()
     if (!job) return
     try {
-      await this.deleteScheduleService.delete(
-        job,
-        Object.values(this.state()?.histories || {}),
-      )
+      await this.deleteScheduleService.delete(job)
     } catch (error: any) {
       this.errors.handleError(getErrorMessage(error))
     }

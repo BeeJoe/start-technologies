@@ -269,6 +269,9 @@ export abstract class ApiService {
   abstract getScheduledBackupHistories(params: {}): Promise<
     T.ServiceTargetHistory[]
   >
+  abstract refreshScheduledBackupHistories(params: {
+    targetId: T.BackupTargetId
+  }): Promise<T.ServiceTargetHistory[]>
   abstract discoverScheduledBackupHistories(
     params: T.DiscoverScheduledBackupsParams,
   ): Promise<T.ServiceTargetHistory[]>

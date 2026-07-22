@@ -57,6 +57,7 @@ import {
   retentionPeriodLabel,
   serializeBackupServiceSelection,
   serializeBackupSchedule,
+  SYSTEM_PACKAGE_ID,
 } from '../system/routes/backups/scheduled.utils'
 import { ScheduledBackupsComponent } from '../system/routes/backups/scheduled.component'
 import { BackupLocationPickerComponent } from './location-picker.component'
@@ -66,6 +67,7 @@ interface ServiceChoice {
   title: string
   icon: string
   checked: boolean
+  system: boolean
 }
 
 interface AutomaticEditor {
@@ -329,9 +331,14 @@ interface AutomaticRetentionRule {
                       <input
                         tuiCheckbox
                         type="checkbox"
+                        [disabled]="service.system"
                         [(ngModel)]="service.checked"
                       />
-                      <img alt="" [src]="service.icon" />
+                      @if (service.system) {
+                        <tui-icon icon="@tui.settings" />
+                      } @else {
+                        <img alt="" [src]="service.icon" />
+                      }
                       <span tuiTitle>
                         <b>{{ service.title }}</b>
                       </span>
@@ -1081,25 +1088,35 @@ export default class AutomaticBackupsComponent implements OnInit {
   }
 
   private serviceChoices(selected?: Set<string>): ServiceChoice[] {
-    return Object.entries(this.packageData() || {})
-      .flatMap(([id, entry]) => {
-        const state = entry.stateInfo
-        const manifest =
-          state.state === 'installed' || state.state === 'removing'
-            ? state.manifest
-            : state.installingInfo?.newManifest
-        return manifest
-          ? [
-              {
-                id,
-                title: manifest.title,
-                icon: entry.icon,
-                checked: selected ? selected.has(id) : true,
-              },
-            ]
-          : []
-      })
-      .sort((a, b) => a.title.localeCompare(b.title))
+    return [
+      {
+        id: SYSTEM_PACKAGE_ID,
+        title: this.i18n.transform('System'),
+        icon: '',
+        checked: true,
+        system: true,
+      },
+      ...Object.entries(this.packageData() || {})
+        .flatMap(([id, entry]) => {
+          const state = entry.stateInfo
+          const manifest =
+            state.state === 'installed' || state.state === 'removing'
+              ? state.manifest
+              : state.installingInfo?.newManifest
+          return manifest
+            ? [
+                {
+                  id,
+                  title: manifest.title,
+                  icon: entry.icon,
+                  checked: selected ? selected.has(id) : true,
+                  system: false,
+                },
+              ]
+            : []
+        })
+        .sort((a, b) => a.title.localeCompare(b.title)),
+    ]
   }
 
   private ensureServices() {
@@ -1154,7 +1171,9 @@ export default class AutomaticBackupsComponent implements OnInit {
 
   setAllServices(checked: boolean) {
     this.ensureServices()
-    this.editor.services.forEach(service => (service.checked = checked))
+    this.editor.services.forEach(
+      service => (service.checked = service.system || checked),
+    )
   }
 
   scheduleSummary(): string {
@@ -1245,7 +1264,8 @@ export default class AutomaticBackupsComponent implements OnInit {
 
   selectedServiceSummary(): string {
     const selected = this.editor.services.filter(service => service.checked)
-    const count = `${selected.length} / ${this.editor.services.length} ${this.i18n.transform('Services')}`
+    const total = this.editor.services.length
+    const count = `${selected.length} / ${total} ${this.i18n.transform(total === 1 ? 'Service' : 'Services')}`
     const future = this.i18n.transform(
       this.editor.includeFuture
         ? 'Future services included'

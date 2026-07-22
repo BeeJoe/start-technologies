@@ -160,6 +160,8 @@ const historyFile =
   'projects/start-os/web/ui/src/app/routes/portal/routes/backups/history.component.ts'
 const deleteScheduleDialogFile =
   'projects/start-os/web/ui/src/app/routes/portal/routes/system/routes/backups/delete-schedule.dialog.ts'
+const serviceTaskFile =
+  'projects/start-os/web/ui/src/app/routes/portal/routes/services/components/task.component.ts'
 const progressFile =
   'projects/start-os/web/ui/src/app/routes/portal/routes/system/routes/backups/progress.component.ts'
 const locationFile =
@@ -174,6 +176,8 @@ const recoverFile =
   'projects/start-os/web/ui/src/app/routes/portal/routes/system/routes/backups/recover.component.ts'
 const advancedFile =
   'projects/start-os/web/ui/src/app/routes/portal/routes/system/routes/backups/scheduled.component.ts'
+const scheduledUtilsFile =
+  'projects/start-os/web/ui/src/app/routes/portal/routes/system/routes/backups/scheduled.utils.ts'
 const manualPageFile =
   'projects/start-os/web/ui/src/app/routes/portal/routes/system/routes/backups/backups.component.ts'
 const networkFile =
@@ -720,11 +724,48 @@ assertSource(editorFile, [
   /class="setting-row retention-heading"[\s\S]{0,180}'Version history'/,
 ])
 assertSource(advancedFile, [
+  /@let serviceCount = jobServiceCount\(job\);[\s\S]{0,320}serviceCountLabel\(serviceCount\)/,
+  /form\.packageIds = \[SYSTEM_PACKAGE_ID, review\.packageId\]/,
+  /if \(form\.firstBackupNow && selectedJob && !selectedJob\.enabled\)[\s\S]{0,220}setScheduledBackupJobEnabled[\s\S]{0,180}runScheduledBackupJob/,
+])
+assertSource(scheduledUtilsFile, [
+  /export const SYSTEM_PACKAGE_ID = 'x_system'/,
+])
+assertSource(serviceTaskFile, [
+  /getNewServiceBackupReviews\(\{\}\)[\s\S]{0,900}review\.affectedJobs\.map\(jobId => \[[\s\S]{0,100}jobId,[\s\S]{0,100}jobId === jobs\[0\]!\.id/,
+])
+assertSource(deleteScheduleDialogFile, [
+  /FormsModule/,
+  /\[\(ngModel\)\]="deleteCheckpoints"/,
+  /refreshScheduledBackupHistories\(\{[\s\S]{0,80}targetId: job\.targetId/,
+])
+assertRule(
+  advanced,
+  advancedFile,
+  '.schedule-job > [tuiTitle]',
+  { display: 'contents' },
+  phone,
+)
+assertRule(
+  advanced,
+  advancedFile,
+  '.schedule-job > [tuiTitle] > [tuiSubtitle]',
+  {
+    'grid-column': '1 / -1',
+    'grid-row': '2',
+  },
+  phone,
+)
+assertRule(advanced, advancedFile, '.review .checkbox-row > input', {
+  'margin-inline-start': 'auto',
+})
+assertSource(advancedFile, [
   /class="retention-heading setting-row"[\s\S]{0,180}'Version history'/,
   /'Add to backup schedule' \| i18n[\s\S]{0,100}packageName\(review\.packageId\)/,
 ])
-assertRule(advanced, advancedFile, '.review .toggle-all', {
-  width: '100%',
+assertRule(advanced, advancedFile, '.review .checkbox-row', {
+  'inline-size': '100%',
+  'max-inline-size': '100%',
   'padding-inline': '0',
   'justify-content': 'space-between',
 })
@@ -1097,6 +1138,7 @@ assertSource(liveApiFile, [
   /updateScheduledBackupJob[\s\S]{0,220}method:\s*'backup\.job\.update'/,
   /setScheduledBackupJobEnabled[\s\S]{0,240}method:\s*'backup\.job\.set-enabled'/,
   /runScheduledBackupJob[\s\S]{0,220}method:\s*'backup\.job\.run-now'/,
+  /refreshScheduledBackupHistories[\s\S]{0,240}method:\s*'backup\.history\.refresh'/,
   /deleteArchivedBackupSnapshots[\s\S]{0,260}method:\s*'backup\.history\.delete-archived-snapshots'/,
   /restoreBackupSelection[\s\S]{0,260}method:\s*'package\.backup\.restore-selection'/,
 ])
@@ -1123,6 +1165,7 @@ assertSource(backendScheduledRpcFile, [
   /"update", from_fn_async\(update\)/,
   /"set-enabled", from_fn_async\(set_enabled\)/,
   /"run-now"[\s\S]{0,120}from_fn_async\(run_now\)/,
+  /"refresh", from_fn_async\(refresh_histories\)/,
   /"delete-archived-snapshots"[\s\S]{0,120}from_fn_async\(delete_archived_snapshots\)/,
 ])
 assertNotSource(backendScheduledRunnerFile, [

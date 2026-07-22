@@ -536,6 +536,12 @@ export class LiveApiService extends ApiService {
     return this.rpcRequest({ method: 'backup.history.list', params })
   }
 
+  async refreshScheduledBackupHistories(params: {
+    targetId: T.BackupTargetId
+  }): Promise<T.ServiceTargetHistory[]> {
+    return this.rpcRequest({ method: 'backup.history.refresh', params })
+  }
+
   async discoverScheduledBackupHistories(
     params: T.DiscoverScheduledBackupsParams,
   ): Promise<T.ServiceTargetHistory[]> {

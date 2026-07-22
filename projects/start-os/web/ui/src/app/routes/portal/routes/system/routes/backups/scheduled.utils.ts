@@ -9,6 +9,7 @@ export type BackupRetentionPeriodLabel =
   | 'weeks'
   | 'months'
 
+export const SYSTEM_PACKAGE_ID = 'x_system'
 export const BACKUP_HOURS = Array.from({ length: 24 }, (_, hour) => hour)
 export const BACKUP_MINUTES = Array.from({ length: 60 }, (_, minute) => minute)
 export const BACKUP_MONTH_DAYS = Array.from({ length: 31 }, (_, day) => day + 1)

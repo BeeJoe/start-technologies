@@ -52,7 +52,14 @@ type HistoryFilter = 'all' | T.BackupActivityKind
               {{ targetName(activity.targetId) }}
             </p>
             <p>
-              <b>{{ 'Services' | i18n }}:</b>
+              <b>
+                {{
+                  (activity.intendedServices.length === 1
+                    ? 'Service'
+                    : 'Services'
+                  ) | i18n
+                }}:
+              </b>
               {{ activity.intendedServices.length }}
             </p>
             @if (activity.error) {
