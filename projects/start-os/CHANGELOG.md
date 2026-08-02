@@ -8,6 +8,14 @@ Full per-release notes are published on the
 [GitHub releases page](https://github.com/Start9Labs/start-technologies/releases). This
 file tracks notable changes since the move to the monorepo.
 
+## [0.4.0.2]
+
+### Fixed
+
+- **`s9pk pack` no longer embeds inaccessible JavaScript under a restrictive umask.** The bundled
+  CLI now adds read access to files and read/search access to directories while creating the v2
+  JavaScript SquashFS, without modifying the source tree or stripping executable bits.
+
 ## [0.4.0.1]
 
 ### Changed
