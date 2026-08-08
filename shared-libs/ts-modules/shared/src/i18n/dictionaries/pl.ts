@@ -831,4 +831,5 @@ export default {
   938: 'Status UPS niedostępny',
   939: 'StartOS nie mógł odczytać statusu UPS przy bieżącej konfiguracji NUT.',
   940: 'UPS nie zwrócił danych statusu. Sprawdź nazwę UPS, host, port, dane logowania i sterownik.',
+  941: 'Network UPS Tools jest wyłączony',
 } satisfies i18n

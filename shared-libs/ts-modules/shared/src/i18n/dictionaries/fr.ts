@@ -831,4 +831,5 @@ export default {
   938: 'État de l’onduleur indisponible',
   939: 'StartOS n’a pas pu lire l’état de l’onduleur avec la configuration NUT actuelle.',
   940: 'L’onduleur n’a renvoyé aucune donnée d’état. Vérifiez le nom de l’onduleur, l’hôte, le port, les identifiants et le pilote.',
+  941: 'Network UPS Tools est désactivé',
 } satisfies i18n

@@ -1690,6 +1690,62 @@ net.tunnel.timeout-waiting-for-remove:
   pl_PL: "upłynął limit czasu oczekiwania na usunięcie bramy %{gateway} z bazy danych"
 
 # nut.rs
+nut.field-device-or-address:
+  en_US: "device or address"
+  de_DE: "Gerät oder Adresse"
+  es_ES: "dispositivo o dirección"
+  fr_FR: "périphérique ou adresse"
+  pl_PL: "urządzenie lub adres"
+
+nut.field-driver:
+  en_US: "driver"
+  de_DE: "Treiber"
+  es_ES: "controlador"
+  fr_FR: "pilote"
+  pl_PL: "sterownik"
+
+nut.field-monitor-password:
+  en_US: "monitor password"
+  de_DE: "Monitor-Passwort"
+  es_ES: "contraseña de monitorización"
+  fr_FR: "mot de passe de surveillance"
+  pl_PL: "hasło monitora"
+
+nut.field-monitor-username:
+  en_US: "monitor username"
+  de_DE: "Monitor-Benutzername"
+  es_ES: "nombre de usuario de monitorización"
+  fr_FR: "nom d’utilisateur de surveillance"
+  pl_PL: "nazwa użytkownika monitora"
+
+nut.field-network-client-password:
+  en_US: "network client password"
+  de_DE: "Passwort des Netzwerk-Clients"
+  es_ES: "contraseña del cliente de red"
+  fr_FR: "mot de passe du client réseau"
+  pl_PL: "hasło klienta sieciowego"
+
+nut.field-network-client-username:
+  en_US: "network client username"
+  de_DE: "Benutzername des Netzwerk-Clients"
+  es_ES: "nombre de usuario del cliente de red"
+  fr_FR: "nom d’utilisateur du client réseau"
+  pl_PL: "nazwa użytkownika klienta sieciowego"
+
+nut.field-server-host:
+  en_US: "server host"
+  de_DE: "Server-Host"
+  es_ES: "host del servidor"
+  fr_FR: "hôte du serveur"
+  pl_PL: "host serwera"
+
+nut.field-ups-name:
+  en_US: "UPS name"
+  de_DE: "USV-Name"
+  es_ES: "nombre del SAI"
+  fr_FR: "nom de l’onduleur"
+  pl_PL: "nazwa UPS"
+
 nut.invalid-identifier:
   en_US: "Invalid NUT %{field}: use letters, numbers, dots, underscores, or hyphens"
   de_DE: "Ungültiges NUT-Feld %{field}: Verwenden Sie Buchstaben, Zahlen, Punkte, Unterstriche oder Bindestriche"

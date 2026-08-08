@@ -25,9 +25,9 @@ use crate::net::host::binding::{
     AddSslOptions, BindInfo, BindOptions, Bindings, DerivedAddressInfo, NetInfo,
 };
 use crate::net::vhost::{AlpnInfo, PassthroughInfo};
+use crate::nut::NutConfig;
 use crate::prelude::*;
 use crate::progress::FullProgress;
-use crate::nut::NutConfig;
 use crate::system::{KeyboardOptions, SmtpValue};
 use crate::util::cpupower::Governor;
 use crate::util::lshw::LshwDevice;

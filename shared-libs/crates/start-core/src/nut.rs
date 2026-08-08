@@ -1,3 +1,5 @@
+//! Network UPS Tools configuration, service management, and status reporting.
+
 use std::collections::BTreeMap;
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
@@ -16,16 +18,20 @@ const NUT_ETC_DIR: &str = "/etc/nut";
 const NUT_OVERLAY_DIR: &str = "/media/startos/config/overlay/etc/nut";
 const NUT_PORT: u16 = 3493;
 
+/// Stored NUT configuration and its independent enabled state.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub struct NutConfig {
+    /// Whether StartOS should run NUT monitoring.
     #[serde(default)]
     pub enabled: bool,
+    /// Retained server or client settings, including while monitoring is disabled.
     #[serde(default)]
     pub settings: Option<NutSettings>,
 }
 
+/// Directly connected UPS server settings or remote NUT client settings.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, TS)]
 #[serde(
     tag = "mode",
@@ -34,6 +40,7 @@ pub struct NutConfig {
 )]
 #[ts(export)]
 pub enum NutSettings {
+    /// Serve and monitor a UPS connected directly to this StartOS host.
     Server {
         ups_name: String,
         driver: String,
@@ -49,6 +56,7 @@ pub enum NutSettings {
         #[serde(default = "default_shutdown_delay")]
         shutdown_delay: u16,
     },
+    /// Monitor a UPS exposed by another NUT server.
     Client {
         ups_name: String,
         host: String,
@@ -61,6 +69,7 @@ pub enum NutSettings {
     },
 }
 
+/// Parameters for replacing the stored NUT configuration.
 #[derive(Debug, Clone, Deserialize, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
@@ -68,6 +77,7 @@ pub struct SetNutParams {
     pub config: NutConfig,
 }
 
+/// Current variables reported by the configured UPS.
 #[derive(Debug, Clone, Deserialize, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
@@ -84,6 +94,7 @@ const fn default_shutdown_delay() -> u16 {
     5
 }
 
+/// Apply and persist a complete NUT configuration.
 pub async fn set_nut(ctx: RpcContext, SetNutParams { config }: SetNutParams) -> Result<(), Error> {
     if config.enabled && config.settings.is_none() {
         return Err(Error::new(
@@ -103,6 +114,7 @@ pub async fn set_nut(ctx: RpcContext, SetNutParams { config }: SetNutParams) -> 
         .result
 }
 
+/// Disable NUT and clear its retained settings.
 pub async fn clear_nut(ctx: RpcContext, _: Empty) -> Result<(), Error> {
     set_nut(
         ctx,
@@ -113,6 +125,7 @@ pub async fn clear_nut(ctx: RpcContext, _: Empty) -> Result<(), Error> {
     .await
 }
 
+/// Query the UPS configured in the database through `upsc`.
 pub async fn get_nut_status(ctx: RpcContext, _: Empty) -> Result<NutStatus, Error> {
     let config = ctx
         .db
@@ -127,6 +140,7 @@ pub async fn get_nut_status(ctx: RpcContext, _: Empty) -> Result<NutStatus, Erro
     nut_status(config).await
 }
 
+/// Reconcile NUT configuration files and systemd units with stored settings.
 pub async fn sync_nut(config: NutConfig) -> Result<(), Error> {
     match config {
         NutConfig {
@@ -144,9 +158,12 @@ async fn disable_nut() -> Result<(), Error> {
     delete_nut_file("upsd.users").await?;
     delete_nut_file("upsmon.conf").await?;
     stop_disable(&[
+        "nut.target",
         "nut-monitor.service",
         "nut-server.service",
         "nut-driver.target",
+        "nut-driver-enumerator.path",
+        "nut-driver-enumerator.service",
     ])
     .await
 }
@@ -164,15 +181,21 @@ async fn apply_nut(settings: NutSettings) -> Result<(), Error> {
             remote_password,
             shutdown_delay,
         } => {
-            validate_identifier("UPS name", &ups_name)?;
-            validate_identifier("driver", &driver)?;
-            validate_token("port", &port)?;
-            validate_identifier("monitor username", &monitor_username)?;
-            validate_token("monitor password", &monitor_password)?;
+            validate_identifier(&t!("nut.field-ups-name"), &ups_name)?;
+            validate_identifier(&t!("nut.field-driver"), &driver)?;
+            validate_token(&t!("nut.field-device-or-address"), &port)?;
+            validate_identifier(&t!("nut.field-monitor-username"), &monitor_username)?;
+            validate_token(&t!("nut.field-monitor-password"), &monitor_password)?;
             validate_shutdown_delay(shutdown_delay)?;
             if listen_all {
-                validate_required_identifier("remote username", remote_username.as_deref())?;
-                validate_required_token("remote password", remote_password.as_deref())?;
+                validate_required_identifier(
+                    &t!("nut.field-network-client-username"),
+                    remote_username.as_deref(),
+                )?;
+                validate_required_token(
+                    &t!("nut.field-network-client-password"),
+                    remote_password.as_deref(),
+                )?;
             }
 
             write_nut_file("nut.conf", "MODE=netserver\n", 0o644).await?;
@@ -220,8 +243,19 @@ async fn apply_nut(settings: NutSettings) -> Result<(), Error> {
                 0o640,
             )
             .await?;
-            enable_restart(&[
+            enable_units(&[
+                "nut.target",
                 "nut-driver.target",
+                "nut-driver-enumerator.path",
+                "nut-driver-enumerator.service",
+                "nut-server.service",
+                "nut-monitor.service",
+            ])
+            .await?;
+            restart_units(&[
+                "nut.target",
+                "nut-driver-enumerator.path",
+                "nut-driver-enumerator.service",
                 "nut-server.service",
                 "nut-monitor.service",
             ])
@@ -235,10 +269,10 @@ async fn apply_nut(settings: NutSettings) -> Result<(), Error> {
             monitor_password,
             shutdown_delay,
         } => {
-            validate_identifier("UPS name", &ups_name)?;
-            validate_token("host", &host)?;
-            validate_identifier("monitor username", &monitor_username)?;
-            validate_token("monitor password", &monitor_password)?;
+            validate_identifier(&t!("nut.field-ups-name"), &ups_name)?;
+            validate_token(&t!("nut.field-server-host"), &host)?;
+            validate_identifier(&t!("nut.field-monitor-username"), &monitor_username)?;
+            validate_token(&t!("nut.field-monitor-password"), &monitor_password)?;
             validate_nut_port(port)?;
             validate_shutdown_delay(shutdown_delay)?;
 
@@ -260,8 +294,15 @@ async fn apply_nut(settings: NutSettings) -> Result<(), Error> {
                 0o640,
             )
             .await?;
-            stop_disable(&["nut-server.service", "nut-driver.target"]).await?;
-            enable_restart(&["nut-monitor.service"]).await
+            enable_units(&["nut.target", "nut-monitor.service"]).await?;
+            restart_units(&["nut.target", "nut-monitor.service"]).await?;
+            stop_disable(&[
+                "nut-server.service",
+                "nut-driver.target",
+                "nut-driver-enumerator.path",
+                "nut-driver-enumerator.service",
+            ])
+            .await
         }
     }
 }
@@ -401,7 +442,7 @@ async fn delete_nut_file(name: &str) -> Result<(), Error> {
     Ok(())
 }
 
-async fn enable_restart(units: &[&str]) -> Result<(), Error> {
+async fn enable_units(units: &[&str]) -> Result<(), Error> {
     let mut enable = Command::new("systemctl");
     enable.arg("enable");
     for unit in units {
@@ -409,6 +450,10 @@ async fn enable_restart(units: &[&str]) -> Result<(), Error> {
     }
     enable.invoke(ErrorKind::Systemd).await?;
 
+    Ok(())
+}
+
+async fn restart_units(units: &[&str]) -> Result<(), Error> {
     for unit in units {
         Command::new("systemctl")
             .arg("restart")
@@ -481,4 +526,44 @@ fn validate_shutdown_delay(delay: u16) -> Result<(), Error> {
         ));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_upsc_output() {
+        let status = parse_upsc("battery.charge: 96\nups.status: OL\nignored\n");
+
+        assert_eq!(status.get("battery.charge").map(String::as_str), Some("96"));
+        assert_eq!(status.get("ups.status").map(String::as_str), Some("OL"));
+        assert!(!status.contains_key("ignored"));
+    }
+
+    #[test]
+    fn formats_ipv6_upsc_targets() {
+        let config = NutConfig {
+            enabled: true,
+            settings: Some(NutSettings::Client {
+                ups_name: "ups".to_owned(),
+                host: "2001:db8::1".to_owned(),
+                port: NUT_PORT,
+                monitor_username: "monitor".to_owned(),
+                monitor_password: "secret".to_owned(),
+                shutdown_delay: 5,
+            }),
+        };
+
+        assert_eq!(
+            upsc_target(&config).as_deref(),
+            Some("ups@[2001:db8::1]:3493")
+        );
+    }
+
+    #[test]
+    fn rejects_config_tokens_with_whitespace() {
+        assert!(validate_token("field", "two words").is_err());
+        assert!(validate_token("field", "one-word").is_ok());
+    }
 }

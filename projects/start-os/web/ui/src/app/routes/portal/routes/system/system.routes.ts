@@ -55,7 +55,7 @@ export default [
       {
         path: 'nut',
         title: titleResolver,
-        loadComponent: () => import('./routes/nut/nut.component'),
+        loadComponent: () => import('./routes/nut'),
       },
       {
         path: 'sessions',

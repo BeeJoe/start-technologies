@@ -831,4 +831,5 @@ export default {
   938: 'Estado del SAI no disponible',
   939: 'StartOS no pudo leer el estado del SAI con la configuración NUT actual.',
   940: 'El SAI no devolvió datos de estado. Compruebe el nombre del SAI, host, puerto, credenciales y controlador.',
+  941: 'Network UPS Tools está desactivado',
 } satisfies i18n

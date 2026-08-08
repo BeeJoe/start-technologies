@@ -832,4 +832,5 @@ export const ENGLISH: Record<string, number> = {
   'UPS status unavailable': 938,
   'StartOS could not read UPS status with the current NUT configuration.': 939,
   'The UPS did not return status data. Check the UPS name, host, port, credentials, and driver.': 940,
+  'Network UPS Tools is disabled': 941,
 }

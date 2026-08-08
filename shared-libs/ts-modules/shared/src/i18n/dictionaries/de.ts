@@ -831,4 +831,5 @@ export default {
   938: 'USV-Status nicht verfügbar',
   939: 'StartOS konnte den USV-Status mit der aktuellen NUT-Konfiguration nicht lesen.',
   940: 'Die USV hat keine Statusdaten zurückgegeben. Prüfen Sie USV-Name, Host, Port, Zugangsdaten und Treiber.',
+  941: 'Network UPS Tools ist deaktiviert',
 } satisfies i18n
