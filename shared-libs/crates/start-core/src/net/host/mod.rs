@@ -93,6 +93,23 @@ impl Host {
             )
     }
 }
+/// Gateways over which `<hostname>.local` is resolvable: a LAN interface
+/// serves it by mDNS multicast; a WireGuard interface only once its resolver
+/// has accepted the injected record (`net::dns_update`), tracked as its
+/// `dns_update` capability.
+fn mdns_gateways(gateways: &OrdMap<GatewayId, NetworkInterfaceInfo>) -> BTreeSet<GatewayId> {
+    gateways
+        .iter()
+        .filter(|(_, g)| {
+            matches!(
+                g.ip_info.as_ref().and_then(|i| i.device_type),
+                Some(NetworkInterfaceType::Ethernet | NetworkInterfaceType::Wireless)
+            ) || (g.is_wireguard() && g.dns_update.supported == Some(true))
+        })
+        .map(|(id, _)| id.clone())
+        .collect()
+}
+
 impl Model<Host> {
     pub fn update_addresses(
         &mut self,
@@ -110,6 +127,7 @@ impl Model<Host> {
             // Preserve existing plugin-provided addresses across recomputation
             let mut available = bind.as_addresses().as_available().de()?;
             available.retain(|h| matches!(h.metadata, HostnameMetadata::Plugin { .. }));
+            let gua_wan = bind.as_addresses().as_gua_wan().de()?;
             for (gid, g) in gateways {
                 let Some(ip_info) = &g.ip_info else {
                     continue;
@@ -129,24 +147,33 @@ impl Model<Host> {
                     };
                     if let Some(port) = net.assigned_port.filter(|_| {
                         opt.secure
-                            .map_or(gateway_secure, |s| !(s.ssl && opt.add_ssl.is_some()))
+                            .map_or(gateway_secure, |_| opt.wants_plain_port())
                     }) {
-                        available.insert(HostnameInfo {
+                        let mut hi = HostnameInfo {
                             ssl: opt.secure.map_or(false, |s| s.ssl),
                             public: false,
                             hostname: host.clone(),
                             port: Some(port),
                             metadata: metadata.clone(),
-                        });
+                        };
+                        // A GUA's public flag is the operator's WAN opt-in.
+                        if let Some(gua) = hi.gua() {
+                            hi.public = gua_wan.contains(&gua);
+                        }
+                        available.insert(hi);
                     }
                     if let Some(port) = net.assigned_ssl_port {
-                        available.insert(HostnameInfo {
+                        let mut hi = HostnameInfo {
                             ssl: true,
                             public: false,
                             hostname: host.clone(),
                             port: Some(port),
                             metadata,
-                        });
+                        };
+                        if let Some(gua) = hi.gua() {
+                            hi.public = gua_wan.contains(&gua);
+                        }
+                        available.insert(hi);
                     }
                 }
                 if let Some(wan_ip) = &ip_info.wan_ip {
@@ -157,7 +184,7 @@ impl Model<Host> {
                     if let Some(port) = net.assigned_port.filter(|_| {
                         opt.secure.map_or(
                             false, // the public internet is never secure
-                            |s| !(s.ssl && opt.add_ssl.is_some()),
+                            |_| opt.wants_plain_port(),
                         )
                     }) {
                         available.insert(HostnameInfo {
@@ -182,20 +209,11 @@ impl Model<Host> {
 
             // mdns
             let mdns_host = mdns.local_domain_name();
-            let mdns_gateways: BTreeSet<GatewayId> = gateways
-                .iter()
-                .filter(|(_, g)| {
-                    matches!(
-                        g.ip_info.as_ref().and_then(|i| i.device_type),
-                        Some(NetworkInterfaceType::Ethernet | NetworkInterfaceType::Wireless)
-                    )
-                })
-                .map(|(id, _)| id.clone())
-                .collect();
-            if let Some(port) = net.assigned_port.filter(|_| {
-                opt.secure
-                    .map_or(true, |s| !(s.ssl && opt.add_ssl.is_some()))
-            }) {
+            let mdns_gateways = mdns_gateways(gateways);
+            if let Some(port) = net
+                .assigned_port
+                .filter(|_| opt.secure.map_or(true, |_| opt.wants_plain_port()))
+            {
                 let mdns_gateways = if opt.secure.is_some() {
                     mdns_gateways.clone()
                 } else {
@@ -217,7 +235,7 @@ impl Model<Host> {
                     });
                 }
             }
-            if let Some(port) = net.assigned_ssl_port {
+            if let Some(port) = net.assigned_ssl_port.filter(|_| !mdns_gateways.is_empty()) {
                 available.insert(HostnameInfo {
                     ssl: true,
                     public: false,
@@ -237,7 +255,7 @@ impl Model<Host> {
                 if let Some(port) = net.assigned_port.filter(|_| {
                     opt.secure.map_or(
                         false, // the public internet is never secure
-                        |s| !(s.ssl && opt.add_ssl.is_some()),
+                        |_| opt.wants_plain_port(),
                     )
                 }) {
                     available.insert(HostnameInfo {
@@ -249,10 +267,11 @@ impl Model<Host> {
                     });
                 }
                 if let Some(mut port) = net.assigned_ssl_port {
+                    // The domain rides the preferred port whenever one of our
+                    // TLS listeners answers there — SNI routes it, terminating
+                    // (add_ssl) or passthrough (self-TLS) alike.
                     if let Some(preferred) = opt
-                        .add_ssl
-                        .as_ref()
-                        .map(|s| s.preferred_external_port)
+                        .preferred_ssl_port()
                         .filter(|p| available_ports.is_ssl(*p))
                     {
                         port = preferred;
@@ -264,29 +283,15 @@ impl Model<Host> {
                         port: Some(port),
                         metadata,
                     });
-                } else if opt.secure.map_or(false, |s| s.ssl)
-                    && opt.add_ssl.is_none()
-                    && available_ports.is_ssl(opt.preferred_external_port)
-                    && net.assigned_port != Some(opt.preferred_external_port)
-                {
-                    // Service handles its own TLS and the preferred port is
-                    // allocated as SSL — add an address for passthrough vhost.
-                    available.insert(HostnameInfo {
-                        ssl: true,
-                        public: true,
-                        hostname: domain,
-                        port: Some(opt.preferred_external_port),
-                        metadata,
-                    });
                 }
             }
 
             // private domains
             for (domain, domain_gateways) in this.private_domains.de()? {
-                if let Some(port) = net.assigned_port.filter(|_| {
-                    opt.secure
-                        .map_or(true, |s| !(s.ssl && opt.add_ssl.is_some()))
-                }) {
+                if let Some(port) = net
+                    .assigned_port
+                    .filter(|_| opt.secure.map_or(true, |_| opt.wants_plain_port()))
+                {
                     let gateways = if opt.secure.is_some() {
                         domain_gateways.clone()
                     } else {
@@ -306,9 +311,7 @@ impl Model<Host> {
                 }
                 if let Some(mut port) = net.assigned_ssl_port {
                     if let Some(preferred) = opt
-                        .add_ssl
-                        .as_ref()
-                        .map(|s| s.preferred_external_port)
+                        .preferred_ssl_port()
                         .filter(|p| available_ports.is_ssl(*p))
                     {
                         port = preferred;
@@ -318,20 +321,6 @@ impl Model<Host> {
                         public: false,
                         hostname: domain,
                         port: Some(port),
-                        metadata: HostnameMetadata::PrivateDomain {
-                            gateways: domain_gateways,
-                        },
-                    });
-                } else if opt.secure.map_or(false, |s| s.ssl)
-                    && opt.add_ssl.is_none()
-                    && available_ports.is_ssl(opt.preferred_external_port)
-                    && net.assigned_port != Some(opt.preferred_external_port)
-                {
-                    available.insert(HostnameInfo {
-                        ssl: true,
-                        public: false,
-                        hostname: domain,
-                        port: Some(opt.preferred_external_port),
                         metadata: HostnameMetadata::PrivateDomain {
                             gateways: domain_gateways,
                         },
@@ -347,16 +336,7 @@ impl Model<Host> {
         // `external_start_port` as its port so the single-port
         // enabled/disabled + forward machinery applies unchanged.
         let mdns_host = mdns.local_domain_name();
-        let mdns_gateways: BTreeSet<GatewayId> = gateways
-            .iter()
-            .filter(|(_, g)| {
-                matches!(
-                    g.ip_info.as_ref().and_then(|i| i.device_type),
-                    Some(NetworkInterfaceType::Ethernet | NetworkInterfaceType::Wireless)
-                )
-            })
-            .map(|(id, _)| id.clone())
-            .collect();
+        let mdns_gateways = mdns_gateways(gateways);
         for (_, range) in this.binding_ranges.as_entries_mut()? {
             let port = range.as_external_start_port().de()?;
 
@@ -367,7 +347,7 @@ impl Model<Host> {
             for (gid, g) in gateways {
                 // Never expose a range on an outbound-only gateway (e.g. a VPN
                 // egress) — they don't receive inbound forwards.
-                if matches!(g.gateway_type, Some(GatewayType::OutboundOnly)) {
+                if g.gateway_type == GatewayType::OutboundOnly {
                     continue;
                 }
                 let Some(ip_info) = &g.ip_info else {
@@ -437,7 +417,10 @@ impl Model<Host> {
                 });
             }
 
-            range.as_addresses_mut().as_available_mut().ser(&available)?;
+            range
+                .as_addresses_mut()
+                .as_available_mut()
+                .ser(&available)?;
         }
 
         // compute port forwards from enabled public addresses. A non-exported
@@ -547,16 +530,24 @@ impl Map for Hosts {
 
 pub fn host_for<'a>(
     db: &'a mut DatabaseModel,
-    package_id: Option<&PackageId>,
+    package_id: &PackageId,
     host_id: &HostId,
 ) -> Result<&'a mut Model<Host>, Error> {
-    let Some(package_id) = package_id else {
+    // `start-os` is the server itself: its single host (the admin UI's) lives
+    // in serverInfo, not packageData.
+    if package_id.is_start_os() {
+        if *host_id != HostId::admin() {
+            return Err(Error::new(
+                eyre!("the server has no host {host_id}"),
+                ErrorKind::NotFound,
+            ));
+        }
         return Ok(db
             .as_public_mut()
             .as_server_info_mut()
             .as_network_mut()
             .as_host_mut());
-    };
+    }
     fn host_info<'a>(
         db: &'a mut DatabaseModel,
         package_id: &PackageId,
@@ -593,12 +584,13 @@ impl Model<Host> {
         available_ports: &mut AvailablePorts,
         internal_port: u16,
         options: BindOptions,
+        privileged: bool,
     ) -> Result<(), Error> {
         self.as_bindings_mut().mutate(|b| {
             let info = if let Some(info) = b.remove(&internal_port) {
-                info.update(available_ports, options)?
+                info.update(available_ports, options, privileged)?
             } else {
-                BindInfo::new(available_ports, options)?
+                BindInfo::new(available_ports, options, privileged)?
             };
             b.insert(internal_port, info);
             Ok(())
@@ -616,6 +608,7 @@ impl Model<Host> {
         internal_start_port: u16,
         external_start_port: u16,
         number_of_ports: u16,
+        privileged: bool,
     ) -> Result<(), Error> {
         if number_of_ports < 2 {
             return Err(Error::new(
@@ -638,7 +631,13 @@ impl Model<Host> {
             // rebinds — bindPortRange is service-driven, so it must not clobber
             // a UI choice made between restarts. The `available` set is
             // recomputed by update_addresses.
-            let addresses = existing.map(|e| e.addresses.clone()).unwrap_or_default();
+            let mut addresses = existing.map(|e| e.addresses.clone()).unwrap_or_default();
+            // A resized/moved range changes external_start_port; carry the
+            // preserved overrides to the new representative port so a disabled
+            // WAN address stays disabled.
+            if let Some(old) = existing.map(|e| e.external_start_port) {
+                addresses.rekey_port(old, external_start_port);
+            }
             // Preserve the exported interface across rebinds; the trailing
             // `RangeOrigin.export` re-affirms it and `clearServiceInterfaces`
             // prunes it if the service no longer exports it.
@@ -653,7 +652,11 @@ impl Model<Host> {
                         e.external_start_port..=e.external_start_port + (e.number_of_ports - 1),
                     );
                 }
-                available_ports.try_alloc_range(external_start_port, number_of_ports)?;
+                available_ports.try_alloc_range(
+                    external_start_port,
+                    number_of_ports,
+                    privileged,
+                )?;
             }
             ranges.insert(
                 internal_start_port,
@@ -709,7 +712,7 @@ impl HostApiKind for ForPackage {
         (package, host): &Self::Inheritance,
         db: &'a mut DatabaseModel,
     ) -> Result<&'a mut Model<Host>, Error> {
-        host_for(db, Some(package), host)
+        host_for(db, package, host)
     }
 }
 pub struct ForServer;
@@ -724,7 +727,7 @@ impl HostApiKind for ForServer {
         _: &Self::Inheritance,
         db: &'a mut DatabaseModel,
     ) -> Result<&'a mut Model<Host>, Error> {
-        host_for(db, None, &HostId::default())
+        host_for(db, &PackageId::start_os(), &HostId::admin())
     }
 }
 
@@ -782,4 +785,65 @@ pub async fn list_hosts(
         .or_not_found(&package)?
         .into_hosts()
         .keys()
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use imbl::OrdMap;
+    use imbl_value::InternedString;
+
+    use super::mdns_gateways;
+    use crate::GatewayId;
+    use crate::db::model::public::{
+        CapabilityVerdict, IpInfo, NetworkInterfaceInfo, NetworkInterfaceType,
+    };
+
+    fn iface(
+        device_type: NetworkInterfaceType,
+        dns_update_supported: Option<bool>,
+    ) -> NetworkInterfaceInfo {
+        NetworkInterfaceInfo {
+            ip_info: Some(Arc::new(IpInfo {
+                device_type: Some(device_type),
+                ..Default::default()
+            })),
+            dns_update: CapabilityVerdict {
+                supported: dns_update_supported,
+                at: dns_update_supported.map(|_| chrono::Utc::now()),
+            },
+            ..Default::default()
+        }
+    }
+
+    fn gw(id: &str) -> GatewayId {
+        GatewayId::from(InternedString::intern(id))
+    }
+
+    #[test]
+    fn mdns_gateways_lan_always_wireguard_only_when_injection_confirmed() {
+        let ifaces: OrdMap<GatewayId, NetworkInterfaceInfo> = [
+            (gw("eth0"), iface(NetworkInterfaceType::Ethernet, None)),
+            (gw("wlan0"), iface(NetworkInterfaceType::Wireless, None)),
+            // Accepted the injected record: list `.local` on it.
+            (
+                gw("wg-ok"),
+                iface(NetworkInterfaceType::Wireguard, Some(true)),
+            ),
+            // Refused / never attempted: hide it.
+            (
+                gw("wg-no"),
+                iface(NetworkInterfaceType::Wireguard, Some(false)),
+            ),
+            (gw("wg-new"), iface(NetworkInterfaceType::Wireguard, None)),
+        ]
+        .into_iter()
+        .collect();
+
+        assert_eq!(
+            mdns_gateways(&ifaces),
+            [gw("eth0"), gw("wlan0"), gw("wg-ok")].into_iter().collect()
+        );
+    }
 }

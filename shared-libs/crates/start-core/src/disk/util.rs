@@ -22,7 +22,6 @@ use crate::disk::mount::guard::GenericMountGuard;
 use crate::hostname::ServerHostname;
 use crate::prelude::*;
 use crate::util::Invoke;
-use crate::util::io::dir_size;
 use crate::util::serde::IoFormat;
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize)]
@@ -55,43 +54,55 @@ pub struct PartitionInfo {
     pub capacity: u64,
     #[ts(type = "number | null")]
     pub used: Option<u64>,
+    #[ts(type = "number | null")]
+    pub available: Option<u64>,
     pub start_os: BTreeMap<String, StartOsRecoveryInfo>,
-    pub legacy_backup: Option<LegacyBackupInfo>,
+    pub legacy_backup: bool,
     pub guid: Option<InternedString>,
     pub filesystem: Option<String>,
 }
 
-/// A pre-V2 `StartOSBackups` folder found on a backup target. Surfaced so the
-/// UI can warn (or refuse, when it wouldn't fit) before a new V2 backup runs.
-#[derive(Clone, Debug, Deserialize, Serialize, ts_rs::TS)]
-#[ts(export)]
+/// Whether this server's pre-V2 `StartOSBackups/<server_id>` backup is present
+/// on a mounted target. Scoped to `server_id` so a target shared by several
+/// servers only flags (and later deletes) this server's own legacy backup.
+pub async fn has_legacy_backup(mountpoint: impl AsRef<Path>, server_id: &str) -> bool {
+    tokio::fs::metadata(
+        mountpoint
+            .as_ref()
+            .join(super::LEGACY_BACKUP_DIR_NAME)
+            .join(server_id),
+    )
+    .await
+    .map(|m| m.is_dir())
+    .unwrap_or(false)
+}
+
+/// `unencrypted-metadata.json` as stored on a backup target, and the only place
+/// `password_hash`/`wrapped_key` may live. Together they are exactly what an attacker
+/// needs to crack the password offline and then unwrap the backup's encryption key, so
+/// this type must never be serialized to a client — the API hands out
+/// [`StartOsRecoveryInfo`] instead.
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct LegacyBackupInfo {
-    #[ts(type = "number")]
-    pub size: u64,
-    #[ts(type = "number")]
-    pub available: u64,
+pub struct BackupUnencryptedMetadata {
+    pub hostname: ServerHostname,
+    pub version: exver::Version,
+    pub timestamp: DateTime<Utc>,
+    pub password_hash: Option<String>,
+    pub wrapped_key: Option<String>,
 }
-
-#[instrument(skip_all)]
-pub async fn legacy_backup_info(
-    mountpoint: impl AsRef<Path>,
-) -> Result<Option<LegacyBackupInfo>, Error> {
-    let legacy_dir = mountpoint.as_ref().join(super::LEGACY_BACKUP_DIR_NAME);
-    if !tokio::fs::metadata(&legacy_dir)
-        .await
-        .map(|m| m.is_dir())
-        .unwrap_or(false)
-    {
-        return Ok(None);
+impl From<BackupUnencryptedMetadata> for StartOsRecoveryInfo {
+    fn from(meta: BackupUnencryptedMetadata) -> Self {
+        Self {
+            hostname: meta.hostname,
+            version: meta.version,
+            timestamp: meta.timestamp,
+        }
     }
-    let size = dir_size(&legacy_dir, None)
-        .await
-        .with_kind(crate::ErrorKind::Filesystem)?;
-    let available = get_available(mountpoint.as_ref()).await?;
-    Ok(Some(LegacyBackupInfo { size, available }))
 }
 
+/// The public view of a backup found on a target: enough to identify it, and none of
+/// [`BackupUnencryptedMetadata`]'s key material.
 #[derive(Clone, Debug, Default, Deserialize, Serialize, ts_rs::TS)]
 #[ts(export)]
 #[serde(rename_all = "camelCase")]
@@ -101,12 +112,13 @@ pub struct StartOsRecoveryInfo {
     pub version: exver::Version,
     #[ts(type = "string")]
     pub timestamp: DateTime<Utc>,
-    pub password_hash: Option<String>,
-    pub wrapped_key: Option<String>,
 }
 
 const DISK_PATH: &str = "/dev/disk/by-path";
 const SYS_BLOCK_PATH: &str = "/sys/block";
+/// EFI System Partition type ids as reported by `lsblk -no PARTTYPE`: the GPT
+/// partition type GUID and the MBR partition type.
+const ESP_PART_TYPES: [&str; 2] = ["c12a7328-f81f-11d2-ba4b-00a0c93ec93b", "0xef"];
 
 lazy_static::lazy_static! {
     static ref PARTITION_REGEX: Regex = Regex::new("-part[0-9]+$").unwrap();
@@ -201,6 +213,25 @@ pub async fn get_label<P: AsRef<Path>>(path: P) -> Result<Option<String>, Error>
 }
 
 #[instrument(skip_all)]
+pub async fn get_part_type<P: AsRef<Path>>(path: P) -> Result<Option<String>, Error> {
+    let part_type = String::from_utf8(
+        Command::new("lsblk")
+            .arg("-no")
+            .arg("parttype")
+            .arg(path.as_ref())
+            .invoke(crate::ErrorKind::BlockDevice)
+            .await?,
+    )?
+    .trim()
+    .to_owned();
+    Ok(if part_type.is_empty() {
+        None
+    } else {
+        Some(part_type)
+    })
+}
+
+#[instrument(skip_all)]
 pub async fn get_used<P: AsRef<Path>>(path: P) -> Result<u64, Error> {
     Ok(String::from_utf8(
         Command::new("df")
@@ -282,16 +313,18 @@ pub async fn recovery_info(
             {
                 res.insert(
                     server_id,
-                    IoFormat::Json.from_slice(
-                        &tokio::fs::read(&backup_unencrypted_metadata_path)
-                            .await
-                            .with_ctx(|_| {
-                                (
-                                    crate::ErrorKind::Filesystem,
-                                    backup_unencrypted_metadata_path.display().to_string(),
-                                )
-                            })?,
-                    )?,
+                    IoFormat::Json
+                        .from_slice::<BackupUnencryptedMetadata>(
+                            &tokio::fs::read(&backup_unencrypted_metadata_path)
+                                .await
+                                .with_ctx(|_| {
+                                    (
+                                        crate::ErrorKind::Filesystem,
+                                        backup_unencrypted_metadata_path.display().to_string(),
+                                    )
+                                })?,
+                        )?
+                        .into(),
                 );
             }
         }
@@ -326,7 +359,7 @@ pub async fn get_mount_source(mountpoint: impl AsRef<Path>) -> Result<Option<Pat
 }
 
 #[instrument(skip_all)]
-pub async fn list(os: &OsPartitionInfo) -> Result<Vec<DiskInfo>, Error> {
+pub async fn list(os: &OsPartitionInfo, server_id: Option<&str>) -> Result<Vec<DiskInfo>, Error> {
     struct DiskIndex {
         parts: BTreeSet<PathBuf>,
         internal: bool,
@@ -411,7 +444,7 @@ pub async fn list(os: &OsPartitionInfo) -> Result<Vec<DiskInfo>, Error> {
                     disk_info.guid = pi.guid;
                     disk_info.filesystem = pi.filesystem;
                 } else {
-                    let Some(part_info) = part_info(part).await else {
+                    let Some(part_info) = part_info(part, server_id).await else {
                         continue;
                     };
                     disk_info.logicalname = part_info.logicalname.clone();
@@ -438,7 +471,7 @@ pub async fn list(os: &OsPartitionInfo) -> Result<Vec<DiskInfo>, Error> {
                     let part_info = if let Some(g) = disk_guids.get(&part) {
                         lvm_pv_part_info(part, g.clone()).await
                     } else {
-                        let Some(pi) = part_info(part).await else {
+                        let Some(pi) = part_info(part, server_id).await else {
                             continue;
                         };
                         pi
@@ -547,14 +580,39 @@ async fn lvm_pv_part_info(part: PathBuf, guid: Option<InternedString>) -> Partit
         label: None,
         capacity,
         used: None,
+        available: None,
         start_os: BTreeMap::new(),
-        legacy_backup: None,
+        legacy_backup: false,
         guid,
         filesystem,
     }
 }
 
-async fn part_info(part: PathBuf) -> Option<PartitionInfo> {
+async fn part_info(part: PathBuf, server_id: Option<&str>) -> Option<PartitionInfo> {
+    let part_type = get_part_type(&part)
+        .await
+        .map_err(|e| {
+            tracing::warn!(
+                "{}",
+                t!(
+                    "disk.util.could-not-get-part-type",
+                    part = part.display(),
+                    error = e.source
+                )
+            )
+        })
+        .unwrap_or_default();
+    if part_type
+        .as_deref()
+        .is_some_and(|t| ESP_PART_TYPES.contains(&t))
+    {
+        tracing::debug!(
+            "{}",
+            t!("disk.util.skipping-efi-partition", part = part.display())
+        );
+        return None;
+    }
+
     let label = get_label(&part)
         .await
         .map_err(|e| {
@@ -610,6 +668,19 @@ async fn part_info(part: PathBuf) -> Option<PartitionInfo> {
             )
         })
         .ok();
+    let available = get_available(mount_guard.path())
+        .await
+        .map_err(|e| {
+            tracing::warn!(
+                "{}",
+                t!(
+                    "disk.util.could-not-get-usage",
+                    part = part.display(),
+                    error = e.source
+                )
+            )
+        })
+        .ok();
     let start_os = match recovery_info(mount_guard.path()).await {
         Ok(a) => a,
         Err(e) => {
@@ -620,11 +691,10 @@ async fn part_info(part: PathBuf) -> Option<PartitionInfo> {
             BTreeMap::new()
         }
     };
-    let legacy_backup = legacy_backup_info(mount_guard.path())
-        .await
-        .map_err(|e| tracing::warn!("could not read legacy backup info: {e}"))
-        .ok()
-        .flatten();
+    let legacy_backup = match server_id {
+        Some(server_id) => has_legacy_backup(mount_guard.path(), server_id).await,
+        None => false,
+    };
     if let Err(e) = mount_guard.unmount().await {
         tracing::error!(
             "{}",
@@ -641,6 +711,7 @@ async fn part_info(part: PathBuf) -> Option<PartitionInfo> {
         label,
         capacity,
         used,
+        available,
         start_os,
         legacy_backup,
         guid: None,

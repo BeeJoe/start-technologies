@@ -87,7 +87,9 @@ pub async fn add_tunnel(
                         name: Some(name),
                         secure: None,
                         ip_info: None,
-                        gateway_type: Some(gateway_type),
+                        gateway_type,
+                        port_map: Default::default(),
+                        dns_update: Default::default(),
                     },
                 );
                 return true;
@@ -311,7 +313,10 @@ pub async fn update_tunnel(
         .into_idx(&id)
         .and_then(|e| e.into_ip_info().transpose())
     else {
-        return Err(Error::new(eyre!("unknown gateway: {id}"), ErrorKind::NotFound));
+        return Err(Error::new(
+            eyre!("unknown gateway: {id}"),
+            ErrorKind::NotFound,
+        ));
     };
 
     if existing.as_deref().as_device_type().de()? != Some(NetworkInterfaceType::Wireguard) {

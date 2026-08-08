@@ -38,6 +38,9 @@ mod v0_3_6_alpha_16;
 mod v0_3_6_alpha_17;
 mod v0_3_6_alpha_18;
 
+mod v0_4_0;
+mod v0_4_0_1;
+mod v0_4_0_2;
 mod v0_4_0_alpha_0;
 mod v0_4_0_alpha_1;
 mod v0_4_0_alpha_2;
@@ -65,6 +68,7 @@ mod v0_4_0_alpha_22;
 mod v0_4_0_alpha_23;
 mod v0_4_0_beta_0;
 mod v0_4_0_beta_1;
+mod v0_4_0_beta_10;
 mod v0_4_0_beta_2;
 mod v0_4_0_beta_3;
 mod v0_4_0_beta_4;
@@ -73,9 +77,8 @@ mod v0_4_0_beta_6;
 mod v0_4_0_beta_7;
 mod v0_4_0_beta_8;
 mod v0_4_0_beta_9;
-mod v0_4_0_beta_10;
 
-pub type Current = v0_4_0_beta_10::Version; // VERSION_BUMP
+pub type Current = v0_4_0_2::Version; // VERSION_BUMP
 
 impl Current {
     #[instrument(skip(self, db))]
@@ -217,7 +220,10 @@ enum Version {
     V0_4_0_beta_7(Wrapper<v0_4_0_beta_7::Version>),
     V0_4_0_beta_8(Wrapper<v0_4_0_beta_8::Version>),
     V0_4_0_beta_9(Wrapper<v0_4_0_beta_9::Version>),
-    V0_4_0_beta_10(Wrapper<v0_4_0_beta_10::Version>), // VERSION_BUMP
+    V0_4_0_beta_10(Wrapper<v0_4_0_beta_10::Version>),
+    V0_4_0(Wrapper<v0_4_0::Version>),
+    V0_4_0_1(Wrapper<v0_4_0_1::Version>),
+    V0_4_0_2(Wrapper<v0_4_0_2::Version>), // VERSION_BUMP
     Other(exver::Version),
 }
 
@@ -294,7 +300,10 @@ impl Version {
             Self::V0_4_0_beta_7(v) => DynVersion(Box::new(v.0)),
             Self::V0_4_0_beta_8(v) => DynVersion(Box::new(v.0)),
             Self::V0_4_0_beta_9(v) => DynVersion(Box::new(v.0)),
-            Self::V0_4_0_beta_10(v) => DynVersion(Box::new(v.0)), // VERSION_BUMP
+            Self::V0_4_0_beta_10(v) => DynVersion(Box::new(v.0)),
+            Self::V0_4_0(v) => DynVersion(Box::new(v.0)),
+            Self::V0_4_0_1(v) => DynVersion(Box::new(v.0)),
+            Self::V0_4_0_2(v) => DynVersion(Box::new(v.0)), // VERSION_BUMP
             Self::Other(v) => {
                 return Err(Error::new(
                     eyre!("unknown version {v}"),
@@ -363,7 +372,10 @@ impl Version {
             Version::V0_4_0_beta_7(Wrapper(x)) => x.semver(),
             Version::V0_4_0_beta_8(Wrapper(x)) => x.semver(),
             Version::V0_4_0_beta_9(Wrapper(x)) => x.semver(),
-            Version::V0_4_0_beta_10(Wrapper(x)) => x.semver(), // VERSION_BUMP
+            Version::V0_4_0_beta_10(Wrapper(x)) => x.semver(),
+            Version::V0_4_0(Wrapper(x)) => x.semver(),
+            Version::V0_4_0_1(Wrapper(x)) => x.semver(),
+            Version::V0_4_0_2(Wrapper(x)) => x.semver(), // VERSION_BUMP
             Version::Other(x) => x.clone(),
         }
     }
@@ -707,6 +719,17 @@ mod tests {
     use proptest::prelude::*;
 
     use super::*;
+
+    /// Root `package.json` is the OS version's source of truth and `Current` is what actually
+    /// migrates the db; nothing else forces them to agree, and a mismatch is silent — the
+    /// release would tag and publish under a version the running server never reports.
+    #[test]
+    fn current_matches_manifest() {
+        assert_eq!(
+            Current::default().semver().to_string(),
+            crate::bins::startos_version(),
+        );
+    }
 
     fn em_version() -> impl Strategy<Value = exver::Version> {
         any::<(usize, usize, usize, bool)>().prop_map(|(major, minor, patch, alpha)| {

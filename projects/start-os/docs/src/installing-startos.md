@@ -1,6 +1,6 @@
 # Installing StartOS
 
-This guide is for flashing StartOS to a USB drive, then installing it onto a desktop, laptop, or mini PC. For an up-to-date list of known-good hardware, please check out this [forum post](https://community.start9.com/t/known-good-hardware-master-list-hardware-capable-of-running-startos/).
+This guide is for flashing StartOS to a USB drive, then installing it onto a desktop, laptop, or mini PC. For an up-to-date list of known-good hardware, please check out this [forum post](https://community.start9.com/t/known-good-hardware-master-list-hardware-capable-of-running-startos/). For Raspberry Pi, which does not use the USB installer, see [Raspberry Pi](#raspberry-pi) below.
 
 ## Watch The Video
 
@@ -8,10 +8,9 @@ This guide is for flashing StartOS to a USB drive, then installing it onto a des
 
 ## Download
 
-1.  Visit the [Github release page](https://github.com/Start9Labs/start-technologies/releases/latest) to find the latest version of StartOS.
+1.  Visit the [Github release page](https://github.com/Start9Labs/start-technologies/releases/tag/start-os/v0.4.0.2) to find the latest version of StartOS.
 
 1.  Under "ISO Downloads", select the ISO for your architecture. StartOS is available in x86_64 (AMD64), aarch64 (ARM64), and RISC-V (RVA23). For x86_64 and aarch64, two variants are available:
-
     - **Standard**: Includes proprietary firmware and drivers for broader hardware compatibility, including display and wireless. Recommended for most users.
 
     - **Slim (FOSS-only)**: 100% open source, containing **no** proprietary firmware or drivers. Only compatible with certain hardware, such as the Start9 Server Pure.
@@ -39,7 +38,7 @@ This guide is for flashing StartOS to a USB drive, then installing it onto a des
 
 1. Click "Select Image" and select the `.iso` image you just downloaded.
 
-1. Click "Select Target" and select your microSD card.
+1. Click "Select Target" and select your USB drive.
 
    > [!WARNING]
    > BE ABSOLUTELY CERTAIN you have selected the correct target USB flash drive. Whatever target you select will be **COMPLETELY ERASED**!!
@@ -66,4 +65,26 @@ This guide is for flashing StartOS to a USB drive, then installing it onto a des
 
 1. At the Select Drives dialog, select the disk(s) you want to use as your OS and data drives.
 
-1. If a previous StartOS install is detected, it will ask whether you want to Overwrite or Preserve the existing StartOS data.  Select Overwrite to start fresh, or Preserve to flash the OS on the booted USB thumb drive over the old installation, while preserving your data.  After install is complete, you will be prompted to Continue to Setup.
+1. If a previous StartOS install is detected, it will ask whether you want to Overwrite or Preserve the existing StartOS data. Select Overwrite to start fresh, or Preserve to flash the OS on the booted USB thumb drive over the old installation, while preserving your data. After install is complete, you will be prompted to Continue to Setup.
+
+## Raspberry Pi
+
+> [!IMPORTANT]
+> StartOS 0.4.0 supports the **Raspberry Pi 4 ONLY**. Other Raspberry Pi models are not supported.
+
+A Raspberry Pi does not use the USB installer above. Instead, you flash the StartOS image directly to the Pi's microSD card. This is also how a Raspberry Pi is updated to a new major version of StartOS — it cannot update over the air. If you are updating an existing 0.3.5.1 server, complete the [preparation steps in the update guide](update-040.md#prepare-your-server) before flashing.
+
+1. Visit the [Github release page](https://github.com/Start9Labs/start-technologies/releases/tag/start-os/v0.4.0.2) and, from the downloads list, download the **Raspberry Pi `.img.gz`** file.
+
+1. Verify the SHA256 checksum against the one listed on GitHub (optional but recommended) — see [Download](#download) for the command for your computer. The release lists checksums for both the compressed `.img.gz` you downloaded and the `.img` inside it.
+
+1. Insert your Raspberry Pi's microSD card into your computer, using a microSD card reader if needed.
+
+1. Open balenaEtcher (see [Flash](#flash)), click "Select Image" and select the `.img.gz` file you downloaded — there is no need to decompress it first — then click "Select Target" and select your microSD card.
+
+   > [!WARNING]
+   > BE ABSOLUTELY CERTAIN you have selected the correct target microSD card. Whatever target you select will be **COMPLETELY ERASED**!!
+
+1. Click "Flash!". When flashing completes, re-insert the microSD card into your Raspberry Pi and power it on.
+
+1. From a computer on the same network, visit [http://start.local](http://start.local) and continue with [Initial Setup](initial-setup.md).

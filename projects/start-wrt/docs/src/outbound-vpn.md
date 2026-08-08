@@ -1,0 +1,87 @@
+# Outbound VPNs
+
+Route your network's Internet traffic through one or more WireGuard VPN providers for privacy. Outbound VPNs hide your home IP address from the services your devices connect to and prevent your ISP from monitoring traffic.
+
+## Adding a VPN Client
+
+1. Navigate to `Internet > Outbound VPNs` and click "Add".
+
+1. Configure the VPN:
+   - **Label** — A descriptive name (e.g. "Mullvad Sweden", "Proton US").
+   - **Config File** — Upload a WireGuard `.conf` file from your VPN provider — drop it into the dialog or click to browse. Most providers (Mullvad, ProtonVPN, IVPN, etc.) offer WireGuard config file downloads from their account dashboard.
+   - **Target** — Where this VPN's traffic should be routed. The dropdown lists **Internet** along with your existing VPNs. Select **Internet** to exit directly to the Internet through this VPN, or select another VPN to chain through it first for additional privacy.
+
+1. Click "Add VPN".
+
+> [!TIP]
+> Download a config file for a VPN server location near you for best performance.
+
+## VPN Chaining
+
+VPN chaining routes traffic through multiple VPN providers in sequence, so no single provider sees both your identity and your destination. This achieves multi-jurisdictional resilience — the providers would need to collaborate across different legal jurisdictions to correlate your activity.
+
+Chaining is configured through the **Target** field. When you set a VPN's target to another VPN instead of "Internet", traffic flows through both:
+
+```
+Your device → StartWRT → First VPN → Second VPN → Internet
+```
+
+For example, if "Mullvad" targets "Proton" and "Proton" targets "Internet":
+
+- Mullvad knows your home IP but not your destination.
+- Proton knows your destination but sees Mullvad's IP, not yours.
+
+> [!NOTE]
+> VPN chaining adds latency since traffic passes through multiple servers. For most users, a single VPN provider is sufficient.
+
+## IPv6 and Kill Switch
+
+How IPv6 traffic is handled depends on whether the VPN's WireGuard tunnel supports it:
+
+- **IPv6-capable VPN** — If the imported config includes an IPv6 address for the tunnel interface, profiles routed through the VPN send their IPv6 traffic (`::/0`) through the tunnel, just like IPv4.
+- **IPv4-only VPN** — If the tunnel has no IPv6 address, no IPv6 flows through it: IPv6 internet traffic is blocked (it "fails closed") so it cannot leak around the tunnel and out your WAN. Non-admin profiles routed through the VPN get no IPv6 addressing at all; the Admin profile's [LAN IPv6](lan.md) setting stays under your control, so its devices still receive IPv6 addresses — just without IPv6 internet.
+
+A kill switch protects every VPN-routed profile: both IPv4 and IPv6 fail closed. If the tunnel goes down, traffic is blocked rather than leaking out the WAN.
+
+> [!NOTE]
+> Routing IPv6 through a VPN requires the VPN's tunnel config to include an IPv6 address on the tunnel interface. Without one, the VPN carries IPv4 only and IPv6 is blocked for routed profiles.
+
+## VPN Detail Page
+
+Click a VPN label in the table to open its detail page, which shows:
+
+- **Status** — Whether the VPN is connected or disabled.
+- **Connection Path** — The full route traffic takes from this VPN to the Internet (e.g. "Mullvad → Proton → Internet").
+- **Used by** — Which [Security Profiles](security-profiles.md) currently route their traffic through this VPN. Check this before making changes to understand the impact.
+- **Label** — Edit the display name.
+- **Connects to** — Change the target (Internet or another VPN). Only targets that would not create a circular chain are offered.
+- **MTU** — The tunnel's packet size limit. Leave blank to use the default (~1420). Lower it — down to a minimum of 1280 — if the VPN connects but requests time out.
+
+To delete a VPN, click "Delete" on its detail page. If any Security Profiles route through the VPN, you will be asked to confirm — those profiles will switch to the regular WAN connection.
+
+> [!NOTE]
+> You cannot delete a VPN if other VPNs use it as a target. Change their target first.
+
+## Enabling and Disabling
+
+Each VPN has an enable/disable toggle in the table view. When a VPN is disabled, profiles that route through it will fall back to the WAN (direct Internet). A disabled VPN is not offered when choosing a [Security Profile's](security-profiles.md) outbound routing, nor as another VPN's **Connects to** target — re-enable it first.
+
+> [!NOTE]
+> You cannot disable a VPN if other VPNs use it as a target. Change their target first.
+
+## Assigning VPNs to Profiles
+
+By default, all [Security Profiles](security-profiles.md) use the router's default gateway (your ISP) for Internet traffic. You can override this per profile:
+
+1. Navigate to `Security Profiles` and select a profile.
+
+1. Under **Outbound Routing**, select a VPN client.
+
+1. Click "Save".
+
+This lets you route different profiles through different VPNs. For example:
+
+- **Admin** profile routes through Mullvad
+- **Children** profile routes through a DNS-filtering VPN
+- **Guest** profile routes through Proton
+- **Smart Devices** profile uses the default gateway (no VPN)

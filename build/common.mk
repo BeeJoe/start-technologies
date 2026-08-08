@@ -1,5 +1,10 @@
-ls-files = $(shell git ls-files --cached --others --exclude-standard $1) 
+ls-files = $(shell git ls-files --cached --others --exclude-standard $1)
 PROFILE = release
+
+# rustfmt runs in a container pinned to a specific nightly (our rustfmt.toml uses
+# nightly-only options); prettier and taplo are pinned via npm and run natively.
+# Set FMT_NATIVE=1 to run rustfmt on the host instead.
+FMT := ./build/fmt/run-fmt.sh
 
 PLATFORM_FILE := $(shell ./build/env/check-platform.sh)
 ENVIRONMENT_FILE := $(shell ./build/env/check-environment.sh)
@@ -12,7 +17,17 @@ RUST_ARCH := $(shell if [ "$(ARCH)" = "riscv64" ]; then echo riscv64gc; else ech
 REGISTRY_BASENAME := $(shell PROJECT=start-registry PLATFORM=$(ARCH) ./build/env/basename.sh)
 TUNNEL_BASENAME := $(shell PROJECT=start-tunnel PLATFORM=$(ARCH) ./build/env/basename.sh)
 CLI_BASENAME := $(shell PROJECT=start-cli PLATFORM=$(ARCH) ./build/env/basename.sh)
-CORE_SRC := $(call ls-files, shared-libs/crates/start-core) $(shell git ls-files shared-libs/crates/patch-db) $(GIT_HASH_FILE)
+# start-core path-depends on these first-party sibling crates (start-core/Cargo.toml
+# + their transitive path deps); they must be prereqs of every Rust bin or a
+# shared-crate edit leaves `make start-os`/`start-cli`/`start-registry`/`start-tunnel` shipping a
+# stale binary. patch-db is globbed separately below.
+CORE_SRC := $(call ls-files, shared-libs/crates/start-core) \
+	$(call ls-files, shared-libs/crates/exver) \
+	$(call ls-files, shared-libs/crates/imbl-value) \
+	$(call ls-files, shared-libs/crates/jsonpath) \
+	$(call ls-files, shared-libs/crates/rpc-toolkit) \
+	$(call ls-files, shared-libs/crates/yasi) \
+	$(shell git ls-files shared-libs/crates/patch-db) build/builder-alias.sh $(GIT_HASH_FILE)
 PATCH_DB_CLIENT_SRC := $(shell git ls-files shared-libs/crates/patch-db/client)
 GZIP_BIN := $(shell which pigz || which gzip)
 TAR_BIN := $(shell which gtar || which tar)

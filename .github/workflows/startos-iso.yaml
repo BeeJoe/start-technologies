@@ -4,9 +4,13 @@ on:
   workflow_call:
   workflow_dispatch:
     inputs:
+      # `default:` is not decoration — the UI preselects the first option, but an API
+      # dispatch (`gh workflow run`) that omits an input delivers it as the empty
+      # string, and only a declared default fills it in.
       environment:
         type: choice
         description: Environment
+        default: NONE
         options:
           - NONE
           - dev
@@ -15,12 +19,14 @@ on:
       runner:
         type: choice
         description: Runner
+        default: standard
         options:
           - standard
           - fast
       platform:
         type: choice
         description: Platform
+        default: ALL
         options:
           - ALL
           - x86_64
@@ -35,6 +41,7 @@ on:
       deploy:
         type: choice
         description: Deploy
+        default: NONE
         options:
           - NONE
           - alpha
@@ -46,46 +53,56 @@ on:
       - master
       - next/*
     paths:
-      - "projects/start-os/**"
-      - "shared-libs/**"
-      - "projects/start-sdk/**"
-      - "Cargo.toml"
-      - "Cargo.lock"
-      - "angular.json"
-      - "package.json"
-      - "package-lock.json"
-      - "tsconfig.json"
-      - "build/**"
-      - "debian/**"
-      - "apt/**"
-      - ".github/workflows/startos-iso.yaml"
-      - ".github/actions/setup-build/**"
+      - 'projects/start-os/**'
+      - 'shared-libs/**'
+      - 'projects/start-sdk/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'angular.json'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'tsconfig.json'
+      - 'tsconfig.lib.json'
+      - 'build/**'
+      - 'debian/**'
+      - 'apt/**'
+      - '.github/workflows/startos-iso.yaml'
+      - '.github/actions/setup-build/**'
+      # Doc-only edits under the allowlisted project trees (e.g.
+      # projects/start-os/docs/**) shouldn't trigger a build.
+      - '!**/*.md'
   pull_request:
     branches:
       - master
       - next/*
     paths:
-      - "projects/start-os/**"
-      - "shared-libs/**"
-      - "projects/start-sdk/**"
-      - "Cargo.toml"
-      - "Cargo.lock"
-      - "angular.json"
-      - "package.json"
-      - "package-lock.json"
-      - "tsconfig.json"
-      - "build/**"
-      - "debian/**"
-      - "apt/**"
-      - ".github/workflows/startos-iso.yaml"
-      - ".github/actions/setup-build/**"
+      - 'projects/start-os/**'
+      - 'shared-libs/**'
+      - 'projects/start-sdk/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'angular.json'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'tsconfig.json'
+      - 'tsconfig.lib.json'
+      - 'build/**'
+      - 'debian/**'
+      - 'apt/**'
+      - '.github/workflows/startos-iso.yaml'
+      - '.github/actions/setup-build/**'
+      # Doc-only edits under the allowlisted project trees (e.g.
+      # projects/start-os/docs/**) shouldn't trigger a build.
+      - '!**/*.md'
 
+# The group is scoped by event so a master push can't cancel an in-flight
+# dispatched release build; dispatches queue behind each other, never cancel.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
 
 env:
-  NODEJS_VERSION: "24.17.0"
+  NODEJS_VERSION: '24.17.0'
   ENVIRONMENT: '${{ fromJson(format(''["{0}", ""]'', github.event.inputs.environment || ''dev''))[github.event.inputs.environment == ''NONE''] }}'
 
 jobs:
@@ -133,12 +150,10 @@ jobs:
         if: ${{ github.event.inputs.runner == 'fast' }}
         run: sudo mount -t tmpfs tmpfs .
       - uses: actions/checkout@v6
-        with:
-          submodules: recursive
       - uses: ./.github/actions/setup-build
         with:
           nodejs-version: ${{ env.NODEJS_VERSION }}
-          setup-python: "true"
+          setup-python: 'true'
 
       - name: Make
         run: make ARCH=${{ matrix.arch }} compiled-${{ matrix.arch }}.tar
@@ -151,9 +166,46 @@ jobs:
           name: compiled-${{ matrix.arch }}.tar
           path: compiled-${{ matrix.arch }}.tar
           retention-days: 1
+
+  # On pull requests, only build the (expensive, ~2h with emulated riscv) image
+  # matrix when the change actually affects image assembly — packaging, image
+  # recipe, systemd units, apt, or shared build infra. Pure code/web/docs PRs are
+  # already covered by `compile` (the binaries) and the Automated Tests workflow,
+  # so they skip images here and get full image coverage on the push to master.
+  # On push/dispatch the guard below is bypassed and images always build.
+  changes:
+    name: Detect image-affecting changes
+    if: github.event_name == 'pull_request' && github.event.pull_request.draft != true
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    outputs:
+      image: ${{ steps.filter.outputs.image }}
+    steps:
+      - name: Check changed paths
+        id: filter
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          files="$(gh api --paginate \
+            "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files" \
+            --jq '.[].filename')"
+          matched="$(printf '%s\n' "$files" | grep -E '^(build/|debian/|apt/|projects/start-os/build/|projects/start-os/build\.mk$|projects/start-os/debian/|projects/start-os/[^/]+\.(service|slice)$|\.github/workflows/startos-iso\.yaml$|\.github/actions/setup-build/)' || true)"
+          if [ -n "$matched" ]; then
+            echo "Image-affecting files changed:"; printf '  %s\n' "$matched"
+            echo "image=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No image-affecting files changed; skipping image build on this PR."
+            echo "image=false" >> "$GITHUB_OUTPUT"
+          fi
+
   image:
     name: Build Image
-    needs: [compile]
+    needs: [compile, changes]
+    # Build on push/dispatch always; on PRs only when packaging/image inputs changed.
+    if: >-
+      !cancelled() && needs.compile.result == 'success'
+      && (github.event_name != 'pull_request' || needs.changes.outputs.image == 'true')
     strategy:
       fail-fast: false
       matrix:
@@ -244,8 +296,6 @@ jobs:
         uses: docker/setup-qemu-action@v4
 
       - uses: actions/checkout@v6
-        with:
-          submodules: recursive
 
       - name: Download compiled artifacts
         uses: actions/download-artifact@v8
@@ -279,11 +329,11 @@ jobs:
       - run: git status
 
       - name: Run iso build
-        run: PLATFORM=${{ matrix.platform }} make startos-iso
+        run: PLATFORM=${{ matrix.platform }} make start-os-iso
         if: ${{ matrix.platform != 'raspberrypi' }}
 
       - name: Run img build
-        run: PLATFORM=${{ matrix.platform }} make startos-img
+        run: PLATFORM=${{ matrix.platform }} make start-os-img
         if: ${{ matrix.platform == 'raspberrypi' }}
 
       - uses: actions/upload-artifact@v7
@@ -306,10 +356,98 @@ jobs:
           retention-days: 14
         if: ${{ matrix.platform == 'raspberrypi' }}
 
+  # The OTA payload legacy (0.3.5.1) boxes pull via their frozen rsync updater:
+  # the 0.4.0 base squashfs (built just above) repackaged onto the published
+  # 0.3.5.1 rootfs. Runs automatically after every image build, in the same run,
+  # consuming that run's <platform>.squashfs artifact. Pure repackaging (no OS
+  # compile), so it runs on x86_64 for every platform. Only platforms that
+  # shipped in 0.3.5.1 (no nvidia/riscv); raspberrypi requires a reflash (#3443).
+  # The <platform>.migration.squashfs artifact is what ops publishes to the
+  # frozen registry as the version's OTA image. See
+  # projects/start-os/build/assemble-migration-payload.sh and PR #3399.
+  migration-image:
+    name: Migration Image
+    needs: [image]
+    if: ${{ !cancelled() && needs.image.result == 'success' }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [x86_64, x86_64-nonfree, aarch64, aarch64-nonfree]
+    env:
+      GH_TOKEN: ${{ github.token }}
+      MIGRATION_FROM_TAG: v0.3.5.1
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Fetch the 0.4.0 base squashfs (this run's image build)
+        id: base
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ matrix.platform }}.squashfs
+          path: base-new
+
+      - name: Skip platforms not built this run
+        id: check
+        run: |
+          if ls base-new/*.squashfs >/dev/null 2>&1; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::No ${{ matrix.platform }}.squashfs built this run — skipping."
+            echo "found=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Fetch the legacy (0.3.5.1) base image
+        if: steps.check.outputs.found == 'true'
+        run: |
+          mkdir -p base-old
+          gh release download "$MIGRATION_FROM_TAG" --repo "${{ github.repository }}" \
+            --pattern "startos-*_${{ matrix.platform }}.iso" --dir base-old
+
+      # Runs in start9/build-env (the canonical Start9 build image — already has
+      # the squashfs toolchain + b3sum) so unsquashfs/mksquashfs can restore the
+      # rootfs's ownership + device nodes. Only xorriso (to crack the squashfs out
+      # of the 0.3.5.1 ISO) is missing, so we add just that. Not --privileged:
+      # creating device nodes needs only CAP_MKNOD, in docker's default caps.
+      - name: Assemble migration payload
+        if: steps.check.outputs.found == 'true'
+        run: |
+          ARCH=$(printf '%s' "${{ matrix.platform }}" | sed 's/-nonfree$//')
+          NEW=$(ls base-new/*.squashfs | head -n1)
+          OLD=$(ls base-old/startos-*_${{ matrix.platform }}.iso | head -n1)
+          mkdir -p results
+          OUT="results/$(basename "${NEW%.squashfs}").migration.squashfs"
+          docker run --rm -v "$PWD":/w -w /w \
+            -e ARCH="$ARCH" -e NEW="$NEW" -e OLD="$OLD" -e OUT="$OUT" \
+            -e OWNER_UID="$(id -u)" -e OWNER_GID="$(id -g)" \
+            start9/build-env bash -euc '
+              apt-get update -qq
+              apt-get install -yq --no-install-recommends xorriso
+              projects/start-os/build/assemble-migration-payload.sh \
+                --arch "$ARCH" --new-squashfs "$NEW" --old-image "$OLD" --out "$OUT"
+            '
+          echo "Built $OUT"
+
+      - uses: actions/upload-artifact@v7
+        if: steps.check.outputs.found == 'true'
+        with:
+          name: ${{ matrix.platform }}.migration.squashfs
+          path: results/*.migration.squashfs
+          retention-days: 14
+
   deploy:
     name: Deploy
     needs: [image]
-    if: github.event_name == 'workflow_dispatch' && github.event.inputs.deploy != 'NONE'
+    # Explicit status check so the skipped PR-only `changes` job can't poison
+    # the implicit success() through the needs chain (actions/runner#2205).
+    # Allowlist the channels rather than excluding NONE: a `!= 'NONE'` gate also admits
+    # an empty deploy input, which uploaded a branch build to the public bucket and then
+    # died on the empty REGISTRY below. Keep in sync with the REGISTRY map.
+    if: >-
+      !cancelled() && needs.image.result == 'success'
+      && github.event_name == 'workflow_dispatch'
+      && contains(fromJson('["alpha", "beta"]'), github.event.inputs.deploy)
     runs-on: ubuntu-latest
     env:
       REGISTRY: >-
@@ -338,7 +476,7 @@ jobs:
         run: |
           INPUT="${{ github.event.inputs.platform }}"
           if [ "$INPUT" = "ALL" ]; then
-            PLATFORMS="x86_64 x86_64-nonfree x86_64-nvidia aarch64 aarch64-nonfree aarch64-nvidia riscv64 riscv64-nonfree"
+            PLATFORMS="x86_64 x86_64-nonfree x86_64-nvidia aarch64 aarch64-nonfree aarch64-nvidia raspberrypi riscv64 riscv64-nonfree"
           else
             PLATFORMS="$INPUT"
           fi
@@ -348,14 +486,21 @@ jobs:
       - name: Download squashfs artifacts
         uses: actions/download-artifact@v8
         with:
-          pattern: "*.squashfs"
+          pattern: '*.squashfs'
           path: artifacts/
           merge-multiple: true
 
       - name: Download ISO artifacts
         uses: actions/download-artifact@v8
         with:
-          pattern: "*.iso"
+          pattern: '*.iso'
+          path: artifacts/
+          merge-multiple: true
+
+      - name: Download IMG artifacts
+        uses: actions/download-artifact@v8
+        with:
+          pattern: '*.img'
           path: artifacts/
           merge-multiple: true
 
@@ -397,7 +542,7 @@ jobs:
           VERSION="${{ steps.version.outputs.version }}"
           cd artifacts
           for PLATFORM in ${{ steps.platforms.outputs.list }}; do
-            for file in *_${PLATFORM}.squashfs *_${PLATFORM}.iso; do
+            for file in *_${PLATFORM}.squashfs *_${PLATFORM}.iso *_${PLATFORM}.img; do
               [ -f "$file" ] || continue
               echo "Uploading $file..."
               s3cmd put -P "$file" "${{ env.S3_BUCKET }}/v${VERSION}/$file"
@@ -415,7 +560,7 @@ jobs:
           VERSION="${{ steps.version.outputs.version }}"
           cd artifacts
           for PLATFORM in ${{ steps.platforms.outputs.list }}; do
-            for file in *_${PLATFORM}.squashfs *_${PLATFORM}.iso; do
+            for file in *_${PLATFORM}.squashfs *_${PLATFORM}.iso *_${PLATFORM}.img; do
               [ -f "$file" ] || continue
               echo "Indexing $file for platform $PLATFORM..."
               start-cli --registry="${{ env.REGISTRY }}" registry os asset add \

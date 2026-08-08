@@ -96,13 +96,14 @@ StartOS uses **Patch-DB**, a custom diff-based database, to manage system state.
 The database has two layers:
 
 - **Public model** — Synced to the frontend. Contains everything the UI needs: service status, installed packages, system settings, network configuration, notifications.
-- **Private model** — Backend-only. Contains internal state like cryptographic keys, session tokens, and operational data that should never leave the server.
+- **Private model** — Backend-only. Contains internal state like cryptographic keys, enrolled device keys, and operational data that should never leave the server.
 
 ## Security
 
 ### Container Isolation
 
 Each service runs in its own LXC container with:
+
 - Separate filesystem (id-mapped volumes)
 - Network namespace isolation
 - Resource limits
@@ -114,7 +115,7 @@ All backups are encrypted using the user's master password. Backups can be store
 
 ### Authentication
 
-The web UI is protected by password authentication with session cookies. The API uses JSON-RPC with session-based auth. SSH access is available for advanced users but is not required for normal operation.
+The web UI is protected by password authentication, with each device enrolling a signing key at login. The API uses JSON-RPC authenticated by per-request signatures. SSH access is available for advanced users but is not required for normal operation.
 
 ### Package Signing
 
@@ -122,18 +123,20 @@ S9PK files are signed with Ed25519 keys. The registry and StartOS verify signatu
 
 ## Tech Stack
 
-| Component         | Technology                                     |
-| ----------------- | ---------------------------------------------- |
-| Backend           | Rust (async Tokio, Axum)                       |
-| Frontend          | Angular, TypeScript, Taiga UI                  |
-| Container Runtime | Node.js, TypeScript                            |
-| Containers        | LXC                                            |
-| Database          | Patch-DB (custom, diff-based)                  |
-| API               | JSON-RPC                                       |
-| Package Format    | S9PK (merkle archive, Ed25519 signed)          |
-| Networking        | WireGuard, Tor (Arti), mDNS, ACME              |
-| Supported Archs   | x86_64, aarch64, riscv64                       |
+| Component         | Technology                            |
+| ----------------- | ------------------------------------- |
+| Backend           | Rust (async Tokio, Axum)              |
+| Frontend          | Angular, TypeScript, Taiga UI         |
+| Container Runtime | Node.js, TypeScript                   |
+| Containers        | LXC                                   |
+| Database          | Patch-DB (custom, diff-based)         |
+| API               | JSON-RPC                              |
+| Package Format    | S9PK (merkle archive, Ed25519 signed) |
+| Networking        | WireGuard, Tor (Arti), mDNS, ACME     |
+| Supported Archs   | x86_64, aarch64, riscv64              |
 
 ## Source Code
 
-StartOS is fully open source. The main repository is [Start9Labs/start-technologies](https://github.com/Start9Labs/start-technologies) on GitHub. See the repository's CONTRIBUTING.md for build instructions and development setup.
+StartOS is open source under the MIT License. The main repository is [Start9Labs/start-technologies](https://github.com/Start9Labs/start-technologies) on GitHub, where NOTICE.md lists the few third-party files that carry their own terms. See the repository's CONTRIBUTING.md for build instructions and development setup.
+
+The Standard image additionally ships proprietary firmware and drivers for hardware compatibility; choose the Slim (FOSS-only) image if you need a build with none.

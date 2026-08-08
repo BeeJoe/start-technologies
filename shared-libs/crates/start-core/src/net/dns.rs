@@ -26,7 +26,6 @@ use rpc_toolkit::{
 };
 use serde::{Deserialize, Serialize};
 use tokio::net::UdpSocket;
-use tokio::sync::RwLock;
 use tracing::instrument;
 use ts_rs::TS;
 
@@ -53,8 +52,11 @@ pub fn dns_api<C: Context>() -> ParentHandler<C> {
                         return display_serializable(format, res);
                     }
 
-                    if let Some(ip) = res {
-                        println!("{}", ip)
+                    if let Some(ip) = res.ipv4 {
+                        println!("{ip}")
+                    }
+                    if let Some(ip) = res.ipv6 {
+                        println!("{ip}")
                     }
 
                     Ok(())
@@ -106,17 +108,30 @@ pub struct QueryDnsParams {
     pub fqdn: InternedString,
 }
 
+/// What a public domain currently resolves to, per address family. A public
+/// domain is DualStack: the operator points an `A` record at the gateway's WAN
+/// IPv4 and an `AAAA` at the box's IPv6 GUA. Either may be absent.
+#[derive(Debug, Clone, Deserialize, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct QueryDnsRes {
+    #[ts(type = "string | null")]
+    pub ipv4: Option<Ipv4Addr>,
+    #[ts(type = "string | null")]
+    pub ipv6: Option<Ipv6Addr>,
+}
+
 pub fn query_dns<C: Context>(
     _: C,
     QueryDnsParams { fqdn }: QueryDnsParams,
-) -> Result<Option<Ipv4Addr>, Error> {
+) -> Result<QueryDnsRes, Error> {
     let hints = dns_lookup::AddrInfoHints {
         flags: 0,
-        address: libc::AF_INET,
+        address: libc::AF_UNSPEC,
         socktype: 0,
         protocol: 0,
     };
-    dns_lookup::getaddrinfo(Some(&*fqdn), None, Some(hints))
+    let addrs = dns_lookup::getaddrinfo(Some(&*fqdn), None, Some(hints))
         .map(Some)
         .or_else(|e| {
             if matches!(
@@ -130,14 +145,22 @@ pub fn query_dns<C: Context>(
         })
         .with_kind(ErrorKind::Network)?
         .into_iter()
-        .flatten()
-        .find_map(|a| match a.map(|a| a.sockaddr.ip()) {
-            Ok(IpAddr::V4(a)) => Some(Ok(a)),
-            Err(e) => Some(Err(e)),
-            _ => None,
-        })
-        .transpose()
-        .map_err(Error::from)
+        .flatten();
+    let mut res = QueryDnsRes {
+        ipv4: None,
+        ipv6: None,
+    };
+    for a in addrs {
+        match a.map_err(Error::from)?.sockaddr.ip() {
+            IpAddr::V4(v4) => {
+                res.ipv4.get_or_insert(v4);
+            }
+            IpAddr::V6(v6) => {
+                res.ipv6.get_or_insert(v6);
+            }
+        }
+    }
+    Ok(res)
 }
 
 #[derive(Deserialize, Serialize, Parser, TS)]
@@ -250,7 +273,8 @@ pub(crate) fn name_server_socket_addr(ns: &NameServerConfig) -> SocketAddr {
 pub(crate) fn parse_resolv_conf(
     data: impl AsRef<[u8]>,
 ) -> Result<(ResolverConfig, ResolverOpts), Error> {
-    hickory_server::resolver::system_conf::parse_resolv_conf(data).with_kind(ErrorKind::ParseSysInfo)
+    hickory_server::resolver::system_conf::parse_resolv_conf(data)
+        .with_kind(ErrorKind::ParseSysInfo)
 }
 
 #[cfg(not(target_os = "linux"))]
@@ -278,7 +302,7 @@ enum PrivateScope {
 }
 
 struct Resolver {
-    catalog: Arc<RwLock<Catalog>>,
+    catalog: Arc<SyncRwLock<Arc<Catalog>>>,
     resolve: Arc<SyncRwLock<ResolveMap>>,
     net_iface: Watch<OrdMap<GatewayId, NetworkInterfaceInfo>>,
     scope: PrivateScope,
@@ -288,127 +312,141 @@ struct Resolver {
 /// user's static upstream servers.
 fn spawn_forwarder(
     db: TypedPatchDb<Database>,
-    catalog: Arc<RwLock<Catalog>>,
+    catalog: Arc<SyncRwLock<Arc<Catalog>>>,
 ) -> NonDetachingJoinHandle<()> {
     tokio::spawn(async move {
-                let mut prev = crate::util::serde::hash_serializable::<sha2::Sha256, _>(&(
-                    ResolverConfig::from_parts(None, Vec::new(), Vec::new()),
-                    ResolverOpts::default(),
-                    Option::<std::collections::VecDeque<SocketAddr>>::None,
-                ))
-                .unwrap_or_default();
-                loop {
-                    let res: Result<(), Error> = async {
-                        let mut file_stream =
-                            file_string_stream("/run/systemd/resolve/resolv.conf")
-                                .filter_map(|a| futures::future::ready(a.transpose()))
-                                .boxed();
-                        let mut static_sub = db
-                            .subscribe(
-                                "/public/serverInfo/network/dns/staticServers"
-                                    .parse()
-                                    .unwrap(),
-                            )
-                            .await;
-                        let mut last_config: Option<(ResolverConfig, ResolverOpts)> = None;
-                        loop {
-                            let got_file = tokio::select! {
-                                res = file_stream.try_next() => {
-                                    let conf = res?
-                                        .ok_or_else(|| Error::new(
-                                            eyre!("resolv.conf stream ended"),
-                                            ErrorKind::Network,
-                                        ))?;
-                                    let (config, mut opts) = parse_resolv_conf(conf)?;
-                                    opts.timeout = Duration::from_secs(30);
-                                    last_config = Some((config, opts));
-                                    true
-                                }
-                                _ = static_sub.recv() => false,
-                            };
-                            let Some((ref config, ref opts)) = last_config else {
-                                continue;
-                            };
-                            let static_servers: Option<std::collections::VecDeque<SocketAddr>> = db
-                                .peek()
-                                .await
-                                .as_public()
-                                .as_server_info()
-                                .as_network()
-                                .as_dns()
-                                .as_static_servers()
-                                .de()?;
-                            let hash = crate::util::serde::hash_serializable::<sha2::Sha256, _>(
-                                &(config, opts, &static_servers),
-                            )?;
-                            if hash == prev {
-                                prev = hash;
-                                continue;
-                            }
-                            if got_file {
-                                db.mutate(|db| {
-                                    db.as_public_mut()
-                                        .as_server_info_mut()
-                                        .as_network_mut()
-                                        .as_dns_mut()
-                                        .as_dhcp_servers_mut()
-                                        .ser(
-                                            &config
-                                                .name_servers()
-                                                .iter()
-                                                .map(name_server_socket_addr)
-                                                .dedup()
-                                                .skip(2)
-                                                .collect(),
-                                        )
-                                })
-                                .await
-                                .result?;
-                            }
-                            let forward_servers: Vec<NameServerConfig> =
-                                if let Some(servers) = &static_servers {
-                                    servers.iter().map(|addr| forward_name_server(*addr)).collect()
-                                } else {
-                                    config.name_servers().iter().skip(2).cloned().collect()
-                                };
-                            let auth: Vec<Arc<dyn ZoneHandler>> = vec![Arc::new(
-                                ForwardZoneHandler::builder_tokio(ForwardConfig {
-                                    name_servers: forward_servers,
-                                    options: Some(opts.clone()),
-                                })
-                                .build()
-                                .map_err(|e| Error::new(eyre!("{e}"), ErrorKind::Network))?,
-                            )];
-                            {
-                                let mut guard =
-                                    tokio::time::timeout(Duration::from_secs(10), catalog.write())
-                                        .await
-                                        .map_err(|_| {
-                                            Error::new(
-                                                eyre!("{}", t!("net.dns.timeout-updating-catalog")),
-                                                ErrorKind::Timeout,
-                                            )
-                                        })?;
-                                guard.upsert(Name::root().into(), auth);
-                                drop(guard);
-                            }
-                            prev = hash;
-                        }
-                    }
+        let mut prev = crate::util::serde::hash_serializable::<sha2::Sha256, _>(&(
+            ResolverConfig::from_parts(None, Vec::new(), Vec::new()),
+            ResolverOpts::default(),
+            Option::<std::collections::VecDeque<SocketAddr>>::None,
+        ))
+        .unwrap_or_default();
+        loop {
+            let res: Result<(), Error> = async {
+                let mut file_stream = file_string_stream("/run/systemd/resolve/resolv.conf")
+                    .filter_map(|a| futures::future::ready(a.transpose()))
+                    .boxed();
+                let mut static_sub = db
+                    .subscribe(
+                        "/public/serverInfo/network/dns/staticServers"
+                            .parse()
+                            .unwrap(),
+                    )
                     .await;
-                    if let Err(e) = res {
-                        tracing::error!("{e}");
-                        tracing::debug!("{e:?}");
-                        tokio::time::sleep(Duration::from_secs(1)).await;
+                let mut last_config: Option<(ResolverConfig, ResolverOpts)> = None;
+                loop {
+                    let got_file = tokio::select! {
+                        res = file_stream.try_next() => {
+                            let conf = res?
+                                .ok_or_else(|| Error::new(
+                                    eyre!("resolv.conf stream ended"),
+                                    ErrorKind::Network,
+                                ))?;
+                            let (config, mut opts) = parse_resolv_conf(conf)?;
+                            // Per-attempt upstream timeout. Container stub
+                            // resolvers give up around 5s, so a longer forward
+                            // serves nobody; keep the default retry count.
+                            opts.timeout = Duration::from_secs(5);
+                            last_config = Some((config, opts));
+                            true
+                        }
+                        _ = static_sub.recv() => false,
+                    };
+                    let Some((ref config, ref opts)) = last_config else {
+                        continue;
+                    };
+                    let static_servers: Option<std::collections::VecDeque<SocketAddr>> = db
+                        .peek()
+                        .await
+                        .as_public()
+                        .as_server_info()
+                        .as_network()
+                        .as_dns()
+                        .as_static_servers()
+                        .de()?;
+                    let hash = crate::util::serde::hash_serializable::<sha2::Sha256, _>(&(
+                        config,
+                        opts,
+                        &static_servers,
+                    ))?;
+                    if hash == prev {
+                        prev = hash;
+                        continue;
                     }
+                    if got_file {
+                        db.mutate(|db| {
+                            db.as_public_mut()
+                                .as_server_info_mut()
+                                .as_network_mut()
+                                .as_dns_mut()
+                                .as_dhcp_servers_mut()
+                                .ser(
+                                    &config
+                                        .name_servers()
+                                        .iter()
+                                        .map(name_server_socket_addr)
+                                        .dedup()
+                                        .skip(2)
+                                        .collect(),
+                                )
+                        })
+                        .await
+                        .result?;
+                    }
+                    let forward_servers: Vec<NameServerConfig> =
+                        if let Some(servers) = &static_servers {
+                            servers
+                                .iter()
+                                .map(|addr| forward_name_server(*addr))
+                                .collect()
+                        } else {
+                            config.name_servers().iter().skip(2).cloned().collect()
+                        };
+                    let auth: Vec<Arc<dyn ZoneHandler>> = vec![Arc::new(
+                        ForwardZoneHandler::builder_tokio(ForwardConfig {
+                            name_servers: forward_servers,
+                            options: Some(opts.clone()),
+                        })
+                        .build()
+                        .map_err(|e| Error::new(eyre!("{e}"), ErrorKind::Network))?,
+                    )];
+                    let mut next = Catalog::new();
+                    next.upsert(Name::root().into(), auth);
+                    catalog.mutate(|c| *c = Arc::new(next));
+                    prev = hash;
                 }
-            })
-        .into()
+            }
+            .await;
+            if let Err(e) = res {
+                tracing::error!("{e}");
+                tracing::debug!("{e:?}");
+                tokio::time::sleep(Duration::from_secs(1)).await;
+            }
+        }
+    })
+    .into()
 }
+/// How a query should be answered.
+enum Resolution {
+    /// Answer these addresses locally (an empty vec for the queried family is a
+    /// NODATA answer, as before).
+    Answer(Vec<IpAddr>),
+    /// The name is in a private StartOS zone but no service claims it — answer
+    /// authoritatively with NXDOMAIN instead of forwarding it upstream (which
+    /// would both leak internal hostnames and, during an upstream outage, pile
+    /// restarting-service lookups onto the slow forwarder).
+    NxDomain,
+    /// Not ours — forward upstream.
+    Forward,
+}
+
 impl Resolver {
-    fn resolve(&self, name: &Name, mut src: IpAddr) -> Option<Vec<IpAddr>> {
+    fn resolve(&self, name: &Name, mut src: IpAddr) -> Resolution {
         if name.zone_of(&*LOCALHOST) {
-            return Some(vec![Ipv4Addr::LOCALHOST.into(), Ipv6Addr::LOCALHOST.into()]);
+            return Resolution::Answer(vec![
+                Ipv4Addr::LOCALHOST.into(),
+                Ipv6Addr::LOCALHOST.into(),
+            ]);
         }
         src = match src {
             IpAddr::V6(v6) => {
@@ -441,7 +479,7 @@ impl Resolver {
                                     res.into_iter().map(|s| s.addr()).collect()
                                 })
                         }) {
-                            return Some(res);
+                            return Resolution::Answer(res);
                         }
                     }
                 }
@@ -450,7 +488,7 @@ impl Resolver {
                         .get(domain)
                         .map_or(false, |(_, rc)| rc.strong_count() > 0)
                     {
-                        return Some(addrs.clone());
+                        return Resolution::Answer(addrs.clone());
                     }
                 }
             }
@@ -465,20 +503,23 @@ impl Resolver {
                     .map_err(|_| ())
                     .and_then(|s| s.map(PackageId::from_str).transpose().map_err(|_| ()))
                 else {
-                    return None;
+                    return Resolution::NxDomain;
                 };
+                // the server's own services are registered under `None`;
+                // `start-os.startos` is the server, same as bare `startos`
+                let pkg = pkg.filter(|p| !p.is_start_os());
                 if let Some(ip) = r.services.get(&pkg) {
-                    Some(
+                    Resolution::Answer(
                         ip.iter()
                             .filter(|(_, rc)| rc.strong_count() > 0)
                             .map(|(ip, _)| (*ip).into())
                             .collect(),
                     )
                 } else {
-                    None
+                    Resolution::NxDomain
                 }
             } else {
-                None
+                Resolution::Forward
             }
         })
     }
@@ -498,8 +539,27 @@ impl RequestHandler for Resolver {
             let query = req.query;
             let name = query.name();
 
-            if let Some(ip) = self.resolve(name, req.src.ip()) {
-                match query.query_type() {
+            match self.resolve(name, req.src.ip()) {
+                Resolution::Forward => Ok(None),
+                Resolution::NxDomain => {
+                    let mut header = Metadata::response_from_request(&request.metadata);
+                    header.recursion_available = true;
+                    header.authoritative = true;
+                    header.response_code = ResponseCode::NXDomain;
+                    response_handle
+                        .send_response(
+                            MessageResponseBuilder::from_message_request(&*request).build(
+                                header,
+                                [],
+                                [],
+                                [],
+                                [],
+                            ),
+                        )
+                        .await
+                        .map(Some)
+                }
+                Resolution::Answer(ip) => match query.query_type() {
                     RecordType::A => {
                         let mut header = Metadata::response_from_request(&request.metadata);
                         header.recursion_available = true;
@@ -570,9 +630,7 @@ impl RequestHandler for Resolver {
                             .await
                             .map(Some)
                     }
-                }
-            } else {
-                Ok(None)
+                },
             }
         }
         .await
@@ -608,9 +666,8 @@ impl RequestHandler for Resolver {
                     });
             }
         }
-        self.catalog
-            .read()
-            .await
+        let catalog = self.catalog.peek(|c| c.clone());
+        catalog
             .handle_request::<R, T>(request, response_handle)
             .await
     }
@@ -626,9 +683,7 @@ fn bind_reuse_udp(addr: SocketAddr, dual_stack: bool) -> Result<UdpSocket, Error
     socket
         .set_reuse_address(true)
         .with_kind(ErrorKind::Network)?;
-    socket
-        .set_reuse_port(true)
-        .with_kind(ErrorKind::Network)?;
+    socket.set_reuse_port(true).with_kind(ErrorKind::Network)?;
     if matches!(addr, SocketAddr::V6(_)) {
         socket
             .set_only_v6(!dual_stack)
@@ -660,7 +715,7 @@ fn dns_server_on(resolver: Resolver, addr: SocketAddr) -> Result<Server<Resolver
 /// every private domain locally; the wildcard answers none.
 async fn run_dns_servers(
     db: TypedPatchDb<Database>,
-    catalog: Arc<RwLock<Catalog>>,
+    catalog: Arc<SyncRwLock<Arc<Catalog>>>,
     resolve: Arc<SyncRwLock<ResolveMap>>,
     mut net_iface: Watch<OrdMap<GatewayId, NetworkInterfaceInfo>>,
 ) -> Result<(), Error> {
@@ -673,7 +728,10 @@ async fn run_dns_servers(
         scope,
     };
 
-    let loopback = vec![IpAddr::V4(Ipv4Addr::LOCALHOST), IpAddr::V6(Ipv6Addr::LOCALHOST)];
+    let loopback = vec![
+        IpAddr::V4(Ipv4Addr::LOCALHOST),
+        IpAddr::V6(Ipv6Addr::LOCALHOST),
+    ];
     let host_ip = IpAddr::V4(Ipv4Addr::from(HOST_IP));
 
     let mut servers: BTreeMap<SocketAddr, Server<Resolver>> = BTreeMap::new();
@@ -740,7 +798,7 @@ impl DnsController {
         watcher: &NetworkInterfaceWatcher,
     ) -> Result<Self, Error> {
         let resolve = Arc::new(SyncRwLock::new(ResolveMap::default()));
-        let catalog = Arc::new(RwLock::new(Catalog::new()));
+        let catalog = Arc::new(SyncRwLock::new(Arc::new(Catalog::new())));
         let weak = Arc::downgrade(&resolve);
         let net_iface = watcher.subscribe();
 

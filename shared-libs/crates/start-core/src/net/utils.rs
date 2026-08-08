@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV6};
 use std::path::Path;
 use std::time::Duration;
@@ -7,6 +7,7 @@ use async_stream::try_stream;
 use color_eyre::eyre::eyre;
 use futures::stream::BoxStream;
 use futures::{StreamExt, TryStreamExt};
+use imbl::OrdMap;
 use imbl_value::InternedString;
 use ipnet::{IpNet, Ipv4Net, Ipv6Net};
 use nix::net::if_::if_nametoindex;
@@ -14,7 +15,7 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::process::Command;
 
 use crate::GatewayId;
-use crate::db::model::public::{IpInfo, NetworkInterfaceType};
+use crate::db::model::public::{IpInfo, NetworkInterfaceInfo, NetworkInterfaceType};
 use crate::prelude::*;
 use crate::util::Invoke;
 
@@ -39,6 +40,14 @@ fn build_listen_socket(
         socket.set_reuse_port(true)?;
     }
     socket.set_nonblocking(true)?;
+    // Allow binding an address the kernel hasn't finished bringing up (e.g. an
+    // IPv6 GUA still tentative from DAD). Linux-only in socket2; the server only
+    // runs on Linux, and the darwin build (start-cli) never binds these.
+    #[cfg(target_os = "linux")]
+    match addr {
+        SocketAddr::V4(_) => socket.set_freebind_v4(true)?,
+        SocketAddr::V6(_) => socket.set_freebind_v6(true)?,
+    }
     socket.bind(&addr.into())?;
     socket.listen(LISTEN_BACKLOG)?;
     Ok(socket.into())
@@ -48,7 +57,9 @@ fn build_listen_socket(
 /// ([`LISTEN_BACKLOG`]) instead of mio's hardcoded 128. Use everywhere we'd
 /// otherwise reach for `mio::net::TcpListener::bind`.
 pub fn bind_mio_listener(addr: SocketAddr) -> std::io::Result<mio::net::TcpListener> {
-    Ok(mio::net::TcpListener::from_std(build_listen_socket(addr, false)?))
+    Ok(mio::net::TcpListener::from_std(build_listen_socket(
+        addr, false,
+    )?))
 }
 
 /// Bind a `tokio::net::TcpListener` with an explicit listen backlog
@@ -120,8 +131,13 @@ pub fn ipv6_is_link_local(addr: Ipv6Addr) -> bool {
     (addr.segments()[0] & 0xffc0) == 0xfe80
 }
 
+/// Unique-local address (`fc00::/7`) — the lxcbr0 bridge subnet lives here.
+pub fn ipv6_is_ula(addr: Ipv6Addr) -> bool {
+    (addr.segments()[0] & 0xfe00) == 0xfc00
+}
+
 pub fn ipv6_is_local(addr: Ipv6Addr) -> bool {
-    addr.is_loopback() || (addr.segments()[0] & 0xfe00) == 0xfc00 || ipv6_is_link_local(addr)
+    addr.is_loopback() || ipv6_is_ula(addr) || ipv6_is_link_local(addr)
 }
 
 pub fn is_private_ip(addr: IpAddr) -> bool {
@@ -129,6 +145,24 @@ pub fn is_private_ip(addr: IpAddr) -> bool {
         IpAddr::V4(v4) => v4.is_private() || v4.is_loopback() || v4.is_link_local(),
         IpAddr::V6(v6) => ipv6_is_local(v6),
     }
+}
+
+/// The box's own IPv6 global-unicast addresses (GUAs) on `gateways` — the
+/// non-link-local, non-ULA v6 subnet addresses. Used to populate a vhost's
+/// per-IP `public_v6`, since one gateway may carry several GUAs.
+pub fn gua_ips(
+    ip_info: &OrdMap<GatewayId, NetworkInterfaceInfo>,
+    gateways: &BTreeSet<GatewayId>,
+) -> BTreeSet<Ipv6Addr> {
+    gateways
+        .iter()
+        .filter_map(|gw| ip_info.get(gw).and_then(|i| i.ip_info.as_ref()))
+        .flat_map(|info| info.subnets.iter())
+        .filter_map(|s| match s.addr() {
+            IpAddr::V6(v6) if !ipv6_is_local(v6) => Some(v6),
+            _ => None,
+        })
+        .collect()
 }
 
 fn parse_iface_ip(output: &str) -> Result<Vec<&str>, Error> {
@@ -182,6 +216,21 @@ pub async fn get_iface_ipv6_addr(iface: &str) -> Result<Option<(Ipv6Addr, Ipv6Ne
     .find(|ip| !ip.starts_with("fe80::"))
     .map(|s| Ok::<_, Error>((s.split("/").next().unwrap().parse()?, s.parse()?)))
     .transpose()?)
+}
+
+/// True iff the host has an IPv6 default route (`::/0`), i.e. some working IPv6
+/// egress. Used to reject delegating an IPv6 prefix on a box that can't route it.
+pub async fn has_ipv6_default_route() -> Result<bool, Error> {
+    let output = String::from_utf8(
+        Command::new("ip")
+            .arg("-6")
+            .arg("route")
+            .arg("show")
+            .arg("default")
+            .invoke(crate::ErrorKind::Network)
+            .await?,
+    )?;
+    Ok(!output.trim().is_empty())
 }
 
 pub async fn probe_iface_type(iface: &str) -> Option<NetworkInterfaceType> {

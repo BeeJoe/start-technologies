@@ -6,7 +6,12 @@ INGREDIENTS := $(shell start-cli s9pk list-ingredients 2>/dev/null)
 # Resolve the actual git dir so this works inside git worktrees, where .git
 # is a file pointing at <main>/.git/worktrees/<name> rather than a directory.
 GIT_DIR := $(shell git rev-parse --git-dir 2>/dev/null)
-GIT_DEPS := $(if $(GIT_DIR),$(GIT_DIR)/HEAD $(GIT_DIR)/index)
+# These are rebuild triggers (the manifest embeds the commit hash), not build
+# requirements — pack degrades to a null gitHash on its own. $(wildcard) drops
+# whichever don't exist: a freshly `git init`ed repo has no index until the
+# first `git add`, and a hard prerequisite on it halts make with "No rule to
+# make target".
+GIT_DEPS := $(if $(GIT_DIR),$(wildcard $(GIT_DIR)/HEAD $(GIT_DIR)/index))
 ARCHES ?= x86 arm riscv
 # TARGETS is the list of leaf make-targets the build matrix fans out over.
 # Defaults to the arches; variant packages override (e.g. immich, ollama, vllm
@@ -63,12 +68,12 @@ x86 x86_64: arch/x86_64
 arm arm64 aarch64: arch/aarch64
 riscv riscv64: arch/riscv64
 
-$(BASE_NAME).s9pk: $(INGREDIENTS) $(GIT_DEPS)
+$(BASE_NAME).s9pk: $(INGREDIENTS) $(GIT_DEPS) | check-deps
 	@$(MAKE) --no-print-directory ingredients
 	@echo "   Packing '$@'..."
 	start-cli s9pk pack -o $@
 
-$(BASE_NAME)_%.s9pk: $(INGREDIENTS) $(GIT_DEPS)
+$(BASE_NAME)_%.s9pk: $(INGREDIENTS) $(GIT_DEPS) | check-deps
 	@$(MAKE) --no-print-directory ingredients
 	@echo "   Packing '$@'..."
 	start-cli s9pk pack --arch=$* -o $@
@@ -101,15 +106,16 @@ publish: | all
 
 check-deps:
 	@command -v start-cli >/dev/null || \
-		(echo "Error: start-cli not found. Please see https://docs.start9.com/latest/developer-guide/sdk/installing-the-sdk" && exit 1)
+		(echo "Error: start-cli not found. See https://docs.start9.com/packaging/environment-setup.html" && exit 1)
 	@command -v npm >/dev/null || \
-		(echo "Error: npm not found. Please install Node.js and npm." && exit 1)
+		(echo "Error: npm not found. Install Node.js and npm. See https://docs.start9.com/packaging/environment-setup.html" && exit 1)
+	@command -v git >/dev/null || \
+		(echo "Error: git not found. Install git. See https://docs.start9.com/packaging/environment-setup.html" && exit 1)
+	@command -v jq >/dev/null || \
+		(echo "Error: jq not found. Install jq. See https://docs.start9.com/packaging/environment-setup.html" && exit 1)
 
 check-init:
-	@if [ ! -f ~/.startos/developer.key.pem ]; then \
-		echo "Initializing StartOS developer environment..."; \
-		start-cli init-key; \
-	fi
+	@start-cli init-key
 
 javascript/index.js: $(shell find startos -type f) tsconfig.json node_modules
 	npm run check

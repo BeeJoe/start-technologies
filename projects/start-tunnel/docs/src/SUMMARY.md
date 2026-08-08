@@ -14,7 +14,10 @@
 
 - [Subnets](subnets.md)
 - [Devices](devices.md)
-- [Port Forwarding](port-forwarding.md)
+- [Published Ports](published-ports.md)
+- [HTTP Redirects](http-redirects.md)
+- [IPv6](ipv6.md)
+- [IPv4](ipv4.md)
 - [DNS Records](dns-records.md)
 - [Updating](updating.md)
 - [Uninstalling](uninstalling.md)

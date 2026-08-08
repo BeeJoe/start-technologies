@@ -1,7 +1,9 @@
 import { Component, inject } from '@angular/core'
 import { toSignal } from '@angular/core/rxjs-interop'
+import { TaskService } from '@start9labs/shared'
 import { T, utils } from '@start9labs/start-core'
 import { TuiResponsiveDialogService } from '@taiga-ui/addon-mobile'
+import { TuiComparator, TuiTable } from '@taiga-ui/addon-table'
 import {
   TuiButton,
   TuiDataList,
@@ -9,14 +11,11 @@ import {
   TuiIcon,
   TuiTitle,
 } from '@taiga-ui/core'
-import {
-  TUI_CONFIRM,
-  TuiNotificationMiddleService,
-  TuiSkeleton,
-} from '@taiga-ui/kit'
+import { TUI_CONFIRM, TuiSkeleton } from '@taiga-ui/kit'
 import { TuiCardLarge, TuiHeader } from '@taiga-ui/layout'
 import { PatchDB } from 'patch-db-client'
 import { filter, map } from 'rxjs'
+import { i18nPipe } from 'src/app/i18n/i18n.pipe'
 import { PlaceholderComponent } from 'src/app/routes/home/components/placeholder'
 import {
   defaultWanIp,
@@ -33,29 +32,49 @@ import { SUBNETS_ADD } from './add'
     <div tuiCardLarge="compact" appearance="floating">
       <header tuiHeader="body-l">
         <tui-icon icon="@tui.network" />
-        <h3 tuiTitle>Subnets</h3>
+        <h3 tuiTitle>{{ 'Subnets' | i18n }}</h3>
         <aside tuiAccessories>
-          <button tuiButton iconStart="@tui.plus" (click)="onAdd()">Add</button>
+          <button tuiButton iconStart="@tui.plus" (click)="onAdd()">
+            {{ 'Add' | i18n }}
+          </button>
         </aside>
       </header>
-      <table class="g-table" [tuiSkeleton]="!subnets()">
+      <table tuiTable class="g-table" [tuiSkeleton]="!subnets()">
         <thead>
           <tr>
-            <th>Name</th>
-            <th>IP Range</th>
-            <th>DNS</th>
-            <th>WAN</th>
-            <th></th>
+            <th tuiTh [sorter]="byName">{{ 'Name' | i18n }}</th>
+            <th tuiTh [sorter]="byRange">{{ 'IPv4 Range' | i18n }}</th>
+            <th tuiTh>{{ 'DNS' | i18n }}</th>
+            <th tuiTh>{{ 'WAN IPv4' | i18n }}</th>
+            <th tuiTh>{{ 'IPv6 Prefix' | i18n }}</th>
+            <th tuiTh></th>
           </tr>
         </thead>
         <tbody>
-          @for (subnet of subnets(); track $index) {
+          @for (subnet of subnets() | tuiTableSort; track $index) {
             <tr>
-              <td>{{ subnet.name }}</td>
-              <td>{{ subnet.range }}</td>
-              <td>{{ subnet.dnsLabel }}</td>
-              <td>{{ wanLabel(subnet.wanIp, 'Use System Default') }}</td>
-              <td [style.padding-inline-end.rem]="0.625">
+              <td tuiTd>{{ subnet.name }}</td>
+              <td tuiTd>{{ subnet.range }}</td>
+              <td tuiTd>
+                @switch (subnet.dns.type) {
+                  @case ('device') {
+                    {{ subnet.dnsDevice }}
+                  }
+                  @case ('custom') {
+                    {{ 'custom' | i18n }}
+                  }
+                  @default {
+                    {{ 'default' | i18n }}
+                  }
+                }
+              </td>
+              <td tuiTd>
+                {{
+                  wanLabel(subnet.wanIp, 'System default' | i18n, defaultWan())
+                }}
+              </td>
+              <td tuiTd>{{ subnet.ipv6 ?? '—' }}</td>
+              <td tuiTd [style.padding-inline-end.rem]="0.625">
                 <button
                   tuiIconButton
                   size="xs"
@@ -64,7 +83,7 @@ import { SUBNETS_ADD } from './add'
                   appearance="flat-grayscale"
                   iconStart="@tui.ellipsis-vertical"
                 >
-                  Actions
+                  {{ 'Actions' | i18n }}
                   <tui-data-list
                     *tuiDropdown="let close"
                     size="s"
@@ -75,14 +94,14 @@ import { SUBNETS_ADD } from './add'
                       iconStart="@tui.pencil"
                       (click)="onEdit(subnet)"
                     >
-                      Edit
+                      {{ 'Edit' | i18n }}
                     </button>
                     <button
                       tuiOption
                       iconStart="@tui.trash"
-                      (click)="onDelete($index)"
+                      (click)="onDelete(subnet.range)"
                     >
-                      Delete
+                      {{ 'Delete' | i18n }}
                     </button>
                   </tui-data-list>
                 </button>
@@ -90,9 +109,9 @@ import { SUBNETS_ADD } from './add'
             </tr>
           } @empty {
             <tr>
-              <td colspan="5">
+              <td colspan="6">
                 <app-placeholder icon="@tui.network">
-                  No subnets
+                  {{ 'No subnets' | i18n }}
                 </app-placeholder>
               </td>
             </tr>
@@ -118,15 +137,24 @@ import { SUBNETS_ADD } from './add'
     TuiHeader,
     TuiIcon,
     TuiTitle,
+    TuiTable,
+    i18nPipe,
   ],
 })
 export default class Subnets {
   private readonly dialogs = inject(TuiResponsiveDialogService)
   private readonly api = inject(ApiService)
-  private readonly loading = inject(TuiNotificationMiddleService)
+  private readonly tasks = inject(TaskService)
   private readonly patch = inject<PatchDB<TunnelData>>(PatchDB)
+  private readonly i18n = inject(i18nPipe)
 
   protected readonly wanLabel = wanLabel
+
+  protected readonly byName: TuiComparator<MappedSubnet> = (a, b) =>
+    (a.name || '').localeCompare(b.name || '')
+
+  protected readonly byRange: TuiComparator<MappedSubnet> = (a, b) =>
+    this.ip4(a.range) - this.ip4(b.range)
 
   private readonly wans = toSignal(
     this.patch.watch$('gateways').pipe(map(wanOptions)),
@@ -147,8 +175,15 @@ export default class Subnets {
           hasClients: !!Object.keys(info.clients).length,
           dns: info.dns,
           clients: info.clients,
-          dnsLabel: dnsLabel(info.dns, info.clients),
+          // Device name is data-derived (resolved here); the 'custom'/'default'
+          // labels are translated in the template so they react to a live
+          // language switch rather than being baked at data-emit time.
+          dnsDevice:
+            info.dns.type === 'device'
+              ? (info.clients[info.dns.ip]?.name ?? info.dns.ip)
+              : '',
           wanIp: info.wanIp,
+          ipv6: info.ipv6,
         })),
       ),
     ),
@@ -158,7 +193,7 @@ export default class Subnets {
   protected onAdd(): void {
     this.dialogs
       .open(SUBNETS_ADD, {
-        label: 'Add Subnet',
+        label: this.i18n.transform('Add Subnet'),
         data: {
           subnet: this.getNext(),
           mode: 'default',
@@ -168,12 +203,20 @@ export default class Subnets {
           wanIp: null,
           wanOptions: this.wans(),
           defaultWan: this.defaultWan(),
+          ipv6: null,
         },
       })
       .subscribe()
   }
 
-  protected onEdit({ range, name, dns, clients, wanIp }: MappedSubnet): void {
+  protected onEdit({
+    range,
+    name,
+    dns,
+    clients,
+    wanIp,
+    ipv6,
+  }: MappedSubnet): void {
     const devices = Object.entries(clients).map(([ip, client]) => ({
       ip,
       name: client.name,
@@ -181,7 +224,7 @@ export default class Subnets {
 
     this.dialogs
       .open(SUBNETS_ADD, {
-        label: 'Edit Subnet',
+        label: this.i18n.transform('Edit Subnet'),
         data: {
           subnet: range,
           name,
@@ -195,27 +238,27 @@ export default class Subnets {
           wanIp,
           wanOptions: this.wans(),
           defaultWan: this.defaultWan(),
+          ipv6,
         },
       })
       .subscribe()
   }
 
-  protected onDelete(index: number): void {
+  protected onDelete(range: string): void {
     this.dialogs
-      .open(TUI_CONFIRM, { label: 'Are you sure?' })
+      .open(TUI_CONFIRM, { label: this.i18n.transform('Are you sure?') })
       .pipe(filter(Boolean))
-      .subscribe(async () => {
-        const subnet = this.subnets()?.[index]?.range || ''
-        const loader = this.loading.open('').subscribe()
+      .subscribe(() =>
+        this.tasks.run(
+          async () => await this.api.deleteSubnet({ subnet: range }),
+        ),
+      )
+  }
 
-        try {
-          await this.api.deleteSubnet({ subnet })
-        } catch (e) {
-          console.log(e)
-        } finally {
-          loader.unsubscribe()
-        }
-      })
+  private ip4(s: string): number {
+    return (s.split('/')[0] || '')
+      .split('.')
+      .reduce((n, o) => n * 256 + Number(o), 0)
   }
 
   private getNext(): string {
@@ -244,20 +287,7 @@ type MappedSubnet = {
   hasClients: boolean
   dns: T.Tunnel.DnsConfig
   clients: T.Tunnel.WgSubnetClients
-  dnsLabel: string
+  dnsDevice: string
   wanIp: string | null
-}
-
-function dnsLabel(
-  dns: T.Tunnel.DnsConfig,
-  clients: T.Tunnel.WgSubnetClients,
-): string {
-  switch (dns.type) {
-    case 'device':
-      return clients[dns.ip]?.name ?? dns.ip
-    case 'custom':
-      return 'custom'
-    default:
-      return 'default'
-  }
+  ipv6: string | null
 }

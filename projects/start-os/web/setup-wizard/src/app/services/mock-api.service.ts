@@ -128,17 +128,11 @@ export class MockApiService extends ApiService {
         hostname: 'adjective-noun',
         version: '0.4.0',
         timestamp: new Date().toISOString(),
-        passwordHash:
-          '$argon2d$v=19$m=1024,t=1,p=1$YXNkZmFzZGZhc2RmYXNkZg$Ceev1I901G6UwU+hY0sHrFZ56D+o+LNJ',
-        wrappedKey: '',
       },
       '9876-5432-1234-5671': {
         hostname: 'adjective-noun',
         version: '0.4.0',
         timestamp: new Date().toISOString(),
-        passwordHash:
-          '$argon2d$v=19$m=1024,t=1,p=1$YXNkZmFzZGZhc2RmYXNkZg$Ceev1I901G6UwU+hY0sHrFZ56D+o+LNJ',
-        wrappedKey: '',
       },
     }
   }
@@ -284,7 +278,8 @@ const MOCK_DISKS: DiskInfo[] = [
     guid: null,
     filesystem: null,
   },
-  // 30 GiB with existing StartOS data - tests preserve/overwrite + capacity constraint
+  // 30 GiB, whole-disk StartOS pool (ext4) - preserve/overwrite dialog with the
+  // ext4 conversion warning; preserve is blocked if the OS drive is this drive
   {
     logicalname: '/dev/sdi',
     vendor: 'Kingston',
@@ -300,17 +295,14 @@ const MOCK_DISKS: DiskInfo[] = [
             hostname: 'small-server',
             version: '0.4.0',
             timestamp: new Date().toISOString(),
-            passwordHash:
-              '$argon2d$v=19$m=1024,t=1,p=1$YXNkZmFzZGZhc2RmYXNkZg$Ceev1I901G6UwU+hY0sHrFZ56D+o+LNJ',
-            wrappedKey: null,
           },
         },
-        guid: 'small-existing-guid',
-        filesystem: 'ext2',
+        guid: null,
+        filesystem: null,
       },
     ],
     capacity: 30 * GiB,
-    guid: 'small-existing-guid',
+    guid: 'STARTOS_SMALLPOOL00000000000000000000000000000000000000000000',
     filesystem: 'ext2',
   },
   // 500 GB - large, always OK
@@ -333,7 +325,8 @@ const MOCK_DISKS: DiskInfo[] = [
     guid: null,
     filesystem: null,
   },
-  // 1 TB with existing StartOS data
+  // 1 TB, StartOS pool on a partition (0.3.x single-drive layout) - preserve
+  // requires selecting this drive for the OS too
   {
     logicalname: '/dev/sdb',
     vendor: 'Crucial',
@@ -349,20 +342,18 @@ const MOCK_DISKS: DiskInfo[] = [
             hostname: 'existing-server',
             version: '0.4.0',
             timestamp: new Date().toISOString(),
-            passwordHash:
-              '$argon2d$v=19$m=1024,t=1,p=1$YXNkZmFzZGZhc2RmYXNkZg$Ceev1I901G6UwU+hY0sHrFZ56D+o+LNJ',
-            wrappedKey: null,
           },
         },
-        guid: 'existing-guid',
+        guid: 'EMBASSY_BIGPOOL000000000000000000000000000000000000000000000',
         filesystem: 'btrfs',
       },
     ],
     capacity: 1000000000000,
-    guid: 'existing-guid',
-    filesystem: 'btrfs',
+    guid: null,
+    filesystem: null,
   },
-  // 2 TB
+  // 2 TB, foreign (non-StartOS) LVM pool - the preserve/overwrite dialog opens
+  // with preserve disabled: no StartOS data to preserve
   {
     logicalname: '/dev/sdc',
     vendor: 'WD',
@@ -378,12 +369,9 @@ const MOCK_DISKS: DiskInfo[] = [
             hostname: 'backup-server',
             version: '0.3.5',
             timestamp: new Date(Date.now() - 86400000).toISOString(),
-            passwordHash:
-              '$argon2d$v=19$m=1024,t=1,p=1$YXNkZmFzZGZhc2RmYXNkZg$Ceev1I901G6UwU+hY0sHrFZ56D+o+LNJ',
-            wrappedKey: '',
           },
         },
-        guid: null,
+        guid: 'UBUNTU_VG0000000000000000000000000000000000000000000000000',
         filesystem: null,
       },
     ],

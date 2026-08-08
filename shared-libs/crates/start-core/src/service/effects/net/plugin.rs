@@ -94,18 +94,14 @@ pub async fn export_url(
         .ctx
         .db
         .mutate(|db| {
-            let host = host_for(
-                db,
-                hostname_info.package_id.as_ref(),
-                &hostname_info.host_id,
-            )?;
+            let host = host_for(db, &hostname_info.package_id, &hostname_info.host_id)?;
             host.as_bindings_mut()
                 .as_idx_mut(&hostname_info.internal_port)
                 .or_not_found(t!(
                     "net.plugin.binding-not-found",
                     binding = format!(
                         "{}:{}:{}",
-                        hostname_info.package_id.as_deref().unwrap_or("STARTOS"),
+                        hostname_info.package_id,
                         hostname_info.host_id,
                         hostname_info.internal_port
                     )
@@ -113,6 +109,11 @@ pub async fn export_url(
                 .as_addresses_mut()
                 .as_available_mut()
                 .mutate(|available: &mut BTreeSet<_>| {
+                    // Dedupe by the same address identity `clear_urls` retains
+                    // on (row-action fields excluded). Without this, re-exporting
+                    // a URL whose actions changed inserts a second `Ord`-distinct
+                    // entry that `clear_urls` also keeps, accumulating duplicates.
+                    available.retain(|h| !hostname_info.matches_hostname_info(h, &plugin_id));
                     available.insert(entry);
                     Ok(())
                 })?;

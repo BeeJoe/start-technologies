@@ -26,7 +26,7 @@ Run from the repo root:
 ```bash
 cargo build -p pi-beep                                          # host build
 cargo build -p pi-beep --target=aarch64-unknown-linux-musl      # cross-compile for RPi
-ARCH=aarch64 PROFILE=release ./shared-libs/crates/start-core/build/build-pi-beep.sh  # OS-image build path
+ARCH=aarch64 PROFILE=release ./shared-libs/crates/pi-beep/build-pi-beep.sh      # OS-image build path
 ```
 
 ## Testing
@@ -45,8 +45,8 @@ hardware). If you add testable logic, add unit tests alongside it.
 Run from the repo root:
 
 ```bash
-make format-core         # format the shared Rust crates (incl. pi-beep)
-make format-check-core   # read-only check (what CI runs)
+make start-core-format         # format the shared Rust crates (incl. pi-beep)
+make start-core-format-check   # read-only check (what CI runs)
 ```
 
-The monorepo formats with nightly rustfmt; `make format-core` covers it.
+The monorepo formats with nightly rustfmt; `make start-core-format` covers it.

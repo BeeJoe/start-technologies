@@ -1,4 +1,5 @@
 use crate::net::host::binding::{BindId, BindOptions, NetInfo};
+use crate::net::host::host_for;
 use crate::service::effects::prelude::*;
 use crate::{HostId, PackageId};
 
@@ -59,9 +60,7 @@ pub async fn bind_range(
     }
     if number_of_ports > MAX_BIND_PORT_RANGE_SIZE {
         return Err(Error::new(
-            eyre!(
-                "numberOfPorts ({number_of_ports}) exceeds maximum ({MAX_BIND_PORT_RANGE_SIZE})"
-            ),
+            eyre!("numberOfPorts ({number_of_ports}) exceeds maximum ({MAX_BIND_PORT_RANGE_SIZE})"),
             ErrorKind::InvalidRequest,
         ));
     }
@@ -123,19 +122,8 @@ pub async fn get_service_port_forward(
 
     let package_id = package_id.unwrap_or_else(|| context.seed.id.clone());
 
-    Ok(context
-        .seed
-        .ctx
-        .db
-        .peek()
-        .await
-        .as_public()
-        .as_package_data()
-        .as_idx(&package_id)
-        .or_not_found(&package_id)?
-        .as_hosts()
-        .as_idx(&host_id)
-        .or_not_found(&host_id)?
+    let mut db = context.seed.ctx.db.peek().await;
+    Ok(host_for(&mut db, &package_id, &host_id)?
         .as_bindings()
         .de()?
         .get(&internal_port)

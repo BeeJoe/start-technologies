@@ -14,7 +14,7 @@ use crate::disk::BACKUP_DIR_NAME;
 use crate::disk::mount::filesystem::ReadWrite;
 use crate::disk::mount::filesystem::backupfs::BackupFS;
 use crate::disk::mount::guard::SubPath;
-use crate::disk::util::StartOsRecoveryInfo;
+use crate::disk::util::BackupUnencryptedMetadata;
 use crate::prelude::*;
 use crate::util::crypto::{decrypt_slice, encrypt_slice};
 use crate::util::io::AtomicFile;
@@ -26,7 +26,7 @@ pub struct BackupMountGuard<G: GenericMountGuard> {
     encrypted_guard: Option<TmpMountGuard>,
     enc_key: String,
     unencrypted_metadata_path: PathBuf,
-    pub unencrypted_metadata: StartOsRecoveryInfo,
+    pub unencrypted_metadata: BackupUnencryptedMetadata,
     pub metadata: BackupInfo,
 }
 impl<G: GenericMountGuard> BackupMountGuard<G> {
@@ -35,11 +35,11 @@ impl<G: GenericMountGuard> BackupMountGuard<G> {
         backup_disk_path: &Path,
         server_id: &str,
         password: &str,
-    ) -> Result<(StartOsRecoveryInfo, String), Error> {
+    ) -> Result<(BackupUnencryptedMetadata, String), Error> {
         let backup_dir = backup_disk_path.join(BACKUP_DIR_NAME).join(server_id);
         let unencrypted_metadata_path = backup_dir.join("unencrypted-metadata.json");
         let crypt_path = backup_dir.join("crypt");
-        let mut unencrypted_metadata: StartOsRecoveryInfo =
+        let mut unencrypted_metadata: BackupUnencryptedMetadata =
             if tokio::fs::metadata(&unencrypted_metadata_path)
                 .await
                 .is_ok()
@@ -96,6 +96,40 @@ impl<G: GenericMountGuard> BackupMountGuard<G> {
         }
         Ok((unencrypted_metadata, enc_key))
     }
+
+    /// Cheap up-front check that `password` matches the target's existing
+    /// backup, reading only `unencrypted-metadata.json` — no encrypted mount or
+    /// segment-log replay. `Ok` when the target has no backup yet (nothing to
+    /// match against).
+    #[instrument(skip_all)]
+    pub async fn validate_password(
+        backup_disk_path: &Path,
+        server_id: &str,
+        password: &str,
+    ) -> Result<(), Error> {
+        let unencrypted_metadata_path = backup_disk_path
+            .join(BACKUP_DIR_NAME)
+            .join(server_id)
+            .join("unencrypted-metadata.json");
+        let bytes = match tokio::fs::read(&unencrypted_metadata_path).await {
+            Ok(bytes) => bytes,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+            Err(e) => {
+                return Err(e).with_ctx(|_| {
+                    (
+                        crate::ErrorKind::Filesystem,
+                        unencrypted_metadata_path.display().to_string(),
+                    )
+                });
+            }
+        };
+        let unencrypted_metadata: BackupUnencryptedMetadata = IoFormat::Json.from_slice(&bytes)?;
+        if let Some(hash) = unencrypted_metadata.password_hash.as_ref() {
+            check_password(hash, password)?;
+        }
+        Ok(())
+    }
+
     #[instrument(skip_all)]
     pub async fn mount(
         backup_disk_mount_guard: G,
@@ -117,11 +151,8 @@ impl<G: GenericMountGuard> BackupMountGuard<G> {
                 )
             })?;
         }
-        let encrypted_guard = TmpMountGuard::mount(
-            &BackupFS::new(&crypt_path, &enc_key, vec![(100000, 65536)]),
-            ReadWrite,
-        )
-        .await?;
+        let encrypted_guard =
+            TmpMountGuard::mount(&BackupFS::new(&crypt_path, &enc_key), ReadWrite).await?;
 
         let metadata_path = encrypted_guard.path().join("metadata.json");
         let metadata: BackupInfo = if tokio::fs::metadata(&metadata_path).await.is_ok() {
@@ -143,6 +174,16 @@ impl<G: GenericMountGuard> BackupMountGuard<G> {
             unencrypted_metadata,
             metadata,
         })
+    }
+
+    /// Root of the backup target drive — the parent of both the legacy
+    /// `StartOSBackups` folder and the current `StartOSBackupsV2` folder.
+    /// (`path()` instead returns the decrypted V2 crypt mount.)
+    pub fn backup_disk_path(&self) -> &Path {
+        self.backup_disk_mount_guard
+            .as_ref()
+            .expect("backup disk mount guard present")
+            .path()
     }
 
     pub fn change_password(&mut self, new_password: &str) -> Result<(), Error> {

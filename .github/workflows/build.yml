@@ -4,12 +4,12 @@ on:
   workflow_call:
     inputs:
       FREE_DISK_SPACE:
-        description: "Free up disk space before building"
+        description: 'Free up disk space before building'
         type: boolean
         default: false
     secrets:
       DEV_KEY:
-        description: "Developer signing key"
+        description: 'Developer signing key'
         required: false
 
 jobs:
@@ -29,6 +29,14 @@ jobs:
         uses: actions/checkout@v6
         with:
           submodules: recursive
+
+      # `make print-TARGETS` parses the Makefile, whose `include
+      # node_modules/@start9labs/start-sdk/s9pk.mk` (SDK 2.0+) only exists after
+      # a dependency install. Without this the include is unresolvable, make
+      # can't parse, and discovery falls back to a single-runner build.
+      - name: Install package dependencies
+        run: npm ci
+        shell: bash
 
       - name: Discover build matrix
         id: discover
@@ -70,14 +78,33 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Find or create developer signing key
+      # Fork PRs get no secrets, so this falls through to `init-key` — which
+      # writes the same path, keeping the next step's copy source uniform.
+      - name: Find or create identity signing key
         run: |
           if [ -n "${{ secrets.DEV_KEY }}" ]; then
             mkdir -p ~/.startos
-            printf '%s' "${{ secrets.DEV_KEY }}" > ~/.startos/developer.key.pem
+            printf '%s' "${{ secrets.DEV_KEY }}" > ~/.startos/id.key.pem
           else
             start-cli init-key
           fi
+        shell: bash
+
+      # `s9pk pack` requires a packaging workspace: a `.startos/` dir holding a
+      # `build.key.pem` signing key. A bare CI checkout has none, and
+      # `s9pk init-workspace` would clone the guide repo. Provision the minimum
+      # instead — reuse the identity key as the workspace build key, which keeps
+      # the signing identity s9pks had before the build-key split.
+      - name: Provision workspace build key
+        run: |
+          mkdir -p .startos
+          cp ~/.startos/id.key.pem .startos/build.key.pem
+        shell: bash
+
+      # SDK 2.0+ packages `include node_modules/@start9labs/start-sdk/s9pk.mk`,
+      # so node_modules must exist before make can parse the Makefile.
+      - name: Install package dependencies
+        run: npm ci
         shell: bash
 
       - name: Build (make ${{ matrix.target || '(default)' }})
@@ -91,6 +118,6 @@ jobs:
       - name: Upload each s9pk as its own artifact
         uses: Start9Labs/start-technologies/.github/actions/upload-each@master
         with:
-          pattern: "*.s9pk"
+          pattern: '*.s9pk'
           retention-days: 14
           compression-level: 0

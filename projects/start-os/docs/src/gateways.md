@@ -2,7 +2,7 @@
 
 A gateway is a network interface that connects your server to the Internet. Your router is the default gateway — it is always present. You can add additional gateways using WireGuard configuration files. All gateways are managed under `System > Gateways`.
 
-## WATCH THE VIDEO 
+## WATCH THE VIDEO
 
 <div class="yt-video" data-id="ZCc8sZdalNE" data-title="Gateways"></div>
 
@@ -13,6 +13,9 @@ Every gateway routes outbound traffic from your server to the Internet. Some gat
 - **Inbound/outbound** — routes outbound traffic _and_ accepts inbound connections. Your home router and [StartTunnel](/start-tunnel/) (a virtual private router running on a VPS) are inbound/outbound gateways. These are used for [inbound VPN](inbound-vpn.md) access and [clearnet](clearnet.md) hosting.
 
 - **Outbound only** — routes outbound traffic but does not accept inbound connections. Commercial VPN providers (Mullvad, ProtonVPN, etc.) are outbound-only gateways. These are used as [outbound VPNs](outbound-vpn.md).
+
+> [!NOTE]
+> A StartTunnel gateway can also carry IPv6. If the tunnel subnet your server belongs to has an [IPv6 prefix delegated](/start-tunnel/ipv6.html), your server receives its own global IPv6 address (GUA) through the gateway — usable for [DualStack public domains](clearnet.md) and controlled from each interface's address list (see [Interfaces](interfaces.md)).
 
 > [!NOTE]
 > If you are running StartOS on a VPS with a public IP address, there is no router gateway. Your server's network interface is directly exposed to the Internet.

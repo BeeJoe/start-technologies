@@ -8,13 +8,13 @@ import {
 } from '@angular/forms'
 import { Router } from '@angular/router'
 import {
-  ErrorService,
   i18nPipe,
   normalizeHostname,
   randomServerName,
   serverNameValidator,
+  TaskService,
 } from '@start9labs/shared'
-import { TuiAutoFocus, TuiMapperPipe, TuiValidator } from '@taiga-ui/cdk'
+import { TuiMapperPipe, TuiValidator } from '@taiga-ui/cdk'
 import {
   TuiButton,
   TuiError,
@@ -23,7 +23,7 @@ import {
   TuiTitle,
   tuiValidationErrorsProvider,
 } from '@taiga-ui/core'
-import { TuiNotificationMiddleService, TuiPassword } from '@taiga-ui/kit'
+import { TuiPassword } from '@taiga-ui/kit'
 import { TuiCardLarge, TuiForm, TuiHeader } from '@taiga-ui/layout'
 import { StateService } from '../services/state.service'
 
@@ -70,7 +70,6 @@ import { StateService } from '../services/state.service'
         <input
           tuiInput
           type="password"
-          [tuiAutoFocus]="!isFresh"
           maxlength="64"
           formControlName="password"
         />
@@ -115,7 +114,6 @@ import { StateService } from '../services/state.service'
     TuiCardLarge,
     TuiButton,
     TuiError,
-    TuiAutoFocus,
     TuiInput,
     TuiForm,
     TuiPassword,
@@ -139,8 +137,7 @@ import { StateService } from '../services/state.service'
 })
 export default class PasswordPage {
   private readonly router = inject(Router)
-  private readonly loader = inject(TuiNotificationMiddleService)
-  private readonly errorService = inject(ErrorService)
+  private readonly tasks = inject(TaskService)
   private readonly stateService = inject(StateService)
   private readonly i18n = inject(i18nPipe)
 
@@ -183,11 +180,10 @@ export default class PasswordPage {
   }
 
   private async executeSetup(password: string | null) {
-    const loader = this.loader.open('Starting setup').subscribe()
     const name = this.form.controls.name.value || ''
     const hostname = normalizeHostname(name)
 
-    try {
+    this.tasks.run(async () => {
       if (this.stateService.setupType === 'attach') {
         await this.stateService.attachDrive(password)
       } else {
@@ -196,10 +192,6 @@ export default class PasswordPage {
       }
 
       await this.router.navigate(['/loading'])
-    } catch (e: any) {
-      this.errorService.handleError(e)
-    } finally {
-      loader.unsubscribe()
-    }
+    }, 'Starting setup')
   }
 }

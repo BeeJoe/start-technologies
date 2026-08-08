@@ -25,14 +25,14 @@ covers what is specific to building, testing, and changing StartTunnel.
 ## Building (from the repo root)
 
 ```bash
-make tunnel                                   # full daemon build (UI + tunnelbox)
+make start-tunnel                                   # full daemon build (UI + tunnelbox)
 cargo build -p start-tunnel --bin tunnelbox   # cargo only (UI must be prebuilt)
 cargo check -p start-tunnel                    # fast type-check
-npm run build:tunnel                          # build just the Angular UI (no make target; make tunnel chains it)
-make tunnel-deb                                # Debian package
+npm run build:tunnel                          # build just the Angular UI (no make target; make start-tunnel chains it)
+make start-tunnel-deb                                # Debian package
 ```
 
-`make tunnel` builds the UI, compresses it into
+`make start-tunnel` builds the UI, compresses it into
 `web/dist/static/start-tunnel/`, then compiles `tunnelbox`, which embeds that UI
 via `include_dir!`. Output:
 `target/<arch>-unknown-linux-musl/<profile>/tunnelbox`.
@@ -40,7 +40,7 @@ via `include_dir!`. Output:
 ## Testing
 
 ```bash
-make test-core    # backend tests — tunnel logic lives in start-core
+make start-core-test    # backend tests — tunnel logic lives in start-core
 ```
 
 Tunnel behavior is exercised by the `start-core` test suite (this crate is a
@@ -51,12 +51,12 @@ checked against the full CI matrix concerns — see the cross-platform note belo
 ## Formatting
 
 ```bash
-make format-tunnel        # format the tunnel Rust crate
-make format-check-tunnel  # verify (what CI runs)
+make start-tunnel-format        # format the tunnel Rust crate
+make start-tunnel-format-check  # verify (what CI runs)
 ```
 
 The tunnel crate is Rust (edition 2024). The tunnel web app formats with the
-rest of the Angular workspace via `make format-web`.
+rest of the Angular workspace via `make web-format`.
 
 ## Cross-platform
 
@@ -68,15 +68,21 @@ it rather than reimplementing cross-platform.
 
 ## Versioning
 
-The crate version lives in `Cargo.toml` (marked with `# VERSION_BUMP`). Record
-notable changes in [`CHANGELOG.md`](CHANGELOG.md) following Keep a Changelog.
+The crate version lives in `Cargo.toml` (marked with `# VERSION_BUMP`) and
+mirrors the top `CHANGELOG.md` heading, which is the **prospective next version**
+(`## [X.Y.Z]`), not `## [Unreleased]`. If that version has no `start-tunnel/v*`
+tag on origin yet, it is unreleased — add entries under it, and raise the number
+(and `Cargo.toml`) only for a larger semver tier; cut a new heading only once the
+current one is tagged. Follows Keep a Changelog; see the root
+[`AGENTS.md`](../../AGENTS.md) for the full rule.
 
 ## Making a change
 
 - If you change the db schema, add a numbered migration in
   `shared-libs/crates/start-core/src/tunnel/migrations/` and register it in
   `shared-libs/crates/start-core/src/tunnel/migrations/mod.rs`.
-- If you change the API, regenerate TS bindings: `make ts-bindings`.
+- If you change the API, regenerate TS bindings: `make start-core-ts-bindings`.
 - For user-facing behavior (UI, CLI flags/output, install flow,
   subnets/devices/forwarding), the docs live in `docs/src/` and publish to
-  `start9.com/start-tunnel/`. Add a `CHANGELOG.md` entry under `## [Unreleased]`.
+  `start9.com/start-tunnel/`. Add a `CHANGELOG.md` entry under the changelog's
+  current top (prospective-version) heading — see Versioning above.

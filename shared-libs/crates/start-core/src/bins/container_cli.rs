@@ -5,7 +5,6 @@ use serde_json::Value;
 
 use crate::service::cli::{ContainerCliContext, ContainerClientConfig};
 use crate::util::logger::LOGGER;
-use crate::version::{Current, VersionT};
 
 fn app() -> CliApp<ContainerCliContext, ContainerClientConfig> {
     CliApp::new(
@@ -13,9 +12,12 @@ fn app() -> CliApp<ContainerCliContext, ContainerClientConfig> {
         crate::service::effects::handler(),
     )
     .mutate_command(super::translate_cli)
+    // start-container ships only in start-os, so it reports the OS version directly rather
+    // than PRODUCT_VERSION — which is unset in the `export_manpage_` test, leaving the
+    // generated page on start-core's crate version. Same reasoning as `cli_version`.
     .mutate_command(|cmd| {
         cmd.name("start-container")
-            .version(Current::default().semver().to_string())
+            .version(super::startos_version())
     })
 }
 
@@ -41,9 +43,17 @@ pub fn main(args: impl IntoIterator<Item = OsString>) {
 }
 
 #[test]
+fn no_shadowed_args_start_container() {
+    super::assert_no_shadowed_args(app().into_command());
+}
+
+#[test]
 fn export_manpage_start_container() {
     // start-container is part of the start-os product; anchored to start-core's crate dir.
-    let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../../../projects/start-os/man");
+    let dir = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../../projects/start-os/man"
+    );
     std::fs::create_dir_all(dir).unwrap();
     clap_mangen::generate_to(app().into_command(), dir).unwrap();
 }

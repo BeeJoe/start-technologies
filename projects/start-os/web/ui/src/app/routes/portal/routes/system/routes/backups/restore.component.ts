@@ -1,16 +1,11 @@
 import { DatePipe, KeyValuePipe } from '@angular/common'
 import { Component, inject } from '@angular/core'
-import {
-  DialogService,
-  ErrorService,
-  StartOSDiskInfo,
-} from '@start9labs/shared'
+import { DialogService, TaskService } from '@start9labs/shared'
 import { TuiButton } from '@taiga-ui/core'
-import { TuiNotificationMiddleService } from '@taiga-ui/kit'
 import { injectContext, PolymorpheusComponent } from '@taiga-ui/polymorpheus'
+import { filter, switchMap, take } from 'rxjs'
 import { TableComponent } from 'src/app/routes/portal/components/table.component'
 import { ApiService } from 'src/app/services/api/embassy-api.service'
-import { verifyPassword } from 'src/app/utils/verify-password'
 import { BackupContext } from './backup.types'
 import { RECOVER } from './recover.component'
 
@@ -23,11 +18,7 @@ import { RECOVER } from './recover.component'
           <td>{{ server.value.version }}</td>
           <td>{{ server.value.timestamp | date: 'medium' }}</td>
           <td>
-            <button
-              tuiButton
-              size="s"
-              (click)="onClick(server.key, server.value)"
-            >
+            <button tuiButton size="s" (click)="onClick(server.key)">
               Select
             </button>
           </td>
@@ -61,14 +52,13 @@ import { RECOVER } from './recover.component'
 })
 export class BackupRestoreComponent {
   private readonly dialog = inject(DialogService)
-  private readonly loader = inject(TuiNotificationMiddleService)
+  private readonly tasks = inject(TaskService)
   private readonly api = inject(ApiService)
-  private readonly errorService = inject(ErrorService)
   private readonly context = injectContext<BackupContext>()
 
   readonly target = this.context.data
 
-  onClick(serverId: string, { passwordHash }: StartOSDiskInfo) {
+  onClick(serverId: string) {
     this.dialog
       .openPrompt<string>({
         label: 'Password required',
@@ -80,30 +70,26 @@ export class BackupRestoreComponent {
           useMask: true,
         },
       })
-      .pipe(verifyPassword(passwordHash, e => this.errorService.handleError(e)))
-      .subscribe(async password => await this.restore(serverId, password))
+      .pipe(
+        filter(Boolean),
+        switchMap(password => this.decrypt(serverId, password)),
+        filter(Boolean), // a password the server rejects leaves the prompt open to retry
+        take(1),
+      )
+      .subscribe()
   }
 
-  private async restore(serverId: string, password: string): Promise<void> {
-    const loader = this.loader.open('Decrypting drive').subscribe()
-    const params = { targetId: this.target.id, serverId, password }
-
-    try {
+  private decrypt(serverId: string, password: string) {
+    return this.tasks.run(async () => {
+      const params = { targetId: this.target.id, serverId, password }
       const backupInfo = await this.api.getBackupInfo(params)
-      const data = {
-        targetId: this.target.id,
-        serverId,
-        backupInfo,
-        password,
-      }
+      const data = { targetId: this.target.id, serverId, backupInfo, password }
 
       this.context.$implicit.complete()
       this.dialog
         .openComponent(RECOVER, { label: 'Select services', data })
         .subscribe()
-    } finally {
-      loader.unsubscribe()
-    }
+    }, 'Decrypting drive')
   }
 }
 

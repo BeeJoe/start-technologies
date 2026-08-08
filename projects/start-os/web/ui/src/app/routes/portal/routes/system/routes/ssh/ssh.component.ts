@@ -4,12 +4,11 @@ import { RouterLink } from '@angular/router'
 import {
   DialogService,
   DocsLinkDirective,
-  ErrorService,
   i18nPipe,
+  TaskService,
 } from '@start9labs/shared'
 import { ISB, T } from '@start9labs/start-core'
 import { TuiButton } from '@taiga-ui/core'
-import { TuiNotificationMiddleService } from '@taiga-ui/kit'
 import { filter, from, merge, Subject } from 'rxjs'
 import { FormComponent } from 'src/app/routes/portal/components/form.component'
 import { ApiService } from 'src/app/services/api/embassy-api.service'
@@ -40,27 +39,29 @@ import { SSHTableComponent } from './table.component'
     <section class="g-card">
       <header>
         {{ 'SSH Keys' | i18n }}
-        <button
-          tuiButton
-          size="xs"
-          iconStart="@tui.trash"
-          appearance="primary-destructive"
-          [style.margin]="'0 0.5rem 0 auto'"
-          [disabled]="!tableKeys()?.selected()?.length"
-          (click)="remove(keys || [])"
-        >
-          {{ 'Delete selected' | i18n }}
-        </button>
-        <button
-          tuiButton
-          size="xs"
-          iconStart="@tui.plus"
-          (click)="add(keys || [])"
-        >
-          Add Key
-        </button>
+        @if (tableKeys()?.selected()?.length) {
+          <button
+            tuiButton
+            class="delete"
+            size="xs"
+            appearance="primary-destructive"
+            (click)="remove(keys || [])"
+          >
+            {{ 'Delete' | i18n }}
+          </button>
+        } @else {
+          <button
+            tuiButton
+            size="xs"
+            iconStart="@tui.plus"
+            [style.margin]="'0 0.5rem 0 auto'"
+            (click)="add(keys || [])"
+          >
+            {{ 'Add' | i18n }}
+          </button>
+        }
       </header>
-      <div #table [keys]="keys"></div>
+      <div #table [keys]="keys" (deleteSelected)="remove(keys || [])"></div>
     </section>
   `,
   styles: `
@@ -68,11 +69,8 @@ import { SSHTableComponent } from './table.component'
       max-width: 70rem;
     }
 
-    :host-context(tui-root._mobile) {
-      [tuiButton] {
-        font-size: 0;
-        gap: 0;
-      }
+    :host-context(tui-root:not(._mobile)) .delete {
+      display: none;
     }
   `,
   imports: [
@@ -86,9 +84,8 @@ import { SSHTableComponent } from './table.component'
   ],
 })
 export default class SystemSSHComponent {
-  private readonly errorService = inject(ErrorService)
   private readonly api = inject(ApiService)
-  private readonly loader = inject(TuiNotificationMiddleService)
+  private readonly tasks = inject(TaskService)
   private readonly formDialog = inject(FormDialogService)
   private readonly i18n = inject(i18nPipe)
   private readonly dialogs = inject(DialogService)
@@ -122,20 +119,11 @@ export default class SystemSSHComponent {
         buttons: [
           {
             text: this.i18n.transform('Save'),
-            handler: async ({ key }: typeof spec._TYPE) => {
-              const loader = this.loader.open('Saving').subscribe()
-
-              try {
+            handler: async ({ key }: typeof spec._TYPE) =>
+              this.tasks.run(async () => {
                 const newKey = await this.api.addSshKey({ key })
                 this.local$.next([newKey, ...all])
-                return true
-              } catch (e: any) {
-                this.errorService.handleError(e)
-                return false
-              } finally {
-                loader.unsubscribe()
-              }
-            },
+              }, 'Saving'),
           },
         ],
       },
@@ -149,9 +137,8 @@ export default class SystemSSHComponent {
       .subscribe(async () => {
         const selected = this.tableKeys()?.selected() || []
         const fingerprints = selected.map(s => s.fingerprint) || []
-        const loader = this.loader.open('Deleting').subscribe()
 
-        try {
+        this.tasks.run(async () => {
           await Promise.all(
             fingerprints.map(fingerprint =>
               this.api.deleteSshKey({ fingerprint }),
@@ -161,11 +148,7 @@ export default class SystemSSHComponent {
             all.filter(s => !fingerprints.includes(s.fingerprint)),
           )
           this.tableKeys()?.selected.set([])
-        } catch (e: any) {
-          this.errorService.handleError(e)
-        } finally {
-          loader.unsubscribe()
-        }
+        }, 'Deleting')
       })
   }
 }

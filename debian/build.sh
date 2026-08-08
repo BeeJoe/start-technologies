@@ -6,14 +6,14 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 PROJECT=${PROJECT:-"startos"}
 if [ "${PROJECT}" = "startos" ]; then
-    INSTALL_TARGET="install-startos"
+    INSTALL_TARGET="start-os-install"
     PROJECT_DIR="projects/start-os"
 else
-    INSTALL_TARGET="install-${PROJECT#start-}"
+    INSTALL_TARGET="${PROJECT}-install"
     PROJECT_DIR="projects/${PROJECT}"
 fi
 BASENAME=${BASENAME:-"$(./build/env/basename.sh)"}
-VERSION=${VERSION:-$(grep -m1 '^version' "${PROJECT_DIR}/Cargo.toml" | sed -E 's/^version *= *"([^"]*)".*/\1/')}
+VERSION=${VERSION:-$(./build/env/version.sh "$PROJECT")}
 if [ "$PLATFORM" = "x86_64" ] || [ "$PLATFORM" = "x86_64-nonfree" ] || [ "$PLATFORM" = "x86_64-nvidia" ]; then
     DEB_ARCH=amd64
 elif [ "$PLATFORM" = "aarch64" ] || [ "$PLATFORM" = "aarch64-nonfree" ] || [ "$PLATFORM" = "aarch64-nvidia" ] || [ "$PLATFORM" = "raspberrypi" ] || [ "$PLATFORM" = "rockchip64" ]; then
@@ -63,6 +63,21 @@ Depends: ${DEPENDS}
 Conflicts: ${CONFLICTS}
 Description: StartOS Debian Package
 EOF
+
+mkdir -p dpkg-workdir/$BASENAME/usr/share/doc/${PROJECT}
+{
+    echo "Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/"
+    echo "Upstream-Name: ${PROJECT}"
+    echo "Source: https://github.com/Start9Labs/start-technologies"
+    echo
+    echo "Files: *"
+    echo "Copyright: 2023 Start9 Labs, Inc."
+    echo "License: MIT"
+    sed 's/^$/./; s/^/ /' LICENSE
+    echo
+    echo "Comment: Files under other terms are listed in NOTICE.md."
+    sed 's/^$/./; s/^/ /' NOTICE.md
+} > dpkg-workdir/$BASENAME/usr/share/doc/${PROJECT}/copyright
 
 cd dpkg-workdir/$BASENAME
 find . -type f -not -path "./DEBIAN/*" -exec md5sum {} \; | sort -k 2 | sed 's/\.\/\(.*\)/\1/' > DEBIAN/md5sums

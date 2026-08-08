@@ -2,7 +2,7 @@
 
 Install StartTunnel on a Debian VPS by renting a server, running the one-line installer script, and initializing the web interface. The entire process takes just a few minutes.
 
-## Watch The Video 
+## Watch The Video
 
 <div class="yt-video" data-id="JGhBFZ0hNOU" data-title="Installing StartTunnel"></div>
 
@@ -24,13 +24,29 @@ Rent a cheap VPS with a dedicated public IP. Minimum CPU/RAM/disk is fine. For b
 
 - Debian 13
 - Root access
-- Dedicated public IPv4 address (required for clearnet port forwarding)
+- Dedicated public IPv4 address (required for publishing ports to the clearnet)
 
 > [!IMPORTANT]
 > StartTunnel is designed to be the sole application on your VPS. The installer disables UFW and manages its own firewall rules via iptables. Do not run other Internet-facing services on the same VPS.
 
 > [!WARNING]
-> Port forwarding requires a **dedicated public IPv4 address** assigned to your VPS. Shared IPv4 addresses (CGNAT, shared NAT, or load-balanced IPs) will not work. IPv6-only VPSes will not work for clearnet hosting either — see [Can I use an IPv6-only VPS?](faq.md#does-starttunnel-work-on-an-ipv6-only-vps) in the FAQ. Confirm with your VPS provider that the IPv4 address is dedicated to your VM before purchasing.
+> Publishing ports requires a **dedicated public IPv4 address** assigned to your VPS. Shared IPv4 addresses (CGNAT, shared NAT, or load-balanced IPs) will not work. IPv6-only VPSes will not work for clearnet hosting either — see [Can I use an IPv6-only VPS?](faq.md#does-starttunnel-work-on-an-ipv6-only-vps) in the FAQ. Confirm with your VPS provider that the IPv4 address is dedicated to your VM before purchasing.
+
+> [!TIP]
+> Thinking about IPv6? It's optional, and you configure it per subnet after installing (see [IPv6](ipv6.md)) — but the easiest time to arrange it is server creation: enable IPv6 if your provider offers it as an option, and note the size of the block they route to your VPS. Adding it to an existing server often takes extra host-side configuration.
+
+### Minimal or "Lite" images
+
+Some providers ship minimal or "Lite" Debian 13 images that omit base utilities the installer needs — notably `curl` (used to download the installer) and `ping` (used to check connectivity). On these, the [installer command](#run-the-installer) fails with `curl: command not found`, or the installer aborts partway with a misleading `No internet connectivity detected` error even though the network is fine.
+
+After connecting over SSH, install the base packages first, then run the installer:
+
+```bash
+apt-get update && apt-get install -y curl iputils-ping
+curl -sSL https://start9.com/start-tunnel/install.sh | sh
+```
+
+This has been reported on mynymbox.io's Debian 13 "Lite" image, but can affect any minimal image.
 
 ### Cloud firewalls
 
@@ -135,6 +151,9 @@ Run:
 ```bash
 curl -sSL https://start9.com/start-tunnel/install.sh | sh
 ```
+
+> [!NOTE]
+> If this fails with `curl: command not found` or a misleading `No internet connectivity detected` error, your VPS image is missing base utilities — see [Minimal or "Lite" images](#minimal-or-lite-images).
 
 > [!NOTE]
 > If DNS resolution is not working on your VPS, the installer will configure public DNS resolvers (Google, Cloudflare, Quad9) and back up your existing `/etc/resolv.conf`.
@@ -253,4 +272,4 @@ Trust the Root CA on each device that will access the web UI. Select your operat
 
 - [Subnets](subnets.md) — Create isolated VLANs
 - [Devices](devices.md) — Add servers, phones, and laptops
-- [Port Forwarding](port-forwarding.md) — Expose ports on your VPS's public IP
+- [Published Ports](published-ports.md) — Expose ports on your VPS's public IP

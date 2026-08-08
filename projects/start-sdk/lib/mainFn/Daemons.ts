@@ -29,6 +29,14 @@ export const cpExec = promisify(CP.exec)
 export const cpExecFile = promisify(CP.execFile)
 
 /**
+ * Id of the sentinel {@link Daemons.runUntilSuccess} appends to the chain: a
+ * oneshot depending on every user daemon, so it completes exactly when all of
+ * them are ready. Not a component of the service — it publishes no health, and
+ * the timeout message leaves it out.
+ */
+const RUN_UNTIL_SUCCESS_ID = '__RUN_UNTIL_SUCCESS'
+
+/**
  * Configuration for a daemon's health-check readiness probe.
  *
  * Every daemon and standalone health check requires a `Ready` configuration
@@ -109,7 +117,7 @@ export type ExecCommandOptions = {
    * How long (ms) to wait for the process to exit after sending SIGTERM
    * before force-killing it.
    *
-   * @default 30_000
+   * @default 60_000
    */
   sigtermTimeout?: number
   /** Run the command as PID 1 inside the container (init process) */
@@ -139,7 +147,7 @@ export type ExecFnOptions<
     subcontainer: C,
     abort: AbortSignal,
   ) => Promise<C extends null ? null : ExecCommandOptions | null>
-  // Defaults to the DEFAULT_SIGTERM_TIMEOUT = 30_000ms
+  // Defaults to the DEFAULT_SIGTERM_TIMEOUT = 60_000ms
   sigtermTimeout?: number
 }
 
@@ -316,13 +324,27 @@ export class Daemons<Manifest extends T.SDKManifest, Ids extends string>
    * re-runs that diff to "leave alone"; the reconciler throws at hash time
    * if it sees one.
    *
+   * Return the result from `setupMain` — it is a {@link T.DaemonBuildable},
+   * exactly like a static `Daemons.of(...)` chain:
+   *
+   * ```typescript
+   * export const main = sdk.setupMain(async ({ effects }) => {
+   *   return sdk.Daemons.dynamic(effects, async ({ effects }) => {
+   *     const sites = await storeJson.read((s) => s.sites).const(effects)
+   *     return sdk.Daemons.of(effects).addDaemon(...)
+   *   })
+   * })
+   * ```
+   *
+   * @param effects The effects context, from `setupMain`
    * @param fn Async builder invoked on startup and on every `constRetry`. Must return a `Daemons` in record-mode (not pre-`build()`-ed)
-   * @returns A `main` export compatible with `T.ExpectedExports.main`
+   * @returns A {@link DaemonsReconciler} — a `T.DaemonBuildable` to return from `setupMain`
    */
   static dynamic<Manifest extends T.SDKManifest>(
+    effects: T.Effects,
     fn: DaemonsBuilder<Manifest>,
-  ): T.ExpectedExports.main {
-    return async ({ effects }) => new DaemonsReconciler<Manifest>(effects, fn)
+  ): DaemonsReconciler<Manifest> {
+    return new DaemonsReconciler<Manifest>(effects, fn)
   }
 
   private appendEntry(entry: DaemonEntry<Manifest>): Daemons<Manifest, any> {
@@ -600,15 +622,19 @@ export class Daemons<Manifest extends T.SDKManifest, Ids extends string>
    */
   async runUntilSuccess(timeout: number | null) {
     let resolve = (_: void) => {}
+    let timer: ReturnType<typeof setTimeout> | undefined
     const res = new Promise<void>((res, rej) => {
       resolve = res
       if (timeout) {
-        setTimeout(() => {
-          const notReady = (this.builtHealthDaemons ?? [])
-            .filter(d => !d.isReady)
-            .map(d => d.id)
-          rej(new Error(`Timed out waiting for ${notReady}`))
-        }, timeout)
+        timer = setTimeout(
+          () =>
+            rej(
+              new Error(
+                `Timed out after ${timeout}ms waiting for ${this.describeNotReady()}`,
+              ),
+            ),
+          timeout,
+        )
       }
     })
     // Build the user's chain through the normal path so onLeaveContext +
@@ -624,7 +650,7 @@ export class Daemons<Manifest extends T.SDKManifest, Ids extends string>
     const sentinelHd = new HealthDaemon<Manifest>(
       sentinelDaemon,
       [...(this.builtHealthDaemons ?? [])],
-      '__RUN_UNTIL_SUCCESS',
+      RUN_UNTIL_SUCCESS_ID,
       EXIT_SUCCESS,
       this.effects,
     )
@@ -635,9 +661,44 @@ export class Daemons<Manifest extends T.SDKManifest, Ids extends string>
       await sentinelHd.updateStatus()
       await res
     } finally {
+      clearTimeout(timer)
       await this.term()
     }
     return null
+  }
+
+  /**
+   * Human-readable account of every daemon that has not reached ready, each
+   * with its current health result and message, plus the count and last cause
+   * of any abnormal exits.
+   *
+   * The exit count sits alongside the current health rather than replacing it
+   * because the two disagree in the case that matters most: a `ready` check
+   * that returns `loading` on a failed probe overwrites the crash back to
+   * `loading` on its next poll, so health alone reads as "still starting" for
+   * a process that is dying every time.
+   *
+   * {@link RUN_UNTIL_SUCCESS_ID} is excluded — it depends on every other
+   * daemon, so it is never ready when anything else isn't.
+   */
+  private describeNotReady(): string {
+    const notReady = (this.builtHealthDaemons ?? []).filter(
+      d => !d.isReady && d.id !== RUN_UNTIL_SUCCESS_ID,
+    )
+    if (!notReady.length) return 'no daemons — every one became ready'
+    return notReady
+      .map(d => {
+        const detail: string[] = [d.health.result]
+        if (d.health.message) detail.push(d.health.message)
+        if (d.daemon?.failedExits)
+          detail.push(
+            `${d.daemon.failedExits} failed exit(s), last: ${
+              d.daemon.lastExitError?.message ?? 'cause unknown'
+            }`,
+          )
+        return `${d.id} (${detail.join('; ')})`
+      })
+      .join(', ')
   }
 
   /**

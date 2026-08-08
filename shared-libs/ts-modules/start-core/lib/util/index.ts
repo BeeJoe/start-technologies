@@ -1,24 +1,29 @@
-/// Currently being used
-export { addressHostToUrl, mdnsResolvable } from './getServiceInterface'
+export {
+  addressHostToUrl,
+  mdnsResolvable,
+  filledAddress,
+  filterNonLocal,
+} from './filledAddress'
+export type {
+  Filter,
+  Filled,
+  FilledAddressInfo,
+  FilledHost,
+  FilledBindInfo,
+  FilledServiceInterface,
+} from './filledAddress'
 export { getDefaultString } from './getDefaultString'
 export * from './ip'
 
-/// Not being used, but known to be browser compatible
-export {
-  GetServiceInterface,
-  getServiceInterface,
-  filledAddress,
-  filterNonLocal,
-} from './getServiceInterface'
-export { getServiceInterfaces } from './getServiceInterfaces'
 export { once } from './once'
 export { asError } from './asError'
 export * as Patterns from './patterns'
 export * from './typeHelpers'
 export { Watchable } from './Watchable'
 export { GetContainerIp } from './GetContainerIp'
-export { GetHostInfo } from './GetHostInfo'
+export { GetHostInfo, GetBridgeAddress } from './GetHostInfo'
 export { GetOutboundGateway } from './GetOutboundGateway'
+export { getRootCa } from './getRootCa'
 export { GetServiceManifest, getServiceManifest } from './GetServiceManifest'
 export { GetSslCertificate } from './GetSslCertificate'
 export { GetStatus } from './GetStatus'

@@ -13,15 +13,15 @@ pub mod rfc2136;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::future::Future;
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::net::{IpAddr, SocketAddr};
 use std::pin::Pin;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use hickory_server::proto::op::update_message::{append, delete_rrset};
 use hickory_server::proto::op::{Message, ResponseCode};
-use hickory_server::proto::rr::rdata::A;
 use hickory_server::proto::rr::rdata::tsig::TsigAlgorithm;
+use hickory_server::proto::rr::rdata::{A, AAAA};
 use hickory_server::proto::rr::{Name, RData, Record, RecordSet, RecordType, TSigner};
 use hkdf::Hkdf;
 use imbl::OrdMap;
@@ -31,11 +31,15 @@ use tokio::net::UdpSocket;
 use tokio::sync::mpsc;
 use tokio::time::{interval, timeout};
 
-use crate::db::model::public::NetworkInterfaceInfo;
-use crate::net::port_map::candidate_gateways;
-use crate::prelude::*;
-use crate::util::sync::Watch;
 use crate::GatewayId;
+use crate::db::model::Database;
+use crate::db::model::public::NetworkInterfaceInfo;
+use crate::hostname::ServerHostname;
+use crate::net::port_map::candidate_gateways;
+use crate::net::utils::ipv6_is_link_local;
+use crate::prelude::*;
+use crate::util::future::NonDetachingJoinHandle;
+use crate::util::sync::Watch;
 
 const DNS_PORT: u16 = 53;
 const RECORD_TTL: u32 = 300;
@@ -66,13 +70,18 @@ pub(crate) fn derive_tsig_key(psk: &[u8; 32]) -> [u8; 32] {
 
 /// HMAC-SHA256 TSIG signer/verifier for a derived key.
 pub(crate) fn tsig_signer(key: [u8; 32]) -> TSigner {
-    TSigner::new(key.to_vec(), TsigAlgorithm::HmacSha256, tsig_key_name(), TSIG_FUDGE)
-        .expect("HmacSha256 supported; static name valid")
+    TSigner::new(
+        key.to_vec(),
+        TsigAlgorithm::HmacSha256,
+        tsig_key_name(),
+        TSIG_FUDGE,
+    )
+    .expect("HmacSha256 supported; static name valid")
 }
 
 /// (gateway this target belongs to, DNS server to update, our address on that
 /// subnet / the A record value). The gateway id resolves the TSIG key.
-type Target = (GatewayId, Ipv4Addr, Ipv4Addr);
+type Target = (GatewayId, IpAddr, IpAddr);
 
 /// Resolves a gateway's WireGuard PSK (async D-Bus call into NetworkManager), so
 /// the controller can derive that gateway's TSIG signing key. `Ok(Some)` is a
@@ -125,13 +134,13 @@ impl DnsUpdateController {
                             let changed = desired.get(&fqdn) != Some(&gateways);
                             desired.insert(fqdn.clone(), gateways);
                             if changed {
-                                reconcile_one(&fqdn, &desired, &mut active, &ifaces, &psk, &mut signers).await;
+                                reconcile_one(&fqdn, &desired, &mut active, &net_iface, &ifaces, &psk, &mut signers).await;
                             }
                         }
                         Some(Command::Gc { rm }) => {
                             for fqdn in rm {
                                 desired.remove(&fqdn);
-                                reconcile_one(&fqdn, &desired, &mut active, &ifaces, &psk, &mut signers).await;
+                                reconcile_one(&fqdn, &desired, &mut active, &net_iface, &ifaces, &psk, &mut signers).await;
                             }
                         }
                         None => break,
@@ -140,15 +149,23 @@ impl DnsUpdateController {
                         ifaces = net_iface.read();
                         signers.clear();
                         for fqdn in desired.keys().cloned().collect::<Vec<_>>() {
-                            reconcile_one(&fqdn, &desired, &mut active, &ifaces, &psk, &mut signers).await;
+                            reconcile_one(&fqdn, &desired, &mut active, &net_iface, &ifaces, &psk, &mut signers).await;
                         }
                     }
                     _ = refresh.tick() => {
                         for (fqdn, targets) in &active {
                             if let Ok(name) = fqdn_to_name(fqdn) {
+                                let mut outcomes: BTreeMap<&GatewayId, bool> = BTreeMap::new();
                                 for (gw, server, ip) in targets {
+                                    if recently_failed(&net_iface, gw) {
+                                        continue;
+                                    }
                                     let signer = signer_for(gw, &psk, &mut signers).await;
-                                    apply(&name, *server, *ip, signer.as_ref()).await;
+                                    let ok = apply(&name, *server, *ip, signer.as_ref()).await;
+                                    *outcomes.entry(gw).or_default() |= ok;
+                                }
+                                for (gw, ok) in outcomes {
+                                    report(&net_iface, gw, ok);
                                 }
                             }
                         }
@@ -170,28 +187,101 @@ impl DnsUpdateController {
     }
 }
 
+/// The live WireGuard gateways among `ifaces`. A `.local` record makes sense to
+/// inject only here: over a plain LAN gateway a client resolves `.local` by mDNS
+/// multicast, but a WireGuard client (e.g. on StartTunnel) can't — Android in
+/// particular excludes VPN connections from mDNS — so the tunnel's resolver must
+/// answer it instead.
+fn wireguard_gateways(ifaces: &OrdMap<GatewayId, NetworkInterfaceInfo>) -> BTreeSet<GatewayId> {
+    ifaces
+        .iter()
+        .filter(|(_, info)| info.is_wireguard())
+        .map(|(gw, _)| gw.clone())
+        .collect()
+}
+
+/// Continuously inject the server's mDNS `.local` name over every WireGuard
+/// gateway — and only those — via RFC 2136, so clients on the tunnel (which
+/// can't do mDNS over a VPN) still resolve `<hostname>.local` to the server's
+/// address on that tunnel. The gateway's own per-device policy still applies: an
+/// UPDATE to a gateway with DNS injection disabled is refused, and the `.local`
+/// name falls back to a manual record there. Re-derives the target gateways on
+/// every network change and the name on every hostname change.
+pub fn spawn_server_mdns_injection(
+    db: TypedPatchDb<Database>,
+    mut net_iface: Watch<OrdMap<GatewayId, NetworkInterfaceInfo>>,
+    dns_update: DnsUpdateController,
+) -> NonDetachingJoinHandle<()> {
+    tokio::spawn(async move {
+        let mut hostname_sub = db
+            .subscribe(
+                "/public/serverInfo/hostname"
+                    .parse()
+                    .expect("valid pointer"),
+            )
+            .await;
+        // The name currently asserted as desired, so a hostname change withdraws
+        // the old one instead of leaving it to be re-asserted forever.
+        let mut current: Option<InternedString> = None;
+        loop {
+            // A failed hostname read just skips this pass; we still wait on both
+            // signals below, so a network change is never missed while it's unset.
+            match ServerHostname::load(db.peek().await.as_public().as_server_info()) {
+                Ok(h) => {
+                    let name = h.local_domain_name();
+                    let gateways = net_iface.peek(wireguard_gateways);
+                    if let Some(prev) = &current {
+                        if *prev != name || gateways.is_empty() {
+                            dns_update.gc(std::iter::once(prev.clone()).collect());
+                            current = None;
+                        }
+                    }
+                    if !gateways.is_empty() {
+                        // Idempotent; also picks up a gateway added to / removed from the set.
+                        dns_update.add(name.clone(), gateways);
+                        current = Some(name);
+                    }
+                }
+                Err(e) => {
+                    tracing::error!("mDNS injection: could not read server hostname: {e}");
+                    tracing::debug!("{e:?}");
+                }
+            }
+            tokio::select! {
+                _ = net_iface.changed() => {}
+                _ = hostname_sub.recv() => {}
+            }
+        }
+    })
+    .into()
+}
+
 /// The (resolver, our-ip) pairs for a private domain on one gateway: one per
-/// IPv4 subnet, pointing at our address there and sent to that subnet's
-/// resolver (its NM gateway / `.1`). The caller pairs each with its gateway id.
-fn targets_for(info: &NetworkInterfaceInfo) -> Vec<(Ipv4Addr, Ipv4Addr)> {
+/// subnet, pointing at our address there (published as an A record for IPv4, an
+/// AAAA for IPv6) and sent to a same-family resolver on that subnet. The caller
+/// pairs each with its gateway id.
+fn targets_for(info: &NetworkInterfaceInfo) -> Vec<(IpAddr, IpAddr)> {
     let Some(ip_info) = &info.ip_info else {
         return Vec::new();
     };
-    let resolvers = candidate_gateways(info);
+    let resolvers: Vec<IpAddr> = candidate_gateways(info)
+        .into_iter()
+        .map(|(g, _)| g)
+        .collect();
     let mut out = Vec::new();
     for subnet in &ip_info.subnets {
-        let IpAddr::V4(our_ip) = subnet.addr() else {
-            continue;
-        };
-        // Prefer a resolver on the same subnet as our address.
+        let our_ip = subnet.addr();
+        // A link-local v6 address isn't usefully resolvable, so don't publish it.
+        if let IpAddr::V6(v6) = our_ip {
+            if ipv6_is_link_local(v6) {
+                continue;
+            }
+        }
+        // A same-family resolver on our subnet (the NM gateway).
         let server = resolvers
             .iter()
             .copied()
-            .find(|r| subnet.contains(&IpAddr::V4(*r)))
-            .or_else(|| match subnet.hosts().next() {
-                Some(IpAddr::V4(v4)) => Some(v4),
-                _ => None,
-            });
+            .find(|r| r.is_ipv4() == our_ip.is_ipv4() && subnet.contains(r));
         if let Some(server) = server {
             out.push((server, our_ip));
         }
@@ -221,10 +311,46 @@ async fn signer_for(
     }
 }
 
+/// Feed a round's UPDATE outcomes back as the gateway's `dns_update`
+/// capability verdict: supported if any of the gateway's resolvers accepted
+/// the update (a gateway can have a resolver per address family, and e.g.
+/// StartTunnel only accepts v4-sourced updates). Aggregating per round keeps
+/// a per-target report from flapping the verdict — which would rewrite the
+/// watch, retrigger a reconcile, and spin. `set_verdict`'s trust windows then
+/// make a repeat of the same verdict a no-op, so a steady state doesn't
+/// retrigger the `net_iface` watch on every refresh tick.
+/// A gateway whose last UPDATE failed inside the negative trust window — the
+/// same dead-gateway skip the port-map client applies, so a refusing resolver
+/// is retried on the verdict's staleness cadence, not every refresh tick.
+fn recently_failed(
+    interfaces: &Watch<OrdMap<GatewayId, NetworkInterfaceInfo>>,
+    gw: &GatewayId,
+) -> bool {
+    let now = chrono::Utc::now();
+    interfaces
+        .read()
+        .get(gw)
+        .map_or(false, |i| i.dns_update.fresh(now) == Some(false))
+}
+
+fn report(
+    interfaces: &Watch<OrdMap<GatewayId, NetworkInterfaceInfo>>,
+    gw: &GatewayId,
+    supported: bool,
+) {
+    let now = chrono::Utc::now();
+    interfaces.send_if_modified(|m| {
+        m.get_mut(gw).map_or(false, |info| {
+            crate::net::port_map::set_verdict(&mut info.dns_update, supported, now)
+        })
+    });
+}
+
 async fn reconcile_one(
     fqdn: &InternedString,
     desired: &BTreeMap<InternedString, BTreeSet<GatewayId>>,
     active: &mut BTreeMap<InternedString, BTreeSet<Target>>,
+    interfaces: &Watch<OrdMap<GatewayId, NetworkInterfaceInfo>>,
     ifaces: &OrdMap<GatewayId, NetworkInterfaceInfo>,
     psk: &PskLookup,
     signers: &mut BTreeMap<GatewayId, Option<TSigner>>,
@@ -248,9 +374,17 @@ async fn reconcile_one(
         let signer = signer_for(gw, psk, signers).await;
         withdraw(&name, *server, *ip, signer.as_ref()).await;
     }
+    let mut outcomes: BTreeMap<&GatewayId, bool> = BTreeMap::new();
     for (gw, server, ip) in &want {
+        if recently_failed(interfaces, gw) {
+            continue;
+        }
         let signer = signer_for(gw, psk, signers).await;
-        apply(&name, *server, *ip, signer.as_ref()).await;
+        let ok = apply(&name, *server, *ip, signer.as_ref()).await;
+        *outcomes.entry(gw).or_default() |= ok;
+    }
+    for (gw, ok) in outcomes {
+        report(interfaces, gw, ok);
     }
     if !want.is_empty() {
         active.insert(fqdn.clone(), want);
@@ -267,50 +401,54 @@ fn fqdn_to_name(fqdn: &str) -> Result<Name, Error> {
 /// own servers don't enforce it strictly.
 fn zone_of(fqdn: &Name) -> Name {
     let base = fqdn.base_name();
-    if base.is_root() {
-        fqdn.clone()
-    } else {
-        base
+    if base.is_root() { fqdn.clone() } else { base }
+}
+
+/// A record for an IPv4 address, AAAA for an IPv6 one.
+fn record_type_for(ip: IpAddr) -> RecordType {
+    match ip {
+        IpAddr::V4(_) => RecordType::A,
+        IpAddr::V6(_) => RecordType::AAAA,
     }
 }
 
-async fn apply(fqdn: &Name, server: Ipv4Addr, ip: Ipv4Addr, signer: Option<&TSigner>) {
+/// Whether both messages of the replace (delete + add) were accepted.
+async fn apply(fqdn: &Name, server: IpAddr, ip: IpAddr, signer: Option<&TSigner>) -> bool {
     let zone = zone_of(fqdn);
-    // Replace: drop any existing A rrset for the name, then add ours.
-    let delete = delete_rrset(
-        Record::update0(fqdn.clone(), 0, RecordType::A),
-        zone.clone(),
-        false,
-    );
-    let mut rrset = RecordSet::new(fqdn.clone(), RecordType::A, 0);
-    rrset.insert(
-        Record::from_rdata(fqdn.clone(), RECORD_TTL, RData::A(A::from(ip))),
-        0,
-    );
+    let rtype = record_type_for(ip);
+    let rdata = match ip {
+        IpAddr::V4(v4) => RData::A(A::from(v4)),
+        IpAddr::V6(v6) => RData::AAAA(AAAA::from(v6)),
+    };
+    // Replace: drop any existing rrset of this type for the name, then add ours.
+    let delete = delete_rrset(Record::update0(fqdn.clone(), 0, rtype), zone.clone(), false);
+    let mut rrset = RecordSet::new(fqdn.clone(), rtype, 0);
+    rrset.insert(Record::from_rdata(fqdn.clone(), RECORD_TTL, rdata), 0);
     let add = append(rrset, zone, false, false);
     for msg in [delete, add] {
         if let Err(e) = send(server, ip, &msg, signer).await {
-            tracing::debug!("RFC 2136 update of {fqdn} on {server} failed: {e}");
-            return;
+            crate::dev_log!(debug, "RFC 2136 update of {fqdn} on {server} failed: {e}");
+            return false;
         }
     }
     tracing::debug!("published {fqdn} -> {ip} via RFC 2136 on {server}");
+    true
 }
 
-async fn withdraw(fqdn: &Name, server: Ipv4Addr, ip: Ipv4Addr, signer: Option<&TSigner>) {
+async fn withdraw(fqdn: &Name, server: IpAddr, ip: IpAddr, signer: Option<&TSigner>) {
     let msg = delete_rrset(
-        Record::update0(fqdn.clone(), 0, RecordType::A),
+        Record::update0(fqdn.clone(), 0, record_type_for(ip)),
         zone_of(fqdn),
         false,
     );
     if let Err(e) = send(server, ip, &msg, signer).await {
-        tracing::debug!("RFC 2136 delete of {fqdn} on {server} failed: {e}");
+        crate::dev_log!(debug, "RFC 2136 delete of {fqdn} on {server} failed: {e}");
     }
 }
 
 async fn send(
-    server: Ipv4Addr,
-    local_ip: Ipv4Addr,
+    server: IpAddr,
+    local_ip: IpAddr,
     message: &Message,
     signer: Option<&TSigner>,
 ) -> Result<(), Error> {
@@ -331,11 +469,11 @@ async fn send(
     }
     .map_err(|e| Error::new(eyre!("encode DNS UPDATE: {e}"), ErrorKind::Network))?;
     // Bind to our address on the gateway so the server authorizes us by source IP.
-    let socket = UdpSocket::bind(SocketAddr::new(IpAddr::V4(local_ip), 0))
+    let socket = UdpSocket::bind(SocketAddr::new(local_ip, 0))
         .await
         .with_kind(ErrorKind::Network)?;
     socket
-        .connect(SocketAddr::new(IpAddr::V4(server), DNS_PORT))
+        .connect(SocketAddr::new(server, DNS_PORT))
         .await
         .with_kind(ErrorKind::Network)?;
     socket.send(&bytes).await.with_kind(ErrorKind::Network)?;
@@ -353,5 +491,98 @@ async fn send(
             eyre!("DNS UPDATE refused: {other}"),
             ErrorKind::Network,
         )),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use imbl::OrdMap;
+    use imbl_value::InternedString;
+
+    use super::{recently_failed, wireguard_gateways};
+    use crate::GatewayId;
+    use crate::db::model::public::{
+        CapabilityVerdict, IpInfo, NetworkInterfaceInfo, NetworkInterfaceType,
+    };
+    use crate::util::sync::Watch;
+
+    fn iface(device_type: Option<NetworkInterfaceType>) -> NetworkInterfaceInfo {
+        NetworkInterfaceInfo {
+            ip_info: device_type.map(|device_type| {
+                Arc::new(IpInfo {
+                    device_type: Some(device_type),
+                    ..Default::default()
+                })
+            }),
+            ..Default::default()
+        }
+    }
+
+    fn gw(id: &str) -> GatewayId {
+        GatewayId::from(InternedString::intern(id))
+    }
+
+    #[test]
+    fn only_wireguard_gateways_are_selected() {
+        let ifaces: OrdMap<GatewayId, NetworkInterfaceInfo> = [
+            (gw("wg0"), iface(Some(NetworkInterfaceType::Wireguard))),
+            (gw("eth0"), iface(Some(NetworkInterfaceType::Ethernet))),
+            (gw("wlan0"), iface(Some(NetworkInterfaceType::Wireless))),
+            (gw("wg1"), iface(Some(NetworkInterfaceType::Wireguard))),
+            // A gateway with no ip_info (down) is never WireGuard.
+            (gw("down"), iface(None)),
+        ]
+        .into_iter()
+        .collect();
+
+        assert_eq!(
+            wireguard_gateways(&ifaces),
+            [gw("wg0"), gw("wg1")].into_iter().collect()
+        );
+    }
+
+    #[test]
+    fn recent_failure_gates_retries() {
+        let ifaces = Watch::new(OrdMap::from_iter([(
+            gw("wg0"),
+            iface(Some(NetworkInterfaceType::Wireguard)),
+        )]));
+        let set = |v: CapabilityVerdict| {
+            ifaces.send_if_modified(|m| {
+                m.get_mut(&gw("wg0"))
+                    .map_or(false, |i: &mut NetworkInterfaceInfo| {
+                        let changed = i.dns_update != v;
+                        i.dns_update = v;
+                        changed
+                    })
+            });
+        };
+
+        // Never probed: attempt.
+        assert!(!recently_failed(&ifaces, &gw("wg0")));
+        assert!(!recently_failed(&ifaces, &gw("missing")));
+        // Fresh success: attempt.
+        set(CapabilityVerdict::supported(true));
+        assert!(!recently_failed(&ifaces, &gw("wg0")));
+        // Fresh failure: skip.
+        set(CapabilityVerdict::supported(false));
+        assert!(recently_failed(&ifaces, &gw("wg0")));
+        // Stale failure (past the 5-minute negative window): retry.
+        set(CapabilityVerdict {
+            supported: Some(false),
+            at: Some(chrono::Utc::now() - chrono::TimeDelta::minutes(6)),
+        });
+        assert!(!recently_failed(&ifaces, &gw("wg0")));
+    }
+
+    #[test]
+    fn no_wireguard_gateways_selects_nothing() {
+        let ifaces: OrdMap<GatewayId, NetworkInterfaceInfo> =
+            [(gw("eth0"), iface(Some(NetworkInterfaceType::Ethernet)))]
+                .into_iter()
+                .collect();
+        assert!(wireguard_gateways(&ifaces).is_empty());
     }
 }

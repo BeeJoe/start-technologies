@@ -1,5 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet};
-use std::net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -11,6 +11,7 @@ use hickory_server::store::forwarder::{ForwardConfig, ForwardZoneHandler};
 use hickory_server::zone_handler::{Catalog, ZoneHandler};
 use ipnet::Ipv4Net;
 use tokio::net::{TcpListener, UdpSocket};
+use tokio_util::sync::CancellationToken;
 
 use crate::net::dns::{
     DNS_RESPONSE_BUFFER_SIZE, forward_name_server, name_server_socket_addr, parse_resolv_conf,
@@ -24,6 +25,16 @@ use crate::util::sync::SyncMutex;
 
 const DNS_PORT: u16 = 53;
 const FORWARD_TIMEOUT: Duration = Duration::from_secs(30);
+const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// A running per-subnet proxy: the hickory server's cancellation token plus the
+/// task driving it. Shutdown must go through the token — aborting the task only
+/// schedules the abort of hickory's internal socket tasks, so the sockets can
+/// still be open when the caller rebinds the same address (EADDRINUSE).
+struct ProxyHandle {
+    shutdown: CancellationToken,
+    task: NonDetachingJoinHandle<()>,
+}
 
 /// Manages the per-subnet forward-only DNS proxies. Each subnet gets one
 /// `ServerFuture` bound to that subnet's in-tunnel server address (`.1:53`,
@@ -32,7 +43,7 @@ const FORWARD_TIMEOUT: Duration = Duration::from_secs(30);
 /// the proxy reachable only over the tunnel, not from the WAN.
 #[derive(Default)]
 pub struct DnsProxyController {
-    listeners: SyncMutex<BTreeMap<Ipv4Net, NonDetachingJoinHandle<()>>>,
+    listeners: SyncMutex<BTreeMap<Ipv4Net, ProxyHandle>>,
 }
 impl DnsProxyController {
     pub fn new() -> Self {
@@ -44,11 +55,17 @@ impl DnsProxyController {
     /// re-creates the interface addresses; callers MUST invoke this *after*
     /// `WgServer::sync()` so the `.1` addresses exist to bind to.
     pub async fn sync(&self, server: &WgServer, injector: Arc<DnsInjector>) -> Result<(), Error> {
-        // Drop the old listeners and wait for their tasks to finish so the
-        // sockets are released before we rebind the same addresses.
+        // Shut the old listeners down gracefully and wait, so the sockets are
+        // actually closed before we rebind the same addresses.
         let old = self.listeners.mutate(std::mem::take);
-        for (_, handle) in old {
-            let _ = handle.wait_for_abort().await;
+        for (subnet, proxy) in old {
+            proxy.shutdown.cancel();
+            if tokio::time::timeout(SHUTDOWN_TIMEOUT, proxy.task)
+                .await
+                .is_err()
+            {
+                tracing::warn!("DNS proxy for {subnet} did not shut down in time; aborting it");
+            }
         }
 
         let mut listeners = BTreeMap::new();
@@ -65,7 +82,13 @@ impl DnsProxyController {
                 tracing::warn!("no DNS upstreams for subnet {subnet}; proxy not started");
                 continue;
             }
-            match bind_proxy(subnet.addr(), upstreams, injector.clone()).await {
+            // The server's v6 on the subnet's delegated prefix, so v6-sourced
+            // queries and RFC 2136 UPDATEs are served too. Best-effort: a v6
+            // bind failure degrades to v4-only rather than killing the proxy.
+            let server_v6 = config
+                .ipv6
+                .map(|prefix| crate::tunnel::wg6::host_v6(prefix, subnet.addr()));
+            match bind_proxy(subnet.addr(), server_v6, upstreams, injector.clone()).await {
                 Ok(handle) => {
                     listeners.insert(*subnet, handle);
                 }
@@ -128,31 +151,56 @@ fn resolv_conf_upstreams(config: &ResolverConfig) -> Vec<SocketAddr> {
         .collect()
 }
 
-/// Bind UDP + TCP on `addr:53` and spawn a `ServerFuture` forwarding to `upstreams`.
-/// Binds before spawning so bind failures surface to the caller.
+/// Bind UDP + TCP on `addr:53` (and `addr_v6:53` when the subnet carries a
+/// prefix) and spawn a `ServerFuture` forwarding to `upstreams`. Binds before
+/// spawning so bind failures surface to the caller.
 async fn bind_proxy(
     addr: Ipv4Addr,
+    addr_v6: Option<Ipv6Addr>,
     upstreams: Vec<SocketAddr>,
     injector: Arc<DnsInjector>,
-) -> Result<NonDetachingJoinHandle<()>, Error> {
+) -> Result<ProxyHandle, Error> {
     let listen = SocketAddrV4::new(addr, DNS_PORT);
-    let udp = UdpSocket::bind(listen).await.with_kind(ErrorKind::Network)?;
+    let udp = UdpSocket::bind(listen)
+        .await
+        .with_kind(ErrorKind::Network)?;
     let tcp = TcpListener::bind(listen)
         .await
         .with_kind(ErrorKind::Network)?;
 
-    let mut server = Server::new(InjectingHandler::new(injector, forwarding_catalog(upstreams)?));
+    let mut server = Server::new(InjectingHandler::new(
+        injector,
+        forwarding_catalog(upstreams)?,
+    ));
     server.register_socket(udp);
     server.register_listener(tcp, FORWARD_TIMEOUT, DNS_RESPONSE_BUFFER_SIZE);
 
-    Ok(tokio::spawn(async move {
+    if let Some(v6) = addr_v6 {
+        let listen_v6 = SocketAddrV6::new(v6, DNS_PORT, 0, 0);
+        match UdpSocket::bind(listen_v6).await {
+            Ok(udp_v6) => match TcpListener::bind(listen_v6).await {
+                Ok(tcp_v6) => {
+                    server.register_socket(udp_v6);
+                    server.register_listener(tcp_v6, FORWARD_TIMEOUT, DNS_RESPONSE_BUFFER_SIZE);
+                }
+                Err(e) => {
+                    tracing::warn!("DNS proxy v6 TCP bind on {listen_v6} failed (v4-only): {e}")
+                }
+            },
+            Err(e) => tracing::warn!("DNS proxy v6 UDP bind on {listen_v6} failed (v4-only): {e}"),
+        }
+    }
+
+    let shutdown = server.shutdown_token().clone();
+    let task = tokio::spawn(async move {
         server
             .block_until_done()
             .await
             .map_err(|e| Error::new(eyre!("{e}"), ErrorKind::Network))
             .log_err();
     })
-    .into())
+    .into();
+    Ok(ProxyHandle { shutdown, task })
 }
 
 /// A `Catalog` whose root zone is a single `ForwardAuthority` pointed at

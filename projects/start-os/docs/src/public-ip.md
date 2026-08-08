@@ -4,7 +4,7 @@ Access a service interface directly using a gateway's public IP address and port
 
 For hosting websites or APIs that people access in a browser, use a [public domain](clearnet.md) instead. Public IPs accessed in a browser will display certificate warnings because Let's Encrypt does not sign certificates for IP addresses. Visitors would need to [trust your Root CA](trust-ca.md), which is not reasonable for public access.
 
-## Watch The Video 
+## Watch The Video
 
 <div class="yt-video" data-id="xKYhCMNN3gw" data-title="Public IP"></div>
 
@@ -25,7 +25,7 @@ If you need a stable public IP, use a [StartTunnel](/start-tunnel/) gateway. VPS
 
 ## Configure Port Forwarding
 
-The selected port must be forwarded in the corresponding gateway. StartOS tests port forwarding automatically when you add or enable a public IP address, and will guide you through the setup if the test fails.
+The selected port must be forwarded in the corresponding gateway. StartOS tests port forwarding automatically when you add or enable a public IP address, and will guide you through the setup if the test doesn't pass. When the port is served directly by the service (the usual case for a raw IP), this test needs the service to be **running** — it is disabled while the service is stopped, and if the service restarts as you enable the address StartOS shows it as untested rather than failed until it is back up (see [Interfaces](interfaces.md)).
 
 - **Routers**: Refer to your router's manual for instructions on port forwarding.
 

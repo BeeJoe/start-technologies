@@ -6,18 +6,16 @@ import {
   Validators,
 } from '@angular/forms'
 import { WA_IS_MOBILE } from '@ng-web-apis/platform'
-import { ErrorService } from '@start9labs/shared'
+import { TaskService } from '@start9labs/shared'
 import { T } from '@start9labs/start-core'
-import { TuiAutoFocus, tuiMarkControlAsTouchedAndValidate } from '@taiga-ui/cdk'
+import { tuiMarkControlAsTouchedAndValidate } from '@taiga-ui/cdk'
 import { TuiButton, TuiDialogContext, TuiError, TuiInput } from '@taiga-ui/core'
-import {
-  TuiChevron,
-  TuiDataListWrapper,
-  TuiNotificationMiddleService,
-  TuiSelect,
-} from '@taiga-ui/kit'
+import { TuiChevron, TuiDataListWrapper, TuiSelect } from '@taiga-ui/kit'
 import { TuiForm } from '@taiga-ui/layout'
 import { injectContext, PolymorpheusComponent } from '@taiga-ui/polymorpheus'
+import { provideHelp } from 'src/app/help/help'
+import { ModalHelp } from 'src/app/help/modal-help'
+import { i18nPipe } from 'src/app/i18n/i18n.pipe'
 import {
   matchWan,
   toWanItems,
@@ -26,7 +24,7 @@ import {
 } from 'src/app/routes/home/components/wan'
 import { ApiService } from 'src/app/services/api/api.service'
 
-import { MappedDevice } from '../port-forwards/utils'
+import { MappedDevice } from '../published-ports/utils'
 
 const CIDR_PATTERN =
   '^(?:(?:25[0-5]|2[0-4]\\d|1\\d{2}|[1-9]?\\d)\\.){3}(?:25[0-5]|2[0-4]\\d|1\\d{2}|[1-9]?\\d)/(?:[0-9]|1\\d|2[0-4])$'
@@ -40,6 +38,10 @@ const SERVER_PATTERN =
   '|[0-9a-fA-F:]+' +
   ')$'
 
+// A bare IPv6 prefix in CIDR form (addr/len 0-128; /64 is typical). Empty clears
+// it. The backend validates strictly and checks the server can actually route it.
+const IPV6_CIDR_PATTERN = '^[0-9a-fA-F:]+/(?:12[0-8]|1[01]\\d|[1-9]?\\d)$'
+
 const MODE_LABEL: Record<T.Tunnel.DnsMode, string> = {
   default: 'Default (VPS provider)',
   device: 'Device',
@@ -50,14 +52,14 @@ const MODE_LABEL: Record<T.Tunnel.DnsMode, string> = {
   template: `
     <form tuiForm="m" [formGroup]="form">
       <tui-textfield>
-        <label tuiLabel>Name</label>
-        <input tuiInput tuiAutoFocus formControlName="name" />
+        <label tuiLabel>{{ 'Name' | i18n }}</label>
+        <input tuiInput formControlName="name" />
       </tui-textfield>
       <tui-error formControlName="name" />
 
       @if (!context.data.name) {
         <tui-textfield>
-          <label tuiLabel>IP Range</label>
+          <label tuiLabel>{{ 'IP Range' | i18n }}</label>
           <input tuiInput formControlName="subnet" />
         </tui-textfield>
         <tui-error formControlName="subnet" />
@@ -68,7 +70,7 @@ const MODE_LABEL: Record<T.Tunnel.DnsMode, string> = {
         [tuiTextfieldCleaner]="false"
         [stringify]="modeLabel"
       >
-        <label tuiLabel>DNS</label>
+        <label tuiLabel>{{ 'DNS' | i18n }}</label>
         @if (mobile) {
           <select tuiSelect formControlName="mode" [items]="modes"></select>
         } @else {
@@ -87,12 +89,12 @@ const MODE_LABEL: Record<T.Tunnel.DnsMode, string> = {
               [tuiTextfieldCleaner]="false"
               [stringify]="stringifyDevice"
             >
-              <label tuiLabel>Device</label>
+              <label tuiLabel>{{ 'Device' | i18n }}</label>
               @if (mobile) {
                 <select
                   tuiSelect
                   formControlName="device"
-                  placeholder="Select device"
+                  [placeholder]="'Select device' | i18n"
                   [items]="context.data.devices"
                 ></select>
               } @else {
@@ -106,13 +108,13 @@ const MODE_LABEL: Record<T.Tunnel.DnsMode, string> = {
               }
             </tui-textfield>
           } @else {
-            <p>Add a device to this subnet first.</p>
+            <p>{{ 'Add a device to this subnet first.' | i18n }}</p>
           }
         }
         @case ('custom') {
           @for (control of servers.controls; track $index) {
             <tui-textfield>
-              <label tuiLabel>Server {{ $index + 1 }}</label>
+              <label tuiLabel>{{ 'Server' | i18n }} {{ $index + 1 }}</label>
               <input tuiInput [formControl]="control" placeholder="1.1.1.1" />
               @if (servers.length > 1) {
                 <button
@@ -122,7 +124,7 @@ const MODE_LABEL: Record<T.Tunnel.DnsMode, string> = {
                   iconStart="@tui.x"
                   (click)="removeServer($index)"
                 >
-                  Remove
+                  {{ 'Remove' | i18n }}
                 </button>
               }
             </tui-textfield>
@@ -136,7 +138,7 @@ const MODE_LABEL: Record<T.Tunnel.DnsMode, string> = {
               iconStart="@tui.plus"
               (click)="addServer()"
             >
-              Add server
+              {{ 'Add server' | i18n }}
             </button>
           }
         }
@@ -148,7 +150,7 @@ const MODE_LABEL: Record<T.Tunnel.DnsMode, string> = {
         [tuiTextfieldCleaner]="false"
         [stringify]="stringifyWan"
       >
-        <label tuiLabel>WAN IP</label>
+        <label tuiLabel>{{ 'WAN IP' | i18n }}</label>
         @if (mobile) {
           <select tuiSelect formControlName="wanIp" [items]="wanItems"></select>
         } @else {
@@ -159,14 +161,25 @@ const MODE_LABEL: Record<T.Tunnel.DnsMode, string> = {
         }
       </tui-textfield>
 
+      <tui-textfield>
+        <label tuiLabel>{{ 'IPv6 Prefix' | i18n }}</label>
+        <input
+          tuiInput
+          formControlName="ipv6"
+          placeholder="2001:db8:abcd::/64"
+        />
+      </tui-textfield>
+      <tui-error formControlName="ipv6" />
+
       <footer>
-        <button tuiButton type="button" (click)="onSave()">Save</button>
+        <button tuiButton type="button" (click)="onSave()">
+          {{ 'Save' | i18n }}
+        </button>
       </footer>
     </form>
   `,
   imports: [
     ReactiveFormsModule,
-    TuiAutoFocus,
     TuiButton,
     TuiChevron,
     TuiDataListWrapper,
@@ -174,13 +187,16 @@ const MODE_LABEL: Record<T.Tunnel.DnsMode, string> = {
     TuiForm,
     TuiInput,
     TuiSelect,
+    i18nPipe,
   ],
+  hostDirectives: [ModalHelp],
+  providers: [provideHelp('/subnets/add')],
 })
 export class SubnetsAdd {
   private readonly api = inject(ApiService)
-  private readonly loading = inject(TuiNotificationMiddleService)
-  private readonly errorService = inject(ErrorService)
+  private readonly tasks = inject(TaskService)
   private readonly fb = inject(NonNullableFormBuilder)
+  private readonly i18n = inject(i18nPipe)
 
   protected readonly mobile = inject(WA_IS_MOBILE)
   protected readonly context = injectContext<TuiDialogContext<void, Data>>()
@@ -204,6 +220,10 @@ export class SubnetsAdd {
       ),
     ),
     wanIp: this.fb.control<WanItem>({ ip: this.context.data.wanIp }),
+    ipv6: this.fb.control(
+      this.context.data.ipv6 ?? '',
+      Validators.pattern(IPV6_CIDR_PATTERN),
+    ),
   })
 
   protected readonly mode = toSignal(this.form.controls.mode.valueChanges, {
@@ -216,10 +236,15 @@ export class SubnetsAdd {
     return this.form.controls.servers
   }
 
-  protected readonly modeLabel = (m: T.Tunnel.DnsMode) => MODE_LABEL[m]
+  protected readonly modeLabel = (m: T.Tunnel.DnsMode) =>
+    this.i18n.transform(MODE_LABEL[m])
   protected readonly matchWan = matchWan
   protected readonly stringifyWan = ({ ip }: WanItem) =>
-    wanLabel(ip, 'Use System Default')
+    wanLabel(
+      ip,
+      this.i18n.transform('System default'),
+      this.context.data.defaultWan,
+    )
   protected readonly stringifyDevice = ({ ip, name }: MappedDevice) =>
     ip ? `${name} (${ip})` : ''
 
@@ -250,11 +275,14 @@ export class SubnetsAdd {
       tuiMarkControlAsTouchedAndValidate(this.servers)
       return
     }
+    if (this.form.controls.ipv6.invalid) {
+      tuiMarkControlAsTouchedAndValidate(this.form.controls.ipv6)
+      return
+    }
 
-    const loader = this.loading.open('').subscribe()
     const { name, subnet } = this.form.getRawValue()
 
-    try {
+    this.tasks.run(async () => {
       editing
         ? await this.api.editSubnet({ subnet, name })
         : await this.api.addSubnet({ subnet, name })
@@ -275,12 +303,13 @@ export class SubnetsAdd {
       if (wanIp !== this.context.data.wanIp) {
         await this.api.setSubnetWan({ subnet, wanIp })
       }
-    } catch (e: any) {
-      this.errorService.handleError(e)
-    } finally {
-      loader.unsubscribe()
+
+      const ipv6 = this.form.controls.ipv6.value.trim() || null
+      if (ipv6 !== (this.context.data.ipv6 ?? null)) {
+        await this.api.setSubnetIpv6({ subnet, prefix: ipv6 })
+      }
       this.context.$implicit.complete()
-    }
+    })
   }
 
   // Avoid an unnecessary DNS proxy resync (which briefly rebinds every subnet's
@@ -322,4 +351,5 @@ interface Data {
   wanIp: string | null
   wanOptions: readonly string[]
   defaultWan: string | null
+  ipv6: string | null
 }

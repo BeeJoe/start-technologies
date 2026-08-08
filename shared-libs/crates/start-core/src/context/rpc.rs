@@ -21,9 +21,10 @@ use tracing::instrument;
 
 use super::setup::CURRENT_SECRET;
 use crate::account::AccountInfo;
-use crate::auth::Sessions;
+use crate::auth::AuthKeys;
 use crate::context::config::ServerConfig;
 use crate::db::model::Database;
+use crate::db::model::package::PackageStateMatchModelRef;
 use crate::disk::OsPartitionInfo;
 use crate::disk::mount::filesystem::bind::Bind;
 use crate::disk::mount::filesystem::block_dev::BlockDev;
@@ -32,6 +33,7 @@ use crate::disk::mount::guard::MountGuard;
 use crate::init::{InitResult, check_time_is_synchronized};
 use crate::install::PKG_ARCHIVE_DIR;
 use crate::lxc::LxcManager;
+use crate::middleware::auth::signature::{HasUnenrolledKeys, NonceCache};
 use crate::net::gateway::WildcardListener;
 use crate::net::net_controller::{NetController, NetService};
 use crate::net::socks::DEFAULT_SOCKS_LISTEN;
@@ -56,7 +58,8 @@ pub struct RpcContextSeed {
     closed: watch::Sender<bool>,
     pub os_partitions: OsPartitionInfo,
     pub disk_guid: InternedString,
-    pub ephemeral_sessions: SyncMutex<Sessions>,
+    pub ephemeral_auth_keys: SyncMutex<AuthKeys>,
+    pub auth_sig_nonce_cache: SyncMutex<NonceCache>,
     pub db: TypedPatchDb<Database>,
     pub sync_db: watch::Sender<u64>,
     pub account: SyncRwLock<AccountInfo>,
@@ -107,6 +110,7 @@ impl InitRpcContextPhases {
 
 pub struct CleanupInitPhases {
     cleanup_sessions: PhaseProgressTrackerHandle,
+    optimize_storage: PhaseProgressTrackerHandle,
     init_services: PhaseProgressTrackerHandle,
     prune_s9pks: PhaseProgressTrackerHandle,
 }
@@ -114,6 +118,7 @@ impl CleanupInitPhases {
     pub fn new(handle: &FullProgressTracker) -> Self {
         Self {
             cleanup_sessions: handle.add_phase("Cleaning up sessions".into(), Some(1)),
+            optimize_storage: handle.add_phase("Optimizing storage".into(), Some(5)),
             init_services: handle.add_phase("Initializing services".into(), Some(10)),
             prune_s9pks: handle.add_phase("Pruning S9PKs".into(), Some(1)),
         }
@@ -122,6 +127,33 @@ impl CleanupInitPhases {
 
 #[derive(Clone)]
 pub struct RpcContext(Arc<RpcContextSeed>);
+
+/// Drop enrolled keys idle for more than 30 days. No-op until the clock is
+/// NTP-synced, so a wrong boot-time clock can't reap live sessions.
+fn reap_idle_sessions(
+    continuations: &OpenAuthedContinuations<Option<InternedString>>,
+    ephemeral: &SyncMutex<AuthKeys>,
+    db: &mut Model<Database>,
+) -> Result<(), Error> {
+    if !db.as_public().as_server_info().as_ntp_synced().de()? {
+        return Ok(());
+    }
+    let now = Utc::now();
+    let expired = db
+        .as_private()
+        .as_session_pubkeys()
+        .as_entries()?
+        .into_iter()
+        .map(|(id, session)| Ok::<_, Error>((id, session.de()?.last_active)))
+        .collect::<Result<Vec<_>, _>>()?
+        .into_iter()
+        .filter(|(_, last_active)| now - *last_active > TimeDelta::days(30))
+        .map(|(id, _)| id)
+        .collect::<Vec<_>>();
+    HasUnenrolledKeys::unenroll::<RpcContext>(continuations, Some(ephemeral), db, expired)?;
+    Ok(())
+}
+
 impl RpcContext {
     #[instrument(skip_all)]
     pub async fn init(
@@ -312,7 +344,13 @@ impl RpcContext {
                 c.insert(
                     Guid::new(),
                     tokio::spawn(async move {
-                        while !check_time_is_synchronized().await.unwrap() {
+                        // a failed query must not kill this task — the sync
+                        // warning would stick for the rest of the boot
+                        while !check_time_is_synchronized()
+                            .await
+                            .log_err()
+                            .unwrap_or(false)
+                        {
                             tokio::time::sleep(Duration::from_secs(30)).await;
                         }
                         db.mutate(|v| {
@@ -335,7 +373,8 @@ impl RpcContext {
             closed: watch::Sender::new(false),
             os_partitions: OsPartitionInfo::from_fstab().await?,
             disk_guid,
-            ephemeral_sessions: SyncMutex::new(Sessions::new()),
+            ephemeral_auth_keys: SyncMutex::new(AuthKeys::new()),
+            auth_sig_nonce_cache: SyncMutex::new(Default::default()),
             sync_db: watch::Sender::new(db.sequence().await),
             db,
             account: SyncRwLock::new(account),
@@ -413,55 +452,29 @@ impl RpcContext {
         &self,
         CleanupInitPhases {
             mut cleanup_sessions,
+            mut optimize_storage,
             mut init_services,
             mut prune_s9pks,
         }: CleanupInitPhases,
     ) -> Result<(), Error> {
         cleanup_sessions.start();
+        let continuations = &self.open_authed_continuations;
+        let ephemeral = &self.ephemeral_auth_keys;
         self.db
-            .mutate(|db| {
-                if db.as_public().as_server_info().as_ntp_synced().de()? {
-                    for id in db.as_private().as_sessions().keys()? {
-                        if Utc::now()
-                            - db.as_private()
-                                .as_sessions()
-                                .as_idx(&id)
-                                .unwrap()
-                                .de()?
-                                .last_active
-                            > TimeDelta::days(30)
-                        {
-                            db.as_private_mut().as_sessions_mut().remove(&id)?;
-                        }
-                    }
-                }
-                Ok(())
-            })
+            .mutate(|db| reap_idle_sessions(continuations, ephemeral, db))
             .await
             .result?;
-        let db = self.db.clone();
+        // Weak, so the cron doesn't hold the context that owns it alive.
+        let weak = Arc::downgrade(&self.0);
         self.add_cron(async move {
             loop {
                 tokio::time::sleep(Duration::from_secs(86400)).await;
-                if let Err(e) = db
-                    .mutate(|db| {
-                        if db.as_public().as_server_info().as_ntp_synced().de()? {
-                            for id in db.as_private().as_sessions().keys()? {
-                                if Utc::now()
-                                    - db.as_private()
-                                        .as_sessions()
-                                        .as_idx(&id)
-                                        .unwrap()
-                                        .de()?
-                                        .last_active
-                                    > TimeDelta::days(30)
-                                {
-                                    db.as_private_mut().as_sessions_mut().remove(&id)?;
-                                }
-                            }
-                        }
-                        Ok(())
-                    })
+                let Some(seed) = weak.upgrade() else { break };
+                let continuations = &seed.open_authed_continuations;
+                let ephemeral = &seed.ephemeral_auth_keys;
+                if let Err(e) = seed
+                    .db
+                    .mutate(|db| reap_idle_sessions(continuations, ephemeral, db))
                     .await
                     .result
                 {
@@ -474,6 +487,29 @@ impl RpcContext {
             }
         });
         cleanup_sessions.complete();
+
+        // Must run before services init: volume conversion requires that no
+        // container hold a mount on a package volume.
+        optimize_storage.start();
+        let peek = self.db.peek().await;
+        let mut installed = BTreeSet::new();
+        let mut all = BTreeSet::new();
+        for (id, pde) in peek.as_public().as_package_data().as_entries()? {
+            if matches!(
+                pde.as_state_info().as_match(),
+                PackageStateMatchModelRef::Installed(_)
+            ) {
+                installed.insert(id.clone());
+            }
+            all.insert(id);
+        }
+        if let Err(e) =
+            crate::volume::boot_volume_maintenance(&installed, &all, &mut optimize_storage).await
+        {
+            tracing::warn!("{}", t!("context.rpc.volume-maintenance-failed", error = e));
+            tracing::debug!("{e:?}");
+        }
+        optimize_storage.complete();
 
         init_services.start();
         self.services.init(&self).await?;

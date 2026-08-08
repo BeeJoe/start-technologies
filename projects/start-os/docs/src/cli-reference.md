@@ -16,20 +16,19 @@ These apply to all subcommands.
 - `--s9pk-s3bucket <BUCKET>` — S3 bucket for publishing
 - `-t, --tunnel <URL>` — Tunnel server address
 - `-p, --proxy <URL>` — HTTP/SOCKS proxy
-- `--cookie-path <PATH>` — Cookie file path
-- `--developer-key-path <PATH>` — Developer signing key path
+- `--id-key-path <PATH>` — Identity signing key path (`--developer-key-path` is accepted as an alias)
 
 ## Authentication
 
-Log in, log out, manage sessions, and reset the master password.
+Log in, log out, manage enrolled device keys, and reset the master password.
 
 ### `start-cli auth login`
 
-Log in and create an authenticated session. Required before running any commands against a remote server.
+Log in and enroll this device's signing key. Required before running any commands against a remote server.
 
 ### `start-cli auth logout <SESSION>`
 
-End a specific authentication session.
+Remove an enrolled device key.
 
 ### `start-cli auth reset-password`
 
@@ -41,13 +40,13 @@ Retrieve the server's public key.
 
 ### `start-cli auth session list`
 
-List all active sessions.
+List all enrolled device keys.
 
 - `--format` — Output format
 
 ### `start-cli auth session kill [IDS...]`
 
-Terminate one or more sessions.
+Remove one or more enrolled device keys.
 
 ## Server
 
@@ -219,7 +218,9 @@ Install a package from the registry or sideload a local `.s9pk` file.
 
 ### `start-cli package start <ID>`
 
-Start a service.
+Start a service. Blocked if the service has an unresolved critical task, unless `--force` is passed.
+
+- `--force` — Start even if the service has an unresolved critical task
 
 ### `start-cli package stop <ID>`
 
@@ -375,6 +376,12 @@ Mount a backup target.
 ### `start-cli backup target umount [TARGET_ID]`
 
 Unmount a backup target.
+
+### `start-cli backup target delete-legacy <TARGET_ID>`
+
+Delete this server's legacy (V1) backup from a target. The backup is removed
+immediately; its space is reclaimed in the background, with a notification
+when it finishes.
 
 ### `start-cli backup target cifs add <HOSTNAME> <PATH> <USERNAME> [PASSWORD]`
 
@@ -626,7 +633,8 @@ List and repair storage devices.
 
 ### `start-cli disk list`
 
-List all disks and partitions.
+List all disks and partitions. Unmountable partitions and EFI system
+partitions are omitted.
 
 - `--format` — Output format
 
@@ -694,6 +702,14 @@ Set a value in the UI database.
 ## S9PK Packaging
 
 Build, inspect, edit, and publish service packages.
+
+### `start-cli s9pk init-workspace [PATH]`
+
+Initialize a StartOS packaging workspace in PATH (default: the current directory). Clones the packaging guide, writes the agent-context files (`AGENTS.md`, `AGENTS.local.md`, `CLAUDE.md`), and creates a `.startos/` directory holding the workspace signing key and host/registry config. Nesting is allowed; it refuses to run inside a package repo. See [Set Up Your Packaging Workspace](/packaging/environment-setup.html#set-up-your-packaging-workspace).
+
+### `start-cli s9pk init-package <NAME>`
+
+Scaffold a new package from the current workspace's template, using NAME (e.g. `"Hello World"`) as the human-readable package name, then run `npm install`. Must be run inside a workspace.
 
 ### `start-cli s9pk pack [PATH]`
 

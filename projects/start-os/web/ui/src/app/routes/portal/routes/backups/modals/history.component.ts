@@ -2,7 +2,7 @@ import { CommonModule } from '@angular/common'
 import { Component, inject, signal } from '@angular/core'
 import { toSignal } from '@angular/core/rxjs-interop'
 import { FormsModule } from '@angular/forms'
-import { ErrorService } from '@start9labs/shared'
+import { ErrorService, TaskService } from '@start9labs/shared'
 import { TUI_FALSE_HANDLER, TUI_TRUE_HANDLER } from '@taiga-ui/cdk'
 import {
   TuiButton,
@@ -11,7 +11,7 @@ import {
   TuiIcon,
   TuiLink,
 } from '@taiga-ui/core'
-import { TuiNotificationMiddleService, TuiSkeleton } from '@taiga-ui/kit'
+import { TuiSkeleton } from '@taiga-ui/kit'
 import { PolymorpheusComponent } from '@taiga-ui/polymorpheus'
 import { from } from 'rxjs'
 import { REPORT } from 'src/app/components/backup-report.component'
@@ -25,19 +25,21 @@ import { HasErrorPipe } from '../pipes/has-error.pipe'
   template: `
     <h3 class="g-title">
       Past Events
-      <button
-        tuiButton
-        appearance="primary-destructive"
-        [disabled]="disabled"
-        (click)="delete()"
-      >
-        Delete Selected
-      </button>
+      @if (selectedCount) {
+        <button
+          tuiButton
+          class="delete"
+          appearance="primary-destructive"
+          (click)="delete()"
+        >
+          Delete Selected
+        </button>
+      }
     </h3>
     <table class="g-table">
       <thead>
         <tr>
-          <th>
+          <th class="g-table-select">
             <input
               type="checkbox"
               size="s"
@@ -47,11 +49,28 @@ import { HasErrorPipe } from '../pipes/has-error.pipe'
               (ngModelChange)="toggle()"
             />
           </th>
-          <th>Started At</th>
-          <th>Duration</th>
-          <th>Job</th>
-          <th>Result</th>
-          <th>Target</th>
+          @if (selectedCount) {
+            <th [attr.colspan]="5">
+              <span class="g-table-group">
+                <button
+                  tuiButton
+                  size="xs"
+                  appearance="flat-destructive"
+                  iconStart="@tui.trash"
+                  (click)="delete()"
+                >
+                  Delete
+                </button>
+                <span class="count">{{ selectedCount }} selected</span>
+              </span>
+            </th>
+          } @else {
+            <th>Started At</th>
+            <th>Duration</th>
+            <th>Job</th>
+            <th>Result</th>
+            <th>Target</th>
+          }
         </tr>
       </thead>
       <tbody>
@@ -152,6 +171,10 @@ import { HasErrorPipe } from '../pipes/has-error.pipe'
         text-align: right;
       }
     }
+
+    :host-context(tui-root:not(._mobile)) .delete {
+      display: none;
+    }
   `,
   imports: [
     CommonModule,
@@ -170,7 +193,7 @@ export class BackupsHistoryModal {
   private readonly api = inject(ApiService)
   private readonly dialogs = inject(TuiDialogService)
   private readonly errorService = inject(ErrorService)
-  private readonly loader = inject(TuiNotificationMiddleService)
+  private readonly tasks = inject(TaskService)
 
   readonly targets = toSignal(from(this.api.getBackupTargets({})))
   readonly runs = signal<BackupRun[] | null>(null)
@@ -190,8 +213,8 @@ export class BackupsHistoryModal {
     return response
   }
 
-  get disabled() {
-    return !this.selected.length || !this.selected.some(Boolean)
+  get selectedCount(): number {
+    return this.selected.filter(Boolean).length
   }
 
   async ngOnInit() {
@@ -205,20 +228,15 @@ export class BackupsHistoryModal {
   }
 
   async delete() {
-    const loader = this.loader.open('Deleting').subscribe()
     const ids = this.selected
       .filter(Boolean)
       .map((_, i) => this.runs()?.[i].id || '')
 
-    try {
+    this.tasks.run(async () => {
       await this.api.deleteBackupRuns({ ids })
       this.runs.set(this.runs()?.filter(r => !ids.includes(r.id)) || [])
       this.selected = this.runs()?.map(TUI_FALSE_HANDLER) || []
-    } catch (e: any) {
-      this.errorService.handleError(e)
-    } finally {
-      loader.unsubscribe()
-    }
+    }, 'Deleting')
   }
 
   showReport({ report, completedAt }: BackupRun) {

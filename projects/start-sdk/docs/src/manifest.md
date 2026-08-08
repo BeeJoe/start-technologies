@@ -19,16 +19,11 @@ export const short = {
 }
 
 export const long = {
-  en_US:
-    'Longer description explaining what the service does and its key features.',
-  es_ES:
-    'Descripcion mas larga que explica que hace el servicio y sus caracteristicas principales.',
-  de_DE:
-    'Langere Beschreibung, die erklart, was der Dienst tut und seine wichtigsten Funktionen.',
-  pl_PL:
-    'Dluzszy opis wyjasniajacy, co robi usluga i jej kluczowe funkcje.',
-  fr_FR:
-    'Description plus longue expliquant ce que fait le service et ses fonctionnalites principales.',
+  en_US: 'Longer description explaining what the service does and its key features.',
+  es_ES: 'Descripcion mas larga que explica que hace el servicio y sus caracteristicas principales.',
+  de_DE: 'Langere Beschreibung, die erklart, was der Dienst tut und seine wichtigsten Funktionen.',
+  pl_PL: 'Dluzszy opis wyjasniajacy, co robi usluga i jej kluczowe funkcje.',
+  fr_FR: 'Description plus longue expliquant ce que fait le service et ses fonctionnalites principales.',
 }
 ```
 
@@ -57,20 +52,20 @@ export const manifest = setupManifest({
 
 ## Required Fields
 
-| Field               | Description                                            |
-| ------------------- | ------------------------------------------------------ |
-| `id`                | Unique identifier (lowercase, hyphens allowed)         |
-| `title`             | Display name shown in UI                               |
-| `license`           | SPDX identifier (`MIT`, `Apache-2.0`, `GPL-3.0`, etc.) |
-| `packageRepo`       | URL to the StartOS package repository                  |
-| `upstreamRepo`      | URL to the original project repository                 |
-| `marketingUrl`      | URL for the project's main website                     |
-| `donationUrl`       | Donation URL or `null`                                 |
-| `description.short` | Locale object (see `manifest/i18n.ts`)                 |
-| `description.long`  | Locale object (see `manifest/i18n.ts`)                 |
-| `volumes`           | Storage volumes (usually `['main']`)                   |
-| `images`            | Docker image configuration (including `arch`)          |
-| `dependencies`      | Service dependencies                                   |
+| Field               | Description                                                                              |
+| ------------------- | ---------------------------------------------------------------------------------------- |
+| `id`                | Unique identifier (lowercase, hyphens allowed; `start-os` is reserved for the OS itself) |
+| `title`             | Display name shown in UI                                                                 |
+| `license`           | SPDX identifier (`MIT`, `Apache-2.0`, `GPL-3.0`, etc.)                                   |
+| `packageRepo`       | URL to the StartOS package repository                                                    |
+| `upstreamRepo`      | URL to the original project repository                                                   |
+| `marketingUrl`      | URL for the project's main website                                                       |
+| `donationUrl`       | Donation URL or `null`                                                                   |
+| `description.short` | Locale object (see `manifest/i18n.ts`)                                                   |
+| `description.long`  | Locale object (see `manifest/i18n.ts`)                                                   |
+| `volumes`           | Storage volumes (usually `['main']`)                                                     |
+| `images`            | Docker image configuration (including `arch`)                                            |
+| `dependencies`      | Service dependencies                                                                     |
 
 ## License
 
@@ -167,11 +162,11 @@ COPY upstream-project/ .
 
 The `arch` field accepts these values:
 
-| Value       | Architecture     |
-|-------------|------------------|
-| `x86_64`    | Intel/AMD 64-bit |
-| `aarch64`   | ARM 64-bit       |
-| `riscv64`   | RISC-V 64-bit    |
+| Value     | Architecture     |
+| --------- | ---------------- |
+| `x86_64`  | Intel/AMD 64-bit |
+| `aarch64` | ARM 64-bit       |
+| `riscv64` | RISC-V 64-bit    |
 
 Most services support `['x86_64', 'aarch64']`. Only add `riscv64` if the upstream image actually supports it. The `ARCHES` variable in the Makefile must align (see [Makefile](./makefile.md)).
 
@@ -220,6 +215,21 @@ The registry stores a version's variants together and disambiguates them **by ha
 > ```
 >
 > In particular an `nvidia` variant must carry an NVIDIA `device` filter, not `[]` — `nvidiaContainer: true` wires up the GPU runtime but does **not** set a hardware requirement, so without the filter the NVIDIA variant is indistinguishable from the CPU fallback and one of the two fails to publish.
+
+#### Minimum RAM
+
+`hardwareRequirements.ram` is the memory floor below which StartOS will not offer the package. **It is compared against the host's total RAM in bytes.** StartOS records `MemTotal` in bytes and the check is a raw comparison against the number you declare — nothing in the SDK or the OS converts units on your behalf.
+
+```typescript
+hardwareRequirements: {
+  ram: 8 * 1024 ** 3, // 8 GiB
+},
+```
+
+> [!WARNING]
+> A value that reads as megabytes — `ram: 8192` — declares **8 KiB**, which every machine satisfies, so the requirement silently gates nothing. Write the byte count as an explicit power-of-two expression, so the unit is visible where the value is.
+
+Leave it unset when the service has no hard floor. Bear in mind that a box failing the check is not offered the package at all, so **raising the floor on an already-published package cuts existing installs below it off from further updates** — call that out in the release notes when you do it.
 
 ### Virtual Networking (VPN / kernel tun interfaces)
 

@@ -31,20 +31,24 @@ fn search_options(local_ip: Ipv4Addr) -> SearchOptions {
 
 /// Discover the IGD reachable from `local_ip` (SSDP M-SEARCH out that interface).
 pub async fn discover(local_ip: Ipv4Addr) -> Result<Gateway<Tokio>, Error> {
-    search_gateway(search_options(local_ip))
-        .await
-        .map_err(|e| Error::new(eyre!("UPnP gateway discovery failed: {e}"), ErrorKind::Network))
+    search_gateway(search_options(local_ip)).await.map_err(|e| {
+        Error::new(
+            eyre!("UPnP gateway discovery failed: {e}"),
+            ErrorKind::Network,
+        )
+    })
 }
 
-/// Map `external_port` -> `local_ip:internal_port` (TCP) on `gateway`.
+/// Map `external_port` -> `local_ip:internal_port` for `protocol` on `gateway`.
 pub async fn add_port(
     gateway: &Gateway<Tokio>,
+    protocol: PortMappingProtocol,
     external_port: u16,
     local_ip: Ipv4Addr,
     internal_port: u16,
 ) -> Result<(), Error> {
     let call = gateway.add_port(
-        PortMappingProtocol::TCP,
+        protocol,
         external_port,
         SocketAddr::new(IpAddr::V4(local_ip), internal_port),
         LEASE_DURATION,
@@ -61,9 +65,14 @@ pub async fn add_port(
     }
 }
 
-/// Remove the TCP mapping for `external_port`; a missing mapping is not an error.
-pub async fn remove_port(gateway: &Gateway<Tokio>, external_port: u16) -> Result<(), Error> {
-    let call = gateway.remove_port(PortMappingProtocol::TCP, external_port);
+/// Remove the mapping for `protocol` and `external_port`; a missing mapping is
+/// not an error.
+pub async fn remove_port(
+    gateway: &Gateway<Tokio>,
+    protocol: PortMappingProtocol,
+    external_port: u16,
+) -> Result<(), Error> {
+    let call = gateway.remove_port(protocol, external_port);
     match tokio::time::timeout(CONTROL_TIMEOUT, call).await {
         Ok(Ok(())) | Ok(Err(igd_next::RemovePortError::NoSuchPortMapping)) => Ok(()),
         Ok(Err(e)) => Err(Error::new(
@@ -90,11 +99,10 @@ pub(crate) fn is_wan_candidate(ip: Ipv4Addr) -> bool {
         || ip.octets()[0] == 0)
 }
 
-/// External IPv4 of the IGD reachable from `local_ip` (UPnP
-/// `GetExternalIPAddress`). `Ok(None)` means no usable public address — a
-/// private/CGNAT result is discarded so the caller falls back to an echoip query.
-pub async fn get_external_ipv4(local_ip: Ipv4Addr) -> Result<Option<Ipv4Addr>, Error> {
-    let gateway = discover(local_ip).await?;
+/// External IPv4 of an already-discovered `gateway` — the same as
+/// [`get_external_ipv4`] but reusing the caller's discovery, so one SSDP round
+/// yields both the UPnP capability verdict and the WAN address.
+pub async fn external_ipv4(gateway: &Gateway<Tokio>) -> Result<Option<Ipv4Addr>, Error> {
     match tokio::time::timeout(CONTROL_TIMEOUT, gateway.get_external_ip()).await {
         Ok(Ok(IpAddr::V4(ip))) if is_wan_candidate(ip) => Ok(Some(ip)),
         Ok(Ok(_)) => Ok(None),
@@ -107,6 +115,13 @@ pub async fn get_external_ipv4(local_ip: Ipv4Addr) -> Result<Option<Ipv4Addr>, E
             ErrorKind::Network,
         )),
     }
+}
+
+/// External IPv4 of the IGD reachable from `local_ip` (UPnP
+/// `GetExternalIPAddress`). `Ok(None)` means no usable public address — a
+/// private/CGNAT result is discarded so the caller falls back to an echoip query.
+pub async fn get_external_ipv4(local_ip: Ipv4Addr) -> Result<Option<Ipv4Addr>, Error> {
+    external_ipv4(&discover(local_ip).await?).await
 }
 
 #[cfg(test)]

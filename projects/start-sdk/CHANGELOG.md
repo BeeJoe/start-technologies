@@ -1,11 +1,211 @@
 # Changelog
 
-## 2.0.0 — StartOS 0.4.0-beta.10 (2026-06-07)
+## 2.0.10 — StartOS 0.4.0
+
+### Changed
+
+- **Minimum StartOS version bumped to `0.4.0`.** The 2.0 line has declared
+  `0.4.0-beta.10` since 2.0.0; 0.4.0 is the release that shipped, and it is what
+  a package built with this SDK now writes as its manifest `osVersion` — so the
+  registry offers that package to servers on 0.4.0 or later
+
+### Added
+
+- **`sdk.getRootCa(effects)` returns this server's root CA certificate.** A
+  service that dials an address the _user_ supplies — a monitor target, a
+  notification endpoint, a webhook — gets whatever address StartOS showed them,
+  which on the LAN is always HTTPS with a certificate chaining to this server's
+  root CA. No container trusts that root, so the dial fails verification, and
+  the only way to obtain the root was to mint a certificate you didn't want and
+  take the last link of the chain. Packages doing that by hand have taken the
+  wrong link: installing `[0]`, the leaf, as a trust anchor silently trusts
+  nothing while looking correct. `getRootCa` returns the root directly. See
+  [Trusting this server's certificates](https://docs.start9.com/packaging/service-to-service.html#trusting-this-servers-certificates)
+
+### Fixed
+
+- **`hardwareRequirements.ram` is documented in bytes, which is what StartOS
+  actually compares it against.** Its TSDoc claimed megabytes and its
+  `@example` showed `ram: 8192`, so packages following it declared an 8 KiB
+  floor that every machine satisfies and that therefore gated nothing. The
+  example now writes the value as `8 * 1024 ** 3`, and the packaging guide's
+  manifest page gained a Minimum RAM section covering the unit and the fact
+  that raising a floor on a published package cuts smaller hosts off from
+  updates. The same example's device filter is corrected too — it still showed
+  the `devices` / `pattern` / `patternDescription` shape replaced by `device`
+  and `DeviceFilter` in 2.0.0
+- **A `runUntilSuccess` timeout now says which daemon failed and why.** It
+  reported a bare list of ids, which cannot distinguish a daemon that is slow to
+  start from one that is crash-looping, and leaked the internal sentinel
+  daemon's id as if it were a component — a package whose Postgres died on every
+  start reported only this, after burning its full thirty-minute budget:
+
+  ```
+  Timed out waiting for postgres,upgrade,__RUN_UNTIL_SUCCESS
+  ```
+
+  The message now carries each un-ready daemon's health result and message, the
+  count and cause of any abnormal exits, and the budget that elapsed:
+
+  ```
+  Timed out after 1800000ms waiting for postgres (loading; 47 failed exit(s), last: docker-entrypoint.sh exited with code 1), upgrade (waiting; postgres)
+  ```
+
+  The sentinel is excluded — it depends on every other daemon, so it is never
+  ready when anything else isn't. A crash-looping daemon's exit error was
+  previously swallowed by the restart loop, so this is the only place it reaches
+  the caller: `Daemon` now retains it as `lastExitError` alongside a
+  `failedExits` count, and `HealthDaemon` appends the cause to its
+  `<id> daemon crashed` health message. Reporting the exit count next to the
+  current health matters because they disagree in exactly the case that hurts —
+  a `ready` check that returns `loading` on a failed probe keeps overwriting the
+  crash back to `loading` between restarts
+
+- **Package template cleanup.** Dropped the `alerts` manifest block, removed in
+  2.0.0, that the template still scaffolded, and the `hello-world` guard job
+  from `release.yml` / `tagAndRelease.yml`. Its workflows are now identical to
+  a real package's
+
+- **`make install` no longer announces "Initializing StartOS developer
+  environment…" on every run.** `check-init` guarded on
+  `~/.startos/developer.key.pem`, which start-cli 1.1.0 renamed to
+  `id.key.pem`, so the guard stopped matching and ran `start-cli init-key`
+  unconditionally. The condition is removed rather than repointed at the new
+  name: `init-key` already checks for an existing key and prints that it found
+  one, so the guard only duplicated that check while giving the filename a
+  second place to go stale. Cosmetic — no build ever failed over it
+
+## 2.0.9 — StartOS 0.4.0-beta.10 (2026-07-25)
+
+### Fixed
+
+- **`sdk.host.getBridgeAddress` now types its result as non-null when
+  `fallbackPort` is given.** `fallbackPort` exists precisely so the value is
+  never `null` — it resolves to `<osIp>:<fallbackPort>` while the dependency is
+  absent — but 2.0.8 typed every call `string | null` regardless, so the one
+  case the option exists for still forced callers to handle a `null` that cannot
+  occur. Assigning it straight to a non-nullable config field (Bitcoin's
+  `proxy`, LND's `tor.socks`) failed to compile. `getBridgeAddress` is now
+  overloaded on the presence of `fallbackPort`, matching the per-package helper
+  it replaced, which carried the same overload
+
+## 2.0.8 — StartOS 0.4.0-beta.10 (2026-07-25)
+
+### Added
+
+- **`sdk.host.getBridgeAddress` resolves the address another container reaches a
+  dependency at, replacing a helper every package was copy-pasting.** Packages
+  resolved a dependency by reading `bindings[<internalPort>].net.assignedPort`
+  and prefixing `getOsIp`. That field is raw metadata: only one of
+  `assignedPort` / `assignedSslPort` is ever populated, and which one is a
+  property of how the _dependency_ bound the port — a binding with `addSsl` and
+  `secure.ssl` frees `assignedPort` entirely and carries only
+  `assignedSslPort`, a passthrough binding is the reverse. So every caller was
+  implicitly asserting how its dependency terminates TLS, and resolved `null`
+  the day that changed, which is exactly what happened to LND's dependents when
+  LND moved its REST interface behind the OS reverse proxy. The new helper
+  resolves the binding's own derived address instead, which is correct under
+  either arrangement, and returns a `Watchable` so callers get the same
+  `const`/`once`/`watch`/`onChange`/`waitFor` strategies as `sdk.host.get`.
+  Because it keys off the binding rather than an exported interface, it also
+  resolves bridge-only ports such as tor's SOCKS proxy. `ssl` narrows a binding
+  that publishes both a plaintext and a TLS address (`protocol: 'http'`/`'ws'`,
+  or `secure: null` with `addSsl` — bitcoind's RPC is reachable at both);
+  `fallbackPort` keeps the value non-null while the dependency is absent, for a
+  flag that must be passed unconditionally against an allocator-guaranteed port
+
+## 2.0.7 — StartOS 0.4.0-beta.10 (2026-07-23)
+
+### Changed
+
+- **Backup and restore progress now weights the rsync transfer far above the
+  pre/post hooks, so the bar tracks the copy.** Every progress phase — the
+  optional pre/post hooks and each rsync sync — previously carried equal weight,
+  so on a typical single-volume package the instant pre-backup hook alone
+  accounted for a third of the bar while the rsync (the part that actually takes
+  time) was squeezed into a band too narrow for its fractional progress to move
+  the rounded total: it sat at 33% for the whole transfer and then jumped. Each
+  rsync sync phase now defaults to weight `80` (`DEFAULT_SYNC_WEIGHT`) and each
+  pre/post hook phase to `10` (`DEFAULT_HOOK_WEIGHT`), and a pre/post phase is
+  added only when that hook is actually set — so a hook-less backup is just its
+  rsync phase(s) and tracks the copy directly. All weights are overridable:
+  `setPreBackup` / `setPostBackup` / `setPreRestore` / `setPostRestore` take an
+  optional second `weight` argument, and a sync's weight is set via the new
+  `BackupSync.weight` field (or the `weight` key on `addVolume`'s options).
+  Pre/post hooks now receive a `PhaseHandle` for their own phase rather than a
+  full sub-tracker.
+- **`createBackup` no longer marks its own progress tracker complete.** The
+  StartOS backup harness owns per-package completion and holds the phase open
+  until the package's `.s9pk` image has finished writing to the backup target,
+  so a package reports 100% and "still working" during the image write rather
+  than a premature "done". Restore is driven by the init harness and was already
+  finalized externally, so it is unchanged in this respect.
+
+## 2.0.6 — StartOS 0.4.0-beta.10 (2026-07-17)
+
+### Fixed
+
+- **`make` no longer fails in a git repository that has no index yet.** `s9pk.mk` listed `$(GIT_DIR)/index` as an unconditional prerequisite of the s9pk targets, but `git init` does not create an index until the first `git add` — so make aborted with `No rule to make target '.git/index', needed by '<id>_x86_64.s9pk'` before the pack step ever ran. This hit every freshly scaffolded package: `s9pk init-package` runs `git init` and stages nothing, and the generated `TODO.md` sends the packager straight to `make` as their first build, while the workflow guide tells them to iterate with a dirty tree and commit once at the end. The existing `$(if $(GIT_DIR),…)` guard asked only whether a repo exists, not whether these files do. `GIT_DEPS` now filters through `$(wildcard …)`, so a missing `HEAD` or `index` drops out of the prerequisite list instead of halting the build. Nothing else needed to change: `s9pk pack` already handles a commit-less repo, reporting `No git commit found in . — building without a commit hash in the manifest` and packing with a null `gitHash`. These entries are rebuild triggers, not build requirements
+
+## 2.0.5 — StartOS 0.4.0-beta.10 (2026-07-13)
+
+### Fixed
+
+- **ExVer range operations no longer ignore the downstream revision.** `compareVersionRangePoints` and `adjacentVersionRangePoints` compared the upstream version twice instead of comparing the downstream on the second pass, so two points that shared an upstream but differed in downstream (`1.0.0:3` vs `1.0.0:15`) collapsed into a single point. Everything built on the truth tables inherited the error — `normalize()` silently dropped the lower of the two, and `intersects()` / `satisfiable()` could answer on a merged point. `=1.0.0:0 || =1.0.0:1` normalized to `=1.0.0:1`.
+
+  The visible consequence was in packed manifests: `canMigrateFrom` / `canMigrateTo` are derived from the version graph and normalized, so any package declaring an `other` version sharing `current`'s upstream advertised a range narrower than the truth (`mempool` at `3.3.1:15` with `other: [3.3.1:3]` shipped `canMigrateFrom: <=3.3.1:3` rather than `<=3.3.1:15`). No upgrade actually broke — StartOS resolves migrations through the version graph rather than gating on this field, and the registry index does not yet populate `sourceVersion` from it — but the manifests were wrong and would have become load-bearing the moment either changed. The Rust implementation derives its point ordering and was never affected.
+
+## 2.0.4 — StartOS 0.4.0-beta.10 (2026-07-13)
+
+### Fixed
+
+- **`Daemons.dynamic` now composes with `setupMain` instead of replacing it.** `main` is always `sdk.setupMain(...)`; what varies is the `DaemonBuildable` you return from it — a static `sdk.Daemons.of(...)` chain, or the reconciler for a runtime-varying daemon set. The OS ABI has always said as much (`ExpectedExports.main` returns a `DaemonBuildable`, and **both** `Daemons` and `DaemonsReconciler` implement it), but two signatures made that composition unwritable: `setupMain` demanded a `Daemons` rather than the ABI's `DaemonBuildable`, and `Daemons.dynamic(fn)` returned a `main` export — burying the `DaemonsReconciler` it constructs inside a closure. The only shape that compiled was the wrong one: replace `main` with `Daemons.dynamic(...)`, then nest `Daemons.of()` inside its builder. Packages adopting dynamic daemons were funnelled straight into it. Now:
+  - **Breaking — `Daemons.dynamic` takes `effects` and returns the reconciler:** `sdk.Daemons.dynamic(effects, fn): DaemonsReconciler` (was `sdk.Daemons.dynamic(fn): main`). Return it from `setupMain`.
+  - `setupMain`'s callback is widened to the ABI: it accepts any `T.DaemonBuildable`.
+
+  Migration — wrap the builder in `setupMain` and pass `effects`:
+
+  ```typescript
+  // before (2.0.0–2.0.3)
+  export const main = sdk.Daemons.dynamic(async ({ effects }) => {
+    return sdk.Daemons.of(effects).addDaemon(...)
+  })
+
+  // after
+  export const main = sdk.setupMain(async ({ effects }) => {
+    return sdk.Daemons.dynamic(effects, async ({ effects }) => {
+      return sdk.Daemons.of(effects).addDaemon(...)
+    })
+  })
+  ```
+
+  Reconcile semantics are unchanged: inside the builder, `constRetry` reruns-and-reconciles rather than firing `effects.restart()`, so a watched-state change touches only the daemons whose `configHash` moved and the service stays `running`. Reported in [#3470](https://github.com/Start9Labs/start-technologies/issues/3470)
+
+## 2.0.3 — StartOS 0.4.0-beta.10 (2026-07-08)
+
+### Fixed
+
+- **A dependency-gated daemon no longer wedges permanently after its dependency's readiness flaps.** Since 2.0.0's hold/release refactor, `Daemon.term()` unconditionally destroyed the daemon's `SubContainer`, and `HealthDaemon` calls `term()` every time a dependency goes not-ready. When the dependency's health then recovered, the daemon's `start()` called `hold()` on the already-destroyed subcontainer and threw `cannot hold subcontainer …: already destroyed`. Because that `start()` was un-awaited, it surfaced as an unhandled rejection and the daemon never recovered — the health check reported "not ready" / "daemon crashed" indefinitely, curable only by a full package restart. Any service with a dependency-gated daemon was exposed (e.g. `c-lightning`'s and BTCPay's web UIs). The 2.0.0 refactor had removed the `destroySubcontainer` flag that previously kept the subcontainer alive across a stop, collapsing "pause" and "teardown" into one destroying `term()`. This restores the distinction under the hold/release model: `Daemon` gains a non-destroying **`stop()`** (aborts the loop, terminates the process, releases the hold — but leaves the `SubContainer` intact so a later `start()` re-holds it), and `HealthDaemon.changeRunning(false)` now calls `stop()` for a dependency-driven pause. `Daemon.term()` (used by `HealthDaemon.term()` and `Daemons.term()` for genuine teardown) still releases the hold and destroys the subcontainer. `HealthDaemon.changeRunning(true)` additionally awaits and catches `start()`, so a start failure becomes a health failure rather than a silent unhandled-rejection wedge
+- **Dependency-driven pause/resume transitions are now serialized.** `HealthDaemon.updateStatus()` runs fire-and-forget from dependency watchers, so a fast readiness flap (not-ready → ready before the pause's `stop()` finished draining the process) could overlap the pause with the following resume. Because `Daemon.start()` is a no-op while the previous run loop is still winding down, the resume's `start()` could silently do nothing and leave the daemon stopped while the health session believed it was running — the same class of wedge, reachable via a fast flap. `HealthDaemon` now applies pause/resume transitions on an in-order promise chain, so a resume always waits for the in-flight pause to complete before re-holding and restarting
+
+## 2.0.2 — StartOS 0.4.0-beta.10 (2026-07-08)
+
+### Changed
+
+- **`s9pk.mk` checks build tools before packing, not just before `install`.** The `check-deps` target now runs as an order-only prerequisite of the build targets, so a missing `start-cli`, `npm`, `git`, or `jq` fails fast with a clear message instead of surfacing partway through a build. `git` is required because `s9pk pack` embeds the repository's commit hash (`git rev-parse HEAD`) in the manifest; `jq` is required because the post-build summary reads the manifest with it (without it the summary would print blank fields). The "not found" messages now link to the current setup guide (`https://docs.start9.com/packaging/environment-setup.html`) instead of a dead pre-reorg URL.
+
+## 2.0.1 — StartOS 0.4.0-beta.10 (2026-07-03)
+
+### Fixed
+
+- **The bundled lint runner (`lint.mjs`) now works in the published package.** 2.0.0 shipped `lint.mjs` and `eslint.config.base.mjs` but only `@start9labs/start-core` was in `bundleDependencies`, so npm never packed the `eslint` / `typescript-eslint` that `lint.mjs` imports — every consumer's build gate (`node node_modules/@start9labs/start-sdk/lint.mjs`, run by `s9pk.mk`) crashed with `ERR_MODULE_NOT_FOUND`. `eslint` and `typescript-eslint` are moved from `devDependencies` to `dependencies` and added to `bundleDependencies`, so the lint toolchain ships inside the SDK's own `node_modules` (as `lint.mjs` already documented). `typescript` stays a peer resolved from the consumer — guaranteed present because `s9pk.mk` runs `tsc` (`npm run check`) before the lint step. Packages need no change beyond taking 2.0.1
+
+## 2.0.0 — StartOS 0.4.0-beta.10 (2026-07-03)
 
 ### Added
 
 - `addSsl.upstreamCertValidation` controls how the OS reverse proxy validates the container's TLS certificate when it **rewraps SSL** (`addSsl` set AND the protocol's `secure.ssl === true`, e.g. `https`/`wss` — the OS terminates the client's TLS and opens a fresh TLS connection to the container). Omitted (the default) validates against the StartOS root CA, unchanged from before. `'disable'` skips validation entirely — for containers serving a self-signed cert on the trusted internal bridge. `{ certificate: '<pem>' }` validates against a supplied PEM certificate/chain instead of the root CA. Set it through `bindPort`'s `addSsl`, e.g. `multi.bindPort(443, { protocol: 'https', addSsl: { upstreamCertValidation: 'disable' } })`. Exported as `UpstreamCertValidation`
-- **Init progress reporting via `FullProgressTracker` (auto-syncing).** Service code never calls a progress effect — and usually never calls `sync()` either. The init harness builds one root `FullProgressTracker` with the effects context baked in and passes it to every init handler as a third argument: `setupOnInit(async (effects, kind, progress) => …)`. Each handler adds its own phases (with its own names) to the shared tracker, unaware of the others. Add phases and update them (`phase.setTotal/setDone/complete`); **every update auto-reports in the background** to the "Installing" / "Updating" phase of the install. Auto-sync is coalesced — at most one report in flight and one queued, so a burst of updates collapses to the latest snapshot and promises never stack up. `tracker.sync()` is now an explicit *flush* (no args) that resolves once in-flight + queued reports have drained; the harness calls it before returning. Migrations receive the same tracker via `migrations.up`/`down`/`other` opts (`async ({ effects, progress }) => …`). A handler that didn't keep what `addPhase`/`addNestedPhase` returned can fetch it back by name with `tracker.getPhase(name)` (a `PhaseHandle` or, for a nested phase, a `FullProgressTracker`). `FullProgressTracker` is exported from `utils` (`utils.FullProgressTracker`). The underlying `effects.setInitProgress` / `effects.setBackupProgress` remain but are internal
+- **Init progress reporting via `FullProgressTracker` (auto-syncing).** Service code never calls a progress effect — and usually never calls `sync()` either. The init harness builds one root `FullProgressTracker` with the effects context baked in and passes it to every init handler as a third argument: `setupOnInit(async (effects, kind, progress) => …)`. Each handler adds its own phases (with its own names) to the shared tracker, unaware of the others. Add phases and update them (`phase.setTotal/setDone/complete`); **every update auto-reports in the background** to the "Installing" / "Updating" phase of the install. Auto-sync is coalesced — at most one report in flight and one queued, so a burst of updates collapses to the latest snapshot and promises never stack up. `tracker.sync()` is now an explicit _flush_ (no args) that resolves once in-flight + queued reports have drained; the harness calls it before returning. Migrations receive the same tracker via `migrations.up`/`down`/`other` opts (`async ({ effects, progress }) => …`). A handler that didn't keep what `addPhase`/`addNestedPhase` returned can fetch it back by name with `tracker.getPhase(name)` (a `PhaseHandle` or, for a nested phase, a `FullProgressTracker`). `FullProgressTracker` is exported from `utils` (`utils.FullProgressTracker`). The underlying `effects.setInitProgress` / `effects.setBackupProgress` remain but are internal
 - **Backup/restore progress mirrors the same structure.** `Backups.createBackup` and `restoreBackup` build an auto-syncing `FullProgressTracker` instead of calling the effect directly. The pre/post backup and restore hooks (`setPreBackup`, `setPostBackup`, `setPreRestore`, `setPostRestore`) now receive a `FullProgressTracker` as a second argument so custom work (DB dumps, etc.) can report sub-progress; restore progress flows through the init tracker since restore runs during init. Existing hooks that ignore the new argument keep working
 - `PgDumpConfig.readyTimeout` / `MysqlDumpConfig.readyTimeout` make the post-start readiness wait in `Backups.withPgDump` / `Backups.withMysqlDump` configurable (milliseconds, matching the `gracePeriod` / `sigtermTimeout` convention; defaults 60000 Postgres / 30000 MySQL/MariaDB — unchanged from before). Each dump helper boots a throwaway DB server against the volume and polls until it accepts connections; a large or crash-recovering data directory can exceed the old hard-coded ceiling and fail the backup with "failed to become ready within N seconds" even though the live daemon — which gets a far longer `gracePeriod` — starts fine. Raise it to match, e.g. `withMysqlDump({ …, readyTimeout: 180000 })`
 - `userspaceFilesystems` and `virtualNetworking` manifest flags split the former `nestedRuntime` flag into its two independent device grants. `userspaceFilesystems` mounts `/dev/fuse` for fuse-overlayfs storage (the rootless driver behind a nested OCI runtime). `virtualNetworking` mounts `/dev/net/tun` so a service can bring up kernel tun interfaces for VPN / WireGuard / tun-class workloads. The service LXC already retains `CAP_NET_ADMIN` within its user namespace via the standard `userns.conf` include, so no extra capability machinery is required — only the device node was missing
@@ -22,23 +222,23 @@
 
 ### Changed
 
-- **Breaking — `sdk.SubContainer.of(...)` is now lazy by default.** Returns a `SubContainerLazy<M>` *synchronously* (no `Promise<>` wrapper) whose filesystem is materialized on first method call. `rootfs` / `guid` / `subpath()` on the unified `SubContainer<M>` interface widen to `T | Promise<T>`; the concrete classes narrow (`SubContainerEager` to `T`, `SubContainerLazy` to `Promise<T>`). Code holding the generic interface must `await` those accessors; code holding `SubContainerEager` keeps sync access. Migration: most callers already use only async methods (`.exec`, `.writeFile`, `.spawn`, `.launch`) and need no change beyond dropping the redundant `await` on `SubContainer.of(...)`; callers that read `.rootfs` / `.guid` / `.subpath()` add an `await` or switch to `sdk.SubContainer.eager(...)`. The lazy default enables `Daemons.dynamic`'s "leave alone is load-bearing" guarantee: unchanged daemons across reconciles never materialize a fresh subcontainer
+- **Breaking — `sdk.SubContainer.of(...)` is now lazy by default.** Returns a `SubContainerLazy<M>` _synchronously_ (no `Promise<>` wrapper) whose filesystem is materialized on first method call. `rootfs` / `guid` / `subpath()` on the unified `SubContainer<M>` interface widen to `T | Promise<T>`; the concrete classes narrow (`SubContainerEager` to `T`, `SubContainerLazy` to `Promise<T>`). Code holding the generic interface must `await` those accessors; code holding `SubContainerEager` keeps sync access. Migration: most callers already use only async methods (`.exec`, `.writeFile`, `.spawn`, `.launch`) and need no change beyond dropping the redundant `await` on `SubContainer.of(...)`; callers that read `.rootfs` / `.guid` / `.subpath()` add an `await` or switch to `sdk.SubContainer.eager(...)`. The lazy default enables `Daemons.dynamic`'s "leave alone is load-bearing" guarantee: unchanged daemons across reconciles never materialize a fresh subcontainer
 - **Breaking — `SubContainerOwned` / `SubContainerRc` collapsed into `SubContainerEager`.** The reference-counted handle (`SubContainerRc`, `.rc()`, `.isOwned()`) is replaced by an internal hold-count on the unified `SubContainer`. Multiple consumers each call `sub.hold()` (returns a release fn); the container's `destroyFs` fires when `destroy()` has been called and the last hold is released, in either order. `Daemon.start()` takes its own hold for the daemon's lifetime and releases it on `term()`. The `destroySubcontainer` flag on `Daemon.term` / `HealthDaemon.term` is gone — `Daemons.term()` calls `destroy()` on each unique subcontainer in its entries, and the hold machinery handles sharing safely
 - **Breaking — `Daemon.sharesSubcontainerWith` removed.** Two `Daemon`s share a subcontainer when constructed with the same `SubContainer` instance (compare `daemon.subcontainer.identity`). Daemons' internal "should I destroy this subc?" branching is gone — it always calls `destroy()`, and hold-count decides
 - **Breaking — `Daemons` is record-then-materialize.** `.addDaemon()` / `.addOneshot()` / `.addHealthCheck()` append a recorded entry without constructing `HealthDaemon` or `Daemon`. `Daemons.build()` walks the entries and constructs the chain in one pass. Functionally identical for `setupMain` callers — the original "construct on addDaemon, kick off on build" timing is invisible because nothing actually starts until `build()`'s `updateStatus()` calls anyway. The change is load-bearing for `Daemons.dynamic`, which needs to diff entries without paying the cost of building them eagerly each reconcile
 - **Breaking — `SubContainer` adds `identity: symbol`.** Sync, stable handle preserved across `SubContainerLazy.eager()` materialization. Use for sharing checks that must work before materialization (replaces `Daemon.sharesSubcontainerWith`'s previous `guid` comparison, which couldn't fire pre-materialization)
 - Container-runtime updated: `SubContainerOwned` → `SubContainer.eager`; `SubContainerRc<M>` → `SubContainer<M>`; `daemon.subcontainerRc()` → `daemon.subcontainer`
-- **zod bumped `4.3.6` → `4.4.3`** (it was emergency-pinned to exactly `4.3.6` in 1.4.1). zod 4.4.0 tightened object parsing so a required key wrapped in `.catch()` threw `"expected nonoptional, received undefined"` on a *missing* key — which broke the SDK at import (`actions/input/inputSpecConstants.ts` parses its SMTP shapes at module load) and the `.merge({})` seed pattern that every FileHelper-based package relies on. zod **4.4.3** (#5939, #5941) restores the 4.3.6 behavior, so the pin is exactly `4.4.3` — **not** `^4.4.0`, which would admit the still-broken 4.4.0–4.4.2. The `zExport` loose-object patch and FileHelper are unaffected (verified against the shipped build). Downstream: packages taking SDK 2.0 inherit zod 4.4.3 transitively and need **no** schema change for the catch-on-missing case; the other cumulative 4.4.0 fixes (stricter `z.base64()` / `z.httpUrl()`, `.merge()` throwing on schemas with refinements, materialized tuple defaults) may surface as `tsc` errors only in packages that use those specific APIs
+- **zod bumped `4.3.6` → `4.4.3`** (it was emergency-pinned to exactly `4.3.6` in 1.4.1). zod 4.4.0 tightened object parsing so a required key wrapped in `.catch()` threw `"expected nonoptional, received undefined"` on a _missing_ key — which broke the SDK at import (`actions/input/inputSpecConstants.ts` parses its SMTP shapes at module load) and the `.merge({})` seed pattern that every FileHelper-based package relies on. zod **4.4.3** (#5939, #5941) restores the 4.3.6 behavior, so the pin is exactly `4.4.3` — **not** `^4.4.0`, which would admit the still-broken 4.4.0–4.4.2. The `zExport` loose-object patch and FileHelper are unaffected (verified against the shipped build). Downstream: packages taking SDK 2.0 inherit zod 4.4.3 transitively and need **no** schema change for the catch-on-missing case; the other cumulative 4.4.0 fixes (stricter `z.base64()` / `z.httpUrl()`, `.merge()` throwing on schemas with refinements, materialized tuple defaults) may surface as `tsc` errors only in packages that use those specific APIs
 - **TypeScript bumped `^5.9.3` → `^6.0.3`, and the build migrated off the deprecated `moduleResolution: "node"` (node10).** TS 6.0 deprecates node10 resolution (removed entirely in TS 7.0). The SDK's own `base` / `package` tsconfigs now use `moduleResolution: "bundler"` (keeping `module: "commonjs"` — emitted CJS is byte-identical and the published `.d.ts` API surface is unchanged) plus an explicit `rootDir` (TS 6.0 changed the default to the tsconfig directory). The shipped `tsconfig.base.json` that packages `extends` now uses `target: "ES2022"`, `moduleResolution: "bundler"` + `module: "preserve"`, `types: ["node"]`, and `rootDir: "${configDir}"`, so a package needs only `extends` + `include` and nothing else: node globals are not auto-included under bundler resolution; the prior `ES2018` target predated `Object.fromEntries` and other ES2019+ lib APIs packages rely on; and TS 6.0 requires an explicit `rootDir` for the `ncc` emit (the `${configDir}` template resolves to each extending package's own directory). Putting the fleet on modern resolution before TS 7, no SDK source changes were required
 - **Breaking — `input-not-matches` task input split into `accept` (a list) and `set`.** `TaskInput` was `{ kind: 'partial', value }`, where the single `value` both decided whether the task was satisfied (the current action input had to be a superset of it) and prefilled the action form when the user ran the task. It is now `{ kind: 'partial', accept: DeepPartial<Input>[], set: DeepPartial<Input> }`: the task is satisfied when the current input matches **any** entry in `accept`, and when none match the task is shown and prefills `set`. This lets a package accept several already-good configurations while still pushing a single recommended value when none of them hold — e.g. accept either of two valid network modes, but set the preferred one otherwise. The cross-package critical-conflict guard now activates only when the input conflicts with **every** `accept` entry. Migration: replace `value: X` with `accept: [X], set: X` for identical behavior to 1.x. Already-published s9pks built against the pre-2.0 SDK keep working without a rebuild — the StartOS host still accepts the legacy `{ kind: 'partial', value }` payload over the effects socket and normalizes it to `accept: [value], set: value`
-- **Breaking (internal) — zod loose-object handling unified onto a single `z` export; the global `require.cache` patch was removed.** The SDK makes `z.object()` preserve unknown keys (so `FileHelper` models that declare only a subset of a config file round-trip the rest). This was previously done by *two* mechanisms: a shadow `z` (the one exported from `@start9labs/start-sdk`) plus a walk over Node's `require.cache` that mutated the raw `zod` module so the SDK's own internals — which `import { z } from 'zod'` — also got loose objects. The cache walk was fragile (it duck-typed the module cache and silently no-op'd outside CommonJS). It is removed: the SDK's internal modules now import `z` from the shadow directly, and `FileHelper`'s structured factories (`json` / `yaml` / `toml` / `ini` / `env` / `xml`) now deep-loosen their shape explicitly via `z.deepLoose(shape)`, making unknown-key preservation a property of the file-model boundary rather than a global default. **Packaging code is unaffected:** `import { z } from '@start9labs/start-sdk'` still yields loose-by-default objects and every package's file models keep preserving undeclared on-disk keys. The only behavioral change is for code that imported `z` directly from `zod` and relied on the SDK to have patched it — it must import `z` from `@start9labs/start-sdk` instead. No StartOS packaging code does this (only vendored upstream application sources import `zod` directly, and they use their own copy)
+- **Breaking (internal) — zod loose-object handling unified onto a single `z` export; the global `require.cache` patch was removed.** The SDK makes `z.object()` preserve unknown keys (so `FileHelper` models that declare only a subset of a config file round-trip the rest). This was previously done by _two_ mechanisms: a shadow `z` (the one exported from `@start9labs/start-sdk`) plus a walk over Node's `require.cache` that mutated the raw `zod` module so the SDK's own internals — which `import { z } from 'zod'` — also got loose objects. The cache walk was fragile (it duck-typed the module cache and silently no-op'd outside CommonJS). It is removed: the SDK's internal modules now import `z` from the shadow directly, and `FileHelper`'s structured factories (`json` / `yaml` / `toml` / `ini` / `env` / `xml`) now deep-loosen their shape explicitly via `z.deepLoose(shape)`, making unknown-key preservation a property of the file-model boundary rather than a global default. **Packaging code is unaffected:** `import { z } from '@start9labs/start-sdk'` still yields loose-by-default objects and every package's file models keep preserving undeclared on-disk keys. The only behavioral change is for code that imported `z` directly from `zod` and relied on the SDK to have patched it — it must import `z` from `@start9labs/start-sdk` instead. No StartOS packaging code does this (only vendored upstream application sources import `zod` directly, and they use their own copy)
 
-- **Breaking — service interfaces moved onto their binding; `sdk.serviceInterface.*` accessors replaced by `sdk.host.*`.** A service interface is no longer a flat entry on `PackageDataEntry.serviceInterfaces` (that field is removed) — it now lives on the binding that exported it: `Host.bindings[internalPort].interfaces` (a `ServiceInterfaceId`-keyed map; a port may back several) for single-port `Origin.export`, and `Host.bindingRanges[internalStartPort].interface` for a range's `RangeOrigin.export`. Correspondingly the SDK drops `sdk.serviceInterface.{getOwn, get, getAllOwn, getAll}` and adds `sdk.host.getOwn(effects, hostId)` / `sdk.host.get(effects, { hostId, packageId? })`, which return the reactive `Host` (same `const`/`once`/`watch`/`onChange`/`waitFor` read strategies). Both accessors take an optional `map` (and `eq`, default deep-equal) selector — matching the old `sdk.serviceInterface.*` — so `const()` can re-run on a change to a single child attr of the host rather than wholesale on the entire host. Reach an interface by walking the host — `Object.values(host.bindings).flatMap(b => Object.values(b.interfaces))` (or `host.bindingRanges[start].interface`) — then format an address with `utils.filledAddress(host, iface.addressInfo)`. The win: a binding's host is now reachable even when it exports no interface.
+- **Breaking — service interfaces moved onto their binding; `sdk.serviceInterface.*` accessors replaced by `sdk.host.*`.** A service interface is no longer a flat entry on `PackageDataEntry.serviceInterfaces` (that field is removed) — it now lives on the binding that exported it: `Host.bindings[internalPort].interfaces` (a `ServiceInterfaceId`-keyed map; a port may back several) for single-port `Origin.export`, and `Host.bindingRanges[internalStartPort].interface` for a range's `RangeOrigin.export`. Correspondingly the SDK drops `sdk.serviceInterface.{getOwn, get, getAllOwn, getAll}` and adds `sdk.host.getOwn(effects, hostId)` / `sdk.host.get(effects, { hostId, packageId? })`, which return the reactive `Host` (same `const`/`once`/`watch`/`onChange`/`waitFor` read strategies). Both accessors take an optional `map` (and `eq`, default deep-equal) selector — matching the old `sdk.serviceInterface.*` — so `const()` can re-run on a change to a single child attr of the host rather than wholesale on the entire host. Reach an interface by walking the host — `Object.values(host.bindings).flatMap(b => Object.values(b.interfaces))` (or `host.bindingRanges[start].interface`). Each single-port interface's `addressInfo` comes back **already filled** — carrying the `filter`/`format`/`nonLocal`/`public`/`bridge`/`toUrl` helpers directly (e.g. `iface.addressInfo.format('url')`), so no separate `utils.filledAddress(host, …)` call is needed. The win: a binding's host is now reachable even when it exports no interface.
 
 ### Fixed
 
 - Every materialized `SubContainer` is now torn down when the effects context that created it leaves (`onLeaveContext`), instead of lingering until GC eventually runs its `Drop` finalizer. This closes the gap where a subcontainer created in `main` (or any context) but never attached to a daemon — e.g. an ad-hoc setup/bootstrap container — could outlive its context. One cleanup hook is armed per effects object and each subcontainer removes itself on `destroy()`, so repeated short-lived containers (`withTemp`, per-poll health checks) don't accumulate registrations; teardown still routes through the hold-aware `destroy()`, so a container held by a running daemon defers until the daemon's own shutdown releases it
-- `filledAddress` (and the `getServiceInterface` / `getServiceInterfaces` helpers built on it) now excludes mDNS (`.local`) addresses whose gateways have no enabled LAN IP. An mDNS name resolves only via a LAN IP on a shared gateway, so when every such IP is disabled the `.local` address is unreachable — it was previously still reported as available, which let the StartOS UI offer (and launch) an unresolvable `.local` URL even though the address table showed it disabled. The rule is now exported as `utils.mdnsResolvable(hostname, enabledHostnames)`, shared between the SDK's reachable-address filter and the UI's address table so the two stay consistent
+- `filledAddress` now excludes mDNS (`.local`) addresses whose gateways have no enabled LAN IP. An mDNS name resolves only via a LAN IP on a shared gateway, so when every such IP is disabled the `.local` address is unreachable — it was previously still reported as available, which let the StartOS UI offer (and launch) an unresolvable `.local` URL even though the address table showed it disabled. The rule is now exported as `utils.mdnsResolvable(hostname, enabledHostnames)`, shared between the SDK's reachable-address filter and the UI's address table so the two stay consistent
 
 ### Removed
 
@@ -47,7 +247,7 @@
 - `SubContainerOwned`, `SubContainerRc`, `SubContainer.rc()`, `SubContainer.isOwned()` — folded into the unified `SubContainerEager` / `SubContainerLazy` with hold/release lifecycle
 - `Daemon.subcontainerRc()`, `Daemon.markManaged()`, `Daemon.sharesSubcontainerWith()` — superseded by `daemon.subcontainer` (public readonly) and the hold-count model
 - `destroySubcontainer` option on `Daemon.term` / `HealthDaemon.term` — `Daemons` calls `subcontainer.destroy()` for each unique subc on shutdown, and the hold-count decides actual timing
-- **Breaking — `sdk.serviceInterface.{getOwn, get, getAllOwn, getAll}` and `PackageDataEntry.serviceInterfaces`** — interfaces moved onto their binding; use `sdk.host.{getOwn, get}` and walk the host's bindings (see _Changed_)
+- **Breaking — `sdk.serviceInterface.{getOwn, get, getAllOwn, getAll}` and `PackageDataEntry.serviceInterfaces`** — interfaces moved onto their binding; use `sdk.host.{getOwn, get}` and walk the host's bindings (see _Changed_). The underlying `utils.getServiceInterface` / `utils.getServiceInterfaces` helpers and the `GetServiceInterface` reader class are removed with them — `sdk.host.get`/`getOwn` returns a host whose interface `addressInfo`s are already filled (`filter`/`format`/`nonLocal`/`public`/`bridge`/`toUrl`). The `get_service_interface` **RPC/effect is retained** for backwards compatibility with packages built against older SDKs
 
 ## 1.5.3 — StartOS 0.4.0-beta.9 (2026-05-20)
 

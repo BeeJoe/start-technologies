@@ -7,7 +7,7 @@ use clap::builder::ValueParserFactory;
 use clap::{CommandFactory, FromArgMatches, Parser, value_parser};
 use color_eyre::eyre::eyre;
 use exver::VersionRange;
-use futures::StreamExt;
+use futures::{FutureExt, StreamExt};
 use imbl_value::{InternedString, json};
 use itertools::Itertools;
 use reqwest::Url;
@@ -181,8 +181,8 @@ pub async fn install(
 #[serde(rename_all = "camelCase")]
 pub struct SideloadParams {
     #[ts(skip)]
-    #[serde(rename = "__Auth_session")]
-    session: Option<InternedString>,
+    #[serde(rename = "__Auth_signer")]
+    signer: Option<InternedString>,
 }
 
 #[derive(Deserialize, Serialize, TS)]
@@ -196,14 +196,16 @@ pub struct SideloadResponse {
 #[instrument(skip_all)]
 pub async fn sideload(
     ctx: RpcContext,
-    SideloadParams { session }: SideloadParams,
+    SideloadParams { signer }: SideloadParams,
 ) -> Result<SideloadResponse, Error> {
-    let (err_send, mut err_recv) = oneshot::channel::<Error>();
+    let (err_send, err_recv) = oneshot::channel::<Error>();
+    // fused: the select! loop below re-polls this, which panics on a bare oneshot once resolved
+    let mut err_recv = err_recv.fuse();
     let progress = Guid::new();
     let progress_tracker = FullProgressTracker::new();
     let (upload, file) = upload(
         &ctx,
-        session.clone(),
+        signer.clone(),
         progress_tracker.add_phase("Uploading".into(), Some(100)),
     )
     .await?;
@@ -213,7 +215,7 @@ pub async fn sideload(
             progress.clone(),
             RpcContinuation::ws_authed(
                 &ctx,
-                session,
+                signer,
                 |mut ws| async move {
                     if let Err(e) = async {
                         loop {
@@ -244,6 +246,7 @@ pub async fn sideload(
                                         ws.close_result(Err::<&str, _>(e.clone_output())).await?;
                                         return Err(e)
                                     }
+                                    // Err = sender dropped, install succeeded; keep streaming
                                 }
                             }
                         }

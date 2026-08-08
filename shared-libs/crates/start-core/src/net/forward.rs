@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write;
-use std::net::{IpAddr, Ipv4Addr, SocketAddrV4};
+use std::net::{IpAddr, Ipv4Addr, SocketAddrV4, SocketAddrV6};
 use std::sync::{Arc, Weak};
 use std::time::Duration;
 
@@ -26,11 +26,17 @@ use crate::{GatewayId, HOST_IP};
 
 pub const START9_BRIDGE_IFACE: &str = "lxcbr0";
 const EPHEMERAL_PORT_START: u16 = 49152;
-// vhost.rs:89 — not allowed: <=1024, >=32768, 5355, 5432, 9050, 6010, 9051, 5353
-const RESTRICTED_PORTS: &[u16] = &[5353, 5355, 5432, 6010, 9050, 9051];
+// Reserved by/for host daemons (mDNS 5353, LLMNR 5355, postgres 5432, X11
+// forwarding 6010). 9050/9051 are claimable on purpose: they were the 0.3.x
+// host tor daemon's reservation (gone in 0.4.x), and the tor service now binds
+// 9050 without exporting an interface so its SOCKS proxy sits at a stable
+// 10.0.3.1:9050 on the bridge — do not re-restrict them.
+const RESTRICTED_PORTS: &[u16] = &[5353, 5355, 5432, 6010];
 
-fn is_restricted(port: u16) -> bool {
-    port <= 1024 || RESTRICTED_PORTS.contains(&port)
+/// Only a privileged claimant — StartOS itself, which runs as root — may take a
+/// port below 1024. A host daemon already holds RESTRICTED_PORTS, whoever asks.
+fn may_claim(port: u16, privileged: bool) -> bool {
+    !RESTRICTED_PORTS.contains(&port) && (privileged || port > 1024)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -50,6 +56,9 @@ impl std::fmt::Display for ForwardRequirements {
     }
 }
 
+/// Allocated external ports. The flag marks the ports one of our own TLS
+/// listeners answers on — terminating (`add_ssl`) or SNI-passthrough (self-TLS)
+/// — so a domain can be advertised there and SNI-routed.
 #[derive(Debug, Deserialize, Serialize)]
 pub struct AvailablePorts(BTreeMap<u16, bool>);
 impl AvailablePorts {
@@ -70,19 +79,24 @@ impl AvailablePorts {
             ErrorKind::Network,
         ))
     }
-    /// Allocate a specific port; `None` if taken or restricted.
-    pub fn try_alloc(&mut self, port: u16, ssl: bool) -> Option<u16> {
-        if is_restricted(port) || self.0.contains_key(&port) {
+    /// Allocate a specific port; `None` if taken or not the caller's to claim.
+    pub fn try_alloc(&mut self, port: u16, ssl: bool, privileged: bool) -> Option<u16> {
+        if !may_claim(port, privileged) || self.0.contains_key(&port) {
             return None;
         }
         self.0.insert(port, ssl);
         Some(port)
     }
 
-    /// Allocate `count` contiguous non-ssl ports from `start`. All-or-nothing:
-    /// if any port is taken or restricted, allocates none and `Err`s on the
-    /// first offender.
-    pub fn try_alloc_range(&mut self, start: u16, count: u16) -> Result<(), Error> {
+    /// Allocate `count` contiguous non-ssl ports from `start`. All-or-nothing: if
+    /// any port is taken or not the caller's to claim, allocates none and `Err`s
+    /// on the first offender.
+    pub fn try_alloc_range(
+        &mut self,
+        start: u16,
+        count: u16,
+        privileged: bool,
+    ) -> Result<(), Error> {
         if count == 0 {
             return Err(Error::new(
                 eyre!("port range must contain at least one port"),
@@ -96,7 +110,7 @@ impl AvailablePorts {
             )
         })?;
         for port in start..=end {
-            if is_restricted(port) {
+            if !may_claim(port, privileged) {
                 return Err(Error::new(
                     eyre!("port {port} in range {start}-{end} is restricted"),
                     ErrorKind::InvalidRequest,
@@ -316,16 +330,21 @@ pub async fn nft_ensure_base() -> Result<(), Error> {
         .arg(include_str!("startos-base.nft"))
         .invoke(ErrorKind::Network)
         .await?;
+    Command::new("nft")
+        .arg(include_str!("startos-base-v6.nft"))
+        .invoke(ErrorKind::Network)
+        .await?;
     Ok(())
 }
 
-/// `nft -a list chain ip startos <chain>` output, empty on error.
-async fn nft_list_chain(chain: &str) -> String {
+/// `nft -a list chain <family> startos <chain>` output, empty on error.
+/// `family` is `ip` (IPv4) or `ip6`.
+async fn nft_list_chain(family: &str, chain: &str) -> String {
     let out = Command::new("nft")
         .arg("-a")
         .arg("list")
         .arg("chain")
-        .arg("ip")
+        .arg(family)
         .arg("startos")
         .arg(chain)
         .invoke(ErrorKind::Network)
@@ -336,13 +355,18 @@ async fn nft_list_chain(chain: &str) -> String {
 
 /// Rules in `chain` tagged with `comment`, as `(handle, body)` where `body` is
 /// the rule text preceding the `comment "..."` token.
-async fn nft_rules_with_comment(chain: &str, comment: &str) -> Vec<(u32, String)> {
+async fn nft_rules_with_comment(family: &str, chain: &str, comment: &str) -> Vec<(u32, String)> {
     let needle = format!("comment \"{comment}\"");
-    nft_list_chain(chain)
+    nft_list_chain(family, chain)
         .await
         .lines()
         .filter_map(|line| {
-            let handle = line.rsplit_once("# handle ")?.1.trim().parse::<u32>().ok()?;
+            let handle = line
+                .rsplit_once("# handle ")?
+                .1
+                .trim()
+                .parse::<u32>()
+                .ok()?;
             let body = line.split_once(&needle)?.0.trim().to_owned();
             Some((handle, body))
         })
@@ -352,7 +376,7 @@ async fn nft_rules_with_comment(chain: &str, comment: &str) -> Vec<(u32, String)
 /// Comment tags in `chain` of `table ip startos` beginning with `prefix`. Used
 /// to prune orphaned per-device/per-subnet rules whose owner no longer exists.
 pub(crate) async fn nft_comments_with_prefix(chain: &str, prefix: &str) -> Vec<String> {
-    nft_list_chain(chain)
+    nft_list_chain("ip", chain)
         .await
         .lines()
         .filter_map(|line| {
@@ -380,12 +404,35 @@ pub async fn nft_rule(
     prepend: bool,
     rule: &str,
 ) -> Result<(), Error> {
+    nft_rule_family("ip", chain, comment, undo, prepend, rule).await
+}
+
+/// Like [`nft_rule`] but against `table ip6 startos` (the IPv6 base). Used for
+/// the v6 forward-chain filter rules (established-accept, bridge egress).
+pub async fn nft_rule_v6(
+    chain: &str,
+    comment: &str,
+    undo: bool,
+    prepend: bool,
+    rule: &str,
+) -> Result<(), Error> {
+    nft_rule_family("ip6", chain, comment, undo, prepend, rule).await
+}
+
+async fn nft_rule_family(
+    family: &str,
+    chain: &str,
+    comment: &str,
+    undo: bool,
+    prepend: bool,
+    rule: &str,
+) -> Result<(), Error> {
     nft_ensure_base().await?;
 
     const MAX_ATTEMPTS: usize = 5;
     let mut last_err = None;
     for attempt in 1..=MAX_ATTEMPTS {
-        let existing = nft_rules_with_comment(chain, comment).await;
+        let existing = nft_rules_with_comment(family, chain, comment).await;
 
         // Already converged: nothing to undo, or exactly the desired rule present.
         if undo {
@@ -402,13 +449,17 @@ pub async fn nft_rule(
         // no window where the rule is missing or duplicated.
         let mut script = String::new();
         for (handle, _) in &existing {
-            writeln!(script, "delete rule ip startos {chain} handle {handle}").unwrap();
+            writeln!(
+                script,
+                "delete rule {family} startos {chain} handle {handle}"
+            )
+            .unwrap();
         }
         if !undo {
             let verb = if prepend { "insert" } else { "add" };
             writeln!(
                 script,
-                "{verb} rule ip startos {chain} {rule} comment \"{comment}\""
+                "{verb} rule {family} startos {chain} {rule} comment \"{comment}\""
             )
             .unwrap();
         }
@@ -450,9 +501,24 @@ impl PortForwardController {
                     "ct state established,related accept",
                 )
                 .await?;
+                // Same for the v6 forward chain (drop policy) so reply packets of
+                // a non-SSL GUA forward aren't dropped.
+                nft_rule_v6(
+                    "forward",
+                    "base-established",
+                    false,
+                    false,
+                    "ct state established,related accept",
+                )
+                .await?;
                 Command::new("sysctl")
                     .arg("-w")
                     .arg("net.ipv4.ip_forward=1")
+                    .invoke(ErrorKind::Network)
+                    .await?;
+                Command::new("sysctl")
+                    .arg("-w")
+                    .arg("net.ipv6.conf.all.forwarding=1")
                     .invoke(ErrorKind::Network)
                     .await?;
                 Ok::<_, Error>(())
@@ -617,7 +683,7 @@ impl InterfaceForwardEntry {
         // Only public (WAN-facing) forwards need this; private subnets are already
         // reachable. A `count > 1` range is one PCP PORT_SET request (RFC 7753),
         // skipped on gateways without it (UPnP/NAT-PMP can't map ranges).
-        let mut want = BTreeMap::<(Ipv4Addr, u16), (u16, u16, Vec<Ipv4Addr>)>::new();
+        let mut want = BTreeMap::<(Ipv4Addr, u16), (u16, u16, Vec<(IpAddr, Option<u32>)>)>::new();
 
         for (gw_id, info) in ip_info.iter() {
             if let Some(ip_info) = &info.ip_info {
@@ -632,11 +698,13 @@ impl InterfaceForwardEntry {
                             if rc.strong_count() == 0 {
                                 continue;
                             }
+
+                            // The WAN is never secure: an insecure exposure is never public,
+                            // so it still serves the LAN but never the public internet.
+                            let public = reqs.public_gateways.contains(gw_id) && reqs.secure;
                             if !reqs.secure && !info.secure() {
                                 continue;
                             }
-
-                            let public = reqs.public_gateways.contains(gw_id);
                             let src_filter = if public {
                                 None
                             } else if reqs.private_ips.contains(&IpAddr::V4(ip)) {
@@ -681,13 +749,19 @@ impl InterfaceForwardEntry {
         self.forwards.retain(|addr, _| keep.contains(addr));
 
         for (ip, port) in self.mapped.iter().filter(|key| !want.contains_key(key)) {
-            pmap.remove(*ip, *port);
+            pmap.remove(IpAddr::V4(*ip), *port);
         }
         for ((ip, external), (count, internal, gateways)) in &want {
             if *count > 1 {
-                pmap.ensure_range(*ip, *external, *internal, *count, gateways.clone());
+                pmap.ensure_range(
+                    IpAddr::V4(*ip),
+                    *external,
+                    *internal,
+                    *count,
+                    gateways.clone(),
+                );
             } else {
-                pmap.ensure(*ip, *external, *internal, gateways.clone());
+                pmap.ensure(IpAddr::V4(*ip), *external, *internal, gateways.clone());
             }
         }
         self.mapped = want.into_keys().collect();
@@ -854,6 +928,10 @@ enum InterfaceForwardCommand {
 
 pub struct InterfacePortForwardController {
     req: mpsc::UnboundedSender<InterfaceForwardCommand>,
+    /// A clone of the shared `PortMapController`, so this controller owns the
+    /// upstream pinhole of a v6 GUA DNAT ([`Self::forward6`]) the same way the v4
+    /// path does inside [`InterfaceForwardEntry::update`].
+    pmap: PortMapController,
     _thread: NonDetachingJoinHandle<()>,
 }
 
@@ -863,6 +941,7 @@ impl InterfacePortForwardController {
         pmap: PortMapController,
     ) -> Self {
         let port_forward = PortForwardController::new();
+        let v6_pmap = pmap.clone();
 
         let (req_send, mut req_recv) = mpsc::unbounded_channel::<InterfaceForwardCommand>();
         let thread = NonDetachingJoinHandle::from(tokio::spawn(async move {
@@ -897,8 +976,50 @@ impl InterfacePortForwardController {
 
         Self {
             req: req_send,
+            pmap: v6_pmap,
             _thread: thread,
         }
+    }
+
+    /// DNAT a host GUA to a container ULA (v6 counterpart of a v4 forward) and, for
+    /// a WAN forward (`src_filter == None`), open its upstream firewall pinhole —
+    /// so the DNAT and its pinhole are owned together, as in the v4 path.
+    /// `gateways` are the PCP candidates for the pinhole (ignored for a LAN-only
+    /// forward). Best-effort pinhole: it is a fire-and-forget port-map request.
+    pub async fn forward6(
+        &self,
+        source: SocketAddrV6,
+        target: SocketAddrV6,
+        target_prefix: u8,
+        src_filter: Option<IpNet>,
+        gateways: Vec<(IpAddr, Option<u32>)>,
+    ) -> Result<(), Error> {
+        forward6(source, target, target_prefix, src_filter.as_ref()).await?;
+        if src_filter.is_none() && !gateways.is_empty() {
+            self.pmap.ensure(
+                IpAddr::V6(*source.ip()),
+                source.port(),
+                source.port(),
+                gateways,
+            );
+        }
+        Ok(())
+    }
+
+    /// Tear down a [`Self::forward6`] — the nft DNAT and, for a WAN forward, its
+    /// upstream pinhole.
+    pub async fn unforward6(
+        &self,
+        source: SocketAddrV6,
+        target: SocketAddrV6,
+        target_prefix: u8,
+        src_filter: Option<IpNet>,
+    ) -> Result<(), Error> {
+        unforward6(source, target, target_prefix, src_filter.as_ref()).await?;
+        if src_filter.is_none() {
+            self.pmap.remove(IpAddr::V6(*source.ip()), source.port());
+        }
+        Ok(())
     }
 
     pub async fn add(
@@ -1010,6 +1131,55 @@ async fn unforward(
     Ok(())
 }
 
+/// The lxcbr0 IPv6 bridge subnet (a ULA), assigned by lxc-net (see
+/// `debian/postinst`). Containers get a SLAAC address in it.
+pub(crate) const START9_BRIDGE_V6_SUBNET: &str = "fd00:3::/64";
+
+/// IPv6 counterpart of [`forward`]: DNAT `source` (a host GUA:port) to `target`
+/// (the container's ULA:port) via the `forward-port6` script. `src_filter`
+/// restricts inbound to a LAN v6 subnet (a LAN-only GUA); `None` is WAN.
+pub(crate) async fn forward6(
+    source: SocketAddrV6,
+    target: SocketAddrV6,
+    target_prefix: u8,
+    src_filter: Option<&IpNet>,
+) -> Result<(), Error> {
+    let mut cmd = Command::new("/usr/lib/startos/scripts/forward-port6");
+    cmd.env("sip", source.ip().to_string())
+        .env("dip", target.ip().to_string())
+        .env("dprefix", target_prefix.to_string())
+        .env("sport", source.port().to_string())
+        .env("dport", target.port().to_string())
+        .env("bridge_subnet", START9_BRIDGE_V6_SUBNET);
+    if let Some(subnet) = src_filter {
+        cmd.env("src_subnet", subnet.to_string());
+    }
+    cmd.invoke(ErrorKind::Network).await?;
+    Ok(())
+}
+
+/// Tear down a forward created by [`forward6`]. Passes the same identifying env
+/// so the script recomputes the matching comment tag.
+pub(crate) async fn unforward6(
+    source: SocketAddrV6,
+    target: SocketAddrV6,
+    target_prefix: u8,
+    src_filter: Option<&IpNet>,
+) -> Result<(), Error> {
+    let mut cmd = Command::new("/usr/lib/startos/scripts/forward-port6");
+    cmd.env("UNDO", "1")
+        .env("sip", source.ip().to_string())
+        .env("dip", target.ip().to_string())
+        .env("dprefix", target_prefix.to_string())
+        .env("sport", source.port().to_string())
+        .env("dport", target.port().to_string());
+    if let Some(subnet) = src_filter {
+        cmd.env("src_subnet", subnet.to_string());
+    }
+    cmd.invoke(ErrorKind::Network).await?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1017,39 +1187,45 @@ mod tests {
     #[test]
     fn try_alloc_range_basic() {
         let mut ports = AvailablePorts::new();
-        assert!(ports.try_alloc_range(40000, 100).is_ok());
+        assert!(ports.try_alloc_range(40000, 100, false).is_ok());
         // All 100 ports should now be allocated
         for p in 40000..40100 {
-            assert!(ports.try_alloc(p, false).is_none(), "port {p} should be taken");
+            assert!(
+                ports.try_alloc(p, false, false).is_none(),
+                "port {p} should be taken"
+            );
         }
-        assert!(ports.try_alloc(40100, false).is_some());
+        assert!(ports.try_alloc(40100, false, false).is_some());
     }
 
     #[test]
     fn try_alloc_range_zero_count_is_error() {
         let mut ports = AvailablePorts::new();
-        assert!(ports.try_alloc_range(40000, 0).is_err());
+        assert!(ports.try_alloc_range(40000, 0, false).is_err());
     }
 
     #[test]
     fn try_alloc_range_overflow_is_error() {
         let mut ports = AvailablePorts::new();
-        assert!(ports.try_alloc_range(65500, 100).is_err());
+        assert!(ports.try_alloc_range(65500, 100, false).is_err());
     }
 
     #[test]
     fn try_alloc_range_restricted_port_is_error_and_atomic() {
         let mut ports = AvailablePorts::new();
         // Range straddling a restricted port (1024 and below) hard-fails…
-        assert!(ports.try_alloc_range(1020, 10).is_err());
+        assert!(ports.try_alloc_range(1020, 10, false).is_err());
         // …and nothing was allocated.
-        assert!(ports.try_alloc(2000, false).is_some());
+        assert!(ports.try_alloc(2000, false, false).is_some());
         ports.free([2000]);
-        assert!(ports.try_alloc_range(1020, 10).is_err());
+        assert!(ports.try_alloc_range(1020, 10, false).is_err());
         for p in 1020..1030 {
             // None of them are reserved either
-            if !is_restricted(p) {
-                assert!(ports.try_alloc(p, false).is_some(), "port {p} unexpectedly taken");
+            if may_claim(p, false) {
+                assert!(
+                    ports.try_alloc(p, false, false).is_some(),
+                    "port {p} unexpectedly taken"
+                );
             }
         }
     }
@@ -1057,10 +1233,24 @@ mod tests {
     #[test]
     fn try_alloc_range_collision_is_error_and_atomic() {
         let mut ports = AvailablePorts::new();
-        ports.try_alloc(40050, false).unwrap();
-        assert!(ports.try_alloc_range(40000, 100).is_err());
+        ports.try_alloc(40050, false, false).unwrap();
+        assert!(ports.try_alloc_range(40000, 100, false).is_err());
         // Other ports in the requested range were NOT allocated as a side effect.
-        assert!(ports.try_alloc(40000, false).is_some());
-        assert!(ports.try_alloc(40099, false).is_some());
+        assert!(ports.try_alloc(40000, false, false).is_some());
+        assert!(ports.try_alloc(40099, false, false).is_some());
+    }
+
+    #[test]
+    fn only_the_os_may_claim_privileged_ports() {
+        let mut ports = AvailablePorts::new();
+        assert!(ports.try_alloc(443, true, false).is_none());
+        assert_eq!(ports.try_alloc(443, true, true), Some(443));
+        assert_eq!(ports.try_alloc(80, false, true), Some(80));
+        // …but a claim is still a claim: the OS holds it against everyone.
+        assert!(ports.try_alloc(443, true, true).is_none());
+
+        // A host daemon's port is nobody's to take, root or not.
+        assert!(ports.try_alloc(5432, false, true).is_none());
+        assert!(ports.try_alloc_range(1020, 10, true).is_ok());
     }
 }

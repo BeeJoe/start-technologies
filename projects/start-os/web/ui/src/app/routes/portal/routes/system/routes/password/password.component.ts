@@ -1,20 +1,20 @@
 import { Component, inject, viewChild } from '@angular/core'
 import { toSignal } from '@angular/core/rxjs-interop'
 import { RouterLink } from '@angular/router'
-import { verify } from '@start9labs/argon2'
-import { ErrorService, i18nKey, i18nPipe } from '@start9labs/shared'
+import {
+  ErrorService,
+  i18nKey,
+  i18nPipe,
+  TaskService,
+} from '@start9labs/shared'
 import { ISB } from '@start9labs/start-core'
 import { TuiButton, TuiNotificationService, TuiTitle } from '@taiga-ui/core'
-import { TuiNotificationMiddleService } from '@taiga-ui/kit'
 import { TuiHeader } from '@taiga-ui/layout'
-import { PatchDB } from 'patch-db-client'
 import { from } from 'rxjs'
 import { FormComponent } from 'src/app/routes/portal/components/form.component'
 import { ApiService } from 'src/app/services/api/embassy-api.service'
-import { DataModel } from 'src/app/services/patch-db/data-model'
 import { TitleDirective } from 'src/app/services/title.service'
 import { configBuilderToSpec } from 'src/app/utils/configBuilderToSpec'
-import { getServerInfo } from 'src/app/utils/get-server-info'
 
 @Component({
   template: `
@@ -65,9 +65,8 @@ import { getServerInfo } from 'src/app/utils/get-server-info'
 })
 export default class SystemPasswordComponent {
   private readonly alerts = inject(TuiNotificationService)
-  private readonly loader = inject(TuiNotificationMiddleService)
+  private readonly tasks = inject(TaskService)
   private readonly errorService = inject(ErrorService)
-  private readonly patch = inject<PatchDB<DataModel>>(PatchDB)
   private readonly api = inject(ApiService)
   private readonly i18n = inject(i18nPipe)
 
@@ -81,10 +80,9 @@ export default class SystemPasswordComponent {
     },
   ]
 
-  private async resetPassword({
+  private resetPassword({
     newPassword,
     newPasswordConfirm,
-    oldPassword,
   }: ReturnType<typeof this.passwordSpec>['_TYPE']) {
     let error: i18nKey | null = null
 
@@ -96,45 +94,24 @@ export default class SystemPasswordComponent {
       error = 'New password must be less than 65 characters'
     }
 
-    // confirm current password is correct
-    const { passwordHash } = await getServerInfo(this.patch)
-
-    try {
-      verify(passwordHash, oldPassword)
-    } catch (e) {
-      error = 'Current password is invalid'
-    }
-
     if (error) {
       this.errorService.handleError(error)
       return
     }
 
-    const loader = this.loader.open('Saving').subscribe()
-
-    try {
-      await this.api.resetPassword({ oldPassword, newPassword })
+    this.tasks.run(async () => {
+      await this.api.resetPassword({ newPassword })
       this.form()?.form.reset()
       this.alerts
         .open(this.i18n.transform('Password changed'), {
           appearance: 'positive',
         })
         .subscribe()
-    } catch (e: any) {
-      this.errorService.handleError(e)
-    } finally {
-      loader.unsubscribe()
-    }
+    }, 'Saving')
   }
 
   passwordSpec() {
     return ISB.InputSpec.of({
-      oldPassword: ISB.Value.text({
-        name: this.i18n.transform('Current Password')!,
-        required: true,
-        default: null,
-        masked: true,
-      }),
       newPassword: ISB.Value.text({
         name: this.i18n.transform('New Password')!,
         required: true,

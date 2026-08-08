@@ -33,12 +33,13 @@ use crate::util::serde::{deserialize_from_str, serialize_display};
 use crate::{Error, ErrorKind, ResultExt as _};
 
 pub mod actor;
+pub mod btrfs;
 pub mod clap;
+pub mod clone;
 pub mod collections;
 pub mod cpupower;
 pub mod crypto;
 pub mod data_url;
-pub mod direct_io;
 pub mod future;
 pub mod http_reader;
 pub mod io;
@@ -56,6 +57,7 @@ pub mod serde;
 pub mod sync;
 pub mod tui;
 pub mod version;
+pub mod writeback;
 
 pub use clap::FromStrParser;
 pub use data_url::DataUrl;

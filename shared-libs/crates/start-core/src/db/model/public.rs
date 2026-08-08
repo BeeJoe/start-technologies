@@ -134,7 +134,6 @@ impl Public {
                     restart: None,
                 },
                 unread_notification_count: 0,
-                password_hash: account.password.clone(),
                 pubkey: ssh_key::PublicKey::from(&account.ssh_key)
                     .to_openssh()
                     .unwrap(),
@@ -192,7 +191,6 @@ pub struct ServerInfo {
     pub status_info: ServerStatus,
     #[ts(type = "number")]
     pub unread_notification_count: u64,
-    pub password_hash: String,
     pub pubkey: String,
     pub ca_fingerprint: String,
     #[serde(default)]
@@ -264,12 +262,92 @@ pub struct NetworkInterfaceInfo {
     pub name: Option<InternedString>,
     pub secure: Option<bool>,
     pub ip_info: Option<Arc<IpInfo>>,
+    // Pre-release dev DBs persisted this as `null` for auto-discovered gateways;
+    // coerce absent/null to the default so those nodes still load.
     #[serde(default, rename = "type")]
-    pub gateway_type: Option<GatewayType>,
+    #[serde(deserialize_with = "deserialize_null_default")]
+    #[ts(rename = "type")]
+    pub gateway_type: GatewayType,
+    #[serde(default)]
+    pub port_map: GatewayPortMapCapabilities,
+    /// The gateway's resolver accepted our last RFC 2136 DNS UPDATE — evidence
+    /// from the update client (`net::dns_update`). A WireGuard gateway only
+    /// serves the injected `<hostname>.local` while this is `supported`, so
+    /// only then is the name listed on it.
+    #[serde(default)]
+    pub dns_update: CapabilityVerdict,
+}
+
+/// Whether the gateway reachable via this interface speaks each port-mapping
+/// protocol, as last probed. Fed by the watcher's periodic probes and by
+/// failure/success evidence from the port-map client, and synced to the db so a
+/// chronically uncooperative gateway is visible (and skipped) instead of being
+/// retried forever.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize, Serialize, HasModel, TS)]
+#[serde(rename_all = "camelCase")]
+#[model = "Model<Self>"]
+#[ts(export)]
+pub struct GatewayPortMapCapabilities {
+    pub pcp: CapabilityVerdict,
+    pub nat_pmp: CapabilityVerdict,
+    pub upnp: CapabilityVerdict,
+    /// The PCP server answers ANNOUNCE with the Start9 capability marker, i.e.
+    /// it honors OPTION_HOSTNAME (SNI demux).
+    pub pcp_hostname: CapabilityVerdict,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize, Serialize, HasModel, TS)]
+#[serde(rename_all = "camelCase")]
+#[model = "Model<Self>"]
+#[ts(export)]
+pub struct CapabilityVerdict {
+    /// `None` = never probed.
+    pub supported: Option<bool>,
+    #[ts(type = "string | null")]
+    pub at: Option<DateTime<Utc>>,
+}
+
+impl CapabilityVerdict {
+    pub fn supported(supported: bool) -> Self {
+        Self {
+            supported: Some(supported),
+            at: Some(Utc::now()),
+        }
+    }
+
+    /// The verdict if it is still inside its trust window at `now` — a yes is
+    /// trusted longer than a no (a gateway that once spoke a protocol rarely
+    /// stops; a refusal deserves periodic re-probing).
+    pub fn fresh(&self, now: DateTime<Utc>) -> Option<bool> {
+        let (supported, at) = (self.supported?, self.at?);
+        let ttl = if supported {
+            chrono::TimeDelta::hours(1)
+        } else {
+            chrono::TimeDelta::minutes(5)
+        };
+        (now - at < ttl).then_some(supported)
+    }
+}
+
+fn deserialize_null_default<'de, D, T>(deserializer: D) -> Result<T, D::Error>
+where
+    T: Default + Deserialize<'de>,
+    D: serde::Deserializer<'de>,
+{
+    Ok(Option::<T>::deserialize(deserializer)?.unwrap_or_default())
 }
 impl NetworkInterfaceInfo {
     pub fn secure(&self) -> bool {
-        self.secure.unwrap_or_else(|| self.is_intrinsically_secure())
+        self.secure
+            .unwrap_or_else(|| self.is_intrinsically_secure())
+    }
+
+    /// A WireGuard tunnel interface (e.g. a StartTunnel or StartWRT gateway).
+    pub fn is_wireguard(&self) -> bool {
+        matches!(
+            self.ip_info.as_ref().and_then(|i| i.device_type),
+            Some(NetworkInterfaceType::Wireguard)
+        )
     }
 
     // lo and lxcbr0 (the only Loopback/Bridge interfaces on StartOS) never leave the
@@ -399,4 +477,40 @@ pub struct ServerSpecs {
     pub cpu: String,
     pub disk: String,
     pub memory: String,
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    fn gateway_type_of(type_field: serde_json::Value) -> GatewayType {
+        serde_json::from_value::<NetworkInterfaceInfo>(serde_json::json!({ "type": type_field }))
+            .unwrap()
+            .gateway_type
+    }
+
+    #[test]
+    fn gateway_type_defaults_and_tolerates_legacy_null() {
+        // Absent `type` (fresh installs / interfaces older than the field) -> default.
+        assert_eq!(
+            serde_json::from_value::<NetworkInterfaceInfo>(serde_json::json!({}))
+                .unwrap()
+                .gateway_type,
+            GatewayType::InboundOutbound
+        );
+        // Pre-release dev DBs persisted `type: null` for auto-discovered gateways;
+        // it must still load (else the whole db fails to deserialize on boot).
+        assert_eq!(
+            gateway_type_of(serde_json::Value::Null),
+            GatewayType::InboundOutbound
+        );
+        assert_eq!(
+            gateway_type_of(serde_json::json!("inbound-outbound")),
+            GatewayType::InboundOutbound
+        );
+        assert_eq!(
+            gateway_type_of(serde_json::json!("outbound-only")),
+            GatewayType::OutboundOnly
+        );
+    }
 }

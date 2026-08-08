@@ -19,7 +19,7 @@ use std::path::Path;
 use std::time::{Instant, SystemTime};
 
 use backupfs::{BackupFS, BackupFSOptions};
-use fuser::{MountOption, Session};
+use fuser::{Config, MountOption, Session, SessionACL};
 
 const MIB: usize = 1024 * 1024;
 
@@ -39,12 +39,15 @@ fn with_mount(data: &Path, body: impl FnOnce(&Path)) {
             password: "benchmark".to_string(),
             file_size_padding: None,
             readonly: false,
-            idmapped_root: vec![],
+            idmapped: false,
         })
         .unwrap();
-        let mut session = Session::new(fs, &mnt_dir, &opt).unwrap();
+        let mut config = Config::default();
+        config.mount_options = opt;
+        config.acl = SessionACL::All;
+        let mut session = Session::new(fs, &mnt_dir, &config).unwrap();
         tx.send(session.unmount_callable()).unwrap();
-        session.run().unwrap();
+        session.spawn().unwrap().join().unwrap();
     });
     let mut umount = rx.recv().unwrap();
     body(mnt.path());
@@ -97,7 +100,11 @@ fn main() {
             f.sync_all().unwrap();
         }
         let dt = t.elapsed();
-        println!("sequential write : {:7.1} MiB/s  ({} MiB)", mbps(total, dt), total / MIB);
+        println!(
+            "sequential write : {:7.1} MiB/s  ({} MiB)",
+            mbps(total, dt),
+            total / MIB
+        );
 
         // ── 2. Large sequential read ──
         let t = Instant::now();
@@ -114,7 +121,11 @@ fn main() {
             assert_eq!(read, total);
         }
         let dt = t.elapsed();
-        println!("sequential read  : {:7.1} MiB/s  ({} MiB)", mbps(total, dt), total / MIB);
+        println!(
+            "sequential read  : {:7.1} MiB/s  ({} MiB)",
+            mbps(total, dt),
+            total / MIB
+        );
 
         // ── 3. Many small files ──
         let dir = mnt.join("small");

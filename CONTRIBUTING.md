@@ -2,7 +2,7 @@
 
 This guide is for contributing to the Start9 monorepo (StartOS and the other products that live here). If you are interested in packaging a service for StartOS, visit the [packaging guide](https://docs.start9.com/packaging). If you are interested in promoting, providing technical support, creating tutorials, or helping in other ways, please visit the [Start9 website](https://start9.com/contribute).
 
-This file covers what is **common to the whole monorepo** — the shared toolchain, branch policy, the cross-cutting test/format entry points, and code/commit conventions. **Per-product system dependencies, build targets, and deploy steps live in each product's own `CONTRIBUTING.md`** (e.g. [`projects/start-os/CONTRIBUTING.md`](projects/start-os/CONTRIBUTING.md) for building the StartOS OS image).
+This file covers what is **common to the whole monorepo** — the shared toolchain, branch policy, the cross-cutting test/format entry points, and code/commit conventions. **Per-product system dependencies, build targets, deploy steps, and release procedure live in that product's own scope** — its `AGENTS.md` (e.g. [`projects/start-sdk/AGENTS.md`](projects/start-sdk/AGENTS.md)), or its `CONTRIBUTING.md` in scopes not yet migrated (e.g. [`projects/start-os/CONTRIBUTING.md`](projects/start-os/CONTRIBUTING.md) for building the StartOS OS image). See [`AGENTS.md`](AGENTS.md) for that migration and the reasoning behind it.
 
 ## Documentation
 
@@ -13,7 +13,7 @@ The repo root's docs split across four files:
 - `CONTRIBUTING.md` — this file; how to contribute
 - `AGENTS.md` — AI-developer/agent operating rules (`CLAUDE.md` is a one-line `@AGENTS.md` import)
 
-**These docs must be kept up to date.** When you change project structure, conventions, build process, or product context, update the relevant file(s) in the same change — do not defer. Each product and shared library keeps its own `README.md`/`ARCHITECTURE.md`/`CONTRIBUTING.md`/`AGENTS.md` for what is specific to it — see `projects/*/`, `shared-libs/crates/start-core/`, `shared-libs/ts-modules/`, and `projects/start-os/container-runtime/`.
+**These docs must be kept up to date.** When you change project structure, conventions, build process, or product context, update the relevant file(s) in the same change — do not defer. Each product and shared library keeps its own `README.md`/`ARCHITECTURE.md`/`AGENTS.md` for what is specific to it (most still carry a `CONTRIBUTING.md` too, which is being folded into that scope's `AGENTS.md` — see [`AGENTS.md`](AGENTS.md)) — see `projects/*/`, `shared-libs/crates/start-core/`, `shared-libs/ts-modules/`, and `projects/start-os/container-runtime/`.
 
 ## Collaboration
 
@@ -43,7 +43,7 @@ sudo apt install -y containerd.io docker-ce docker-ce-cli docker-compose-plugin
 sudo usermod -aG docker $USER
 sudo su $USER
 
-# Rust (the nightly toolchain is used for formatting)
+# Rust (stable; rustfmt runs in a pinned-nightly container — see Formatting)
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh # proceed with default installation
 
 # Node.js 24 (required by Angular 22's CLI)
@@ -67,30 +67,31 @@ The repo has four integration branches. `master` is for the current release — 
 
 This is a monorepo: one root Cargo workspace and one Angular workspace, both rooted at the repo root. The root `Makefile` is a thin orchestrator (it `include`s each product's `build.mk`) — run `make` with no target to print a help summary; there is no default target. Run build commands from the repo root.
 
-- **A single Rust bin:** `cargo build -p <crate> --bin <bin>` — crates are `start-os` (`startbox` / `start-container`), `start-cli`, `start-registry` (`registrybox`), and `start-tunnel` (`tunnelbox`).
+- **A single Rust bin:** `cargo build -p <crate> --bin <bin>` — crates are `start-os` (`startbox` / `start-container`), `start-cli`, `start-registry` (`registrybox`), `start-tunnel` (`tunnelbox`), and `startwrt-core` (`startwrt`).
 - **A whole product** (bins + UI + packaging) has its own `make` targets and build instructions in its `CONTRIBUTING.md`:
 
-| Product | Primary build target | Build & deploy docs |
-| --- | --- | --- |
-| StartOS (OS image, UIs, device deploy) | `make startos` | [`projects/start-os/CONTRIBUTING.md`](projects/start-os/CONTRIBUTING.md) |
-| start-cli | `make cli` | [`projects/start-cli/CONTRIBUTING.md`](projects/start-cli/CONTRIBUTING.md) |
-| start-registry | `make registry` | [`projects/start-registry/CONTRIBUTING.md`](projects/start-registry/CONTRIBUTING.md) |
-| StartTunnel | `make tunnel` | [`projects/start-tunnel/CONTRIBUTING.md`](projects/start-tunnel/CONTRIBUTING.md) |
-| Start SDK | `make bundle` (from `projects/start-sdk`) | [`projects/start-sdk/CONTRIBUTING.md`](projects/start-sdk/CONTRIBUTING.md) |
-| Web (shared libs + app UIs) | `npm run build:ui` | [`shared-libs/ts-modules/CONTRIBUTING.md`](shared-libs/ts-modules/CONTRIBUTING.md) |
+| Product                                | Primary build target                                                                                          | Build & deploy docs                                                                  |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| StartOS (OS image, UIs, device deploy) | `make start-os`                                                                                               | [`projects/start-os/CONTRIBUTING.md`](projects/start-os/CONTRIBUTING.md)             |
+| start-cli                              | `make start-cli`                                                                                              | [`projects/start-cli/CONTRIBUTING.md`](projects/start-cli/CONTRIBUTING.md)           |
+| start-registry                         | `make start-registry`                                                                                         | [`projects/start-registry/CONTRIBUTING.md`](projects/start-registry/CONTRIBUTING.md) |
+| StartTunnel                            | `make start-tunnel`                                                                                           | [`projects/start-tunnel/CONTRIBUTING.md`](projects/start-tunnel/CONTRIBUTING.md)     |
+| StartWRT                               | `make start-wrt` (`make start-wrt-image` for the full OpenWrt image — hours, fetches the pinned OpenWrt tree) | [`projects/start-wrt/CONTRIBUTING.md`](projects/start-wrt/CONTRIBUTING.md)           |
+| Start SDK                              | `make bundle` (from `projects/start-sdk`)                                                                     | [`projects/start-sdk/AGENTS.md`](projects/start-sdk/AGENTS.md)                       |
+| Web (shared libs + app UIs)            | `npm run build:ui`                                                                                            | [`shared-libs/ts-modules/CONTRIBUTING.md`](shared-libs/ts-modules/CONTRIBUTING.md)   |
 
-`make ts-bindings` regenerates the TypeScript bindings from the Rust types, and `make clean` removes all compiled artifacts. Cross-layer changes (Rust → bindings → SDK → web/runtime) are described in [ARCHITECTURE.md](ARCHITECTURE.md#build-pipeline).
+`make start-core-ts-bindings` regenerates the TypeScript bindings from the Rust types, and `make clean` removes all compiled artifacts. Cross-layer changes (Rust → bindings → SDK → web/runtime) are described in [ARCHITECTURE.md](ARCHITECTURE.md#build-pipeline).
 
 ### Build configuration
 
 Builds are parameterized by environment variables shared across all products:
 
-| Variable             | Description                                                                                       |
-| -------------------- | ------------------------------------------------------------------------------------------------ |
+| Variable             | Description                                                                                        |
+| -------------------- | -------------------------------------------------------------------------------------------------- |
 | `PLATFORM`           | Target platform (e.g. `x86_64`, `aarch64`, `riscv64`). For non-OS products it only derives `ARCH`. |
-| `ENVIRONMENT`        | Hyphen-separated feature flags; the available options depend on the product.                      |
-| `PROFILE`            | Build profile: `release` (default) or `dev`.                                                      |
-| `GIT_BRANCH_AS_HASH` | Set to `1` to use the git branch name as the version hash (avoids rebuilds).                      |
+| `ENVIRONMENT`        | Hyphen-separated feature flags; the available options depend on the product.                       |
+| `PROFILE`            | Build profile: `release` (default) or `dev`.                                                       |
+| `GIT_BRANCH_AS_HASH` | Set to `1` to use the git branch name as the version hash (avoids rebuilds).                       |
 
 Each product's `CONTRIBUTING.md` documents the `PLATFORM` values and `ENVIRONMENT` flags it actually supports.
 
@@ -98,9 +99,10 @@ Each product's `CONTRIBUTING.md` documents the `PLATFORM` values and `ENVIRONMEN
 
 ```bash
 make test                    # all tests
-make test-core               # Rust (shared-libs/crates/start-core)
-make test-sdk                # SDK
-make test-container-runtime  # container runtime
+make start-core-test               # Rust (shared-libs/crates/start-core)
+make start-sdk-test                # SDK
+make container-runtime-test  # container runtime
+make start-wrt-test           # StartWRT Rust crates
 
 # Run a specific Rust test
 cd shared-libs/crates/start-core && cargo test <test_name> --features=test
@@ -110,21 +112,42 @@ Each product's `CONTRIBUTING.md` covers its own scoped tests.
 
 ## Formatting
 
+Three tools, one config each at the repo root: **rustfmt** (`rustfmt.toml`) for Rust,
+**prettier** (`.prettierrc.json`) for TS/JS/HTML/SCSS/Markdown/YAML/JSON, and **taplo**
+(`taplo.toml`) for TOML.
+
 ```bash
-make format          # format every project
+make format          # format the whole repo
 make format-check    # read-only check (what CI runs)
 ```
 
-Or scope it to one project — each has a `format-check-*` read-only variant that CI runs:
+rustfmt uses options that are still nightly-only, so to keep output identical for
+everyone it runs in a pinned-nightly container — `build/fmt/fmtenv.Dockerfile`, which
+adds the pinned nightly to `start9/cargo-zigbuild` (the same image the Rust build
+uses) and is built on first use. prettier and taplo are pinned via npm
+devDependencies and run natively. To bump a version, edit the Dockerfile's
+`RUSTFMT_TOOLCHAIN` (rustfmt) or `package.json` (prettier / `@taplo/cli`).
+
+If you already have the pinned nightly installed and want to skip Docker:
 
 ```bash
-make format-core         # shared Rust crates
-make format-cli          # start-cli  (also format-registry / format-tunnel / format-startos)
-make format-web          # the Angular workspace (shared libs + all app UIs, incl. brochure)
-make format-sdk          # the SDK
+FMT_NATIVE=1 make format
 ```
 
-Run the formatters before committing. Configuration is handled by `rustfmt.toml` (Rust) and prettier configs (TypeScript).
+Or scope Rust formatting to one crate (still through the container):
+
+```bash
+make start-core-format   # shared Rust crates
+make start-cli-format    # also start-registry-format / start-tunnel-format / start-os-format / start-wrt-format
+make web-format          # prettier over the whole repo
+```
+
+Run the formatters before committing. A git pre-commit hook (husky + lint-staged)
+auto-runs prettier on staged files once you've run `npm ci`, so a missed format
+won't reach CI; it no-ops when dependencies aren't installed. CI enforces
+formatting regardless: a fast `prettier --check` gate runs on every pull request
+(including docs-only ones) and blocks the slower jobs, with `make format-check` as
+the source of truth.
 
 ## Code Style Guidelines
 
@@ -177,3 +200,18 @@ fix(core): resolve race condition in service startup
 docs: update CONTRIBUTING.md with style guidelines
 refactor(sdk): simplify package validation logic
 ```
+
+## Licensing
+
+This repository is MIT. By contributing you agree your work is licensed under
+the MIT License in [LICENSE](LICENSE), and that you have the right to license it
+that way.
+
+If a change vendors third-party code into the tree, it must keep the upstream
+copyright notice and be added to [NOTICE.md](NOTICE.md) in the same PR. Prefer a
+build-time dependency over a checked-in copy.
+
+Don't link GPL or AGPL code into a StartOS binary: the combined work would have
+to be conveyed under those terms. LGPL and MPL-2.0 code may be linked — both
+permit it — but each carries obligations we then owe downstream, so raise it
+before adding one. `deny.toml` encodes which licenses are accepted.

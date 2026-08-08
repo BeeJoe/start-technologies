@@ -5,10 +5,10 @@ import {
   Validators,
 } from '@angular/forms'
 import { WA_IS_MOBILE } from '@ng-web-apis/platform'
-import { ErrorService } from '@start9labs/shared'
+import { TaskService } from '@start9labs/shared'
 import { T } from '@start9labs/start-core'
 import { TuiResponsiveDialogService } from '@taiga-ui/addon-mobile'
-import { TuiAutoFocus, tuiMarkControlAsTouchedAndValidate } from '@taiga-ui/cdk'
+import { tuiMarkControlAsTouchedAndValidate } from '@taiga-ui/cdk'
 import {
   TuiButton,
   TuiCheckbox,
@@ -20,7 +20,6 @@ import {
 import {
   TuiChevron,
   TuiDataListWrapper,
-  TuiNotificationMiddleService,
   TuiSelect,
   TuiTooltip,
 } from '@taiga-ui/kit'
@@ -33,6 +32,9 @@ import {
   wanLabel,
 } from 'src/app/routes/home/components/wan'
 import { ApiService } from 'src/app/services/api/api.service'
+import { provideHelp } from 'src/app/help/help'
+import { ModalHelp } from 'src/app/help/modal-help'
+import { i18nPipe } from 'src/app/i18n/i18n.pipe'
 
 import { DEVICES_CONFIG } from './config'
 import {
@@ -47,8 +49,8 @@ import {
   template: `
     <form tuiForm="m" [formGroup]="form">
       <tui-textfield>
-        <label tuiLabel>Name</label>
-        <input tuiInput tuiAutoFocus formControlName="name" />
+        <label tuiLabel>{{ 'Name' | i18n }}</label>
+        <input tuiInput formControlName="name" />
       </tui-textfield>
       <tui-error formControlName="name" />
 
@@ -58,12 +60,12 @@ import {
           [stringify]="stringify"
           [tuiTextfieldCleaner]="false"
         >
-          <label tuiLabel>Subnet</label>
+          <label tuiLabel>{{ 'Subnet' | i18n }}</label>
           @if (mobile) {
             <select
               tuiSelect
               formControlName="subnet"
-              placeholder="Select Subnet"
+              [placeholder]="'Select Subnet' | i18n"
               [items]="context.data.subnets()"
             ></select>
           } @else {
@@ -82,8 +84,8 @@ import {
         <tui-elastic-container>
           @if (form.controls.subnet.value?.range) {
             <tui-textfield>
-              <label tuiLabel>LAN IP</label>
-              <input tuiInput tuiAutoFocus formControlName="ip" />
+              <label tuiLabel>{{ 'LAN IP' | i18n }}</label>
+              <input tuiInput formControlName="ip" />
             </tui-textfield>
           }
         </tui-elastic-container>
@@ -98,7 +100,7 @@ import {
         [stringify]="stringifyWan"
         [tuiTextfieldCleaner]="false"
       >
-        <label tuiLabel>WAN IP</label>
+        <label tuiLabel>{{ 'WAN IP' | i18n }}</label>
         @if (mobile) {
           <select tuiSelect formControlName="wanIp" [items]="wanItems"></select>
         } @else {
@@ -118,7 +120,7 @@ import {
               type="checkbox"
               formControlName="dnsInjection"
             />
-            Allow DNS Injection
+            {{ 'Allow DNS Injection' | i18n }}
             <tui-icon
               tuiTooltipDescribe="dnsInjectionHint"
               [tuiTooltip]="dnsInjectionHint"
@@ -131,7 +133,7 @@ import {
               type="checkbox"
               formControlName="autoPortForward"
             />
-            Allow Auto Port Forward
+            {{ 'Allow auto-publish' | i18n }}
             <tui-icon
               tuiTooltipDescribe="autoPortForward"
               [tuiTooltip]="autoPortForwardHint"
@@ -141,13 +143,12 @@ import {
       </tui-elastic-container>
 
       <footer>
-        <button tuiButton (click)="onSave()">Save</button>
+        <button tuiButton (click)="onSave()">{{ 'Save' | i18n }}</button>
       </footer>
     </form>
   `,
   imports: [
     ReactiveFormsModule,
-    TuiAutoFocus,
     TuiButton,
     TuiCheckbox,
     TuiDataListWrapper,
@@ -159,12 +160,14 @@ import {
     TuiInput,
     TuiChevron,
     TuiElasticContainer,
+    i18nPipe,
   ],
+  hostDirectives: [ModalHelp],
+  providers: [provideHelp('/devices/add')],
 })
 export class DevicesAdd {
-  private readonly loading = inject(TuiNotificationMiddleService)
+  private readonly tasks = inject(TaskService)
   private readonly api = inject(ApiService)
-  private readonly errorService = inject(ErrorService)
   private readonly dialogs = inject(TuiResponsiveDialogService)
 
   protected readonly mobile = inject(WA_IS_MOBILE)
@@ -172,6 +175,7 @@ export class DevicesAdd {
     injectContext<TuiDialogContext<void, DeviceData>>()
 
   private readonly fb = inject(NonNullableFormBuilder)
+  private readonly i18n = inject(i18nPipe)
 
   private readonly autoSubnet =
     !this.context.data.device && this.context.data.subnets().length === 1
@@ -182,13 +186,16 @@ export class DevicesAdd {
     name: [this.context.data.device?.name || '', Validators.required],
     subnet: [
       this.context.data.device?.subnet ?? this.autoSubnet,
-      [Validators.required, subnetValidator],
+      [Validators.required, subnetValidator(this.i18n)],
     ],
     ip: [
       this.context.data.device?.ip ||
         (this.autoSubnet ? getIp(this.autoSubnet) : ''),
       this.autoSubnet
-        ? [Validators.required, ipInSubnetValidator(this.autoSubnet.range)]
+        ? [
+            Validators.required,
+            ipInSubnetValidator(this.i18n, this.autoSubnet.range),
+          ]
         : [],
     ],
     wanIp: this.fb.control<WanItem>({
@@ -202,24 +209,36 @@ export class DevicesAdd {
   protected readonly kind: T.Tunnel.WgClientKind =
     this.context.data.kind ?? this.context.data.device?.kind ?? 'client'
 
-  protected readonly dnsInjectionHint =
-    'The device can add/update the DNS records the tunnel serves for every peer to resolve. Only enable for devices you trust.'
-  protected readonly autoPortForwardHint =
-    'The device can request port forwards on the gateway (via PCP). Only enable for devices you trust.'
+  protected readonly dnsInjectionHint = this.i18n.transform(
+    'The device can add/update the DNS records the tunnel serves for every peer to resolve. Only enable for devices you trust.',
+  )
+  protected readonly autoPortForwardHint = this.i18n.transform(
+    'The device can publish its own ports on the gateway automatically (via PCP). Only enable for devices you trust.',
+  )
 
   protected readonly wanItems = toWanItems(this.context.data.wanOptions)
 
   protected readonly stringify = ({ range, name }: MappedSubnet) =>
     range ? `${name} (${range})` : ''
   protected readonly stringifyWan = ({ ip }: WanItem) =>
-    wanLabel(ip, 'Use Subnet Default')
+    wanLabel(ip, this.i18n.transform('Subnet default'), this.subnetWanIp())
   protected readonly matchWan = matchWan
+
+  // The address the device inherits on "Subnet default": the selected subnet's
+  // own WAN override, or the system default when the subnet has none.
+  private subnetWanIp(): string | null {
+    const range = this.form.controls.subnet.value?.range
+    return (
+      this.context.data.subnets().find(s => s.range === range)?.wanIp ??
+      this.context.data.defaultWan
+    )
+  }
 
   protected onSubnet(subnet: MappedSubnet) {
     this.form.controls.ip.clearValidators()
     this.form.controls.ip.addValidators([
       Validators.required,
-      ipInSubnetValidator(subnet.range),
+      ipInSubnetValidator(this.i18n, subnet.range),
     ])
     const ip = getIp(subnet)
 
@@ -239,14 +258,13 @@ export class DevicesAdd {
       return
     }
 
-    const loader = this.loading.open('').subscribe()
     const { ip, name, subnet, wanIp, dnsInjection, autoPortForward } =
       this.form.getRawValue()
     const data = { ip, name, subnet: subnet?.range || '' }
     const device = this.context.data.device
     const kind = this.kind
 
-    try {
+    this.tasks.run(async () => {
       if (device) {
         await this.api.editDevice({ ...data, kind: device.kind })
       } else {
@@ -289,13 +307,8 @@ export class DevicesAdd {
           .open(DEVICES_CONFIG, { data: config, closable: false, size: 'm' })
           .subscribe()
       }
-    } catch (e: any) {
-      console.error(e)
-      this.errorService.handleError(e)
-    } finally {
-      loader.unsubscribe()
       this.context.$implicit.complete()
-    }
+    })
   }
 }
 

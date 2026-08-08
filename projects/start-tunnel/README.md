@@ -45,11 +45,11 @@ projects/start-tunnel/
 
 The single `tunnelbox` binary is installed as three symlinks:
 
-| Command         | Role                                   |
-| --------------- | -------------------------------------- |
-| `start-tunneld` | the long-running daemon (systemd)      |
-| `start-tunnel`  | the management CLI / RPC client        |
-| `tunnelbox`     | the multi-call binary itself           |
+| Command         | Role                              |
+| --------------- | --------------------------------- |
+| `start-tunneld` | the long-running daemon (systemd) |
+| `start-tunnel`  | the management CLI / RPC client   |
+| `tunnelbox`     | the multi-call binary itself      |
 
 ## Quickstart
 
@@ -61,6 +61,10 @@ End users install a release build with the hosted script:
 curl -fsSL https://start9.com/start-tunnel/install.sh | sudo bash
 ```
 
+On minimal or "Lite" Debian images, first install the base utilities the
+installer needs: `apt-get install -y curl iputils-ping` (see
+[Minimal or "Lite" images](docs/src/installing.md#minimal-or-lite-images)).
+
 See [docs/src/installing.md](docs/src/installing.md) for the full walkthrough
 (VPS requirements, login, creating your first subnet and device).
 
@@ -70,19 +74,19 @@ All builds run from the **repo root**, not this directory.
 
 ```bash
 # Build the daemon binary (musl target, embeds the prebuilt UI)
-make tunnel
+make start-tunnel
 
-# Build just the Angular UI (no make target; make tunnel chains it)
+# Build just the Angular UI (no make target; make start-tunnel chains it)
 npm run build:tunnel
 
 # Build the cargo binary directly (UI must already be built)
 cargo build -p start-tunnel --bin tunnelbox
 
 # Build a .deb package
-make tunnel-deb
+make start-tunnel-deb
 ```
 
-`make tunnel` produces
+`make start-tunnel` produces
 `target/<arch>-unknown-linux-musl/<profile>/tunnelbox`, which `src/main.rs`
 embeds the compiled UI from `web/dist/static/start-tunnel/` into.
 

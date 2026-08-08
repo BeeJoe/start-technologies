@@ -1,9 +1,11 @@
 [package]
-name = "start-os"
-version = "0.4.0-beta.10" # VERSION_BUMP
 edition = "2024"
 license = "MIT"
+name = "start-os"
 repository = "https://github.com/Start9Labs/start-technologies"
+# Label only: SemVer has no 4th segment, so the OS version 0.4.0.2 is spelled 0.4.0-rev.2
+# here. Root package.json is the source of truth — see build/env/version.sh.
+version = "0.4.0-rev.2" # VERSION_BUMP
 
 [[bin]]
 name = "startbox"
@@ -14,13 +16,13 @@ name = "start-container"
 path = "src/bin/start-container.rs"
 
 [features]
-default = []
 beta = ["start-core/beta"]
 console = ["start-core/console"]
+default = []
 dev = ["start-core/dev"]
 test = ["start-core/test"]
 unstable = ["start-core/unstable"]
 
 [dependencies]
-start-core = { path = "../../shared-libs/crates/start-core" }
 include_dir = "0.7.3"
+start-core = { path = "../../shared-libs/crates/start-core" }

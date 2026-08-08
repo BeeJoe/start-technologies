@@ -14,10 +14,12 @@ const MAX_TIMEOUT_MS = 30000
  * A managed long-running process wrapper around {@link CommandController}.
  *
  * When started, the daemon automatically restarts its underlying command on
- * failure with exponential backoff (up to 30 seconds). When stopped, the
- * command is terminated gracefully. While the daemon is running, it holds a
- * use-token (`subcontainer.hold()`) on its SubContainer so the container is
- * not destroyed out from under it. The hold is released on `term()`.
+ * failure with exponential backoff (up to 30 seconds). While the daemon is
+ * running, it holds a use-token (`subcontainer.hold()`) on its SubContainer
+ * so the container is not destroyed out from under it. There are two ways to
+ * bring it down: {@link stop} releases the hold but leaves the SubContainer
+ * intact so a later {@link start} can resume in it (a restartable pause);
+ * {@link term} additionally destroys the SubContainer (genuine teardown).
  *
  * @typeParam Manifest - The service manifest type
  * @typeParam C - The subcontainer type, or `null` for JS-only daemons
@@ -31,7 +33,9 @@ export class Daemon<
   private onExitFns: ((success: boolean) => void)[] = []
   private loop: { abort: AbortController; done: Promise<void> } | null = null
   private releaseSubcontainerHold: (() => Promise<void>) | null = null
-  private _detached = false
+  private detached = false
+  private _lastExitError: Error | null = null
+  private _failedExits = 0
   protected constructor(
     readonly subcontainer: C,
     private startCommand: () => Promise<CommandController<Manifest, C>>,
@@ -47,6 +51,24 @@ export class Daemon<
   /** Returns true if this daemon is a one-shot process (exits after success) */
   isOneshot(): this is Oneshot<Manifest> {
     return this.oneshot
+  }
+  /**
+   * The error from the most recent abnormal exit, or `null` if none has been
+   * recorded. An exit driven by {@link stop} or {@link term} is deliberate and
+   * does not set this; the restart loop otherwise logs the error and retries,
+   * retaining it here rather than reporting it to anyone.
+   */
+  get lastExitError(): Error | null {
+    return this._lastExitError
+  }
+  /**
+   * How many times the process has exited abnormally over this daemon's
+   * lifetime. Nothing resets it — neither a restart nor a
+   * {@link stop}/{@link start} cycle — so a non-zero count means the process
+   * has died at least once, not that it is dying now.
+   */
+  get failedExits(): number {
+    return this._failedExits
   }
   /**
    * Factory method to create a new Daemon.
@@ -67,7 +89,7 @@ export class Daemon<
         CommandController.of<Manifest, C>()(effects, subcontainer, exec)
       const res = new Daemon<Manifest, C>(subcontainer, startCommand)
       effects.onLeaveContext(() => {
-        if (res._detached) return
+        if (res.detached) return
         res.term().catch(e => logErrorOnce(asError(e)))
       })
       return res
@@ -91,15 +113,15 @@ export class Daemon<
    * Idempotent.
    */
   detach(): void {
-    this._detached = true
+    this.detached = true
   }
   /**
    * Start the daemon. If it is already running, this is a no-op.
    *
    * Takes a `hold()` on the daemon's SubContainer (if any) so the container
-   * is kept alive while the daemon runs. The hold is released on
-   * {@link term}. The daemon will automatically restart on failure with
-   * increasing backoff until `term` is called.
+   * is kept alive while the daemon runs. The hold is released by {@link stop}
+   * (a restartable pause) or {@link term} (teardown). The daemon automatically
+   * restarts on failure with increasing backoff until `stop`/`term` is called.
    */
   async start() {
     if (this.loop) {
@@ -131,7 +153,11 @@ export class Daemon<
           const success = await this.commandController.wait().then(
             _ => true,
             err => {
-              if (!signal.aborted) logErrorOnce(err)
+              if (!signal.aborted) {
+                logErrorOnce(err)
+                this._lastExitError = asError(err)
+                this._failedExits += 1
+              }
               return false
             },
           )
@@ -172,20 +198,27 @@ export class Daemon<
   }
 
   /**
-   * Terminate the daemon, stopping its underlying command, releasing the
-   * SubContainer hold taken at {@link start}, and requesting the
-   * SubContainer's destruction (`destroy()` is idempotent and defers to
-   * the last hold release, so other daemons sharing the same SubContainer
-   * keep it alive until they also term).
+   * Stop the daemon's process and restart loop and release the SubContainer
+   * hold taken at {@link start}, **without** destroying the SubContainer.
+   * A subsequent {@link start} re-takes the hold and resumes in the same
+   * container.
    *
-   * Sends the configured signal (default SIGTERM) and waits for the
-   * process to exit.
+   * This is the non-destroying counterpart to {@link term}: use it for a
+   * temporary stop where the daemon is expected to start again — e.g. a
+   * dependency going not-ready. Releasing the hold without requesting
+   * destruction leaves the SubContainer alive (its leader keeps `proc/1`),
+   * so the restart is cheaper than a destroy + recreate and — as long as
+   * nothing else has requested destruction — the next `start()`'s `hold()`
+   * succeeds rather than throwing `already destroyed`.
+   *
+   * Sends the configured signal (default SIGTERM) and waits for the process
+   * to exit. Idempotent, and a no-op when the daemon is not running.
    *
    * @param termOptions Optional termination settings
    * @param termOptions.signal The signal to send (default `SIGTERM`)
    * @param termOptions.timeout Milliseconds to wait before escalating to `SIGKILL` (default = `Daemon`'s configured `sigtermTimeout`, ultimately `DEFAULT_SIGTERM_TIMEOUT`)
    */
-  async term(termOptions?: {
+  async stop(termOptions?: {
     signal?: NodeJS.Signals | undefined
     timeout?: number | undefined
   }) {
@@ -209,6 +242,31 @@ export class Daemon<
       this.releaseSubcontainerHold = null
       await release().catch(logErrorOnce)
     }
+  }
+
+  /**
+   * Terminate the daemon: {@link stop} it (stop the process, abort the
+   * restart loop, release the SubContainer hold taken at {@link start}) and
+   * then request the SubContainer's destruction.
+   *
+   * `destroy()` is idempotent and defers to the last hold release, so other
+   * daemons sharing the same SubContainer keep it alive until they also
+   * term. Unlike {@link stop}, this is a one-way teardown — a `start()`
+   * after `term()` throws `already destroyed`; use {@link stop} for a
+   * restartable pause.
+   *
+   * Sends the configured signal (default SIGTERM) and waits for the
+   * process to exit.
+   *
+   * @param termOptions Optional termination settings
+   * @param termOptions.signal The signal to send (default `SIGTERM`)
+   * @param termOptions.timeout Milliseconds to wait before escalating to `SIGKILL` (default = `Daemon`'s configured `sigtermTimeout`, ultimately `DEFAULT_SIGTERM_TIMEOUT`)
+   */
+  async term(termOptions?: {
+    signal?: NodeJS.Signals | undefined
+    timeout?: number | undefined
+  }) {
+    await this.stop(termOptions)
 
     // Request the SubContainer's destruction. Idempotent + hold-aware:
     // if another daemon still holds this SubContainer, destroy waits for

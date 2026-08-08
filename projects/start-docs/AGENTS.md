@@ -10,11 +10,12 @@ This project owns the **site build infra** (`build.sh`, `serve.sh`, `versions.co
 
 ## Layout
 
-The StartOS, StartTunnel, and Packaging books are NOT here — they moved into their product dirs:
+The StartOS, StartTunnel, Packaging, and StartWRT books are NOT here — they moved into their product dirs:
 
 - StartOS → `../start-os/docs/`
 - StartTunnel → `../start-tunnel/docs/`
 - Packaging (book name `packaging`) → `../start-sdk/docs/`
+- StartWRT → `../start-wrt/docs/`
 
 `build.sh`'s `book_dir()` maps each book name to its source dir. If you're editing content for one of those products, edit it in the product dir, not here — but you can build/preview the whole site from here.
 
@@ -30,7 +31,7 @@ The StartOS, StartTunnel, and Packaging books are NOT here — they moved into t
 
 - Always re-read a file before subsequent edits — a linter/formatter may auto-modify files after changes.
 - Never use custom admonition titles. `> [!WARNING] Custom Title` is broken in mdBook; use plain `> [!WARNING]` and put context in the body.
-- Avoid nested tabs. Use separate sections with single-level tabs. OS pickers use `global="platform"` with the canonical label set (`Mac`, `Windows`, `Linux`, `iOS`, `Android / Graphene`) — see CONTRIBUTING for the tab rules.
+- Keep the outer OS picker flat with the canonical `global="platform"` label set (`Mac`, `Windows`, `Linux`, `iOS`, `Android / Graphene`) — don't split distros into top-level `platform` tabs. The only sanctioned nesting is a single distro/version sub-group (its own `global`) inside a platform tab; see CONTRIBUTING for the tab rules.
 - Cross-book links must use absolute paths (`/start-tunnel/devices.html`), not relative paths — mdBook only validates intra-book links.
 - All pages are flat in each book's `src/` — no subdirectory nesting. Sidebar sections use `# Part Title` in `SUMMARY.md`.
 - Every page should have introductory prose between the H1 and the first H2. It's auto-extracted for `llms.txt`.
@@ -44,4 +45,4 @@ The StartOS, StartTunnel, and Packaging books are NOT here — they moved into t
 
 ## Deployment
 
-GitHub Actions `.github/workflows/docs-deploy.yml` (at the monorepo root) builds and rsyncs to the VPS on push to `master` touching `projects/start-docs/**`, `projects/start-os/docs/**`, `projects/start-tunnel/docs/**`, or `projects/start-sdk/docs/**`. It regenerates nginx routing from `versions.conf`. Don't hardcode book names in nginx — the generated `book_versions.conf` handles that.
+GitHub Actions `.github/workflows/docs-deploy.yml` (at the monorepo root) builds and rsyncs to the VPS on push to `master` touching `projects/start-docs/**`, `projects/start-os/docs/**`, `projects/start-tunnel/docs/**`, `projects/start-sdk/docs/**`, or `projects/start-wrt/docs/**`. It regenerates nginx routing from `versions.conf`. Don't hardcode book names in nginx — the generated `book_versions.conf` handles that.

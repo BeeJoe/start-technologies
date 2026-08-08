@@ -12,30 +12,35 @@ monorepo-wide rules, and [ARCHITECTURE.md](ARCHITECTURE.md) and
 - `src/bin/startbox.rs`, `src/bin/start-container.rs` — the only Rust in this
   dir. They are thin entry points; backend logic lives in
   `../../shared-libs/crates/start-core` (crate `start-core`, lib `start_core`).
-- `web/ui`, `web/setup-wizard` — Angular apps; part of the workspace at
-  `../../shared-libs/ts-modules`. Run web commands from `../../shared-libs/ts-modules`, not from here.
+- `web/ui`, `web/setup-wizard` — Angular apps in the root Angular workspace
+  (`angular.json` at the repo root). Run web commands (`npm run check:ui`, `npm run start:ui`, …)
+  from the repo root, not from here.
 - `container-runtime/` — Node.js LXC runtime with its **own** AGENTS/CLAUDE;
   read `container-runtime/AGENTS.md` before touching it.
 - `docs/` — the end-user mdbook (book "StartOS"), served at `/start-os/`.
-- Systemd units + `services.slice` live directly in this dir; OS image
-  packaging (`debian/`, `apt/`, `build/`) is at the **repo root**; `assets/` is
-  directly in this dir.
+- `build/` — OS image assembly (image-recipe, dpkg-deps, firmware) plus the
+  `startbox`/`start-container` build scripts; `debian/` — Debian control;
+  `backup-fs/` carries its own build script. Systemd units + `services.slice`
+  and `assets/` live directly in this dir; the shared build infra (root
+  `build/`) and `apt/` are at the repo root.
 
 ## Build & test (run from the repo root)
 
 - Compile the OS bins: `cargo check -p start-os` (or `cargo build -p start-os
-  --bin startbox`). Local `cargo check` is **linux-only** — CI also builds
+--bin startbox`). Local `cargo check` is **linux-only** — CI also builds
   apple-darwin and aarch64/riscv64 musl; platform-specific changes can pass here
   yet break those.
 - Regenerate TS bindings after any change to exported Rust types:
-  `make ts-bindings`. Then rebuild start-core (`cd shared-libs/ts-modules/start-core && make dist`)
+  `make start-core-ts-bindings`. Then rebuild start-core (`cd shared-libs/ts-modules/start-core && make dist`)
   and the SDK (`cd projects/start-sdk && make bundle`) before web/runtime type-checks —
   editing `shared-libs/ts-modules/start-core/lib/osBindings/*.ts` alone is not enough.
 - Type-check web apps: `npm run check:ui && npm run check:setup`.
 - Type-check the runtime: `cd projects/start-os/container-runtime && npm run check`.
-- Build the UI: `make startos-ui` (or `make startos-uis` for ui + setup-wizard).
-- Tests: `make test` (Rust + SDK + container-runtime), or `make test-core`.
-- Format: `make format-startos` / `make format-check-startos`.
+- Build the UI: `make start-os-ui` (or `make start-os-uis` for ui + setup-wizard).
+- Tests: `make test` (Rust + SDK + container-runtime), or `make start-core-test`.
+- Format: `make start-os-format` / `make start-os-format-check` (Rust only);
+  TS/web/container-runtime formatting runs through `make web-format` (root
+  prettier config).
 - Regenerate `start-container` man pages (committed under `man/`):
   `cargo test -p start-core export_manpage_start_container`.
 
@@ -47,8 +52,10 @@ monorepo-wide rules, and [ARCHITECTURE.md](ARCHITECTURE.md) and
 - **`unshare-userns` must stay a multi-call applet**, not a CLI subcommand: it
   calls `unshare(CLONE_NEWUSER)`, which the kernel rejects on a multi-threaded
   process. See the comment in `src/bin/start-container.rs`.
-- **Don't normalize style across components.** The container-runtime uses double
-  quotes + no semicolons (its own prettier config); the SDK uses single quotes.
+- **One prettier config.** All TS (web, container-runtime) is governed by the
+  root `.prettierrc.json` + `.prettierignore`; run prettier from the repo root
+  so the ignore applies (`__fixtures__/` etc. must stay unformatted). Don't add
+  per-component prettier configs or scripts.
 - **Don't edit generated binding files** like
   `shared-libs/ts-modules/start-core/lib/osBindings/index.ts` or `projects/start-sdk/s9pk.mk`.
 - **Ask before destructive `make` recipes** — `update*`, `reflash`, `wormhole*`,

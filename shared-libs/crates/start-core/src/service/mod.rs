@@ -18,7 +18,6 @@ use itertools::Itertools;
 use nix::sys::signal::Signal;
 use persistent_container::PersistentContainer;
 use rpc_toolkit::HandlerArgs;
-use rpc_toolkit::yajrc::RpcError;
 use serde::{Deserialize, Serialize};
 use service_actor::ServiceActor;
 use termion::raw::IntoRawMode;
@@ -377,6 +376,7 @@ impl Service {
         let handle_installed = {
             let ctx = ctx.clone();
             move |s9pk: S9pk| async move {
+                crate::volume::ensure_volume_root(&s9pk.as_manifest().id).await?;
                 for volume_id in &s9pk.as_manifest().volumes {
                     let path = data_dir(DATA_DIR, &s9pk.as_manifest().id, volume_id);
                     if tokio::fs::metadata(&path).await.is_err() {
@@ -505,6 +505,11 @@ impl Service {
                         })
                         .await
                         .result?;
+                    // Roll the filesystem back before reloading the old service, so its
+                    // init sees old-version data instead of an impossible new->old migration.
+                    crate::volume::restore_volumes_from_install_backup(id)
+                        .await
+                        .log_err();
                     handle_installed(s9pk).await
                 }
                 .await
@@ -514,12 +519,7 @@ impl Service {
                         Ok(service)
                     }
                     Err(e) => {
-                        tracing::error!(
-                            "Update rollback failed for {id}, restoring volume snapshot: {e}"
-                        );
-                        crate::volume::restore_volumes_from_install_backup(id)
-                            .await
-                            .log_err();
+                        tracing::error!("Update rollback failed for {id}: {e}");
                         Err(e)
                     }
                 }
@@ -618,6 +618,7 @@ impl Service {
         progress: Option<InstallProgressHandles>,
     ) -> Result<ServiceRef, Error> {
         let manifest = s9pk.as_manifest().clone();
+        crate::volume::ensure_volume_root(&manifest.id).await?;
         let developer_key = s9pk.as_archive().signer();
         let icon = s9pk.icon_data_url().await?;
         let procedure_id = Guid::new();
@@ -740,7 +741,20 @@ impl Service {
         }
         .await;
 
-        backup.await?;
+        // Awaiting the handle reads the backup result but does not drive it —
+        // the actor drives the backup once the service has stopped, and the
+        // handle doesn't resolve until the service has left the backing-up
+        // state. So the backup never starts before the service is stopped, and
+        // this call doesn't return until the backing-up transition is complete.
+        let backup_res = backup.await;
+
+        // Complete the phase only now — after the s9pk write — so a package
+        // isn't reported done while its image is still streaming to the target.
+        if let Some(mut handle) = self.seed.backup_phase.replace(None) {
+            handle.complete();
+        }
+
+        backup_res?;
         s9pk_res
     }
 
@@ -786,7 +800,11 @@ struct ServiceActorSeed {
     id: PackageId,
     /// Needed to interact with the container for the service
     persistent_container: PersistentContainer,
-    backup: SyncMutex<Option<BoxFuture<'static, Result<(), RpcError>>>>,
+    /// The backup work, stored for the actor to drive once the service has
+    /// stopped. Its result is delivered to the caller through the paired
+    /// `RemoteHandle` (see `transition::backup`), so this half only needs to be
+    /// driven to completion.
+    backup: SyncMutex<Option<BoxFuture<'static, ()>>>,
     /// Set while a backup procedure is running so the service container can
     /// stream progress updates back via the `setBackupProgress` effect.
     backup_phase: SyncMutex<Option<crate::progress::PhaseProgressTrackerHandle>>,
@@ -831,8 +849,8 @@ pub struct AttachParams {
     pub stderr_tty: bool,
     pub pty_size: Option<TermSize>,
     #[ts(skip)]
-    #[serde(rename = "__Auth_session")]
-    session: Option<InternedString>,
+    #[serde(rename = "__Auth_signer")]
+    signer: Option<InternedString>,
     #[ts(type = "string | null")]
     subcontainer: Option<Guid>,
     #[ts(type = "string | null")]
@@ -850,7 +868,7 @@ pub async fn attach(
         tty,
         stderr_tty,
         pty_size,
-        session,
+        signer,
         subcontainer,
         image_id,
         name,
@@ -1145,14 +1163,18 @@ pub async fn attach(
         }
 
         let exit = child.wait().await?;
+        // Send the exit code, not `into_raw()`'s wait status: the client hands this
+        // straight to `std::process::exit`, which keeps only the low byte, and a
+        // normal exit encodes as `code << 8` — so every code would arrive as 0.
+        let code = exit
+            .code()
+            .unwrap_or_else(|| 128 + exit.signal().unwrap_or_default());
         ws.send(Message::Text("exit".into()))
             .await
             .with_kind(ErrorKind::Network)?;
-        ws.send(Message::Binary(
-            i32::to_be_bytes(exit.into_raw()).to_vec().into(),
-        ))
-        .await
-        .with_kind(ErrorKind::Network)?;
+        ws.send(Message::Binary(i32::to_be_bytes(code).to_vec().into()))
+            .await
+            .with_kind(ErrorKind::Network)?;
 
         Ok(())
     }
@@ -1161,7 +1183,7 @@ pub async fn attach(
             guid.clone(),
             RpcContinuation::ws_authed(
                 &ctx,
-                session,
+                signer,
                 move |mut ws| async move {
                     if let Err(e) = handler(
                         &mut ws,

@@ -2,7 +2,7 @@
 
 [Multicast DNS (mDNS)](https://en.wikipedia.org/wiki/Multicast_DNS) gives your server a `<server-name>.local` address on your LAN. The address is derived from your [server name](server-name.md) by lowercasing it, removing non-alphanumeric characters, and replacing spaces with hyphens. For example, a server named "My Cool Server" gets the mDNS address `my-cool-server.local`.
 
-## Watch The Video 
+## Watch The Video
 
 <div class="yt-video" data-id="_Sutx4vhwr0" data-title="mDNS"></div>
 
@@ -15,4 +15,4 @@ mDNS resolves your server's `.local` address to its LAN IP address without relyi
 
 ## Limitations
 
-mDNS only works on the local network. It does not work over [VPN](inbound-vpn.md) or the Internet. For remote access using a custom domain, see [Private Domains](private-domains.md).
+mDNS only works on the local network. It does not work over [VPN](inbound-vpn.md) or the Internet — and on Android, `.local` can stop resolving even on your home network while a VPN that supplies DNS is connected, because Android [excludes VPN connections from mDNS resolution](https://source.android.com/docs/core/ota/modular-system/dns-resolver). Over StartTunnel, a connected StartOS server works around this by automatically injecting a DNS record for its `.local` name over the tunnel (see [this StartTunnel FAQ entry](/start-tunnel/faq.html#why-cant-my-android-phone-resolve-local-addresses-while-the-tunnel-is-on)). For remote access using a custom domain, see [Private Domains](private-domains.md).

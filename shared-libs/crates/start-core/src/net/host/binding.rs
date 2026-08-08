@@ -8,10 +8,9 @@ use rpc_toolkit::{Context, Empty, HandlerArgs, HandlerExt, ParentHandler, from_f
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-use crate::HostId;
-use crate::ServiceInterfaceId;
 use crate::context::{CliContext, RpcContext};
 use crate::db::prelude::Map;
+use crate::hostname::ServerHostname;
 use crate::net::forward::AvailablePorts;
 use crate::net::host::HostApiKind;
 use crate::net::service_interface::{
@@ -21,6 +20,7 @@ use crate::net::vhost::AlpnInfo;
 use crate::prelude::*;
 use crate::util::FromStrParser;
 use crate::util::serde::{CliFromJsonString, HandlerExtSerde, display_serializable};
+use crate::{GatewayId, HostId, ServiceInterfaceId};
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, TS)]
 #[ts(export)]
@@ -48,44 +48,6 @@ impl FromStr for BindId {
     }
 }
 
-/// Per-GUA exposure chosen by the operator. Unlike every other address (an
-/// on/off toggle), an IPv6 global-unicast address is a single globally-routable
-/// address that can be reachable LAN-only or also from the WAN, so it carries a
-/// tri-state:
-///
-/// - `Disabled` — not bound / rejected.
-/// - `Lan` (default) — reachable on-link, source-filtered to the gateway's
-///   subnet (traffic from outside the subnet is rejected). No WAN exposure.
-/// - `LanWan` — also reachable from the WAN; the host attempts an IPv6 PCP
-///   pinhole on the gateway.
-///
-/// Mirrors the WAN-opt-in posture of single-port public IPv4 (disabled by
-/// default), but with an explicit LAN middle state because a GUA — unlike a
-/// private LAN IP — is globally routable, so "on" must distinguish LAN-only
-/// (firewalled) from WAN-exposed.
-#[derive(
-    Clone,
-    Copy,
-    Debug,
-    Default,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Deserialize,
-    Serialize,
-    TS,
-    clap::ValueEnum,
-)]
-#[ts(export)]
-#[serde(rename_all = "kebab-case")]
-pub enum GuaAccess {
-    Disabled,
-    #[default]
-    Lan,
-    LanWan,
-}
-
 #[derive(Debug, Default, Clone, Deserialize, Serialize, TS, HasModel)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
@@ -95,35 +57,20 @@ pub struct DerivedAddressInfo {
     pub enabled: BTreeSet<SocketAddr>,
     /// User override: disable these addresses (only for domains and private IP & port)
     pub disabled: BTreeSet<(InternedString, u16)>,
-    /// User override: per-GUA exposure (only for IPv6 global-unicast addresses),
-    /// keyed by the GUA's `SocketAddrV6`. Absent ⇒ [`GuaAccess::Lan`].
+    /// User override: IPv6 global-unicast addresses opted into WAN exposure.
+    /// Projected into `HostnameInfo.public` by `update_addresses`, so `public`
+    /// stays the single source of truth for WAN reachability (P2P address
+    /// selection, upstream pinholes). A GUA not in this set is LAN-only.
     #[serde(default)]
-    pub gua_access: BTreeMap<SocketAddrV6, GuaAccess>,
+    pub gua_wan: BTreeSet<SocketAddrV6>,
     /// COMPUTED: NetServiceData::update — all possible addresses for this binding
     pub available: BTreeSet<HostnameInfo>,
 }
 
 impl DerivedAddressInfo {
-    /// Operator's exposure choice for an IPv6 GUA; untouched GUAs default to
-    /// [`GuaAccess::Lan`].
-    pub fn access_for(&self, gua: SocketAddrV6) -> GuaAccess {
-        self.gua_access.get(&gua).copied().unwrap_or_default()
-    }
-
-    /// True if `addr` should be exposed to the WAN (no source filter + an
-    /// upstream pinhole attempt): any `public` address, or a GUA the operator
-    /// set to [`GuaAccess::LanWan`].
-    pub fn is_wan(&self, addr: &HostnameInfo) -> bool {
-        addr.public
-            || addr
-                .gua()
-                .map_or(false, |g| self.access_for(g) == GuaAccess::LanWan)
-    }
-
     /// Returns addresses that are currently enabled after applying overrides.
-    /// Default: public IPs are disabled, GUAs are LAN-only, everything else is
-    /// enabled. Explicit `enabled` / `disabled` / `gua_access` overrides take
-    /// precedence.
+    /// Default: public IPs (including WAN-exposed GUAs) are opt-in via `enabled`,
+    /// everything else is on unless in `disabled`.
     pub fn enabled(&self) -> BTreeSet<&HostnameInfo> {
         self.available
             .iter()
@@ -131,9 +78,6 @@ impl DerivedAddressInfo {
                 if h.is_internal() {
                     // lo / lxcbr0 are always reachable and never operator-disablable.
                     true
-                } else if let Some(gua) = h.gua() {
-                    // GUAs carry a tri-state: Disabled removes them, LAN/LAN+WAN keep them.
-                    self.access_for(gua) != GuaAccess::Disabled
                 } else if h.public && h.metadata.is_ip() {
                     // Public IPs: disabled by default, explicitly enabled via SocketAddr
                     h.to_socket_addr().map_or(
@@ -147,6 +91,38 @@ impl DerivedAddressInfo {
                 }
             })
             .collect()
+    }
+
+    /// Move the port of every `enabled`/`disabled` override from `old` to `new`.
+    /// A range keys all its overrides on `external_start_port`, so a service-
+    /// driven resize that moves the span must carry the overrides with it — else
+    /// a disabled WAN address silently re-enables under the recomputed defaults.
+    pub fn rekey_port(&mut self, old: u16, new: u16) {
+        if old == new {
+            return;
+        }
+        self.enabled = std::mem::take(&mut self.enabled)
+            .into_iter()
+            .map(|mut sa| {
+                if sa.port() == old {
+                    sa.set_port(new);
+                }
+                sa
+            })
+            .collect();
+        self.disabled = std::mem::take(&mut self.disabled)
+            .into_iter()
+            .map(|(h, p)| (h, if p == old { new } else { p }))
+            .collect();
+        self.gua_wan = std::mem::take(&mut self.gua_wan)
+            .into_iter()
+            .map(|mut sa| {
+                if sa.port() == old {
+                    sa.set_port(new);
+                }
+                sa
+            })
+            .collect();
     }
 }
 
@@ -291,20 +267,21 @@ impl BindInfo {
         }
     }
 
-    pub fn new(available_ports: &mut AvailablePorts, options: BindOptions) -> Result<Self, Error> {
+    pub fn new(
+        available_ports: &mut AvailablePorts,
+        options: BindOptions,
+        privileged: bool,
+    ) -> Result<Self, Error> {
         let mut assigned_port = None;
         let mut assigned_ssl_port = None;
-        if let Some(ssl) = &options.add_ssl {
+        if let Some(preferred) = options.preferred_ssl_port() {
             assigned_ssl_port = available_ports
-                .try_alloc(ssl.preferred_external_port, true)
+                .try_alloc(preferred, true, privileged)
                 .or_else(|| Some(available_ports.alloc(true).ok()?));
         }
-        if options
-            .secure
-            .map_or(true, |s| !(s.ssl && options.add_ssl.is_some()))
-        {
+        if options.wants_plain_port() {
             assigned_port = available_ports
-                .try_alloc(options.preferred_external_port, false)
+                .try_alloc(options.preferred_external_port, false, privileged)
                 .or_else(|| Some(available_ports.alloc(false).ok()?));
         }
 
@@ -323,50 +300,47 @@ impl BindInfo {
         self,
         available_ports: &mut AvailablePorts,
         options: BindOptions,
+        privileged: bool,
     ) -> Result<Self, Error> {
         let Self {
-            net: mut lan,
+            net: held,
             addresses,
             interfaces,
             ..
         } = self;
-        if options
-            .secure
-            .map_or(true, |s| !(s.ssl && options.add_ssl.is_some()))
-        // doesn't make sense to have 2 listening ports, both with ssl
-        {
-            lan.assigned_port = if let Some(port) = lan.assigned_port.take() {
-                Some(port)
-            } else if let Some(port) =
-                available_ports.try_alloc(options.preferred_external_port, false)
-            {
-                Some(port)
-            } else {
-                Some(available_ports.alloc(false)?)
-            };
-        } else {
-            if let Some(port) = lan.assigned_port.take() {
-                available_ports.free([port]);
-            }
-        }
-        if let Some(ssl) = &options.add_ssl {
-            lan.assigned_ssl_port = if let Some(port) = lan.assigned_ssl_port.take() {
-                Some(port)
-            } else if let Some(port) = available_ports.try_alloc(ssl.preferred_external_port, true)
-            {
-                Some(port)
-            } else {
-                Some(available_ports.alloc(true)?)
-            };
-        } else {
-            if let Some(port) = lan.assigned_ssl_port.take() {
-                available_ports.free([port]);
-            }
-        }
+        // Release both ports up front so the numbers below can be reclaimed. The
+        // external port is in the user's address book and keys their per-address
+        // overrides, so a binding that changes how its port is served keeps the
+        // same number — carrying it to the other field when it holds just one.
+        available_ports.free(held.assigned_port.into_iter().chain(held.assigned_ssl_port));
+        let carried = match (held.assigned_port, held.assigned_ssl_port) {
+            (Some(port), None) | (None, Some(port)) => Some(port),
+            _ => None,
+        };
+        let mut reclaim = |held: Option<u16>, preferred: u16, ssl: bool| {
+            let want = held.or(carried).unwrap_or(preferred);
+            available_ports
+                .try_alloc(want, ssl, privileged)
+                .or_else(|| available_ports.try_alloc(preferred, ssl, privileged))
+                .map_or_else(|| available_ports.alloc(ssl), Ok)
+        };
+
+        let assigned_ssl_port = options
+            .preferred_ssl_port()
+            .map(|preferred| reclaim(held.assigned_ssl_port, preferred, true))
+            .transpose()?;
+        let assigned_port = options
+            .wants_plain_port()
+            .then(|| reclaim(held.assigned_port, options.preferred_external_port, false))
+            .transpose()?;
+
         Ok(Self {
             enabled: true,
             options,
-            net: lan,
+            net: NetInfo {
+                assigned_port,
+                assigned_ssl_port,
+            },
             addresses,
             interfaces,
         })
@@ -390,6 +364,33 @@ pub struct BindOptions {
     pub preferred_external_port: u16,
     pub add_ssl: Option<AddSslOptions>,
     pub secure: Option<Security>,
+}
+
+impl BindOptions {
+    /// The container terminates TLS itself; the OS fronts its port with an
+    /// SNI-passthrough listener that pipes the raw TLS stream through.
+    pub fn serves_own_tls(&self) -> bool {
+        self.secure.map_or(false, |s| s.ssl) && self.add_ssl.is_none()
+    }
+
+    /// Preferred external port for the TLS-carrying listener: the OS's own when
+    /// it terminates (`add_ssl`), otherwise the binding's, since a self-TLS
+    /// binding has no second port to take one from.
+    pub fn preferred_ssl_port(&self) -> Option<u16> {
+        self.add_ssl
+            .as_ref()
+            .map(|s| s.preferred_external_port)
+            .or_else(|| {
+                self.serves_own_tls()
+                    .then_some(self.preferred_external_port)
+            })
+    }
+
+    /// A plaintext external port exists unless the container itself speaks TLS
+    /// — two listening ports both carrying TLS makes no sense.
+    pub fn wants_plain_port(&self) -> bool {
+        !self.secure.map_or(false, |s| s.ssl)
+    }
 }
 
 /// How the OS reverse proxy validates the container's TLS certificate when it
@@ -531,12 +532,12 @@ pub fn binding<C: Context, Kind: HostApiKind>()
                 .with_call_remote::<CliContext>(),
         )
         .subcommand(
-            "set-gua-access",
-            from_fn_async(set_gua_access::<Kind>)
+            "set-gua-wan",
+            from_fn_async(set_gua_wan::<Kind>)
                 .with_metadata("sync_db", Value::Bool(true))
                 .with_inherited(Kind::inheritance)
                 .no_display()
-                .with_about("about.set-gua-access-for-binding")
+                .with_about("about.set-gua-wan-for-binding")
                 .with_call_remote::<CliContext>(),
         )
 }
@@ -565,10 +566,205 @@ pub struct BindingSetAddressEnabledParams {
     enabled: Option<bool>,
 }
 
+// On a non-SSL port (no SNI) a domain shares the bare IP's packets, so a domain
+// links the IPs at its gateway+port. There are two parallel "levels":
+//   WAN level: public domain(s) + bare WAN IPv4 + the GUA-as-public
+//   LAN level: private domain(s) + bare LAN IPv4 + the GUA-as-local
+// The IPv6 GUA is a single address shared by both — a public GUA is reachable on
+// LAN too, so **public wins**: if the WAN level is on the GUA is public, else if
+// the LAN level is on it is local, else it is off. WAN addresses are opt-in
+// (public IPs), LAN addresses are opt-out (on by default).
+
+/// Is there a non-SSL public domain at this `gateway` + `port`? Without one the
+/// WAN IPv4 and GUA toggle independently.
+pub(crate) fn has_nonssl_public_domain(
+    addresses: &DerivedAddressInfo,
+    gateway: &GatewayId,
+    port: u16,
+) -> bool {
+    addresses.available.iter().any(|a| {
+        !a.ssl
+            && a.port == Some(port)
+            && matches!(&a.metadata, HostnameMetadata::PublicDomain { gateway: gw } if gw == gateway)
+    })
+}
+
+/// Is there a non-SSL private domain at this `gateway` + `port`? The LAN mirror
+/// of [`has_nonssl_public_domain`].
+pub(crate) fn has_nonssl_private_domain(
+    addresses: &DerivedAddressInfo,
+    gateway: &GatewayId,
+    port: u16,
+) -> bool {
+    addresses.available.iter().any(|a| {
+        !a.ssl
+            && a.port == Some(port)
+            && matches!(&a.metadata, HostnameMetadata::PrivateDomain { gateways } if gateways.contains(gateway))
+    })
+}
+
+/// Is the LAN level (private domain or bare LAN IPv4) currently on at
+/// `gateway`+`port`? LAN addresses are opt-out (on by default). Excludes the GUA.
+fn nonssl_lan_on(addresses: &DerivedAddressInfo, gateway: &GatewayId, port: u16) -> bool {
+    addresses.available.iter().any(|a| {
+        if a.ssl || a.port != Some(port) {
+            return false;
+        }
+        match &a.metadata {
+            HostnameMetadata::PrivateDomain { gateways } if gateways.contains(gateway) => {
+                !addresses.disabled.contains(&(a.hostname.clone(), port))
+            }
+            HostnameMetadata::Ipv4 { gateway: gw } if !a.public && gw == gateway => {
+                !addresses.disabled.contains(&(a.hostname.clone(), port))
+            }
+            _ => false,
+        }
+    })
+}
+
+/// Re-derive every GUA's reachability at `gateway`+`port` from its stored WAN
+/// opt-in (`gua_wan`, projected to `HostnameInfo.public`) and the LAN level. The
+/// WAN opt-in is an operator preference — this only READS it, never clobbers it,
+/// so a LAN-level change can't un-publish a GUA. A public GUA (in `gua_wan`) is
+/// reachable on WAN and LAN (public wins); otherwise it is local (on while the
+/// LAN level is up, else off). Only [`set_nonssl_wan_group`]/`set_gua_wan` write
+/// `gua_wan`.
+fn resolve_nonssl_gua(addresses: &mut DerivedAddressInfo, gateway: &GatewayId, port: u16) {
+    let lan_on = nonssl_lan_on(addresses, gateway, port);
+    let guas: Vec<(SocketAddrV6, InternedString)> = addresses
+        .available
+        .iter()
+        .filter_map(|a| {
+            if a.ssl || a.port != Some(port) {
+                return None;
+            }
+            match &a.metadata {
+                HostnameMetadata::Ipv6 { gateway: gw, .. } if gw == gateway => {
+                    a.gua().map(|g| (g, a.hostname.clone()))
+                }
+                _ => None,
+            }
+        })
+        .collect();
+    for (g, host) in guas {
+        let key = (host, port);
+        let sa = SocketAddr::V6(g);
+        if addresses.gua_wan.contains(&g) {
+            // Public (operator WAN opt-in): reachable on WAN and LAN.
+            addresses.enabled.insert(sa);
+            addresses.disabled.remove(&key);
+        } else if lan_on {
+            // Local: LAN-only, on (local GUAs are opt-out, tracked in `disabled`).
+            addresses.enabled.remove(&sa);
+            addresses.disabled.remove(&key);
+        } else {
+            // Off.
+            addresses.enabled.remove(&sa);
+            addresses.disabled.insert(key);
+        }
+    }
+}
+
+/// Set the non-SSL WAN level at `gateway`+`port` — the public domain(s) and the
+/// bare WAN IPv4 — to `enabled`, then resolve the shared GUA. On a non-SSL port
+/// there is no SNI, so these share the same packets and move as one. Callers gate
+/// on a public domain being present ([`has_nonssl_public_domain`]).
+pub(crate) fn set_nonssl_wan_group(
+    addresses: &mut DerivedAddressInfo,
+    gateway: &GatewayId,
+    port: u16,
+    enabled: bool,
+) {
+    let mut domain_keys = Vec::new();
+    let mut ipv4 = Vec::new();
+    let mut guas = Vec::new();
+    for a in &addresses.available {
+        if a.ssl || a.port != Some(port) {
+            continue;
+        }
+        match &a.metadata {
+            HostnameMetadata::PublicDomain { gateway: gw } if gw == gateway => {
+                domain_keys.push((a.hostname.clone(), port));
+            }
+            HostnameMetadata::Ipv4 { gateway: gw } if a.public && gw == gateway => {
+                if let Some(sa) = a.to_socket_addr() {
+                    ipv4.push(sa);
+                }
+            }
+            HostnameMetadata::Ipv6 { gateway: gw, .. } if gw == gateway => {
+                if let Some(g) = a.gua() {
+                    guas.push(g);
+                }
+            }
+            _ => {}
+        }
+    }
+    for k in domain_keys {
+        if enabled {
+            addresses.disabled.remove(&k);
+        } else {
+            addresses.disabled.insert(k);
+        }
+    }
+    for sa in ipv4 {
+        if enabled {
+            addresses.enabled.insert(sa);
+        } else {
+            addresses.enabled.remove(&sa);
+        }
+    }
+    // The public domain flips the GUA's WAN opt-in (the stored `gua_wan` /
+    // `public` flag) with it; `resolve_nonssl_gua` then derives its reachability.
+    for g in guas {
+        if enabled {
+            addresses.gua_wan.insert(g);
+        } else {
+            addresses.gua_wan.remove(&g);
+        }
+    }
+    resolve_nonssl_gua(addresses, gateway, port);
+}
+
+/// Set the non-SSL LAN level at `gateway`+`port` — the private domain(s) and the
+/// bare LAN IPv4 (both opt-out, keyed in `disabled`) — to `enabled`, then resolve
+/// the shared GUA. The LAN mirror of [`set_nonssl_wan_group`]; callers gate on a
+/// private domain being present ([`has_nonssl_private_domain`]).
+pub(crate) fn set_nonssl_lan_group(
+    addresses: &mut DerivedAddressInfo,
+    gateway: &GatewayId,
+    port: u16,
+    enabled: bool,
+) {
+    let mut keys = Vec::new();
+    for a in &addresses.available {
+        if a.ssl || a.port != Some(port) {
+            continue;
+        }
+        match &a.metadata {
+            HostnameMetadata::PrivateDomain { gateways } if gateways.contains(gateway) => {
+                keys.push((a.hostname.clone(), port));
+            }
+            HostnameMetadata::Ipv4 { gateway: gw } if !a.public && gw == gateway => {
+                keys.push((a.hostname.clone(), port));
+            }
+            _ => {}
+        }
+    }
+    for k in keys {
+        if enabled {
+            addresses.disabled.remove(&k);
+        } else {
+            addresses.disabled.insert(k);
+        }
+    }
+    resolve_nonssl_gua(addresses, gateway, port);
+}
+
 /// Toggle one address on/off for a binding's `DerivedAddressInfo`. Public IPs
 /// live in the `enabled` set (keyed by `SocketAddr`); domains and private IPs
-/// live in the `disabled` set (keyed by `(hostname, port)`). Non-SSL Ipv4 ↔
-/// PublicDomain on the same gateway+port are cascaded so they toggle together.
+/// live in the `disabled` set (keyed by `(hostname, port)`). On a non-SSL port a
+/// dual-stack public domain links the WAN IPv4 and IPv6 GUA, so toggling any one
+/// of {IPv4, domain, GUA} moves the whole group ([`set_nonssl_wan_group`]).
 /// Shared by single-port bindings and port ranges (whose addresses all use
 /// `external_start_port` as their port, so the same keying applies).
 fn set_address_enabled_on(
@@ -589,24 +785,14 @@ fn set_address_enabled_on(
         } else {
             addresses.enabled.remove(&sa);
         }
-        // Non-SSL Ipv4: cascade to PublicDomains on same gateway
+        // Non-SSL Ipv4: a dual-stack public domain links this to the co-located
+        // GUA, so when one is present move the whole {IPv4, domain, GUA} group
+        // together (no domain => v4 and gua stay independent).
         if !address.ssl {
             if let HostnameMetadata::Ipv4 { gateway } = &address.metadata {
                 let port = sa.port();
-                for a in &addresses.available {
-                    if a.ssl {
-                        continue;
-                    }
-                    if let HostnameMetadata::PublicDomain { gateway: gw } = &a.metadata {
-                        if gw == gateway && a.port.unwrap_or(80) == port {
-                            let k = (a.hostname.clone(), a.port.unwrap_or(80));
-                            if enabled {
-                                addresses.disabled.remove(&k);
-                            } else {
-                                addresses.disabled.insert(k);
-                            }
-                        }
-                    }
+                if has_nonssl_public_domain(addresses, gateway, port) {
+                    set_nonssl_wan_group(addresses, gateway, port, enabled);
                 }
             }
         }
@@ -619,39 +805,26 @@ fn set_address_enabled_on(
         } else {
             addresses.disabled.insert(key);
         }
-        // Non-SSL PublicDomain: cascade to Ipv4 + other PublicDomains on same gateway
+        // Non-SSL: a domain ties the v4 and v6 sides together (no SNI). A public
+        // domain moves the WAN level; a private domain (or the bare LAN IPv4, when
+        // a private domain links them) moves the LAN level.
         if !address.ssl {
-            if let HostnameMetadata::PublicDomain { gateway } = &address.metadata {
-                for a in &addresses.available {
-                    if a.ssl {
-                        continue;
-                    }
-                    match &a.metadata {
-                        HostnameMetadata::Ipv4 { gateway: gw } if a.public && gw == gateway => {
-                            if let Some(sa) = a.to_socket_addr() {
-                                if sa.port() == port {
-                                    if enabled {
-                                        addresses.enabled.insert(sa);
-                                    } else {
-                                        addresses.enabled.remove(&sa);
-                                    }
-                                }
-                            }
-                        }
-                        HostnameMetadata::PublicDomain { gateway: gw } if gw == gateway => {
-                            let dp = a.port.unwrap_or(80);
-                            if dp == port {
-                                let k = (a.hostname.clone(), dp);
-                                if enabled {
-                                    addresses.disabled.remove(&k);
-                                } else {
-                                    addresses.disabled.insert(k);
-                                }
-                            }
-                        }
-                        _ => {}
+            match &address.metadata {
+                HostnameMetadata::PublicDomain { gateway } => {
+                    set_nonssl_wan_group(addresses, gateway, port, enabled);
+                }
+                HostnameMetadata::PrivateDomain { gateways } => {
+                    for gateway in gateways {
+                        set_nonssl_lan_group(addresses, gateway, port, enabled);
                     }
                 }
+                // Bare LAN IPv4 (this branch is never reached for a public IP).
+                HostnameMetadata::Ipv4 { gateway } => {
+                    if has_nonssl_private_domain(addresses, gateway, port) {
+                        set_nonssl_lan_group(addresses, gateway, port, enabled);
+                    }
+                }
+                _ => {}
             }
         }
     }
@@ -685,7 +858,16 @@ pub async fn set_address_enabled<Kind: HostApiKind>(
                 .mutate(|b| {
                     let bind = b.get_mut(&internal_port).or_not_found(internal_port)?;
                     set_address_enabled_on(&mut bind.addresses, &address, enabled)
-                })
+                })?;
+            let hostname = ServerHostname::load(db.as_public().as_server_info())?;
+            let gateways = db
+                .as_public()
+                .as_server_info()
+                .as_network()
+                .as_gateways()
+                .de()?;
+            let ports = db.as_private().as_available_ports().de()?;
+            Kind::host_for(&inheritance, db)?.update_addresses(&hostname, &gateways, &ports)
         })
         .await
         .result?;
@@ -719,7 +901,16 @@ pub async fn set_range_address_enabled<Kind: HostApiKind>(
                 .mutate(|ranges| {
                     let range = ranges.get_mut(&internal_port).or_not_found(internal_port)?;
                     set_address_enabled_on(&mut range.addresses, &address, enabled)
-                })
+                })?;
+            let hostname = ServerHostname::load(db.as_public().as_server_info())?;
+            let gateways = db
+                .as_public()
+                .as_server_info()
+                .as_network()
+                .as_gateways()
+                .de()?;
+            let ports = db.as_private().as_available_ports().de()?;
+            Kind::host_for(&inheritance, db)?.update_addresses(&hostname, &gateways, &ports)
         })
         .await
         .result?;
@@ -730,27 +921,28 @@ pub async fn set_range_address_enabled<Kind: HostApiKind>(
 #[group(skip)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
-pub struct BindingSetGuaAccessParams {
+pub struct BindingSetGuaWanParams {
     #[arg(help = "help.arg.internal-port")]
     internal_port: u16,
     #[arg(long, help = "help.arg.address")]
     #[ts(as = "HostnameInfo")]
     address: CliFromJsonString<HostnameInfo>,
-    #[arg(long, help = "help.arg.gua-access")]
-    access: GuaAccess,
+    #[arg(long, help = "help.arg.gua-wan")]
+    wan: bool,
 }
 
-/// Set the Disabled / LAN / LAN+WAN exposure for a single IPv6 GUA on a binding.
-/// `Lan` is the default, so setting `Lan` clears the entry. The GUA tri-state
-/// only applies to single-port bindings — port ranges are IPv4-only. Errors if
-/// `address` is not an IPv6 global-unicast address.
-pub async fn set_gua_access<Kind: HostApiKind>(
+/// Opt a single IPv6 GUA on a binding into (or out of) WAN exposure. The flag
+/// is projected into `HostnameInfo.public` by `update_addresses`, so the row's
+/// enable/disable override set switches (`disabled` while local, `enabled`
+/// while public) — the current on/off state is carried across the flip. Errors
+/// if `address` is not an IPv6 global-unicast address.
+pub async fn set_gua_wan<Kind: HostApiKind>(
     ctx: RpcContext,
-    BindingSetGuaAccessParams {
+    BindingSetGuaWanParams {
         internal_port,
         address,
-        access,
-    }: BindingSetGuaAccessParams,
+        wan,
+    }: BindingSetGuaWanParams,
     inheritance: Kind::Inheritance,
 ) -> Result<(), Error> {
     let address = address.0;
@@ -766,19 +958,59 @@ pub async fn set_gua_access<Kind: HostApiKind>(
                 .as_bindings_mut()
                 .mutate(|b| {
                     let bind = b.get_mut(&internal_port).or_not_found(internal_port)?;
-                    if access == GuaAccess::default() {
-                        bind.addresses.gua_access.remove(&gua);
-                    } else {
-                        bind.addresses.gua_access.insert(gua, access);
+                    let addrs = &mut bind.addresses;
+                    let sa = SocketAddr::V6(gua);
+                    // A GUA's WAN opt-in is the stored `gua_wan` / `public` flag.
+                    // With a co-located public domain, flipping the GUA drives the
+                    // whole WAN level (the public domain and bare WAN IPv4 follow —
+                    // correct precisely because a public domain is present).
+                    // Otherwise it is a standalone opt-in; `resolve_nonssl_gua`
+                    // derives the GUA's reachability from `gua_wan` + the LAN level.
+                    let gua_gw = match &address.metadata {
+                        HostnameMetadata::Ipv6 { gateway, .. } if !address.ssl => {
+                            Some(gateway.clone())
+                        }
+                        _ => None,
+                    };
+                    match gua_gw {
+                        Some(gateway) if has_nonssl_public_domain(addrs, &gateway, gua.port()) => {
+                            set_nonssl_wan_group(addrs, &gateway, gua.port(), wan);
+                        }
+                        Some(gateway) => {
+                            if wan {
+                                addrs.gua_wan.insert(gua);
+                            } else {
+                                addrs.gua_wan.remove(&gua);
+                            }
+                            resolve_nonssl_gua(addrs, &gateway, gua.port());
+                        }
+                        None => {
+                            // SSL / non-linkable GUA: a plain WAN opt-in toggle.
+                            if wan {
+                                addrs.gua_wan.insert(gua);
+                                addrs.enabled.insert(sa);
+                            } else {
+                                addrs.gua_wan.remove(&gua);
+                                addrs.enabled.remove(&sa);
+                            }
+                        }
                     }
                     Ok(())
-                })
+                })?;
+            let hostname = ServerHostname::load(db.as_public().as_server_info())?;
+            let gateways = db
+                .as_public()
+                .as_server_info()
+                .as_network()
+                .as_gateways()
+                .de()?;
+            let ports = db.as_private().as_available_ports().de()?;
+            Kind::host_for(&inheritance, db)?.update_addresses(&hostname, &gateways, &ports)
         })
         .await
         .result?;
     Ok(())
 }
-
 
 #[cfg(test)]
 mod test {
@@ -799,6 +1031,118 @@ mod test {
         }
     }
 
+    fn opts(preferred: u16, add_ssl: Option<u16>, ssl: Option<bool>) -> BindOptions {
+        BindOptions {
+            preferred_external_port: preferred,
+            add_ssl: add_ssl.map(|preferred_external_port| AddSslOptions {
+                preferred_external_port,
+                add_x_forwarded_headers: false,
+                alpn: None,
+                upstream_cert_validation: None,
+                auth: None,
+            }),
+            secure: ssl.map(|ssl| Security { ssl }),
+        }
+    }
+
+    #[test]
+    fn tls_carrying_ports_are_ssl_ports() {
+        let mut ports = AvailablePorts::new();
+        let privileged = false;
+
+        // plaintext: one forwarded port
+        let plain = BindInfo::new(&mut ports, opts(8080, None, Some(false)), privileged).unwrap();
+        assert_eq!(plain.net.assigned_port, Some(8080));
+        assert_eq!(plain.net.assigned_ssl_port, None);
+        assert!(!ports.is_ssl(8080));
+
+        // we terminate TLS in front of a plaintext container: both ports
+        let add_ssl = BindInfo::new(&mut ports, opts(8081, Some(8444), None), privileged).unwrap();
+        assert_eq!(add_ssl.net.assigned_port, Some(8081));
+        assert_eq!(add_ssl.net.assigned_ssl_port, Some(8444));
+        assert!(ports.is_ssl(8444));
+
+        // we rewrap the container's TLS: the ssl port only
+        let rewrap =
+            BindInfo::new(&mut ports, opts(8082, Some(8445), Some(true)), privileged).unwrap();
+        assert_eq!(rewrap.net.assigned_port, None);
+        assert_eq!(rewrap.net.assigned_ssl_port, Some(8445));
+
+        // the container serves its own TLS: the ssl port only, fronted by
+        // our SNI-passthrough listener
+        let own_tls = BindInfo::new(&mut ports, opts(8083, None, Some(true)), privileged).unwrap();
+        assert_eq!(own_tls.net.assigned_port, None);
+        assert_eq!(own_tls.net.assigned_ssl_port, Some(8083));
+        assert!(ports.is_ssl(8083));
+    }
+
+    #[test]
+    fn changing_how_a_port_is_served_keeps_its_number() {
+        let mut ports = AvailablePorts::new();
+        let privileged = false;
+        let plain = BindInfo::new(&mut ports, opts(8080, None, Some(false)), privileged).unwrap();
+        assert_eq!(plain.net.assigned_port, Some(8080));
+
+        let own_tls = plain
+            .update(&mut ports, opts(8080, None, Some(true)), privileged)
+            .unwrap();
+        assert_eq!(own_tls.net.assigned_port, None);
+        assert_eq!(own_tls.net.assigned_ssl_port, Some(8080));
+        assert!(ports.is_ssl(8080));
+
+        // handing termination to us keeps the port
+        let add_ssl = own_tls
+            .update(&mut ports, opts(8080, Some(8080), Some(true)), privileged)
+            .unwrap();
+        assert_eq!(add_ssl.net.assigned_ssl_port, Some(8080));
+        assert!(ports.is_ssl(8080));
+
+        // and back down to plaintext
+        let plain = add_ssl
+            .update(&mut ports, opts(8080, None, Some(false)), privileged)
+            .unwrap();
+        assert_eq!(plain.net.assigned_port, Some(8080));
+        assert_eq!(plain.net.assigned_ssl_port, None);
+        assert!(!ports.is_ssl(8080));
+    }
+
+    #[test]
+    fn a_rebind_does_not_migrate_onto_a_freed_preferred_port() {
+        let mut ports = AvailablePorts::new();
+        let privileged = false;
+        // someone else holds 8080, so this binding lands elsewhere
+        assert_eq!(ports.try_alloc(8080, false, privileged), Some(8080));
+        let squatted =
+            BindInfo::new(&mut ports, opts(8080, None, Some(false)), privileged).unwrap();
+        let assigned = squatted.net.assigned_port.unwrap();
+        assert_ne!(assigned, 8080);
+
+        ports.free([8080]);
+        let again = squatted
+            .update(&mut ports, opts(8080, None, Some(false)), privileged)
+            .unwrap();
+        assert_eq!(again.net.assigned_port, Some(assigned));
+    }
+
+    /// The admin UI rebinds on every boot, so `update` is what hands 443 back.
+    #[test]
+    fn the_os_ui_keeps_its_well_known_ports_across_rebinds() {
+        let mut ports = AvailablePorts::new();
+        let privileged = true;
+        // exactly what `NetController::os_bindings` asks for
+        let admin = opts(80, Some(443), None);
+
+        let ui = BindInfo::new(&mut ports, admin.clone(), privileged).unwrap();
+        assert_eq!(ui.net.assigned_port, Some(80));
+        assert_eq!(ui.net.assigned_ssl_port, Some(443));
+        assert!(ports.is_ssl(443));
+
+        let ui = ui.update(&mut ports, admin, privileged).unwrap();
+        assert_eq!(ui.net.assigned_port, Some(80));
+        assert_eq!(ui.net.assigned_ssl_port, Some(443));
+        assert!(ports.is_ssl(443));
+    }
+
     #[test]
     fn gua_detection() {
         assert!(ipv6_addr("2001:db8::1", 443).gua().is_some()); // global unicast
@@ -817,25 +1161,290 @@ mod test {
     }
 
     #[test]
-    fn gua_tristate_enabled_and_wan() {
-        let gua = ipv6_addr("2001:db8::1", 443);
-        let key = gua.gua().unwrap();
+    fn nonssl_wan_group_moves_domain_v4_gua_together() {
+        let gw = GatewayId::from(InternedString::intern("wg1"));
+        let mk = |ssl, public, host: &str, meta| HostnameInfo {
+            ssl,
+            public,
+            hostname: InternedString::intern(host),
+            port: Some(42000),
+            metadata: meta,
+        };
         let mut info = DerivedAddressInfo::default();
-        info.available.insert(gua.clone());
+        info.available.insert(mk(
+            false,
+            true,
+            "turn.start9.dev",
+            HostnameMetadata::PublicDomain {
+                gateway: gw.clone(),
+            },
+        ));
+        info.available.insert(mk(
+            false,
+            true,
+            "64.23.194.12",
+            HostnameMetadata::Ipv4 {
+                gateway: gw.clone(),
+            },
+        ));
+        info.available.insert(mk(
+            false,
+            false,
+            "2001:db8::1",
+            HostnameMetadata::Ipv6 {
+                gateway: gw.clone(),
+                scope_id: 0,
+            },
+        ));
 
-        // Default ⇒ LAN: reachable but not WAN-exposed.
-        assert_eq!(info.access_for(key), GuaAccess::Lan);
-        assert!(info.enabled().contains(&gua));
-        assert!(!info.is_wan(&gua));
+        assert!(has_nonssl_public_domain(&info, &gw, 42000));
+        assert!(!has_nonssl_public_domain(&info, &gw, 9999));
 
-        // LAN+WAN ⇒ reachable and WAN-exposed.
-        info.gua_access.insert(key, GuaAccess::LanWan);
-        assert!(info.enabled().contains(&gua));
-        assert!(info.is_wan(&gua));
+        let v4_sa: SocketAddr = "64.23.194.12:42000".parse().unwrap();
+        let gua_v6: SocketAddrV6 = "[2001:db8::1]:42000".parse().unwrap();
+        let dom_key = (InternedString::intern("turn.start9.dev"), 42000u16);
 
-        // Disabled ⇒ removed from the enabled set.
-        info.gua_access.insert(key, GuaAccess::Disabled);
-        assert!(!info.enabled().contains(&gua));
-        assert!(!info.is_wan(&gua));
+        // Enable: domain un-disabled, v4 enabled, GUA published (gua_wan+enabled).
+        set_nonssl_wan_group(&mut info, &gw, 42000, true);
+        assert!(!info.disabled.contains(&dom_key));
+        assert!(info.enabled.contains(&v4_sa));
+        assert!(info.gua_wan.contains(&gua_v6));
+        assert!(info.enabled.contains(&SocketAddr::V6(gua_v6)));
+
+        // Disable: all three off together.
+        set_nonssl_wan_group(&mut info, &gw, 42000, false);
+        assert!(info.disabled.contains(&dom_key));
+        assert!(!info.enabled.contains(&v4_sa));
+        assert!(!info.gua_wan.contains(&gua_v6));
+        assert!(!info.enabled.contains(&SocketAddr::V6(gua_v6)));
+    }
+
+    #[test]
+    fn shared_gua_public_wins_over_local() {
+        let gw = GatewayId::from(InternedString::intern("wg1"));
+        let mk = |ssl, public, host: &str, meta| HostnameInfo {
+            ssl,
+            public,
+            hostname: InternedString::intern(host),
+            port: Some(42000),
+            metadata: meta,
+        };
+        let mut info = DerivedAddressInfo::default();
+        info.available.insert(mk(
+            false,
+            true,
+            "pub.example.com",
+            HostnameMetadata::PublicDomain {
+                gateway: gw.clone(),
+            },
+        ));
+        info.available.insert(mk(
+            false,
+            true,
+            "64.23.194.12",
+            HostnameMetadata::Ipv4 {
+                gateway: gw.clone(),
+            },
+        ));
+        info.available.insert(mk(
+            false,
+            false,
+            "priv.local",
+            HostnameMetadata::PrivateDomain {
+                gateways: BTreeSet::from([gw.clone()]),
+            },
+        ));
+        info.available.insert(mk(
+            false,
+            false,
+            "10.0.0.5",
+            HostnameMetadata::Ipv4 {
+                gateway: gw.clone(),
+            },
+        ));
+        info.available.insert(mk(
+            false,
+            false,
+            "2001:db8::1",
+            HostnameMetadata::Ipv6 {
+                gateway: gw.clone(),
+                scope_id: 0,
+            },
+        ));
+
+        let gua_v6: SocketAddrV6 = "[2001:db8::1]:42000".parse().unwrap();
+        let gua_key = (InternedString::intern("2001:db8::1"), 42000u16);
+
+        // WAN level on -> GUA public (public is inclusive of LAN, so it wins).
+        set_nonssl_wan_group(&mut info, &gw, 42000, true);
+        assert!(
+            info.gua_wan.contains(&gua_v6),
+            "public domain on => GUA public"
+        );
+
+        // WAN level off, LAN level still on -> GUA drops to local, not off.
+        set_nonssl_wan_group(&mut info, &gw, 42000, false);
+        assert!(!info.gua_wan.contains(&gua_v6), "GUA no longer public");
+        assert!(
+            !info.disabled.contains(&gua_key),
+            "GUA is local (on), not off, because the LAN level is still up"
+        );
+    }
+
+    #[test]
+    fn nonssl_lan_group_moves_private_v4_gua_together() {
+        let gw = GatewayId::from(InternedString::intern("wg1"));
+        let mk = |host: &str, meta| HostnameInfo {
+            ssl: false,
+            public: false,
+            hostname: InternedString::intern(host),
+            port: Some(42000),
+            metadata: meta,
+        };
+        let mut info = DerivedAddressInfo::default();
+        info.available.insert(mk(
+            "priv.local",
+            HostnameMetadata::PrivateDomain {
+                gateways: BTreeSet::from([gw.clone()]),
+            },
+        ));
+        info.available.insert(mk(
+            "10.0.0.5",
+            HostnameMetadata::Ipv4 {
+                gateway: gw.clone(),
+            },
+        ));
+        info.available.insert(mk(
+            "2001:db8::1",
+            HostnameMetadata::Ipv6 {
+                gateway: gw.clone(),
+                scope_id: 0,
+            },
+        ));
+
+        let priv_key = (InternedString::intern("priv.local"), 42000u16);
+        let lan_key = (InternedString::intern("10.0.0.5"), 42000u16);
+        let gua_key = (InternedString::intern("2001:db8::1"), 42000u16);
+
+        // Disable the LAN level (nothing on the WAN side to keep the GUA) -> off.
+        set_nonssl_lan_group(&mut info, &gw, 42000, false);
+        assert!(info.disabled.contains(&priv_key));
+        assert!(info.disabled.contains(&lan_key));
+        assert!(info.disabled.contains(&gua_key), "GUA off");
+
+        // Re-enable -> private domain + LAN IPv4 on, GUA local (on, not public).
+        set_nonssl_lan_group(&mut info, &gw, 42000, true);
+        assert!(!info.disabled.contains(&priv_key));
+        assert!(!info.disabled.contains(&lan_key));
+        assert!(!info.disabled.contains(&gua_key));
+        assert!(
+            !info
+                .gua_wan
+                .contains(&"[2001:db8::1]:42000".parse().unwrap()),
+            "GUA is local, not public"
+        );
+    }
+
+    #[test]
+    fn lan_change_preserves_a_stored_wan_gua() {
+        let gw = GatewayId::from(InternedString::intern("wg1"));
+        let mk = |host: &str, meta| HostnameInfo {
+            ssl: false,
+            public: false,
+            hostname: InternedString::intern(host),
+            port: Some(42000),
+            metadata: meta,
+        };
+        let mut info = DerivedAddressInfo::default();
+        info.available.insert(mk(
+            "priv.local",
+            HostnameMetadata::PrivateDomain {
+                gateways: BTreeSet::from([gw.clone()]),
+            },
+        ));
+        info.available.insert(mk(
+            "10.0.0.5",
+            HostnameMetadata::Ipv4 {
+                gateway: gw.clone(),
+            },
+        ));
+        info.available.insert(mk(
+            "2001:db8::1",
+            HostnameMetadata::Ipv6 {
+                gateway: gw.clone(),
+                scope_id: 0,
+            },
+        ));
+        let gua_v6: SocketAddrV6 = "[2001:db8::1]:42000".parse().unwrap();
+        // Operator opted this GUA into WAN directly (stored preference) — there is
+        // no public domain to link it.
+        info.gua_wan.insert(gua_v6);
+        info.enabled.insert(SocketAddr::V6(gua_v6));
+
+        // A LAN-level change must NOT un-publish the GUA's stored WAN opt-in.
+        set_nonssl_lan_group(&mut info, &gw, 42000, false);
+        assert!(
+            info.gua_wan.contains(&gua_v6),
+            "a LAN change must not clobber the GUA's stored WAN opt-in"
+        );
+        set_nonssl_lan_group(&mut info, &gw, 42000, true);
+        assert!(
+            info.gua_wan.contains(&gua_v6),
+            "still WAN after LAN re-enabled"
+        );
+    }
+
+    #[test]
+    fn gua_enabled_follows_public_flag() {
+        let local = ipv6_addr("2001:db8::1", 443);
+        let key = local.gua().unwrap();
+        let mut info = DerivedAddressInfo::default();
+        info.available.insert(local.clone());
+
+        // A local (non-WAN) GUA follows the private rule: on unless disabled.
+        assert!(info.enabled().contains(&local));
+        info.disabled.insert((local.hostname.clone(), key.port()));
+        assert!(!info.enabled().contains(&local));
+        info.disabled.clear();
+
+        // A WAN GUA carries public=true (projected from gua_wan by
+        // update_addresses) and follows the public rule: opt-in via `enabled`.
+        let public = HostnameInfo {
+            public: true,
+            ..local.clone()
+        };
+        info.available.clear();
+        info.available.insert(public.clone());
+        assert!(!info.enabled().contains(&public));
+        info.enabled.insert(SocketAddr::V6(key));
+        assert!(info.enabled().contains(&public));
+    }
+
+    #[test]
+    fn rekey_port_carries_range_overrides() {
+        use std::net::SocketAddr;
+        let mut info = DerivedAddressInfo::default();
+        let wan: SocketAddr = "1.2.3.4:49152".parse().unwrap();
+        let unrelated: SocketAddr = "1.2.3.4:8443".parse().unwrap();
+        info.enabled.insert(wan);
+        info.enabled.insert(unrelated);
+        info.disabled
+            .insert((InternedString::intern("example.com"), 49152));
+
+        // A range moving from external_start_port 49152 to 5000.
+        info.rekey_port(49152, 5000);
+
+        assert!(info.enabled.contains(&"1.2.3.4:5000".parse().unwrap()));
+        assert!(!info.enabled.contains(&wan));
+        assert!(info.enabled.contains(&unrelated)); // unrelated port untouched
+        assert!(
+            info.disabled
+                .contains(&(InternedString::intern("example.com"), 5000))
+        );
+        assert!(
+            !info
+                .disabled
+                .contains(&(InternedString::intern("example.com"), 49152))
+        );
     }
 }

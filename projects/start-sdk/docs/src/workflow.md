@@ -1,6 +1,6 @@
 # Development Workflow
 
-This page covers how to *behave* while working on a package — the disciplines that apply to every change, no matter which SDK constructs you touch. The rest of the guide describes *what* to build; this page describes *how* to work while building it. These rules are the canonical home for the working discipline an AI coding agent should follow on every task.
+This page covers how to _behave_ while working on a package — the disciplines that apply to every change, no matter which SDK constructs you touch. The rest of the guide describes _what_ to build; this page describes _how_ to work while building it. These rules are the canonical home for the working discipline an AI coding agent should follow on every task.
 
 ## Keep README and instructions in sync
 
@@ -13,7 +13,7 @@ Apply this loop on every task:
 3. If either no longer matches the code, update it in the same change.
 4. If a file is silent on the area and doesn't need to speak to it, leave it.
 
-Don't skip step 2 on the theory that a change was "internal." If you're unsure whether a change is worth documenting, the doc check *is* the answer: if neither file mentions the area, it was internal; if one does, your change probably affects that file.
+Don't skip step 2 on the theory that a change was "internal." If you're unsure whether a change is worth documenting, the doc check _is_ the answer: if neither file mentions the area, it was internal; if one does, your change probably affects that file.
 
 See [Writing READMEs](./writing-readmes.md) and [Writing Instructions](./writing-instructions.md) for the content rules.
 
@@ -53,11 +53,19 @@ When you can't verify something, surface it as an open question or a `TODO.md` i
 
 Before concluding the SDK can't do what you need — or working around a limitation you've assumed — grep the installed type definitions: `node_modules/@start9labs/start-sdk/**/*.d.ts`. The SDK exposes far more than the recipes show, and the option you want is often a field on a type you're already using (this is how `runAsInit` is found, for example). "The SDK doesn't support X" is a claim to verify in the types, not a conclusion to reach from the docs alone. If it genuinely isn't there, say so and explain the workaround — don't silently route around a capability that exists.
 
+## A comment is not evidence
+
+A comment asserting what an SDK call does — in a package you're reading, in a code review, in this guide's own prose — is a claim, not a fact. Confirm it against the reference page, the installed types, or the SDK source before you accept it, repeat it, or write code that depends on it. Wrong claims about semantics propagate: one plausible sentence gets copied into the next package, then quoted in a review, then built into a plan.
+
+`merge(effects, {})` is the standing example. It has variously been described as rewriting the file, as cleaning or stripping it, and as a no-op against an existing one. Every reading was plausible; none was correct — see [What an Empty merge() Does](./file-models.md#what-an-empty-merge-does).
+
 ## Read the monorepo source only when the guide can't answer
 
-Your workspace's `start-technologies/` is a sparse checkout of the Start9 monorepo, so the full **SDK source** (`projects/start-sdk/lib`) and **StartOS source** (`projects/start-os`, and the shared core in `shared-libs/`) are there when you need them — past the recipes, reference pages, real packages, and the installed `@start9labs/start-sdk` types.
+Your workspace's `start-technologies/` is a checkout of the whole Start9 monorepo, so the **SDK source** (`projects/start-sdk/lib`) and the **StartOS source** (`projects/start-os`, and the shared core in `shared-libs/`) are already on disk — behind the recipes, the reference pages, real packages, and the installed `@start9labs/start-sdk` types.
 
-This is a **last resort, not a starting point.** Drop into the source only to answer a specific question those layers can't — exactly what an SDK call does, how an OS effect behaves — and read the one file that settles it instead of browsing. Fetch a path that isn't checked out with `git -C start-technologies sparse-checkout add <path>`.
+This is a **last resort, not a starting point.** Drop into the source only to answer a specific question those layers can't — exactly what an SDK call does, how an OS effect behaves — and read the one file that settles it instead of browsing.
+
+When the answer turns out to be a bug rather than a misunderstanding, fix it there: that checkout is a full git repo, so you can branch, commit, and open a pull request without leaving the workspace.
 
 ## Don't create unnecessary version files
 

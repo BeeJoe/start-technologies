@@ -171,7 +171,7 @@ import UpdatesComponent from './updates.component'
     }
 
     tui-progress-circle {
-      display: inline-block;
+      display: inline-flex;
       vertical-align: middle;
     }
 
@@ -210,6 +210,7 @@ import UpdatesComponent from './updates.component'
         padding: 0 3rem;
         text-align: left;
         white-space: normal;
+        overflow-wrap: anywhere;
       }
     }
 

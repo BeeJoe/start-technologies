@@ -13,11 +13,10 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt, copy_bidirectional};
-use tokio::net::{TcpListener, TcpStream};
+use tokio::net::TcpStream;
 use tokio::time::timeout;
 
 use crate::net::port_map::pcp::hostname::RESULT_HOSTNAME_TAKEN;
-use crate::prelude::*;
 use crate::util::future::NonDetachingJoinHandle;
 use crate::util::sync::SyncMutex;
 
@@ -26,6 +25,10 @@ type PortKey = (Ipv4Addr, u16);
 
 const CLIENTHELLO_CAP: usize = 16384;
 const CLIENTHELLO_TIMEOUT: Duration = Duration::from_secs(5);
+/// Backoff for bind/accept failures (e.g. fd exhaustion); the listener retries
+/// rather than giving up its port.
+const BIND_RETRY_DELAY: Duration = Duration::from_secs(5);
+const ACCEPT_RETRY_DELAY: Duration = Duration::from_millis(100);
 
 #[derive(Clone)]
 struct Binding {
@@ -43,7 +46,8 @@ struct PortBindings {
 
 impl PortBindings {
     fn prune(&mut self, now: Instant) {
-        self.hostnames.retain(|_, b| b.expiry.is_none_or(|e| e > now));
+        self.hostnames
+            .retain(|_, b| b.expiry.is_none_or(|e| e > now));
     }
     fn is_empty(&self) -> bool {
         self.hostnames.is_empty() && self.fallback.is_none()
@@ -92,10 +96,34 @@ impl SniDemux {
         });
         let weak = Arc::downgrade(&this);
         tokio::spawn(async move {
+            let mut divert_ok = true;
             loop {
                 tokio::time::sleep(Duration::from_secs(30)).await;
                 let Some(this) = weak.upgrade() else { break };
                 this.prune();
+                // Re-assert the reply-path divert while any listener is active:
+                // heals external flushes (networkd restart, nft flush) that
+                // would otherwise silently hang all demuxed traffic.
+                if this.listeners.peek(|l| !l.is_empty()) {
+                    match crate::net::transparent::ensure_divert_infra().await {
+                        Ok(repaired) => {
+                            if repaired {
+                                tracing::warn!(
+                                    "SNI demux reply-path divert infra was missing; re-installed"
+                                );
+                            } else if !divert_ok {
+                                tracing::info!("SNI demux reply-path divert re-assert recovered");
+                            }
+                            divert_ok = true;
+                        }
+                        Err(e) => {
+                            if divert_ok {
+                                tracing::warn!("SNI demux reply-path divert re-assert failed: {e}");
+                            }
+                            divert_ok = false;
+                        }
+                    }
+                }
             }
         });
         this
@@ -148,9 +176,49 @@ impl SniDemux {
         self.ports.mutate(|ports| {
             if let Some(entry) = ports.get_mut(&key) {
                 for name in hostnames {
-                    if entry.hostnames.get(name).is_some_and(|b| b.target == target) {
+                    if entry
+                        .hostnames
+                        .get(name)
+                        .is_some_and(|b| b.target == target)
+                    {
                         entry.hostnames.remove(name);
                     }
+                }
+            }
+        });
+        self.reap_if_empty(key);
+    }
+
+    /// Set the hostname-less fallback for `(ext_ip, ext_port) -> target` and
+    /// ensure the listener runs. Traffic matching no hostname route (or sending
+    /// no SNI) is spliced here. `Err(RESULT_HOSTNAME_TAKEN)` if a different
+    /// target already holds the fallback; the same target reclaims (idempotent).
+    pub fn register_fallback(
+        self: &Arc<Self>,
+        ext_ip: Ipv4Addr,
+        ext_port: u16,
+        target: SocketAddrV4,
+    ) -> Result<(), u8> {
+        let key = (ext_ip, ext_port);
+        self.ports.mutate(|ports| {
+            let entry = ports.entry(key).or_default();
+            if entry.fallback.is_some_and(|t| t != target) {
+                return Err(RESULT_HOSTNAME_TAKEN);
+            }
+            entry.fallback = Some(target);
+            Ok(())
+        })?;
+        self.ensure_listener(key);
+        Ok(())
+    }
+
+    /// Clear the fallback on `(ext_ip, ext_port)`, only if held by `target`.
+    pub fn unregister_fallback(&self, ext_ip: Ipv4Addr, ext_port: u16, target: SocketAddrV4) {
+        let key = (ext_ip, ext_port);
+        self.ports.mutate(|ports| {
+            if let Some(entry) = ports.get_mut(&key) {
+                if entry.fallback == Some(target) {
+                    entry.fallback = None;
                 }
             }
         });
@@ -197,11 +265,7 @@ impl SniDemux {
             return;
         }
         let ports = self.ports.clone();
-        let handle = NonDetachingJoinHandle::from(tokio::spawn(async move {
-            if let Err(e) = run_listener(key, ports).await {
-                tracing::warn!("SNI demux listener on {}:{} exited: {e}", key.0, key.1);
-            }
-        }));
+        let handle = NonDetachingJoinHandle::from(tokio::spawn(run_listener(key, ports)));
         self.listeners.mutate(|l| {
             l.insert(key, handle);
         });
@@ -211,23 +275,40 @@ impl SniDemux {
     }
 }
 
-async fn run_listener(
-    key: PortKey,
-    ports: Arc<SyncMutex<BTreeMap<PortKey, PortBindings>>>,
-) -> Result<(), Error> {
-    if let Err(e) = crate::net::transparent::ensure_divert_infra().await {
-        tracing::warn!("SNI demux reply-path divert setup failed (source preservation may be degraded): {e}");
+async fn run_listener(key: PortKey, ports: Arc<SyncMutex<BTreeMap<PortKey, PortBindings>>>) {
+    if let Err(e) = crate::net::transparent::ensure_divert_infra_once().await {
+        tracing::warn!(
+            "SNI demux reply-path divert setup failed (source preservation may be degraded): {e}"
+        );
     }
-    let listener = TcpListener::bind(SocketAddrV4::new(key.0, key.1))
-        .await
-        .with_kind(ErrorKind::Network)?;
+    let listener = loop {
+        match crate::net::utils::bind_tokio_listener(SocketAddrV4::new(key.0, key.1).into()) {
+            Ok(listener) => break listener,
+            Err(e) => {
+                tracing::warn!(
+                    "SNI demux bind on {}:{} failed (retrying): {e}",
+                    key.0,
+                    key.1
+                );
+                tokio::time::sleep(BIND_RETRY_DELAY).await;
+            }
+        }
+    };
     tracing::info!("SNI demux listening on {}:{}", key.0, key.1);
     loop {
-        let (conn, peer) = listener.accept().await.with_kind(ErrorKind::Network)?;
-        let ports = ports.clone();
-        tokio::spawn(async move {
-            handle_conn(conn, peer, key, ports).await;
-        });
+        match listener.accept().await {
+            Ok((conn, peer)) => {
+                let ports = ports.clone();
+                tokio::spawn(async move {
+                    handle_conn(conn, peer, key, ports).await;
+                });
+            }
+            // Transient (EMFILE, ECONNABORTED): never tear down the listener.
+            Err(e) => {
+                tracing::warn!("SNI demux accept on {}:{}: {e}", key.0, key.1);
+                tokio::time::sleep(ACCEPT_RETRY_DELAY).await;
+            }
+        }
     }
 }
 
@@ -237,6 +318,12 @@ async fn handle_conn(
     key: PortKey,
     ports: Arc<SyncMutex<BTreeMap<PortKey, PortBindings>>>,
 ) {
+    // Reap silently-vanished peers, else copy_bidirectional pins the fd pair forever.
+    if let Err(e) =
+        socket2::SockRef::from(&conn).set_tcp_keepalive(&crate::net::utils::default_keepalive())
+    {
+        tracing::error!("Failed to set tcp keepalive: {e}");
+    }
     let mut buf = Vec::new();
     let mut tmp = [0u8; 4096];
     let sni = loop {
@@ -264,8 +351,20 @@ async fn handle_conn(
         return; // IPv4-only listener; should not occur
     };
     // Open the internal leg from the client's own source address (RFC §4.6).
-    let Ok(mut upstream) = crate::net::transparent::transparent_connect(peer, target).await else {
-        return;
+    // No plain-connect fallback: the backend gates LAN-only addresses on the
+    // source being private, and this server's own wg address is private — a
+    // fallback would present every WAN client as LAN-local.
+    let mut upstream = match crate::net::transparent::transparent_connect(
+        SocketAddr::V4(peer),
+        SocketAddr::V4(target),
+    )
+    .await
+    {
+        Ok(upstream) => upstream,
+        Err(e) => {
+            tracing::warn!("SNI demux transparent egress to {target} for {peer} failed: {e}");
+            return;
+        }
     };
     if upstream.write_all(&buf).await.is_err() {
         return;
@@ -344,6 +443,50 @@ mod tests {
         assert_eq!(extract_sni(b"GET / HTTP/1.1\r\n"), None);
     }
 
+    #[tokio::test]
+    async fn fallback_register_ownership_and_coexistence() {
+        let demux = SniDemux::new();
+        let ip: Ipv4Addr = Ipv4Addr::LOCALHOST;
+        let port = 44300u16;
+        let fb = SocketAddrV4::new(Ipv4Addr::new(10, 0, 0, 9), 443);
+        let host_target = SocketAddrV4::new(Ipv4Addr::new(10, 0, 0, 1), 443);
+
+        // A fallback can be set; a different target can't steal it, same reclaims.
+        demux.register_fallback(ip, port, fb).unwrap();
+        assert!(
+            demux
+                .register_fallback(ip, port, SocketAddrV4::new(Ipv4Addr::new(10, 0, 0, 8), 443))
+                .is_err()
+        );
+        assert!(demux.register_fallback(ip, port, fb).is_ok());
+
+        // A named route coexists with the fallback: exact SNI hits the route,
+        // no/unmatched SNI hits the fallback.
+        demux
+            .register(ip, port, &["a.example.com".to_string()], host_target, None)
+            .unwrap();
+        demux.ports.peek(|p| {
+            let pb = p.get(&(ip, port)).unwrap();
+            assert_eq!(pb.select(Some("a.example.com")), Some(host_target));
+            assert_eq!(pb.select(Some("nope.example.com")), Some(fb));
+            assert_eq!(pb.select(None), Some(fb));
+        });
+
+        // Unregister with the wrong target is a no-op; the right target clears it,
+        // leaving the named route intact.
+        demux.unregister_fallback(ip, port, SocketAddrV4::new(Ipv4Addr::new(10, 0, 0, 8), 443));
+        demux.ports.peek(|p| {
+            assert_eq!(p.get(&(ip, port)).unwrap().fallback, Some(fb));
+        });
+        demux.unregister_fallback(ip, port, fb);
+        demux.ports.peek(|p| {
+            let pb = p.get(&(ip, port)).unwrap();
+            assert_eq!(pb.fallback, None);
+            assert_eq!(pb.select(None), None);
+            assert_eq!(pb.select(Some("a.example.com")), Some(host_target));
+        });
+    }
+
     #[test]
     fn select_exact_wildcard_fallback() {
         let mut pb = PortBindings::default();
@@ -355,8 +498,14 @@ mod tests {
         pb.hostnames.insert("a.example.com".into(), mk(1));
         pb.hostnames.insert("*.example.com".into(), mk(2));
         pb.fallback = Some(SocketAddrV4::new(Ipv4Addr::new(10, 0, 0, 9), 443));
-        assert_eq!(pb.select(Some("a.example.com")).unwrap().ip().octets()[3], 1);
-        assert_eq!(pb.select(Some("b.example.com")).unwrap().ip().octets()[3], 2);
+        assert_eq!(
+            pb.select(Some("a.example.com")).unwrap().ip().octets()[3],
+            1
+        );
+        assert_eq!(
+            pb.select(Some("b.example.com")).unwrap().ip().octets()[3],
+            2
+        );
         assert_eq!(pb.select(Some("other.org")).unwrap().ip().octets()[3], 9);
         assert_eq!(pb.select(None).unwrap().ip().octets()[3], 9);
     }

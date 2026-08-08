@@ -4,7 +4,9 @@
 
 mod client;
 pub mod pcp;
+pub mod probe;
 pub mod server;
 pub mod upnp;
 
+pub(crate) use client::set_verdict;
 pub use client::{PortMapController, candidate_gateways};

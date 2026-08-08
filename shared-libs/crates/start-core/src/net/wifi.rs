@@ -1096,6 +1096,46 @@ pub async fn synchronize_network_manager<P: AsRef<Path>>(
         .await
         .log_err();
 
+    // IPv6 twins of the two fallbacks above. StartOS owns v6 routing the way it
+    // owns v4: `from all lookup main`/`default` sit above NetworkManager's
+    // per-tunnel `::/0` full-tunnel rules (~pref 30786), so importing a tunnel
+    // that carries an IPv6 address no longer lets NM capture the host's entire
+    // IPv6 default route — the v6 default is decided by `main` (by metric),
+    // exactly like v4. There is no terminal blackhole: leak prevention is
+    // per-gateway instead. A gateway with no IPv6 that is selected as the default
+    // outbound points its priority-75 catch-all at a `blackhole default` table
+    // (see `apply_policy_routing_v6`), dropping the host's v6 egress without also
+    // blackholing replies to inbound tunnel connections — those are pinned to
+    // their arrival interface by the priority-50 CONNMARK rule.
+    Command::new("ip")
+        .arg("-6")
+        .arg("rule")
+        .arg("add")
+        .arg("pref")
+        .arg("1000")
+        .arg("from")
+        .arg("all")
+        .arg("lookup")
+        .arg("main")
+        .invoke(ErrorKind::Network)
+        .await
+        .log_err();
+    Command::new("ip")
+        .arg("-6")
+        .arg("rule")
+        .arg("add")
+        .arg("pref")
+        .arg("1100")
+        .arg("from")
+        .arg("all")
+        .arg("lookup")
+        .arg("default")
+        .invoke(ErrorKind::Network)
+        .await
+        .log_err();
+
+    force_ipv6_addr_gen_eui64().await;
+
     Command::new("systemctl")
         .arg("restart")
         .arg("NetworkManager")
@@ -1129,6 +1169,43 @@ pub async fn synchronize_network_manager<P: AsRef<Path>>(
             .await?;
     }
     Ok(())
+}
+
+/// Force EUI-64 IPv6 addressing (privacy extensions off) onto existing physical
+/// NetworkManager connections. Connection defaults in NetworkManager.conf only
+/// fill in unset properties, so a profile created before those defaults existed
+/// keeps its stable-privacy addressing and draws a new address every boot.
+async fn force_ipv6_addr_gen_eui64() {
+    let Ok(out) = Command::new("nmcli")
+        .arg("-t")
+        .arg("-f")
+        .arg("UUID,TYPE")
+        .arg("connection")
+        .arg("show")
+        .invoke(ErrorKind::Network)
+        .await
+    else {
+        return;
+    };
+    for line in String::from_utf8_lossy(&out).lines() {
+        let mut fields = split_nmcli_terse_line(line).into_iter();
+        let (Some(uuid), Some(kind)) = (fields.next(), fields.next()) else {
+            continue;
+        };
+        if kind == "802-3-ethernet" || kind == "802-11-wireless" {
+            Command::new("nmcli")
+                .arg("connection")
+                .arg("modify")
+                .arg(&uuid)
+                .arg("ipv6.addr-gen-mode")
+                .arg("eui64")
+                .arg("ipv6.ip6-privacy")
+                .arg("0")
+                .invoke(ErrorKind::Network)
+                .await
+                .log_err();
+        }
+    }
 }
 
 #[cfg(test)]

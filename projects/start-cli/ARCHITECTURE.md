@@ -33,7 +33,7 @@ standalone binary it behaves like a dedicated CLI.
 argv ─▶ MultiExecutable ─▶ start_cli::main (in start-core)
                               │
                               ├─ build CliApp from start-core::main_api()
-                              ├─ load ClientConfig (flags + .startos/config.yaml + /etc/startos)
+                              ├─ load ClientConfig (flags + -c + workspace + ~/.startos + /etc/startos)
                               └─ run:
                                    • remote command  ─▶ CliContext ─HTTPS RPC─▶ StartOS server
                                    • local command   ─▶ executed in-process (s9pk, keys, util)
@@ -49,16 +49,25 @@ are unwrapped from the RPC envelope and printed to stderr; the process exits wit
 
 `main_api()` (in [`shared-libs/crates/start-core/src/lib.rs`](../../shared-libs/crates/start-core/src/lib.rs))
 registers every subcommand once with `with_call_remote::<CliContext>()` — those are dispatched
-over the network to a server's RPC endpoint, authenticated with the session cookie. Commands
+over the network to a server's RPC endpoint, authenticated by signing each request with the
+enrolled identity key (or, on the server itself, the local authcookie sent as a Bearer token). Commands
 without a remote handler (`s9pk`, `init-key`, `pubkey`, `util`) execute locally. The `registry`
 and `tunnel` groups can target a separate registry/tunnel host via `--registry`/`--tunnel`.
 
 ### Configuration
 
-`ClientConfig` (in `start-core::context::config`) is parsed from CLI flags and merged with
-config files in priority order: explicit flags → workspace `.startos/config.yaml` →
-`/etc/startos/config.yaml`. It carries the target host/registry/tunnel, proxy, cookie path,
-developer key path, root CAs, and the `--insecure` toggle. The loaded config becomes a
+`ClientConfig` (in `start-core::context::config`) is the single config type — the workspace
+`.startos/config.yaml`, `~/.startos/config.yaml`, `/etc/startos/config.yaml`, and `-c` files all
+deserialize into it (a `schema` key marks a real workspace for the walk-up). `host`/`registry` are
+each a `Profiles` namespace with one config key; `-H`/`-r` parse (via `Profiles`' `FromStr` /
+`ValueParserFactory`) straight into `{ default: <value> }`, so the flag is just the top layer of
+that namespace — no separate selector field. `ClientConfig::load` then layers the config files
+under the flags: a `-c` chain, the discovered workspace (only its `host`/`registry`), `~/.startos`,
+then `/etc/startos`. A bare URL is shorthand for `default`, and the layers combine into one
+namespace — a union of aliases where a name defined at more than one level takes the higher tier's
+value. `resolve_target` follows the `default` profile, chasing a value that names another profile
+until it reaches a URL, which it parses only then. `ClientConfig` also carries tunnel, proxy,
+identity key path, root CAs, and the `--insecure` toggle. The loaded config becomes a
 `CliContext` that the RPC handlers use.
 
 ## Man pages

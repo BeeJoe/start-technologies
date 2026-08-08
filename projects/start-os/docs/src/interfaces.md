@@ -20,26 +20,28 @@ Each inbound gateway on your server has its own table. The rows in each table ar
 
 Each table has the following columns:
 
-| Column                    | Description                                                                                                                                                                                                                                                                                                                    |
-| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Toggle**                | Enable or disable the address. This directly affects iptables and firewall rules — disabling an address blocks traffic to it. Public IPv4 addresses are off by default. All other addresses are on by default. **IPv6 global-unicast (GUA) addresses use a three-way control instead** — see the note below.                    |
-| **Access**                | **Public** or **Private**. Public addresses are reachable from the Internet. Private addresses are only reachable on the LAN or via VPN.                                                                                                                                                                                       |
-| **Type**                  | The address type: `IPv4`, `IPv6`, `Domain`, or `mDNS` (mDNS is only available on router gateways).                                                                                                                                                                                                                             |
-| **Certificate Authority** | Who signs the SSL certificate for this address: **Root CA** (your server's own CA), **Let's Encrypt** (publicly trusted), or **None** (non-SSL, e.g. plain HTTP).                                                                                                                                                              |
-| **URL**                   | The fully composed URL for reaching the interface at this address.                                                                                                                                                                                                                                                             |
-| **Actions**               | Context-dependent buttons: **Settings** (view required DNS records, DNS configuration, and/or port forwarding rules, with the ability to test each), **Delete** (remove domains that were manually added), **Open** (open the URL in a new tab), **Copy** (copy the URL to clipboard), **QR** (display a QR code for the URL). |
+| Column                    | Description                                                                                                                                                                                                                                                                                                                                           |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Toggle**                | Enable or disable the address. This directly affects iptables and firewall rules — disabling an address blocks traffic to it. Public IPv4 addresses are off by default. All other addresses are on by default.                                                                                                                                        |
+| **Access**                | **Public** or **Private**. Public addresses are reachable from the Internet. Private addresses are only reachable on the LAN or via VPN. **For an IPv6 global-unicast (GUA) address this column is an editable Local / Public dropdown** — see the note below.                                                                                        |
+| **Type**                  | The address type: `IPv4`, `IPv6`, `Domain`, or `mDNS` (mDNS is only available on router gateways).                                                                                                                                                                                                                                                    |
+| **Certificate Authority** | Who signs the SSL certificate for this address: **Root CA** (your server's own CA), **Let's Encrypt** (publicly trusted), or **None** (non-SSL, e.g. plain HTTP).                                                                                                                                                                                     |
+| **URL**                   | The fully composed URL for reaching the interface at this address.                                                                                                                                                                                                                                                                                    |
+| **Actions**               | Context-dependent buttons: **Settings** (view and test the address's external requirements — DNS records, port forwarding, and, for a DualStack domain, the IPv6 firewall), **Delete** (remove domains that were manually added), **Open** (open the URL in a new tab), **Copy** (copy the URL to clipboard), **QR** (display a QR code for the URL). |
 
 > [!NOTE]
 > The Settings button appears for addresses that require external configuration: [public domains](clearnet.md) (DNS + port forwarding), [private domains](private-domains.md) (DNS), and [public IP addresses](public-ip.md) (port forwarding).
 
 > [!NOTE]
-> Unlike a private LAN address, an IPv6 **global-unicast address (GUA)** is a single globally-routable address — so instead of an on/off toggle it offers three states:
+> The port-forwarding and firewall tests need the service **running** only for an address it serves directly — a raw public IP, or another non-SSL binding. StartOS SSL-terminates every HTTP interface behind its always-on reverse proxy, so those stay testable even while the service is stopped (as do DNS tests). A non-SSL address's Test buttons are therefore disabled while its service is stopped; and because that service often restarts when a domain is added or an address is enabled, StartOS then shows its reachability tests as untested (not failed) and still opens the setup modal, so you can set up forwarding and re-test once it is running.
+
+> [!NOTE]
+> Unlike a private LAN address, an IPv6 **global-unicast address (GUA)** is a single globally-routable address, so how far it reaches is a choice. A GUA row keeps the usual on/off toggle, and its **Access** column becomes a **Local / Public** dropdown:
 >
-> - **Disabled** — not reachable.
-> - **LAN** (default) — reachable on the local network only; traffic from outside your subnet is rejected.
-> - **LAN+WAN** — also reachable from the Internet. StartOS attempts to open the matching pinhole on your gateway automatically (via PCP); if your gateway doesn't support it you may need to allow inbound traffic to that address and port manually.
+> - **Local** (default) — reachable on the local network only; traffic from outside your subnet is rejected.
+> - **Public** — also reachable from the Internet. StartOS attempts to open the matching pinhole on your gateway automatically (via PCP); if your gateway doesn't support it you may need to allow inbound traffic to that address and port manually.
 >
-> This only applies to IPv6 GUAs. IPv6 ULAs (private) stay a simple toggle, and IPv4 keeps its separate LAN and WAN address rows.
+> This only applies to IPv6 GUAs. IPv6 ULAs (private) are always local, and IPv4 keeps its separate LAN and WAN address rows.
 
 ### Adding Domains
 

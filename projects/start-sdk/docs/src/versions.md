@@ -8,12 +8,12 @@ StartOS uses Extended Versioning (ExVer) to manage package versions, allowing do
 [#flavor:]<upstream>[-upstream-prerelease]:<downstream>
 ```
 
-| Component | Description | Example |
-|-----------|-------------|---------|
-| `flavor` | Optional variant for diverging forks | `#libre:` |
-| `upstream` | Upstream project version (SemVer) | `26.0.0` |
-| `upstream-prerelease` | Upstream prerelease suffix | `-beta.1` |
-| `downstream` | StartOS wrapper revision | `0`, `1`, `2` |
+| Component             | Description                          | Example       |
+| --------------------- | ------------------------------------ | ------------- |
+| `flavor`              | Optional variant for diverging forks | `#libre:`     |
+| `upstream`            | Upstream project version (SemVer)    | `26.0.0`      |
+| `upstream-prerelease` | Upstream prerelease suffix           | `-beta.1`     |
+| `downstream`          | StartOS wrapper revision             | `0`, `1`, `2` |
 
 > [!NOTE]
 > ExVer allows a prerelease suffix on the downstream revision too (e.g. `:0-beta.0`), but Start9 packages don't use it — the downstream revision is always a plain integer. Prerelease suffixes appear only on the upstream side, when wrapping an upstream alpha/beta/rc.
@@ -27,12 +27,12 @@ Flavors are for diverging forks of a project that maintain separate version hist
 
 ### Examples
 
-| Version String | Upstream | Downstream |
-|----------------|----------|------------|
-| `26.0.0:0` | 26.0.0 (stable) | 0 |
-| `26.0.0-rc.1:0` | 26.0.0-rc.1 | 0 |
-| `0.13.5:0` | 0.13.5 (stable) | 0 |
-| `2.3.2:1` | 2.3.2 (stable) | 1 |
+| Version String  | Upstream        | Downstream |
+| --------------- | --------------- | ---------- |
+| `26.0.0:0`      | 26.0.0 (stable) | 0          |
+| `26.0.0-rc.1:0` | 26.0.0-rc.1     | 0          |
+| `0.13.5:0`      | 0.13.5 (stable) | 0          |
+| `2.3.2:1`       | 2.3.2 (stable)  | 1          |
 
 ### Version Ordering
 
@@ -71,7 +71,7 @@ Ensure these all match for upstream version `X.Y.Z`:
 
 ## File Structure
 
-The latest version **always** lives in `startos/versions/current.ts`. The filename never changes as you bump — only its contents do. Historical versions that a migration needs to upgrade *from* are kept as version-named files alongside it.
+The latest version **always** lives in `startos/versions/current.ts`. The filename never changes as you bump — only its contents do. Historical versions that a migration needs to upgrade _from_ are kept as version-named files alongside it.
 
 ```
 startos/versions/
@@ -101,7 +101,7 @@ export const current = VersionInfo.of({
   },
   migrations: {
     up: async ({ effects }) => {},
-    down: IMPOSSIBLE,  // Use for initial versions or breaking changes
+    down: IMPOSSIBLE, // Use for initial versions or breaking changes
   },
 })
 ```
@@ -114,7 +114,7 @@ import { current } from './current'
 
 export const versionGraph = VersionGraph.of({
   current,
-  other: [],  // Add historical versions here so migrations run when upgrading through them
+  other: [], // Add historical versions here so migrations run when upgrading through them
 })
 ```
 
@@ -122,11 +122,11 @@ export const versionGraph = VersionGraph.of({
 
 When a migration forces a version out of `current.ts` (see below), the spun-off file is named after the version it holds, in the same form as its [git tag](#git-tag-conventions): prefix with `v`, replace the `:` with `_`, and add `.ts`. The upstream portion keeps its dots; prerelease suffixes are left as-is.
 
-| Version | Filename |
-|---------|----------|
-| `26.0.0:0` | `v26.0.0_0.ts` |
+| Version         | Filename            |
+| --------------- | ------------------- |
+| `26.0.0:0`      | `v26.0.0_0.ts`      |
 | `26.0.0-rc.1:0` | `v26.0.0-rc.1_0.ts` |
-| `2.3.2:1` | `v2.3.2_1.ts` |
+| `2.3.2:1`       | `v2.3.2_1.ts`       |
 
 A historical file's export is renamed to match the version, with every `.`, `:`, and `-` becoming `_` — e.g. `2.3.2:1` → `v_2_3_2_1`. Only `current.ts` uses the stable `current` export.
 
@@ -144,7 +144,28 @@ The deciding question is **does this bump need a migration?**
 2. **Add that historical version to the `other` array** in `index.ts` so its migration runs when users upgrade through it.
 3. **Create a new `startos/versions/current.ts`** exporting `current` with the new version string, release notes, and the `up`/`down` migration.
 
-This keeps `versions/` lean: only versions that a migration upgrades *from* survive as their own files; everything else is just the latest state of `current.ts`.
+This keeps `versions/` lean: only versions that a migration upgrades _from_ survive as their own files; everything else is just the latest state of `current.ts`.
+
+### Why Released Versions Don't Need to Be Declared
+
+A released version is **not** a reason to add it to `other`. Only a migration is. This trips people up, so here is the mechanism.
+
+`VersionGraph` does not only add a vertex per version you declare. For every version whose `up` is not `IMPOSSIBLE`, it also synthesizes a **range vertex** — an edge _into_ that version, covering the whole gap beneath it (`<X` if it is the lowest declared version, otherwise `>=prev && <X`). A package with `other: []` and `current` at `1.0.0:3` therefore has a graph of exactly two vertices:
+
+```
+<1.0.0:3  --[up]-->  1.0.0:3
+```
+
+Any installed version below `current` falls inside that range and migrates to `current` **in a single hop**, running `current`'s `up` migration once. This holds whether or not that version was ever declared, and whether or not it was ever released — including versions you shipped as sideloadable `.s9pk`s outside a registry. Most packages in the Start9 registry carry `other: []` and have upgraded across dozens of downstream revisions on exactly this path.
+
+A version earns a declared node **only** when it has its own migration that must run in sequence on the way up. Declaring migration-less versions adds files that must be read, kept compiling, and reasoned about forever, and buys no behavior. Don't do it to record release history — git history of `current.ts` already is that record.
+
+> [!NOTE]
+> A corollary: to make an update reachable for users on a version you shipped elsewhere, you only need `current`'s version string to sort _above_ theirs. You do not need to declare the intervening revisions.
+
+### canMigrateFrom Is Derived, Not Curated
+
+The manifest's `canMigrateFrom` / `canMigrateTo` fields are **computed from the graph** — a reverse/forward search from `current`, which `setupManifest` serializes into the manifest at pack time. They are not something you author, and not something the `other` array exists to feed. Adding versions to `other` to "widen" them is a misconception: `other: []` already yields the widest possible range (`<=current`), via the range vertex above.
 
 ### Upstream Update
 
@@ -246,11 +267,11 @@ migrations: {
 
 Use `sdk.setupOnInit()` to run setup logic during installation, restore, or container rebuild. It receives a `kind` parameter:
 
-| Kind | When it runs |
-|------|-------------|
-| `'install'` | Fresh install |
-| `'restore'` | Restoring from backup |
-| `null` | Container rebuild (no data changes) |
+| Kind        | When it runs                        |
+| ----------- | ----------------------------------- |
+| `'install'` | Fresh install                       |
+| `'restore'` | Restoring from backup               |
+| `null`      | Container rebuild (no data changes) |
 
 ### Bootstrapping Config Files
 
@@ -263,7 +284,9 @@ export const seedFiles = sdk.setupOnInit(async (effects, kind) => {
 
   const secretKey = utils.getDefaultString({ charset: 'a-z,A-Z,0-9', len: 32 })
   await storeJson.merge(effects, { secretKey })
-  await configToml.merge(effects, { /* initial config */ })
+  await configToml.merge(effects, {
+    /* initial config */
+  })
 })
 ```
 
@@ -289,11 +312,11 @@ Releases are published via git tags. The StartOS tag format is:
 v{upstream_version}[-upstream-prerelease]_{wrapper_revision}
 ```
 
-| Package version      | Git tag                   |
-| -------------------- | ------------------------- |
-| `26.0.0:0`           | `v26.0.0_0`               |
-| `26.0.0-rc.1:0`      | `v26.0.0-rc.1_0`          |
-| `0.13.5:2`           | `v0.13.5_2`               |
+| Package version | Git tag          |
+| --------------- | ---------------- |
+| `26.0.0:0`      | `v26.0.0_0`      |
+| `26.0.0-rc.1:0` | `v26.0.0-rc.1_0` |
+| `0.13.5:2`      | `v0.13.5_2`      |
 
 Conventions:
 

@@ -228,11 +228,11 @@ pub fn main_api<C: Context>() -> ParentHandler<C> {
             "init-key",
             from_fn_async(developer::init)
                 .no_display()
-                .with_about("about.create-developer-key"),
+                .with_about("about.create-id-key"),
         )
         .subcommand(
             "pubkey",
-            from_fn_blocking(developer::pubkey).with_about("about.get-developer-pubkey"),
+            from_fn_blocking(developer::pubkey).with_about("about.get-id-pubkey"),
         )
         .subcommand(
             "diagnostic",
@@ -318,7 +318,12 @@ pub fn server<C: Context>() -> ParentHandler<C> {
                         .with_about("about.display-server-metrics")
                         .with_call_remote::<CliContext>(),
                 )
-                .subcommand("follow", from_fn_async(system::metrics_follow).no_cli()),
+                .subcommand(
+                    "follow",
+                    from_fn_async(system::metrics_follow)
+                        .with_metadata("get_signer", Value::Bool(true))
+                        .no_cli(),
+                ),
         )
         .subcommand(
             "shutdown",
@@ -442,7 +447,7 @@ pub fn package<C: Context>() -> ParentHandler<C> {
         .subcommand(
             "sideload",
             from_fn_async(install::sideload)
-                .with_metadata("get_session", Value::Bool(true))
+                .with_metadata("get_signer", Value::Bool(true))
                 .no_cli(),
         )
         .subcommand(
@@ -570,7 +575,7 @@ pub fn package<C: Context>() -> ParentHandler<C> {
         .subcommand(
             "attach",
             from_fn_async(service::attach)
-                .with_metadata("get_session", Value::Bool(true))
+                .with_metadata("get_signer", Value::Bool(true))
                 .with_about("about.execute-commands-container")
                 .no_cli(),
         )

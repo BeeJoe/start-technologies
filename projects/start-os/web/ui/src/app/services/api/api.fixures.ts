@@ -899,7 +899,7 @@ For the full changelog, see https://github.com/bitcoin/bitcoin/blob/v27.0.0/doc/
           packageRepo: 'https://github.com/start9labs/lnd-startos',
           upstreamRepo: 'https://github.com/lightningnetwork/lnd',
           marketingUrl: 'https://lightning.engineering/',
-          releaseNotes: 'Upstream release and minor fixes.',
+          releaseNotes: `Updated LND to 0.18.0. Adds simple taproot channels, reworks the sweeper into a batched fee-bumping design, and fixes a peer-connection leak that could exhaust file descriptors on long-running nodes. Upstream notes: https://github.com/lightningnetwork/lnd/releases/tag/v0.18.0-beta`,
           osVersion: '0.4.0',
           sdkVersion: '0.4.0-beta.49',
           gitHash: 'fakehash',
@@ -949,7 +949,14 @@ For the full changelog, see https://github.com/bitcoin/bitcoin/blob/v27.0.0/doc/
           packageRepo: 'https://github.com/Start9Labs/btc-rpc-proxy-wrappers',
           upstreamRepo: 'https://github.com/Kixunil/btc-rpc-proxy',
           marketingUrl: '',
-          releaseNotes: 'Major release with breaking changes.',
+          releaseNotes: `# Bitcoin Proxy 0.4.0
+
+**Breaking:** the \`users\` config section is now \`accounts\`, and each \`allowed-calls\` entry must be a fully-qualified RPC method name. Existing configs migrate automatically on first start.
+
+- Requests are pipelined over a single upstream connection, roughly halving median latency for wallets that batch \`getblock\` calls.
+- Fixed a panic when upstream Bitcoin Core returned \`503\` during initial block download.
+
+Full changelog: https://github.com/Kixunil/btc-rpc-proxy/blob/master/CHANGELOG.md#040-breaking-changes-to-the-users-configuration-section`,
           osVersion: '0.4.0',
           sdkVersion: '0.4.0-beta.49',
           gitHash: 'fakehash',
@@ -1208,16 +1215,19 @@ For the full changelog, see https://github.com/bitcoin/bitcoin/blob/v27.0.0/doc/
     current: 'b7b1a9cef4284f00af9e9dda6e676177',
     sessions: {
       '9513226517c54ddd8107d6d7b9d8aed7': {
+        name: null,
         loggedIn: '2021-07-14T20:49:17.774Z',
         lastActive: '2021-07-14T20:49:17.774Z',
         userAgent: 'AppleWebKit/{WebKit Rev} (KHTML, like Gecko)',
       },
       klndsfjhbwsajkdnaksj: {
+        name: null,
         loggedIn: '2021-07-14T20:49:17.774Z',
         lastActive: '2019-07-14T20:49:17.774Z',
         userAgent: 'AppleWebKit/{WebKit Rev} (KHTML, like Gecko)',
       },
       b7b1a9cef4284f00af9e9dda6e676177: {
+        name: null,
         loggedIn: '2021-07-14T20:49:17.774Z',
         lastActive: '2021-06-14T20:49:17.774Z',
         userAgent:
@@ -1282,18 +1292,15 @@ For the full changelog, see https://github.com/bitcoin/bitcoin/blob/v27.0.0/doc/
       path: '/Desktop/startos-backups',
       username: 'TestUser',
       mountable: false,
+      available: null,
       startOs: {
         '1234-5678-9876-5432': {
           hostname: 'adjective-noun',
           timestamp: new Date().toISOString(),
           version: '0.4.0',
-          passwordHash:
-            // password is asdfasdf
-            '$argon2d$v=19$m=1024,t=1,p=1$YXNkZmFzZGZhc2RmYXNkZg$Ceev1I901G6UwU+hY0sHrFZ56D+o+LNJ',
-          wrappedKey: '',
         },
       },
-      legacyBackup: null,
+      legacyBackup: false,
     },
     // 'ftcvewdnkemfksdm': {
     //   type: 'disk',
@@ -1311,8 +1318,15 @@ For the full changelog, see https://github.com/bitcoin/bitcoin/blob/v27.0.0/doc/
       path: '/Desktop/startos-backups-2',
       username: 'TestUser',
       mountable: true,
-      startOs: {},
-      legacyBackup: { size: 5000000000, available: 50000000000 },
+      available: 50000000000,
+      startOs: {
+        '1234-5678-9876-5432': {
+          hostname: 'adjective-noun',
+          timestamp: new Date().toISOString(),
+          version: '0.4.0',
+        },
+      },
+      legacyBackup: false,
     },
     powjefhjbnwhdva: {
       type: 'disk',
@@ -1324,18 +1338,15 @@ For the full changelog, see https://github.com/bitcoin/bitcoin/blob/v27.0.0/doc/
       vendor: 'SSK',
       guid: null,
       filesystem: null,
+      available: 1000000000,
       startOs: {
         '1234-5678-9876-5432': {
           hostname: 'adjective-noun',
           timestamp: new Date().toISOString(),
           version: '0.4.0',
-          passwordHash:
-            // password is asdfasdf
-            '$argon2d$v=19$m=1024,t=1,p=1$YXNkZmFzZGZhc2RmYXNkZg$Ceev1I901G6UwU+hY0sHrFZ56D+o+LNJ',
-          wrappedKey: '',
         },
       },
-      legacyBackup: { size: 5000000000000, available: 1000000000 },
+      legacyBackup: true,
     },
   }
 
@@ -2241,16 +2252,16 @@ For the full changelog, see https://github.com/bitcoin/bitcoin/blob/v27.0.0/doc/
     hosts: {
       abcdefg: {
         bindings: {
-          80: {
+          443: {
             enabled: true,
             net: {
-              assignedPort: 80,
+              assignedPort: null,
               assignedSslPort: 443,
             },
             addresses: {
-              enabled: [],
+              enabled: ['[2001:db8:abcd::a3b:2]:1234'],
               disabled: [],
-              guaAccess: {},
+              guaWan: ['[2001:db8:abcd::a3b:2]:1234'],
               available: [
                 {
                   ssl: true,
@@ -2290,6 +2301,13 @@ For the full changelog, see https://github.com/bitcoin/bitcoin/blob/v27.0.0/doc/
                   port: 1234,
                   metadata: { kind: 'ipv6', gateway: 'wlan0', scopeId: 3 },
                 },
+                {
+                  ssl: true,
+                  public: true,
+                  hostname: '2001:db8:abcd::a3b:2',
+                  port: 1234,
+                  metadata: { kind: 'ipv6', gateway: 'eth0', scopeId: 0 },
+                },
               ],
             },
             options: {
@@ -2308,7 +2326,7 @@ For the full changelog, see https://github.com/bitcoin/bitcoin/blob/v27.0.0/doc/
                 addressInfo: {
                   username: null,
                   hostId: 'abcdefg',
-                  internalPort: 80,
+                  internalPort: 443,
                   scheme: 'http',
                   sslScheme: 'https',
                   suffix: '',
@@ -2333,7 +2351,7 @@ For the full changelog, see https://github.com/bitcoin/bitcoin/blob/v27.0.0/doc/
             addresses: {
               enabled: [],
               disabled: [],
-              guaAccess: {},
+              guaWan: [],
               available: [],
             },
             options: {
@@ -2377,7 +2395,7 @@ For the full changelog, see https://github.com/bitcoin/bitcoin/blob/v27.0.0/doc/
             addresses: {
               enabled: [],
               disabled: [],
-              guaAccess: {},
+              guaWan: [],
               available: [],
             },
             options: {

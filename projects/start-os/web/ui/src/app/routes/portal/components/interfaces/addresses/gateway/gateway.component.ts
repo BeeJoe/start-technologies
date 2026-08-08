@@ -1,18 +1,18 @@
 import { Component, computed, inject, input } from '@angular/core'
 import {
   DialogService,
-  ErrorService,
   i18nKey,
   i18nPipe,
+  TaskService,
 } from '@start9labs/shared'
 import { ISB, utils } from '@start9labs/start-core'
 import { TuiButton, TuiIcon } from '@taiga-ui/core'
-import { TuiNotificationMiddleService } from '@taiga-ui/kit'
 import { PatchDB } from 'patch-db-client'
 import { firstValueFrom } from 'rxjs'
 import {
   FormComponent,
   FormContext,
+  FormNote,
 } from 'src/app/routes/portal/components/form.component'
 import { PlaceholderComponent } from 'src/app/routes/portal/components/placeholder.component'
 import { TableComponent } from 'src/app/routes/portal/components/table.component'
@@ -60,7 +60,6 @@ import { GatewayItemComponent } from './item.component'
           [address]="address"
           [packageId]="packageId()"
           [value]="value()"
-          [isRunning]="isRunning()"
           [gatewayId]="gatewayGroup().gatewayId"
         ></tr>
       } @empty {
@@ -102,8 +101,7 @@ export class GatewayComponent {
   private readonly patch = inject<PatchDB<DataModel>>(PatchDB)
   private readonly formDialog = inject(FormDialogService)
   private readonly dialog = inject(DialogService)
-  private readonly loader = inject(TuiNotificationMiddleService)
-  private readonly errorService = inject(ErrorService)
+  private readonly tasks = inject(TaskService)
   private readonly api = inject(ApiService)
   private readonly i18n = inject(i18nPipe)
   private readonly domainHealth = inject(DomainHealthService)
@@ -111,7 +109,6 @@ export class GatewayComponent {
   readonly gatewayGroup = input.required<GatewayAddressGroup>()
   readonly packageId = input('')
   readonly value = input<MappedServiceInterface | undefined>()
-  readonly isRunning = input.required<boolean>()
 
   // The Certificate Authority column only makes sense when some address is
   // actually SSL-terminated. Non-SSL bindings and port ranges have none.
@@ -161,7 +158,7 @@ export class GatewayComponent {
               required: true,
               default: null,
               patterns: [utils.Patterns.domain],
-            }),
+            }).map(f => f.toLowerCase()),
           }),
         ),
         note: this.getSharedHostNote(),
@@ -203,8 +200,8 @@ export class GatewayComponent {
         required: true,
         default: null,
         patterns: [utils.Patterns.domain],
-      }).map(f => f.toLocaleLowerCase()),
-      ...(iface.addSsl
+      }).map(f => f.toLowerCase()),
+      ...(iface.anyAddSsl
         ? {
             authority: ISB.Value.select({
               name: this.i18n.transform('Certificate Authority'),
@@ -238,9 +235,8 @@ export class GatewayComponent {
   private async savePrivateDomain(fqdn: string): Promise<boolean> {
     const iface = this.value()
     const gatewayId = this.gatewayGroup().gatewayId
-    const loader = this.loader.open('Saving').subscribe()
 
-    try {
+    return this.tasks.run(async () => {
       let configured: boolean
       if (this.packageId()) {
         configured = await this.api.pkgAddPrivateDomain({
@@ -257,21 +253,19 @@ export class GatewayComponent {
       }
 
       await this.domainHealth.checkPrivateDomain(gatewayId, fqdn, configured)
-
-      return true
-    } catch (e: any) {
-      this.errorService.handleError(e)
-      return false
-    } finally {
-      loader.unsubscribe()
-    }
+    }, 'Saving')
   }
 
-  private getSharedHostNote(): string {
+  private getSharedHostNote(): FormNote | undefined {
     const names = this.value()?.sharedHostNames
-    if (!names?.length) return ''
+    if (!names?.length) return undefined
 
-    return `${this.i18n.transform('This domain will also apply to')} ${names.join(', ')}`
+    return {
+      text: this.i18n.transform(
+        'Domain will also apply to the following interfaces:',
+      )!,
+      items: names,
+    }
   }
 
   private async savePublicDomain(
@@ -280,8 +274,6 @@ export class GatewayComponent {
   ): Promise<boolean> {
     const iface = this.value()
     const gatewayId = this.gatewayGroup().gatewayId
-    const loader = this.loader.open('Saving').subscribe()
-
     const params = {
       fqdn,
       gateway: gatewayId,
@@ -289,31 +281,37 @@ export class GatewayComponent {
       internalPort: iface?.addressInfo.internalPort || 80,
     }
 
-    try {
-      let res
-      if (this.packageId()) {
-        res = await this.api.pkgAddPublicDomain({
-          ...params,
-          package: this.packageId(),
-          host: iface?.addressInfo.hostId || '',
-        })
-      } else {
-        res = await this.api.osUiAddPublicDomain(params)
+    return this.tasks.run(async () => {
+      // Watch the service across the add request: if it is down for any of it
+      // (restarted by the change, or already stopped), nothing was listening, so
+      // the backend's port/firewall probes say nothing (see DomainHealthService).
+      const watch = this.domainHealth.watchServiceStatus(this.packageId())
+      try {
+        let res
+        if (this.packageId()) {
+          res = await this.api.pkgAddPublicDomain({
+            ...params,
+            package: this.packageId(),
+            host: iface?.addressInfo.hostId || '',
+          })
+        } else {
+          res = await this.api.osUiAddPublicDomain(params)
+        }
+
+        await this.domainHealth.checkPublicDomain(
+          fqdn,
+          gatewayId,
+          res,
+          this.count(),
+          {
+            packageId: this.packageId(),
+            addSsl: iface?.addSsl ?? false,
+            watch,
+          },
+        )
+      } finally {
+        watch.stop()
       }
-
-      await this.domainHealth.checkPublicDomain(
-        fqdn,
-        gatewayId,
-        res,
-        this.count(),
-      )
-
-      return true
-    } catch (e: any) {
-      this.errorService.handleError(e)
-      return false
-    } finally {
-      loader.unsubscribe()
-    }
+    }, 'Saving')
   }
 }

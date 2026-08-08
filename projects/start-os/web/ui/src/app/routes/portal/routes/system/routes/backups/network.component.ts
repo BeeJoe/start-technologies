@@ -1,9 +1,13 @@
 import { Component, inject, output } from '@angular/core'
 import { ActivatedRoute } from '@angular/router'
-import { DialogService, ErrorService, i18nPipe } from '@start9labs/shared'
+import {
+  ConvertBytesPipe,
+  DialogService,
+  i18nPipe,
+  TaskService,
+} from '@start9labs/shared'
 import { ISB, T } from '@start9labs/start-core'
 import { TuiButton, TuiDataList, TuiDropdown, TuiIcon } from '@taiga-ui/core'
-import { TuiNotificationMiddleService } from '@taiga-ui/kit'
 import { filter } from 'rxjs'
 import { FormComponent } from 'src/app/routes/portal/components/form.component'
 import { PlaceholderComponent } from 'src/app/routes/portal/components/placeholder.component'
@@ -13,6 +17,7 @@ import { ApiService } from 'src/app/services/api/embassy-api.service'
 import { FormDialogService } from 'src/app/services/form-dialog.service'
 import { configBuilderToSpec } from 'src/app/utils/configBuilderToSpec'
 import { BackupService, MappedBackupTarget } from './backup.service'
+import { BackupLegacyWarningComponent } from './legacy-warning.component'
 import { BackupStatusComponent } from './status.component'
 
 const ERROR =
@@ -34,7 +39,7 @@ const ERROR =
       </button>
     </header>
 
-    <table [appTable]="['Status', 'Name', 'Hostname', 'Path', null]">
+    <table [appTable]="['Status', 'Name', 'Hostname', 'Path', 'Free', null]">
       @for (target of service.cifs(); track $index) {
         <tr
           tabindex="0"
@@ -58,35 +63,55 @@ const ERROR =
           <td class="name">{{ target.entry.path.split('/').pop() }}</td>
           <td>{{ target.entry.hostname }}</td>
           <td>{{ target.entry.path }}</td>
-          <td (click)="$event.stopPropagation()">
-            <button
-              tuiIconButton
-              tuiDropdown
-              size="s"
-              appearance="flat-grayscale"
-              iconStart="@tui.ellipsis-vertical"
-              [tuiDropdownOpen]="!!opens[$index]"
-              (tuiDropdownOpenChange)="opens[$index] = $event"
-            >
-              {{ 'More' | i18n }}
-              <tui-data-list *tuiDropdown>
-                <button tuiOption (click)="edit(target)">
-                  {{ 'Edit' | i18n }}
-                </button>
-                <button
-                  tuiOption
-                  class="g-negative"
-                  (click)="forget(target, $index)"
-                >
-                  {{ 'Delete' | i18n }}
-                </button>
-              </tui-data-list>
-            </button>
+          <td>
+            @if (target.entry.available !== null) {
+              {{ target.entry.available | convertBytes }}
+            } @else {
+              &mdash;
+            }
+          </td>
+          <td>
+            <div class="actions">
+              @if (
+                type === 'create' &&
+                target.entry.mountable &&
+                target.entry.legacyBackup
+              ) {
+                <backup-legacy-warning
+                  [id]="target.id"
+                  [hasCurrentBackup]="target.hasCurrentBackup"
+                />
+              }
+              <button
+                tuiIconButton
+                tuiDropdown
+                size="s"
+                appearance="flat-grayscale"
+                iconStart="@tui.ellipsis-vertical"
+                [tuiDropdownOpen]="!!opens[$index]"
+                (tuiDropdownOpenChange)="opens[$index] = $event"
+                (click)="$event.stopPropagation()"
+              >
+                {{ 'More' | i18n }}
+                <tui-data-list *tuiDropdown>
+                  <button tuiOption (click)="edit(target)">
+                    {{ 'Edit' | i18n }}
+                  </button>
+                  <button
+                    tuiOption
+                    class="g-negative"
+                    (click)="forget(target, $index)"
+                  >
+                    {{ 'Delete' | i18n }}
+                  </button>
+                </tui-data-list>
+              </button>
+            </div>
           </td>
         </tr>
       } @empty {
         <tr>
-          <td colspan="5">
+          <td colspan="6">
             <app-placeholder icon="@tui.folder-x">
               No network folders
             </app-placeholder>
@@ -102,7 +127,7 @@ const ERROR =
       @include taiga.transition(background);
 
       @media (taiga.$tui-mouse) {
-        &:not(:has(app-placeholder)):hover {
+        &:not(:has(app-placeholder)):hover:not(:has(button:hover)) {
           cursor: pointer;
           background: var(--tui-background-neutral-1-hover);
         }
@@ -116,6 +141,12 @@ const ERROR =
     td:last-child {
       white-space: nowrap;
       text-align: right;
+    }
+
+    .actions {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
     }
 
     span {
@@ -170,7 +201,9 @@ const ERROR =
     TuiIcon,
     PlaceholderComponent,
     BackupStatusComponent,
+    BackupLegacyWarningComponent,
     TableComponent,
+    ConvertBytesPipe,
     i18nPipe,
   ],
 })
@@ -178,10 +211,10 @@ export class BackupNetworkComponent {
   private readonly dialog = inject(DialogService)
   private readonly formDialog = inject(FormDialogService)
   private readonly api = inject(ApiService)
-  private readonly loader = inject(TuiNotificationMiddleService)
-  private readonly errorService = inject(ErrorService)
-  private readonly type = inject(ActivatedRoute).snapshot.data['type']
+  private readonly tasks = inject(TaskService)
   private readonly i18n = inject(i18nPipe)
+
+  protected readonly type = inject(ActivatedRoute).snapshot.data['type']
 
   readonly service = inject(BackupService)
   readonly networkFolders = output<MappedBackupTarget<CifsBackupTarget>>()
@@ -223,12 +256,8 @@ export class BackupNetworkComponent {
         buttons: [
           {
             text: this.i18n.transform('Connect'),
-            handler: async (value: T.CifsAddParams) => {
-              const loader = this.loader
-                .open('Testing connectivity to shared folder')
-                .subscribe()
-
-              try {
+            handler: async (value: T.CifsAddParams) =>
+              this.tasks.run(async () => {
                 const res = await this.api.updateBackupTarget({
                   id: target.id,
                   ...value,
@@ -236,14 +265,7 @@ export class BackupNetworkComponent {
 
                 target.entry = Object.values(res)[0]!
                 this.service.cifs.update(cifs => [...cifs])
-                return true
-              } catch (e: any) {
-                this.errorService.handleError(e)
-                return false
-              } finally {
-                loader.unsubscribe()
-              }
-            },
+              }, 'Testing connectivity to shared folder'),
           },
         ],
         value: { ...target.entry },
@@ -255,26 +277,16 @@ export class BackupNetworkComponent {
     this.dialog
       .openConfirm({ label: 'Are you sure?', size: 's' })
       .pipe(filter(Boolean))
-      .subscribe(async () => {
-        const loader = this.loader.open('Removing').subscribe()
-
-        try {
+      .subscribe(() =>
+        this.tasks.run(async () => {
           await this.api.removeBackupTarget({ id })
           this.service.cifs.update(cifs => cifs.filter((_, i) => i !== index))
-        } catch (e: any) {
-          this.errorService.handleError(e)
-        } finally {
-          loader.unsubscribe()
-        }
-      })
+        }, 'Removing'),
+      )
   }
 
   private async addTarget(v: T.CifsAddParams): Promise<boolean> {
-    const loader = this.loader
-      .open('Testing connectivity to shared folder')
-      .subscribe()
-
-    try {
+    return this.tasks.run(async () => {
       const [item] = Object.entries(await this.api.addBackupTarget(v))
       const [id, entry] = item || []
 
@@ -283,15 +295,10 @@ export class BackupNetworkComponent {
       }
 
       const hasAnyBackup = this.service.hasAnyBackup(entry)
-      const added = { id, entry, hasAnyBackup }
+      const hasCurrentBackup = this.service.hasCurrentBackup(entry)
+      const added = { id, entry, hasAnyBackup, hasCurrentBackup }
       this.service.cifs.update(cifs => [added, ...cifs])
-      return true
-    } catch (e: any) {
-      this.errorService.handleError(e)
-      return false
-    } finally {
-      loader.unsubscribe()
-    }
+    }, 'Testing connectivity to shared folder')
   }
 
   cifsSpec() {

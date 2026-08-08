@@ -2,12 +2,12 @@
 
 `setupOnInit` runs during container initialization. The `kind` parameter indicates why init is running:
 
-| Kind | When | Use For |
-|------|------|---------|
-| `'install'` | Fresh install | Generate internal secrets, seed file-model defaults, create critical tasks for user setup actions, bootstrap via API |
-| `'update'` | After a package version upgrade | Re-apply config, handle post-migration setup |
-| `'restore'` | Restoring from backup | Re-register triggers; credentials are already present from the restored store |
-| `null` | Container rebuild, server restart | Register long-lived triggers (e.g., `.const()` watchers) |
+| Kind        | When                              | Use For                                                                                                              |
+| ----------- | --------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `'install'` | Fresh install                     | Generate internal secrets, seed file-model defaults, create critical tasks for user setup actions, bootstrap via API |
+| `'update'`  | After a package version upgrade   | Re-apply config, handle post-migration setup                                                                         |
+| `'restore'` | Restoring from backup             | Re-register triggers; credentials are already present from the restored store                                        |
+| `null`      | Container rebuild, server restart | Register long-lived triggers (e.g., `.const()` watchers)                                                             |
 
 ## Init Kinds
 
@@ -51,7 +51,7 @@ export const registerWatchers = sdk.setupOnInit(async (effects, kind) => {
   // Runs on install, restore, AND container rebuild
 
   // Register a watcher that lives for the container lifetime
-  someConfig.read((c) => c.setting).const(effects)
+  someConfig.read(c => c.setting).const(effects)
 
   // Install-specific setup
   if (kind === 'install') {
@@ -73,7 +73,7 @@ import { storeJson } from '../fileModels/store.json'
 import { i18n } from '../i18n'
 import { sdk } from '../sdk'
 
-export const watchCredentials = sdk.setupOnInit(async (effects) => {
+export const watchCredentials = sdk.setupOnInit(async effects => {
   const store = await storeJson.read().const(effects)
 
   if (!store?.adminPassword) {
@@ -97,9 +97,7 @@ export const setAdminPassword = sdk.Action.withoutInput(
   'set-admin-password',
   async () => ({
     name: i18n('Set Admin Password'),
-    description: i18n(
-      'Generate a new random password for the admin account. Replaces any existing password.',
-    ),
+    description: i18n('Generate a new random password for the admin account. Replaces any existing password.'),
     warning: null,
     allowedStatuses: 'any',
     group: null,
@@ -252,6 +250,21 @@ await sdk.Daemons.of(effects)
 3. When the oneshot completes successfully, `runUntilSuccess` returns
 4. All processes are cleaned up automatically
 
+### When it times out
+
+If the timeout elapses before everything is ready, `runUntilSuccess` throws, which fails init: StartOS restores the package's volumes from the backup it took beforehand, then reverts an update to the previous version or removes a failed install. The error names every daemon that never became ready, with its current health result and message, and — for one whose process kept dying — how many times it exited and the error from the last exit:
+
+```
+Timed out after 120000ms waiting for server (loading; 12 failed exit(s), last: node exited with code 1), bootstrap (waiting)
+```
+
+Read it as: `server` never came up, and its process has been crash-looping rather than merely starting slowly; `bootstrap` never ran, because `waiting` means its `requires` are not all ready — here, `server`. A daemon reported as `loading` or `starting` with **no** failed exits is running but not passing its ready check — look at the check, not the process.
+
+A `waiting` daemon's message lists the `display` names of the dependencies still holding it up, which is why there is none above: the chain declares `display: null` on `server`. Give a daemon a `display` and its dependents name it.
+
+> [!TIP]
+> A `ready` function that returns `loading` on a failed probe (rather than `failure`) makes a dead process look identical to a slow one in the UI. The exit count above is what distinguishes them, but the daemon's own logs are still the place to find out why it died — a daemon's stdout and stderr go to the service logs.
+
 ### Making HTTP Calls Without curl
 
 Many slim Docker images do not have curl. Use the runtime's built-in HTTP capabilities instead.
@@ -297,22 +310,20 @@ You never call the progress effect directly. The init harness builds one `FullPr
 `progress.addPhase(name, contribution)` returns a `PhaseHandle` with `start()`, `setTotal(n)`, `setDone(n)`, `setUnits('steps' | 'bytes')`, and `complete()`. Just update the handle; the report follows automatically.
 
 ```typescript
-export const initializeService = sdk.setupOnInit(
-  async (effects, kind, progress) => {
-    if (kind !== 'install') return
+export const initializeService = sdk.setupOnInit(async (effects, kind, progress) => {
+  if (kind !== 'install') return
 
-    const phase = progress.addPhase('Seeding files', 1)
-    phase.setUnits('steps')
-    phase.setTotal(seedFiles.length)
+  const phase = progress.addPhase('Seeding files', 1)
+  phase.setUnits('steps')
+  phase.setTotal(seedFiles.length)
 
-    for (let i = 0; i < seedFiles.length; i++) {
-      await seedFiles[i](effects)
-      phase.setDone(i + 1) // auto-reports in the background
-    }
+  for (let i = 0; i < seedFiles.length; i++) {
+    await seedFiles[i](effects)
+    phase.setDone(i + 1) // auto-reports in the background
+  }
 
-    phase.complete()
-  },
-)
+  phase.complete()
+})
 ```
 
 Auto-sync is coalesced — at most one report is in flight and one queued, so a tight update loop collapses to the latest snapshot instead of stacking up calls. If you ever need to guarantee the latest state has landed before doing something else, `await progress.sync()` flushes the in-flight and queued reports (the harness already does this when your handler returns).
@@ -426,7 +437,7 @@ When a `setupOnInit` does nothing but seed file models with their schema default
 
 ```typescript
 // init/seedFiles.ts
-export const seedFiles = sdk.setupOnInit(async (effects) => {
+export const seedFiles = sdk.setupOnInit(async effects => {
   await storeJson.merge(effects, {})
   await configToml.merge(effects, {})
 })
@@ -435,4 +446,4 @@ export const seedFiles = sdk.setupOnInit(async (effects) => {
 Reach for the `kind` check only when the body needs to behave differently between install / update / restore / rebuild.
 
 > [!NOTE]
-> Always use `merge()` (not `write()`) to seed file models, even on first install. With every key in your zod schema carrying a `.catch()`, `merge(effects, {})` is enough to create the file and populate every default. See [File Models — Prefer merge() Over write()](./file-models.md#prefer-merge-over-write).
+> Always use `merge()` (not `write()`) to seed file models, even on first install. With every key in your zod schema carrying a `.catch()`, `merge(effects, {})` is enough to create the file and fill in every missing default. See [File Models — Prefer merge() Over write()](./file-models.md#prefer-merge-over-write) and [What an Empty merge() Does](./file-models.md#what-an-empty-merge-does).

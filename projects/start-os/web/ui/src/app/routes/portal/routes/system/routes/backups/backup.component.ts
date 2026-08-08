@@ -1,8 +1,7 @@
 import { Component, inject } from '@angular/core'
 import { toSignal } from '@angular/core/rxjs-interop'
 import { FormsModule } from '@angular/forms'
-import { verify } from '@start9labs/argon2'
-import { DialogService, ErrorService, i18nPipe } from '@start9labs/shared'
+import { DialogService, i18nPipe, TaskService } from '@start9labs/shared'
 import {
   TuiButton,
   TuiCheckbox,
@@ -10,16 +9,13 @@ import {
   TuiLoader,
   TuiTitle,
 } from '@taiga-ui/core'
-import { TuiBlock, TuiNotificationMiddleService } from '@taiga-ui/kit'
+import { TuiBlock } from '@taiga-ui/kit'
 import { injectContext, PolymorpheusComponent } from '@taiga-ui/polymorpheus'
 import { PatchDB } from 'patch-db-client'
-import { map, take } from 'rxjs'
+import { filter, map, switchMap, take } from 'rxjs'
 import { ApiService } from 'src/app/services/api/embassy-api.service'
 import { DataModel } from 'src/app/services/patch-db/data-model'
 import { getManifest } from 'src/app/utils/get-package-data'
-import { getServerInfo } from 'src/app/utils/get-server-info'
-import { verifyPassword } from 'src/app/utils/verify-password'
-import { BackupService } from './backup.service'
 import { BackupContext } from './backup.types'
 
 interface Package {
@@ -90,11 +86,9 @@ interface Package {
 })
 export class BackupsBackupComponent {
   private readonly dialog = inject(DialogService)
-  private readonly loader = inject(TuiNotificationMiddleService)
-  private readonly errorService = inject(ErrorService)
+  private readonly tasks = inject(TaskService)
   private readonly api = inject(ApiService)
   private readonly patch = inject<PatchDB<DataModel>>(PatchDB)
-  private readonly service = inject(BackupService)
 
   readonly context = injectContext<BackupContext>()
 
@@ -122,10 +116,7 @@ export class BackupsBackupComponent {
     { initialValue: null },
   )
 
-  async done() {
-    const { passwordHash, id } = await getServerInfo(this.patch)
-    const { entry } = this.context.data
-
+  done() {
     this.dialog
       .openPrompt<string>({
         label: 'Master password needed',
@@ -137,21 +128,13 @@ export class BackupsBackupComponent {
           buttonText: 'Create Backup',
         },
       })
-      .pipe(verifyPassword(passwordHash, e => this.errorService.handleError(e)))
-      .subscribe(async password => {
-        // first time backup
-        if (!this.service.hasThisBackup(entry, id)) {
-          this.createBackup(password)
-          // existing backup
-        } else {
-          try {
-            verify(entry.startOs[id]?.passwordHash!, password)
-            await this.createBackup(password)
-          } catch {
-            this.oldPassword(password)
-          }
-        }
-      })
+      .pipe(
+        filter(Boolean),
+        switchMap(password => this.createBackup(password)),
+        filter(Boolean), // a password the server rejects leaves the prompt open to retry
+        take(1),
+      )
+      .subscribe()
   }
 
   handleChange() {
@@ -163,10 +146,7 @@ export class BackupsBackupComponent {
     this.hasSelection = !this.hasSelection
   }
 
-  private async oldPassword(password: string) {
-    const { id } = await getServerInfo(this.patch)
-    const { passwordHash = '' } = this.context.data.entry.startOs[id] || {}
-
+  private oldPassword(password: string) {
     this.dialog
       .openPrompt<string>({
         label: 'Original password needed',
@@ -179,35 +159,41 @@ export class BackupsBackupComponent {
           buttonText: 'Create Backup',
         },
       })
-      .pipe(verifyPassword(passwordHash, e => this.errorService.handleError(e)))
-      .subscribe(oldPassword => this.createBackup(password, oldPassword))
+      .pipe(
+        filter(Boolean),
+        switchMap(oldPassword => this.createBackup(password, oldPassword)),
+        filter(Boolean),
+        take(1),
+      )
+      .subscribe()
   }
 
-  private async createBackup(
-    password: string,
-    oldPassword: string | null = null,
-  ) {
-    const loader = this.loader.open('Beginning backup').subscribe()
-    const packageIds =
-      this.pkgs()
-        ?.filter(p => p.checked)
-        .map(p => p.id) || []
+  private createBackup(password: string, oldPassword: string | null = null) {
     const params = {
       targetId: this.context.data.id,
-      packageIds,
+      packageIds:
+        this.pkgs()
+          ?.filter(p => p.checked)
+          .map(p => p.id) || [],
       oldPassword,
       password,
     }
 
-    try {
-      await this.api.createBackup(params)
+    return this.tasks.run(async () => {
+      try {
+        await this.api.createBackup(params)
+      } catch (e: any) {
+        if (oldPassword || e.code !== BACKUP_PASSWORD_MISMATCH) throw e
+
+        return this.oldPassword(password)
+      }
+
       this.context.$implicit.complete()
-    } catch (e: any) {
-      this.errorService.handleError(e)
-    } finally {
-      loader.unsubscribe()
-    }
+    }, 'Beginning backup')
   }
 }
 
 export const BACKUP = new PolymorpheusComponent(BackupsBackupComponent)
+
+// start-core ErrorKind::BackupPasswordMismatch
+const BACKUP_PASSWORD_MISMATCH = 81

@@ -1,0 +1,101 @@
+[package]
+edition = "2021"
+license = "MIT"
+name = "startwrt-core"
+version = "1.0.2"
+
+[lib]
+name = "startwrt"
+path = "src/lib.rs"
+
+[[bin]]
+name = "startwrt"
+path = "src/bin/startwrt.rs"
+
+[dependencies]
+num_enum = "0.7"
+# `start-core` is the monorepo's shared backend lib (was the embedded start-os
+# submodule's `core/` crate). Aliased to `startos` so the existing `use startos::…`
+# imports resolve unchanged.
+arc-swap = "1.7"
+async_cell = "0.2.2"
+axum = { version = "0.8.6", features = ["ws", "multipart", "http2"] }
+base32 = "0.5.1"
+base64 = "0.22"
+basic-cookies = "0.1.5"
+blake3 = "1"
+chrono = { version = "0.4.42", features = ["serde", "std"] }
+clap = "4.5.37"
+color-eyre = "0.6.3"
+cookie_store = "0.22"
+der = { version = "0.7", features = ["pem", "derive", "oid"] }
+digest = "0.10.7"
+dirs = "6"
+ed25519-dalek = { version = "2", features = [
+  "rand_core",
+  "pkcs8",
+  "pem",
+  "digest",
+] }
+fd-lock-rs = "0.1.4"
+form_urlencoded = "1"
+futures = "0.3.31"
+futures-util = "0.3"
+http = "1.0"
+imbl-value = { path = "../../../../shared-libs/crates/imbl-value" }
+include_dir = "0.7"
+itertools = "0.14.0"
+macaddr = "1.0.0"
+mime_guess = "2"
+nix = { version = "0.29.0", features = ["fs", "signal"] }
+openssh-keys = "0.6.2"
+openssl = { version = "0.10", features = ["vendored"] }
+pkcs8 = { version = "0.10", features = ["pem"] }
+pwhash = "1.0.0"
+rand = "0.9.1"
+rand_core_06 = { package = "rand_core", version = "0.6", features = [
+  "getrandom",
+] }
+reqwest = { version = "0.12", default-features = false, features = [
+  "rustls-tls",
+  "json",
+  "stream",
+] }
+reqwest_cookie_store = "0.9"
+rpassword = "7.3.1"
+rpc-toolkit = { path = "../../../../shared-libs/crates/rpc-toolkit", default-features = false }
+rusqlite = { version = "0.34", features = ["bundled"] }
+rustls = "0.23"
+rustls-pemfile = "2"
+semver = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1.0.140"
+serde_yaml = "0.9.34"
+sha-crypt = "0.5.0"
+sha2 = "0.10.8"
+startos = { package = "start-core", path = "../../../../shared-libs/crates/start-core" }
+syslog-tracing = "0.3"
+tempfile = "3.14.0"
+thiserror = "2.0.12"
+tokio = { version = "1.41.1", features = [
+  "tracing",
+  "process",
+  "socket2",
+  "time",
+  "io-util",
+  "macros",
+  "rt",
+  "sync",
+  "net",
+  "rt-multi-thread",
+  "io-std",
+  "signal",
+] }
+tokio-rustls = "0.26"
+tower-http = { version = "0.6", features = ["cors"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+uciedit = { path = "../uciedit" }
+url = { version = "2", features = ["serde"] }
+visit-rs = "0.1"
+x25519-dalek = { version = "2", features = ["static_secrets"] }

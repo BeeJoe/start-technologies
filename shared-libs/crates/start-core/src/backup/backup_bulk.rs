@@ -16,6 +16,7 @@ use ts_rs::TS;
 use super::PackageBackupReport;
 use super::target::{BackupTargetId, PackageBackupInfo};
 use crate::PackageId;
+use crate::auth::LoginContext;
 use crate::backup::os::OsBackup;
 use crate::backup::{BackupReport, ServerBackupReport};
 use crate::context::RpcContext;
@@ -23,10 +24,9 @@ use crate::db::model::{Database, DatabaseModel};
 use crate::disk::mount::backup::BackupMountGuard;
 use crate::disk::mount::filesystem::BackupWrite;
 use crate::disk::mount::guard::{GenericMountGuard, TmpMountGuard};
-use crate::middleware::auth::session::SessionAuthContext;
 use crate::notifications::{NotificationLevel, notify};
 use crate::prelude::*;
-use crate::progress::{FullProgress, FullProgressTracker};
+use crate::progress::{FullProgress, FullProgressTracker, PhaseProgressTrackerHandle};
 use crate::util::future::NonDetachingJoinHandle;
 use crate::util::io::{AtomicFile, dir_copy};
 use crate::util::serde::IoFormat;
@@ -55,6 +55,7 @@ impl BackupStatusGuard {
     }
     async fn handle_result(
         mut self,
+        legacy_backup: bool,
         result: Result<BTreeMap<PackageId, PackageBackupReport>, Error>,
     ) -> Result<(), Error> {
         if let Some(db) = self.0.as_ref() {
@@ -85,7 +86,11 @@ impl BackupStatusGuard {
                                 },
                                 packages: report,
                             },
-                        )
+                        )?;
+                        if legacy_backup {
+                            notify_legacy_present(db)?;
+                        }
+                        Ok(())
                     })
                     .await
                 }
@@ -104,7 +109,11 @@ impl BackupStatusGuard {
                                 },
                                 packages: report,
                             },
-                        )
+                        )?;
+                        if legacy_backup {
+                            notify_legacy_present(db)?;
+                        }
+                        Ok(())
                     })
                     .await
                 }
@@ -155,6 +164,20 @@ impl Drop for BackupStatusGuard {
     }
 }
 
+/// Warn that the just-backed-up target still holds this server's pre-V2
+/// `StartOSBackups` backup, which is now redundant and can be removed from the
+/// backup create page.
+fn notify_legacy_present(db: &mut DatabaseModel) -> Result<(), Error> {
+    notify(
+        db,
+        None,
+        NotificationLevel::Warning,
+        t!("backup.bulk.legacy-present-title").to_string(),
+        t!("backup.bulk.legacy-present-message").to_string(),
+        (),
+    )
+}
+
 #[instrument(skip(ctx, old_password, password))]
 pub async fn backup_all(
     ctx: RpcContext,
@@ -172,10 +195,25 @@ pub async fn backup_all(
         .decrypt(&ctx)?;
     let password = password.decrypt(&ctx)?;
 
+    // Progress is shown from the moment the request is accepted. The
+    // "Initializing" phase covers mounting the target and opening its encrypted
+    // store — work that runs before perform_backup adds the per-package phases —
+    // so the UI shows a labeled phase instead of a bare 0% during that window.
+    let progress = FullProgressTracker::new();
+    let mut init_phase = progress.add_phase(
+        InternedString::intern(&*t!("backup.bulk.initializing")),
+        None,
+    );
+    init_phase.start();
+    // The mutate closure runs under catch_unwind, so it can't capture the
+    // tracker (its watch channels aren't unwind-safe); seed the db with a plain
+    // snapshot instead.
+    let init_progress = progress.snapshot();
+
     let ((fs, package_ids, server_id), status_guard) = (
         ctx.db
             .mutate(|db| {
-                RpcContext::check_password(db, &password)?;
+                <RpcContext as LoginContext>::check_password(db, &password)?;
                 let fs = target_id.load(db)?;
                 let package_ids = if let Some(ids) = package_ids {
                     ids.into_iter().collect()
@@ -188,7 +226,7 @@ pub async fn backup_all(
                         .map(|(id, _)| id)
                         .collect()
                 };
-                assure_backing_up(db, &package_ids)?;
+                assure_backing_up(db, &init_progress)?;
                 Ok((
                     fs,
                     package_ids,
@@ -200,29 +238,83 @@ pub async fn backup_all(
         BackupStatusGuard::new(ctx.db.clone()),
     );
 
-    let mut backup_guard = BackupMountGuard::mount(
-        TmpMountGuard::mount(&fs, BackupWrite).await?,
+    let disk_guard = TmpMountGuard::mount(&fs, BackupWrite).await?;
+
+    // `check_password` above already validated the master password, so a rejected
+    // password here can only mean the target's existing backup was encrypted with a
+    // different one. Distinguish it so the client can ask for that password instead of
+    // reporting the master password as wrong. This reads only unencrypted-metadata.json;
+    // the encrypted mount (which replays the whole segment log and can be slow on large
+    // or slow targets) runs in the background task below rather than blocking the request.
+    BackupMountGuard::<TmpMountGuard>::validate_password(
+        disk_guard.path(),
         &server_id,
         &old_password_decrypted,
     )
-    .await?;
-    if old_password.is_some() {
-        backup_guard.change_password(&password)?;
-    }
+    .await
+    .map_err(|e| {
+        if e.kind == ErrorKind::IncorrectPassword {
+            Error::new(
+                eyre!("{}", t!("backup.bulk.password-mismatch")),
+                ErrorKind::BackupPasswordMismatch,
+            )
+        } else {
+            e
+        }
+    })?;
+
+    // Stream progress to the db for the rest of the backup, starting now so the
+    // Initializing phase is live during the encrypted mount. The handle lives in
+    // the backup task below, so it is not aborted when this request returns.
+    let progress_db_sync = NonDetachingJoinHandle::from(tokio::spawn(progress.clone().sync_to_db(
+        ctx.db.clone(),
+        |db| {
+            db.as_public_mut()
+                .as_server_info_mut()
+                .as_status_info_mut()
+                .as_backup_progress_mut()
+                .transpose_mut()
+        },
+        Some(Duration::from_millis(300)),
+    )));
+
     tokio::task::spawn(async move {
+        let _progress_db_sync = progress_db_sync;
+        let mut backup_guard =
+            match BackupMountGuard::mount(disk_guard.clone(), &server_id, &old_password_decrypted)
+                .await
+            {
+                Ok(guard) => guard,
+                Err(e) => return status_guard.handle_result(false, Err(e)).await.unwrap(),
+            };
+        if old_password.is_some() {
+            if let Err(e) = backup_guard.change_password(&password) {
+                return status_guard.handle_result(false, Err(e)).await.unwrap();
+            }
+        }
+        let legacy_present =
+            crate::disk::util::has_legacy_backup(backup_guard.backup_disk_path(), &server_id).await;
         status_guard
-            .handle_result(perform_backup(&ctx, backup_guard, &package_ids).await)
+            .handle_result(
+                legacy_present,
+                perform_backup(
+                    &ctx,
+                    progress,
+                    init_phase,
+                    backup_guard,
+                    disk_guard,
+                    &package_ids,
+                )
+                .await,
+            )
             .await
             .unwrap();
     });
     Ok(())
 }
 
-#[instrument(skip(db, packages))]
-fn assure_backing_up<'a>(
-    db: &mut DatabaseModel,
-    packages: impl IntoIterator<Item = &'a PackageId>,
-) -> Result<(), Error> {
+#[instrument(skip(db, initial))]
+fn assure_backing_up(db: &mut DatabaseModel, initial: &FullProgress) -> Result<(), Error> {
     let backing_up = db
         .as_public_mut()
         .as_server_info_mut()
@@ -234,15 +326,17 @@ fn assure_backing_up<'a>(
             ErrorKind::InvalidRequest,
         ));
     }
-    let _ = packages;
-    backing_up.ser(&Some(FullProgress::new()))?;
+    backing_up.ser(&Some(initial.clone()))?;
     Ok(())
 }
 
-#[instrument(skip(ctx, backup_guard))]
+#[instrument(skip(ctx, progress, init_phase, backup_guard, disk_guard))]
 async fn perform_backup(
     ctx: &RpcContext,
+    progress: FullProgressTracker,
+    mut init_phase: PhaseProgressTrackerHandle,
     backup_guard: BackupMountGuard<TmpMountGuard>,
+    disk_guard: TmpMountGuard,
     package_ids: &OrdSet<PackageId>,
 ) -> Result<BTreeMap<PackageId, PackageBackupReport>, Error> {
     let db = ctx.db.peek().await;
@@ -251,28 +345,44 @@ async fn perform_backup(
     let mut package_backups: BTreeMap<PackageId, PackageBackupInfo> =
         backup_guard.metadata.package_backups.clone();
 
-    let progress = FullProgressTracker::new();
+    let mut reclaim_phase = if crate::backup::trash::has_trash(disk_guard.path()).await {
+        Some(progress.add_phase(
+            InternedString::intern(&*t!("backup.bulk.reclaiming-space")),
+            Some(1),
+        ))
+    } else {
+        None
+    };
     let mut phase_handles: BTreeMap<PackageId, _> = package_ids
         .iter()
         .map(|id| {
             (
                 id.clone(),
-                progress.add_phase(InternedString::from(id.clone()), Some(1)),
+                progress.add_phase(InternedString::from(id.clone()), Some(100)),
             )
         })
         .collect();
-    let mut os_data_phase = progress.add_phase("OS Data".into(), Some(1));
-    let _progress_db_sync = NonDetachingJoinHandle::from(tokio::spawn(progress.clone().sync_to_db(
-        ctx.db.clone(),
-        |db| {
-            db.as_public_mut()
-                .as_server_info_mut()
-                .as_status_info_mut()
-                .as_backup_progress_mut()
-                .transpose_mut()
-        },
-        Some(Duration::from_millis(300)),
-    )));
+    let mut os_data_phase = progress.add_phase("OS Data".into(), Some(10));
+
+    // The target is mounted and its store is open; close out the Initializing
+    // phase now that the reclaim/per-package/OS phases exist, so the phase list
+    // is already populated when it flips to complete. The db-sync task (spawned
+    // in backup_all) keeps streaming these phases.
+    init_phase.complete();
+
+    if let Some(phase) = &mut reclaim_phase {
+        phase.start();
+        // pending trash is space freed by a backup deletion but not yet
+        // reclaimed — space this backup may be counting on, so finish (or join)
+        // the sweep before writing. Failure isn't fatal: the backup itself will
+        // surface any real space problem.
+        if let Err(e) = crate::backup::trash::sweep_until_clear(&disk_guard).await {
+            tracing::warn!("{}", t!("backup.bulk.reclaim-failed", error = &e));
+            tracing::debug!("{e:?}");
+        }
+        phase.complete();
+    }
+    drop(disk_guard);
 
     for id in package_ids {
         let mut phase = phase_handles.remove(id).expect("phase exists");

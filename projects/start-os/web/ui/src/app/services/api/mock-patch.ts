@@ -41,7 +41,7 @@ export const mockPatchData: DataModel = {
             addresses: {
               enabled: [],
               disabled: [],
-              guaAccess: {},
+              guaWan: [],
               available: [
                 {
                   ssl: true,
@@ -152,7 +152,14 @@ export const mockPatchData: DataModel = {
         eth0: {
           name: null,
           secure: null,
-          type: null,
+          type: 'inbound-outbound',
+          portMap: {
+            pcp: { supported: null, at: null },
+            natPmp: { supported: null, at: null },
+            upnp: { supported: null, at: null },
+            pcpHostname: { supported: null, at: null },
+          },
+          dnsUpdate: { supported: null, at: null },
           ipInfo: {
             name: 'Wired Connection 1',
             scopeId: 1,
@@ -167,7 +174,14 @@ export const mockPatchData: DataModel = {
         wlan0: {
           name: null,
           secure: null,
-          type: null,
+          type: 'inbound-outbound',
+          portMap: {
+            pcp: { supported: null, at: null },
+            natPmp: { supported: null, at: null },
+            upnp: { supported: null, at: null },
+            pcpHostname: { supported: null, at: null },
+          },
+          dnsUpdate: { supported: null, at: null },
           ipInfo: {
             name: 'Wireless Connection 1',
             scopeId: 2,
@@ -186,6 +200,13 @@ export const mockPatchData: DataModel = {
           name: 'StartTunnel',
           secure: null,
           type: 'inbound-outbound',
+          portMap: {
+            pcp: { supported: null, at: null },
+            natPmp: { supported: null, at: null },
+            upnp: { supported: null, at: null },
+            pcpHostname: { supported: null, at: null },
+          },
+          dnsUpdate: { supported: null, at: null },
           ipInfo: {
             name: 'wireguard1',
             scopeId: 2,
@@ -204,6 +225,13 @@ export const mockPatchData: DataModel = {
           name: 'Mullvad VPN',
           secure: null,
           type: 'outbound-only',
+          portMap: {
+            pcp: { supported: null, at: null },
+            natPmp: { supported: null, at: null },
+            upnp: { supported: null, at: null },
+            pcpHostname: { supported: null, at: null },
+          },
+          dnsUpdate: { supported: null, at: null },
           ipInfo: {
             name: 'wireguard2',
             scopeId: 4,
@@ -224,9 +252,6 @@ export const mockPatchData: DataModel = {
       },
     },
     unreadNotificationCount: 5,
-    // password is asdfasdf
-    passwordHash:
-      '$argon2d$v=19$m=1024,t=1,p=1$YXNkZmFzZGZhc2RmYXNkZg$Ceev1I901G6UwU+hY0sHrFZ56D+o+LNJ',
     packageVersionCompat: '>=0.3.0 <=0.3.6',
     postInitMigrationTodos: {},
     statusInfo: {
@@ -460,9 +485,9 @@ export const mockPatchData: DataModel = {
                 assignedSslPort: 42443,
               },
               addresses: {
-                enabled: ['203.0.113.45:42443'],
+                enabled: ['203.0.113.45:42443', '[2001:db8:abcd::a3b:2]:1234'],
                 disabled: [],
-                guaAccess: {},
+                guaWan: ['[2001:db8:abcd::a3b:2]:1234'],
                 available: [
                   {
                     ssl: true,
@@ -554,6 +579,13 @@ export const mockPatchData: DataModel = {
                       info: null,
                     },
                   },
+                  {
+                    ssl: true,
+                    public: true,
+                    hostname: '2001:db8:abcd::a3b:2',
+                    port: 1234,
+                    metadata: { kind: 'ipv6', gateway: 'eth0', scopeId: 0 },
+                  },
                 ],
               },
               options: {
@@ -613,7 +645,7 @@ export const mockPatchData: DataModel = {
               addresses: {
                 enabled: ['203.0.113.45:49152'],
                 disabled: [],
-                guaAccess: {},
+                guaWan: [],
                 available: [
                   {
                     ssl: false,
@@ -708,7 +740,7 @@ export const mockPatchData: DataModel = {
               addresses: {
                 enabled: [],
                 disabled: [],
-                guaAccess: {},
+                guaWan: [],
                 available: [
                   {
                     ssl: false,
@@ -784,7 +816,7 @@ export const mockPatchData: DataModel = {
               addresses: {
                 enabled: [],
                 disabled: [],
-                guaAccess: {},
+                guaWan: [],
                 available: [],
               },
               options: {

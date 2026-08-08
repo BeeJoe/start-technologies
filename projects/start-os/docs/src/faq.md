@@ -43,6 +43,8 @@ If you encounter Diagnostic Mode, your best bet is stop clicking and [contact su
 
 1. First, try [these steps](#during-initial-setup-i-am-unable-to-connect-to-startlocal). If none resolve the issue, continue below.
 
+1. If your phone/computer is on a VPN (including WireGuard/StartTunnel), `.local` can fail to resolve while it's connected — Android in particular [excludes VPN connections from mDNS resolution](https://source.android.com/docs/core/ota/modular-system/dns-resolver). Over StartTunnel this is handled for you: a connected StartOS server automatically injects a DNS record for its `.local` name (as long as DNS injection is enabled for that server — the default), so it resolves through the tunnel. If injection is turned off, disconnect the VPN or add a manual record — see [this StartTunnel FAQ entry](/start-tunnel/faq.html#why-cant-my-android-phone-resolve-local-addresses-while-the-tunnel-is-on).
+
 1. Hard refresh the browser:
    - Linux/Windows: `ctrl+shift+R`
    - macOS Firefox: `cmd+shift+R`
@@ -72,7 +74,30 @@ To resolve this, fully quit and restart your browser. A hard refresh or private 
 
 ## Clock Sync Failure
 
-This means your server was unable to sync its clock with the Internet using the Network Time Protocol (NTP). This is usually due to a firewall issue with your network/router. Make sure you are not blocking NTP. If the issue persists, please contact support.
+This warning means your server has not completed a successful time sync over the Internet (NTP) since it booted. The clock itself is usually still correct — it is set from the onboard hardware clock at boot — so services generally continue to run normally. Ongoing sync still matters (certificate validation, logs, and some services are time-sensitive), so the warning should not be ignored indefinitely.
+
+The usual cause is the network path, not the server: a router or firewall blocking outbound NTP (UDP port 123), an ISP filtering it, or the public `pool.ntp.org` servers assigned to your region being unreliable.
+
+To diagnose, [connect via SSH](ssh.md) and run:
+
+```
+timedatectl timesync-status
+sudo journalctl -u systemd-timesyncd -b
+```
+
+The journal names each time server StartOS is trying and how the attempts fail (for example `Timed out waiting for reply`).
+
+If the default servers are unreachable from your network, point StartOS at servers that do work from it (for example Google's and Cloudflare's):
+
+```
+sudo mkdir -p /etc/systemd/timesyncd.conf.d
+printf '[Time]\nNTP=time.google.com time.cloudflare.com\n' | sudo tee /etc/systemd/timesyncd.conf.d/10-custom.conf
+sudo systemctl restart systemd-timesyncd
+```
+
+Within a minute or so, `timedatectl timesync-status` should report a successful sync. If the warning in the UI does not clear shortly after that, restart your server once. The override file survives reboots; after a StartOS update, check that it is still present and re-create it if needed.
+
+If time sync still fails, please [contact support](https://start9.com/contact).
 
 ## Issue with a particular service
 

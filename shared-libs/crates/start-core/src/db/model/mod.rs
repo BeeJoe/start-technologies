@@ -4,7 +4,7 @@ use patch_db::HasModel;
 use serde::{Deserialize, Serialize};
 
 use crate::account::AccountInfo;
-use crate::auth::Sessions;
+use crate::auth::AuthKeys;
 use crate::backup::target::cifs::CifsTargets;
 use crate::db::model::private::Private;
 use crate::db::model::public::Public;
@@ -12,7 +12,6 @@ use crate::net::forward::AvailablePorts;
 use crate::net::keys::KeyStore;
 use crate::notifications::Notifications;
 use crate::prelude::*;
-use crate::sign::AnyVerifyingKey;
 use crate::ssh::SshKeys;
 use crate::system::KeyboardOptions;
 use crate::util::serde::Pem;
@@ -40,18 +39,11 @@ impl Database {
             private: Private {
                 key_store: KeyStore::new(account)?,
                 password: account.password.clone(),
-                auth_pubkeys: [AnyVerifyingKey::Ed25519((&account.developer_key).into())]
-                    .into_iter()
-                    .collect(),
+                session_pubkeys: AuthKeys::new(),
                 ssh_privkey: Pem(account.ssh_key.clone()),
                 ssh_pubkeys: SshKeys::new(),
-                available_ports: {
-                    let mut ports = AvailablePorts::new();
-                    ports.set_ssl(80, false);
-                    ports.set_ssl(443, true);
-                    ports
-                },
-                sessions: Sessions::new(),
+                // Empty: `os_bindings` claims the admin UI's 80/443 as a privileged bind.
+                available_ports: AvailablePorts::new(),
                 notifications: Notifications::new(),
                 cifs: CifsTargets::new(),
                 package_stores: BTreeMap::new(),

@@ -48,8 +48,7 @@ impl AccountInfo {
         let ssh_key = ssh_key::PrivateKey::from(ssh_key::private::Ed25519Keypair::random(
             &mut crate::util::crypto::os_rng(),
         ));
-        let developer_key =
-            ed25519_dalek::SigningKey::generate(&mut crate::util::crypto::os_rng());
+        let developer_key = ed25519_dalek::SigningKey::generate(&mut crate::util::crypto::os_rng());
         Ok(Self {
             server_id,
             hostname,
@@ -90,7 +89,6 @@ impl AccountInfo {
         server_info
             .as_pubkey_mut()
             .ser(&self.ssh_key.public_key().to_openssh()?)?;
-        server_info.as_password_hash_mut().ser(&self.password)?;
         db.as_private_mut().as_password_mut().ser(&self.password)?;
         db.as_private_mut()
             .as_ssh_privkey_mut()

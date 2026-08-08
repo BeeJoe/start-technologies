@@ -1,13 +1,15 @@
-use crate::error::BkfsErrorKind;
-use crate::{BackupFS, BackupFSOptions};
-use fuser::MountOption;
 use std::future::Future;
 use std::io::{Seek, SeekFrom, Write};
 use std::os::unix::fs::MetadataExt;
-use std::path::PathBuf;
-use std::{fs, io, path::Path};
+use std::path::{Path, PathBuf};
+use std::{fs, io};
+
+use fuser::{Config, MountOption};
 use tempdir::TempDir;
 use tokio::task::JoinSet;
+
+use crate::error::BkfsErrorKind;
+use crate::{BackupFS, BackupFSOptions};
 
 /// Deterministic pseudorandom byte pattern keyed by absolute file offset.
 /// Any misplaced byte will produce a mismatch, catching buffer ordering bugs.
@@ -29,7 +31,8 @@ fn pattern_check(offset: u64, buf: &[u8]) {
     for (i, &b) in buf.iter().enumerate() {
         let expected = pattern_byte(offset + i as u64);
         assert_eq!(
-            b, expected,
+            b,
+            expected,
             "byte mismatch at offset {}: got {:#04x}, want {:#04x}",
             offset + i as u64,
             b,
@@ -40,9 +43,9 @@ fn pattern_check(offset: u64, buf: &[u8]) {
 
 /// Serializes the fusermount3 invocation across parallel tests.
 /// The helper talks to a per-user control socket and races with itself
-/// under `cargo test -j N`, yielding sporadic EPERM from Session::new.
-/// Holding the lock only through mount keeps the test bodies
-/// themselves parallel.
+/// under `cargo test -j N`, yielding sporadic errors from both the mount
+/// (Session::new) and the unmount (umount_and_join). Held across mount and
+/// unmount, but not the test body, so the bodies themselves stay parallel.
 fn mount_lock() -> &'static std::sync::Mutex<()> {
     static LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
     LOCK.get_or_init(|| std::sync::Mutex::new(()))
@@ -54,46 +57,42 @@ fn with_backupfs(
     func: impl FnOnce(&Path),
     file_size_padding: Option<f64>,
 ) {
-    struct Unmounter(fuser::SessionUnmounter);
-    impl Drop for Unmounter {
-        fn drop(&mut self) {
-            let _ = self.0.unmount();
-        }
-    }
-
     let mnt = tempdir::TempDir::new("backupfs_mnt").unwrap();
-    let opt = vec![
-        MountOption::FSName("backup-fs".to_string()),
-        MountOption::AutoUnmount,
-    ];
-    let data_dir = data.to_owned();
-    let mnt_dir = mnt.path().to_owned();
-    let (ready_sender, ready_reciever) = oneshot::channel();
-    let thread = std::thread::spawn(move || {
-        let fs = BackupFS::new(BackupFSOptions {
-            data_dir,
-            setuid_support: false,
-            password,
-            file_size_padding,
-            readonly: false,
-            idmapped_root: vec![],
-        })
-        .unwrap();
-        let mut fs = {
-            let _guard = mount_lock().lock().unwrap_or_else(|e| e.into_inner());
-            fuser::Session::new(fs, mnt_dir, &opt).unwrap()
-        };
-        ready_sender.send(Unmounter(fs.unmount_callable())).unwrap();
-        fs.run().unwrap();
-    });
-    if let Ok(umount) = ready_reciever.recv() {
-        func(mnt.path());
-        drop(umount);
-    }
-    match thread.join() {
-        Ok(()) => (),
-        Err(err) => std::panic::resume_unwind(err),
+    let mut config = Config::default();
+    // No AutoUnmount: with 0.17's spawn(), the auto-unmount helper deadlocks
+    // an explicit umount. umount_and_join (and BackgroundSession's Drop, which
+    // unmounts via Mount on a panic) tear the mount down cleanly instead.
+    //
+    // No default_permissions either: these tests run unprivileged against a
+    // non-idmapped mount whose root dir the fs owns as a different uid, so
+    // kernel-side permission checks would EACCES every op. Production
+    // (main.rs) sets default_permissions — its enforcement is covered by the
+    // VM backup/restore test, where the mount is kernel-idmapped.
+    config.mount_options = vec![MountOption::FSName("backup-fs".to_string())];
+    let fs = BackupFS::new(BackupFSOptions {
+        data_dir: data.to_owned(),
+        setuid_support: false,
+        password,
+        file_size_padding,
+        readonly: false,
+        idmapped: false,
+    })
+    .unwrap();
+    // 0.17's spawn() moves the mount into the BackgroundSession, so an
+    // unmounter taken from the Session beforehand is dead. Drive the whole
+    // lifecycle through the BackgroundSession: run in the background, then
+    // umount_and_join. (A panic in func drops `bg`, whose Mount unmounts.)
+    let bg = {
+        let _guard = mount_lock().lock().unwrap_or_else(|e| e.into_inner());
+        fuser::Session::new(fs, mnt.path(), &config)
+            .unwrap()
+            .spawn()
+            .unwrap()
     };
+    func(mnt.path());
+    // The same fusermount3 self-race applies to unmount, not just mount.
+    let _guard = mount_lock().lock().unwrap_or_else(|e| e.into_inner());
+    bg.umount_and_join().unwrap();
 }
 
 fn with_backupfs_async<F: Future<Output = ()> + Send + 'static>(
@@ -141,7 +140,9 @@ fn tree(path: impl AsRef<Path>, dirs: bool) -> Result<Vec<String>, io::Error> {
 /// Count content block files, tolerating an absent `contents/` dir — a
 /// backup whose files are all inline-sized writes no content blocks at all.
 fn content_files(data: &Path) -> usize {
-    tree(data.join("contents"), false).map(|v| v.len()).unwrap_or(0)
+    tree(data.join("contents"), false)
+        .map(|v| v.len())
+        .unwrap_or(0)
 }
 
 #[test_log::test]
@@ -244,7 +245,7 @@ fn checksum() {
         password: "rtns".to_owned(),
         file_size_padding: None,
         readonly: false,
-        idmapped_root: vec![],
+        idmapped: false,
     });
     match res {
         Ok(_) => panic!(),
@@ -271,7 +272,7 @@ fn change_password() {
             password: "ohea".to_owned(),
             file_size_padding: None,
             readonly: false,
-            idmapped_root: vec![],
+            idmapped: false,
         })
         .unwrap();
         fs.change_password("rtns").unwrap();
@@ -553,7 +554,8 @@ fn rmdir_heals_stale_parent_reference() {
     // but the child inode is gone: tombstone the child in the log directly,
     // leaving the parent still referencing it.
     let ctrl = crate::ctrl::Controller::new(opts(data.path(), "ohea")).unwrap();
-    ctrl.log_tombstone(crate::inode::Inode(stale_inode), true).unwrap();
+    ctrl.log_tombstone(crate::inode::Inode(stale_inode), true)
+        .unwrap();
     drop(ctrl);
 
     // Now remount and try to clean up the stale entry.
@@ -864,11 +866,11 @@ fn random_access_writes() {
             // Write in an order that forces multiple window evictions.
             // Ranges must partition [0, size) — every byte covered exactly once.
             let ranges: &[(u64, usize)] = &[
-                (1_500_000, 600_000),                     // crosses window 1→2
-                (0, 100_000),                             // early in window 0
-                (2_100_000, size as usize - 2_100_000),   // tail
-                (500_000, 1_000_000),                     // spans window 0→1
-                (100_000, 400_000),                       // fills gap in window 0
+                (1_500_000, 600_000),                   // crosses window 1→2
+                (0, 100_000),                           // early in window 0
+                (2_100_000, size as usize - 2_100_000), // tail
+                (500_000, 1_000_000),                   // spans window 0→1
+                (100_000, 400_000),                     // fills gap in window 0
             ];
             for &(offset, len) in ranges {
                 let mut buf = vec![0u8; len];
@@ -979,11 +981,7 @@ fn rename_over_existing_resolves() {
         |mnt| {
             fs::write(mnt.join("os-backup.json"), b"old").unwrap();
             fs::write(mnt.join(".os-backup.json.tmp"), b"new contents").unwrap();
-            fs::rename(
-                mnt.join(".os-backup.json.tmp"),
-                mnt.join("os-backup.json"),
-            )
-            .unwrap();
+            fs::rename(mnt.join(".os-backup.json.tmp"), mnt.join("os-backup.json")).unwrap();
 
             let live: Vec<String> = fs::read_dir(mnt)
                 .unwrap()
@@ -1094,9 +1092,8 @@ fn rename_over_existing_with_siblings_across_remounts() {
                     live.iter().any(|n| n == "os-backup.json"),
                     "round {round}: post-remount ls missing os-backup.json: {live:?}"
                 );
-                let got = fs::read(mnt.join("os-backup.json")).unwrap_or_else(|e| {
-                    panic!("round {round}: post-remount cat failed: {e}")
-                });
+                let got = fs::read(mnt.join("os-backup.json"))
+                    .unwrap_or_else(|e| panic!("round {round}: post-remount cat failed: {e}"));
                 assert_eq!(got, format!("round-{round}").as_bytes());
             },
             None,
@@ -1130,11 +1127,7 @@ fn rename_over_existing_many_rounds() {
                 fs::rename(&tmp, mnt.join("os-backup.json")).unwrap();
 
                 let got = fs::read(mnt.join("os-backup.json")).unwrap();
-                assert_eq!(
-                    got,
-                    payload.as_bytes(),
-                    "round {i}: read back wrong bytes"
-                );
+                assert_eq!(got, payload.as_bytes(), "round {i}: read back wrong bytes");
                 let live: Vec<String> = fs::read_dir(mnt)
                     .unwrap()
                     .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
@@ -1204,7 +1197,8 @@ fn rename_over_stale_parent_reference_recovers() {
     // the log (as if gc_inode ran but the parent's new state was lost to a
     // lazy unmount). Tombstone it directly.
     let ctrl = crate::ctrl::Controller::new(opts(data.path(), "ohea")).unwrap();
-    ctrl.log_tombstone(crate::inode::Inode(stale_inode), true).unwrap();
+    ctrl.log_tombstone(crate::inode::Inode(stale_inode), true)
+        .unwrap();
     drop(ctrl);
 
     // Now do the backup pattern: write .tmp, rename over the ghost.
@@ -1255,17 +1249,18 @@ fn fsync_on_dirfd_reaches_handler_and_flushes() {
             // Call fsync via libc since std's File::sync_all on a
             // directory may error on some platforms.
             let ret = unsafe { libc::fsync(dir.as_raw_fd()) };
-            assert_eq!(ret, 0, "fsync(dirfd) failed: {:?}", io::Error::last_os_error());
+            assert_eq!(
+                ret,
+                0,
+                "fsync(dirfd) failed: {:?}",
+                io::Error::last_os_error()
+            );
         },
         None,
     );
     let after = crate::FSYNCDIR_CALL_COUNT.load(Ordering::Relaxed);
-    assert!(
-        after > before,
-        "FUSE_FSYNCDIR never reached the handler"
-    );
+    assert!(after > before, "FUSE_FSYNCDIR never reached the handler");
 }
-
 
 /// Mirrors start-os's AtomicFile pattern exactly: create tmp, write,
 /// fsync, drop fd, rename, then immediately unmount. The user reports
@@ -1317,9 +1312,8 @@ fn rename_immediately_before_unmount() {
                 live.iter().any(|n| n == "os-backup.json"),
                 "post-remount listing missing os-backup.json: {live:?}"
             );
-            let got = fs::read(mnt.join("os-backup.json")).unwrap_or_else(|e| {
-                panic!("post-remount cat failed: {e} — listing was {live:?}")
-            });
+            let got = fs::read(mnt.join("os-backup.json"))
+                .unwrap_or_else(|e| panic!("post-remount cat failed: {e} — listing was {live:?}"));
             assert_eq!(got, b"new contents");
         },
         None,
@@ -1346,11 +1340,7 @@ fn rename_over_existing_across_remount() {
         data.path(),
         "ohea".to_owned(),
         |mnt| {
-            fs::rename(
-                mnt.join(".os-backup.json.tmp"),
-                mnt.join("os-backup.json"),
-            )
-            .unwrap();
+            fs::rename(mnt.join(".os-backup.json.tmp"), mnt.join("os-backup.json")).unwrap();
             assert_eq!(
                 fs::read(mnt.join("os-backup.json")).unwrap(),
                 b"new contents"
@@ -1386,11 +1376,12 @@ fn rename_over_existing_across_remount() {
 
 // ── Redesign coverage: block store, ECC, device nodes ──────────────
 
-use crate::ctrl::Controller;
-use crate::inode::{ContentId, Inode};
 use std::ffi::CString;
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::FileTypeExt;
+
+use crate::ctrl::Controller;
+use crate::inode::{ContentId, Inode};
 
 fn opts(data: &Path, password: &str) -> BackupFSOptions {
     BackupFSOptions {
@@ -1399,7 +1390,7 @@ fn opts(data: &Path, password: &str) -> BackupFSOptions {
         password: password.to_owned(),
         file_size_padding: None,
         readonly: false,
-        idmapped_root: vec![],
+        idmapped: false,
     }
 }
 
@@ -1635,7 +1626,10 @@ fn sparse_file_omits_hole_blocks() {
             let got = fs::read(mnt.join("sparse")).unwrap();
             assert_eq!(got.len() as u64, total);
             assert!(got[..2 * CHUNK_OFFSET as usize].iter().all(|&b| b == 0));
-            assert_eq!(&got[2 * CHUNK_OFFSET as usize + 123..][..18], b"hello sparse world");
+            assert_eq!(
+                &got[2 * CHUNK_OFFSET as usize + 123..][..18],
+                b"hello sparse world"
+            );
         },
         None,
     );
@@ -1821,7 +1815,10 @@ fn large_directory_spills_and_stays_consistent() {
         None,
     );
     let leftover = tree(data.path().join("dirents"), false).unwrap_or_default();
-    assert!(leftover.is_empty(), "leftover dir bucket files after rm -rf: {leftover:?}");
+    assert!(
+        leftover.is_empty(),
+        "leftover dir bucket files after rm -rf: {leftover:?}"
+    );
 }
 
 /// rename within a spilled directory, across into another directory, and
@@ -1950,7 +1947,10 @@ fn file_grows_from_inline_to_blocks() {
         None,
     );
     // Now block-backed: at least one content block exists.
-    assert!(content_files(data.path()) >= 1, "expected a content block after growth");
+    assert!(
+        content_files(data.path()) >= 1,
+        "expected a content block after growth"
+    );
     with_backupfs(
         data.path(),
         "ohea".to_owned(),
@@ -1986,7 +1986,11 @@ fn medium_file_is_packed_not_blocked() {
         None,
     );
     // Packed → no content block files; the extent lives in the log.
-    assert_eq!(content_files(data.path()), 0, "packed file must not create a content block");
+    assert_eq!(
+        content_files(data.path()),
+        0,
+        "packed file must not create a content block"
+    );
     {
         let ctrl = crate::ctrl::Controller::new(opts(data.path(), "ohea")).unwrap();
         assert_eq!(ctrl.live_content_count(), 1, "expected one packed extent");
@@ -2006,7 +2010,11 @@ fn medium_file_is_packed_not_blocked() {
     );
     {
         let ctrl = crate::ctrl::Controller::new(opts(data.path(), "ohea")).unwrap();
-        assert_eq!(ctrl.live_content_count(), 0, "packed extent not reaped on delete");
+        assert_eq!(
+            ctrl.live_content_count(),
+            0,
+            "packed extent not reaped on delete"
+        );
         assert_eq!(ctrl.live_inode_count(), 1, "only root should remain");
     }
 }
@@ -2040,10 +2048,17 @@ fn packed_grows_to_blocks() {
         },
         None,
     );
-    assert!(content_files(data.path()) >= 1, "expected block files after growth");
+    assert!(
+        content_files(data.path()) >= 1,
+        "expected block files after growth"
+    );
     {
         let ctrl = crate::ctrl::Controller::new(opts(data.path(), "ohea")).unwrap();
-        assert_eq!(ctrl.live_content_count(), 0, "stale packed extent should be tombstoned");
+        assert_eq!(
+            ctrl.live_content_count(),
+            0,
+            "stale packed extent should be tombstoned"
+        );
     }
     with_backupfs(
         data.path(),
@@ -2061,7 +2076,9 @@ fn packed_grows_to_blocks() {
 fn segment_bytes(data: &Path) -> u64 {
     let dir = data.join("segments");
     let Ok(rd) = fs::read_dir(&dir) else { return 0 };
-    rd.flatten().map(|e| e.metadata().map(|m| m.len()).unwrap_or(0)).sum()
+    rd.flatten()
+        .map(|e| e.metadata().map(|m| m.len()).unwrap_or(0))
+        .sum()
 }
 
 /// Deleting most files leaves dead extents in the log; the unmount
@@ -2088,7 +2105,10 @@ fn compaction_reclaims_dead_space() {
         None,
     );
     let before = segment_bytes(data.path());
-    assert!(before > 8 * 1024 * 1024, "expected multiple segments, got {before} bytes");
+    assert!(
+        before > 8 * 1024 * 1024,
+        "expected multiple segments, got {before} bytes"
+    );
 
     // Delete all but 10 files, then unmount → compaction runs.
     with_backupfs(
@@ -2298,7 +2318,9 @@ fn packed_to_blocks_on_close_survives_crash_before_flush() {
     {
         let ctrl = Controller::new(opts(data.path(), "ohea")).unwrap();
         let mut handler = crate::handle::Handler::new(ctrl);
-        let fh = handler.fopen(Inode(ino), true, true, |_, _| Ok(())).unwrap();
+        let fh = handler
+            .fopen(Inode(ino), true, true, |_, _| Ok(()))
+            .unwrap();
         {
             // Scoped clone so it is dropped before fclose — otherwise
             // Arc::try_unwrap in close() would fail and take the fsync path.
@@ -2334,7 +2356,11 @@ fn measure_compression_ratio() {
             let line = format!(
                 "2026-05-28T12:{:02}:{:02}.{:03}Z INFO  start_core::backup::worker[{}]: \
                  transferred chunk seq={} size=1048576 retries=0 host=backup-target.local ok\n",
-                (n / 60) % 60, n % 60, n % 1000, n % 8, n
+                (n / 60) % 60,
+                n % 60,
+                n % 1000,
+                n % 8,
+                n
             );
             out.extend_from_slice(line.as_bytes());
             n += 1;
@@ -2372,7 +2398,7 @@ fn measure_compression_ratio() {
         ("status.json", json_corpus(12 * mib)),
         ("db-dump.sql", log_corpus(8 * mib)), // sql ext → zstd 9, log-like text
         ("media.jpg", random_corpus(12 * mib)), // incompressible ext → raw
-        ("blob.bin", random_corpus(8 * mib)),   // unknown ext, random → adaptive raw
+        ("blob.bin", random_corpus(8 * mib)), // unknown ext, random → adaptive raw
     ];
     let logical: usize = files.iter().map(|(_, d)| d.len()).sum();
 
@@ -2396,8 +2422,16 @@ fn measure_compression_ratio() {
     let on_disk = content_bytes(data.path()) as usize;
     let pct = 100.0 * on_disk as f64 / logical as f64;
     eprintln!("──────────── compression ratio (mixed backup corpus) ────────────");
-    eprintln!("  logical content : {:>10} bytes ({} MiB)", logical, logical / mib);
-    eprintln!("  on-disk content : {:>10} bytes ({} MiB)", on_disk, on_disk / mib);
+    eprintln!(
+        "  logical content : {:>10} bytes ({} MiB)",
+        logical,
+        logical / mib
+    );
+    eprintln!(
+        "  on-disk content : {:>10} bytes ({} MiB)",
+        on_disk,
+        on_disk / mib
+    );
     eprintln!(
         "  stored          : {:.1}% of logical  ({:.2}× reduction)",
         pct,

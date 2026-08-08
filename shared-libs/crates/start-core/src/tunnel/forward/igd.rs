@@ -31,6 +31,7 @@ use crate::net::port_map::server::igd::{
 use crate::prelude::*;
 use crate::tunnel::context::TunnelContext;
 use crate::tunnel::db::PortForward;
+use crate::tunnel::forward::lease::{self, LeaseKey};
 use crate::tunnel::wg::WIREGUARD_INTERFACE_NAME;
 
 /// Run the IGD server (SSDP responder + HTTP control server) for the life of
@@ -64,7 +65,9 @@ async fn ssdp_server(ctx: TunnelContext, uuid: String) {
 fn ssdp_socket() -> Result<UdpSocket, Error> {
     let socket = Socket::new(Domain::IPV4, Type::DGRAM, Some(Protocol::UDP))
         .with_kind(ErrorKind::Network)?;
-    socket.set_reuse_address(true).with_kind(ErrorKind::Network)?;
+    socket
+        .set_reuse_address(true)
+        .with_kind(ErrorKind::Network)?;
     bind_to_wireguard(&socket)?;
     socket
         .bind(&SockAddr::from(SocketAddrV4::new(
@@ -76,17 +79,28 @@ fn ssdp_socket() -> Result<UdpSocket, Error> {
     socket
         .join_multicast_v4_n(&SSDP_MULTICAST, &InterfaceIndexOrAddress::Index(ifindex))
         .with_kind(ErrorKind::Network)?;
-    socket.set_multicast_loop_v4(false).with_kind(ErrorKind::Network)?;
+    socket
+        .set_multicast_loop_v4(false)
+        .with_kind(ErrorKind::Network)?;
     socket.set_nonblocking(true).with_kind(ErrorKind::Network)?;
     UdpSocket::from_std(socket.into()).with_kind(ErrorKind::Network)
 }
 
 async fn ssdp_loop(ctx: &TunnelContext, uuid: &str) -> Result<(), Error> {
+    // Subscribe before binding so a bounce during setup still triggers a rebind.
+    let mut ifindex = ctx.forward_ifindex.subscribe();
+    ifindex.borrow_and_update();
     let socket = ssdp_socket()?;
     tracing::info!("UPnP IGD SSDP responder listening on {WIREGUARD_INTERFACE_NAME}");
     let mut buf = [0u8; 2048];
     loop {
-        let (n, from) = socket.recv_from(&mut buf).await.with_kind(ErrorKind::Network)?;
+        let (n, from) = tokio::select! {
+            res = socket.recv_from(&mut buf) => res.with_kind(ErrorKind::Network)?,
+            _ = ifindex.changed() => {
+                tracing::info!("{WIREGUARD_INTERFACE_NAME} ifindex changed; rebinding SSDP responder");
+                return Ok(());
+            }
+        };
         let Ok(text) = std::str::from_utf8(&buf[..n]) else {
             continue;
         };
@@ -128,22 +142,36 @@ pub(super) async fn subnet_gateway_for(ctx: &TunnelContext, peer: Ipv4Addr) -> O
 
 async fn http_server(ctx: TunnelContext, root_desc: Arc<str>) {
     let app = Router::new()
-        .route(ROOT_DESC_PATH, get(move || serve_static(root_desc.clone(), "text/xml")))
+        .route(
+            ROOT_DESC_PATH,
+            get(move || serve_static(root_desc.clone(), "text/xml")),
+        )
         .route(SCPD_PATH, get(|| serve_static(Arc::from(SCPD), "text/xml")))
         .route(CONTROL_PATH, post(control))
-        .with_state(ctx);
+        .with_state(ctx.clone());
     loop {
+        // Subscribe before binding so a bounce during setup still triggers a rebind.
+        let mut ifindex = ctx.forward_ifindex.subscribe();
+        ifindex.borrow_and_update();
         match igd_http_listener() {
             Ok(listener) => {
-                tracing::info!("UPnP IGD control server listening on {WIREGUARD_INTERFACE_NAME}:{IGD_HTTP_PORT}");
-                if let Err(e) = axum::serve(
-                    listener,
-                    app.clone()
-                        .into_make_service_with_connect_info::<SocketAddr>(),
-                )
-                .await
-                {
-                    tracing::warn!("UPnP IGD control server exited, retrying: {e}");
+                tracing::info!(
+                    "UPnP IGD control server listening on {WIREGUARD_INTERFACE_NAME}:{IGD_HTTP_PORT}"
+                );
+                tokio::select! {
+                    res = axum::serve(
+                        listener,
+                        app.clone()
+                            .into_make_service_with_connect_info::<SocketAddr>(),
+                    ) => {
+                        if let Err(e) = res {
+                            tracing::warn!("UPnP IGD control server exited, retrying: {e}");
+                        }
+                    }
+                    _ = ifindex.changed() => {
+                        tracing::info!("{WIREGUARD_INTERFACE_NAME} ifindex changed; rebinding IGD control server");
+                        continue;
+                    }
                 }
             }
             Err(e) => tracing::warn!("UPnP IGD control server bind failed, retrying: {e}"),
@@ -155,7 +183,9 @@ async fn http_server(ctx: TunnelContext, root_desc: Arc<str>) {
 fn igd_http_listener() -> Result<TcpListener, Error> {
     let socket = Socket::new(Domain::IPV4, Type::STREAM, Some(Protocol::TCP))
         .with_kind(ErrorKind::Network)?;
-    socket.set_reuse_address(true).with_kind(ErrorKind::Network)?;
+    socket
+        .set_reuse_address(true)
+        .with_kind(ErrorKind::Network)?;
     bind_to_wireguard(&socket)?;
     socket
         .bind(&SockAddr::from(SocketAddrV4::new(
@@ -227,16 +257,34 @@ pub(super) async fn apply_peer_forward_range(
     target: SocketAddrV4,
     count: u16,
     protocol_label: &str,
+    lifetime: Option<u32>,
 ) -> Result<(), u16> {
+    // Port 80 is reserved for the tunnel's HTTP→HTTPS redirect; never
+    // automatically create a forward that would take it (PCP/UPnP alike).
+    let lo = source.port();
+    if lo <= 80 && 80 <= lo.saturating_add(count.saturating_sub(1)) {
+        return Err(718); // ConflictInMappingEntry — port 80 owned by the redirect
+    }
     match current_forward(ctx, source).await {
         Some(PortForward::Dnat {
-            target: t, count: c, ..
+            target: t,
+            count: c,
+            ..
         }) if t != target || c != count => {
             return Err(718); // ConflictInMappingEntry
         }
-        // The external port is held by an SNI-demuxed forward.
+        // The external port is SNI-demuxed. A single hostname-less MAP becomes the
+        // port's fallback (a bare public IP sharing the port with named domains);
+        // `persist_fallback_forward` stamps its own SniFallback lease. A range
+        // can't be a single-port fallback, so it still conflicts.
         Some(PortForward::Sni { .. }) => {
-            return Err(718); // ConflictInMappingEntry
+            if count != 1 {
+                return Err(718); // ConflictInMappingEntry
+            }
+            return ctx
+                .persist_fallback_forward(source, target, lifetime, true, None)
+                .await
+                .map_err(|_| 718u16);
         }
         Some(PortForward::Dnat { .. }) => {
             // Idempotent re-assert from the client's periodic refresh: ensure the
@@ -253,6 +301,9 @@ pub(super) async fn apply_peer_forward_range(
                     m.insert(source, rc);
                 });
             }
+            if let Some(lt) = lifetime {
+                lease::stamp(ctx, LeaseKey::Dnat(source), lt);
+            }
             return Ok(());
         }
         None => {}
@@ -260,44 +311,69 @@ pub(super) async fn apply_peer_forward_range(
 
     // A new range must not overlap a different existing forward's ports on this
     // external IP (the exact-source cases are handled by the match above).
-    if ctx
+    // Reserve the slot atomically before touching the dataplane so concurrent
+    // auto-forwards can't both pass the overlap check.
+    let reserved = ctx
         .db
-        .peek()
+        .mutate(|db| {
+            db.as_port_forwards_mut().mutate(|pf| {
+                if pf.overlapping(source, count).is_some() {
+                    return Ok(false);
+                }
+                pf.0.insert(
+                    source,
+                    PortForward::Dnat {
+                        target,
+                        label: Some(protocol_label.to_string()),
+                        enabled: true,
+                        count,
+                        auto: true,
+                    },
+                );
+                Ok(true)
+            })
+        })
         .await
-        .as_port_forwards()
-        .de()
-        .map_err(|_| 501u16)?
-        .overlapping(source, count)
-        .is_some()
-    {
+        .result
+        .map_err(|_| 501u16)?;
+    if !reserved {
         return Err(718); // ConflictInMappingEntry
     }
 
     let prefix = prefix_for(ctx, target.ip()).await;
-    let rc = ctx
+    let rc = match ctx
         .forward
         .add_forward_range(source, target, count, prefix, None)
         .await
-        .map_err(|_| 501u16)?;
+    {
+        Ok(rc) => rc,
+        Err(_) => {
+            ctx.db
+                .mutate(|db| {
+                    db.as_port_forwards_mut().mutate(|pf| {
+                        pf.0.remove(&source);
+                        Ok(())
+                    })
+                })
+                .await
+                .result
+                .ok();
+            return Err(501);
+        }
+    };
     ctx.active_forwards.mutate(|m| {
         m.insert(source, rc);
     });
-    let entry = PortForward::Dnat {
-        target,
-        label: Some(protocol_label.to_string()),
-        enabled: true,
-        count,
-        auto: true,
-    };
-    ctx.db
-        .mutate(|db| db.as_port_forwards_mut().insert(&source, &entry).map(|_| ()))
-        .await
-        .result
-        .map_err(|_| 501u16)?;
+    if let Some(lt) = lifetime {
+        lease::stamp(ctx, LeaseKey::Dnat(source), lt);
+    }
     Ok(())
 }
 
-pub(super) async fn current_forward(ctx: &TunnelContext, source: SocketAddrV4) -> Option<PortForward> {
+pub(super) async fn current_forward(
+    ctx: &TunnelContext,
+    source: SocketAddrV4,
+) -> Option<PortForward> {
     ctx.db
         .peek()
         .await
@@ -324,8 +400,13 @@ pub(super) async fn is_known_client(ctx: &TunnelContext, peer: Ipv4Addr) -> bool
 
 /// The WAN IPv4 `peer`'s egress uses: its assigned WAN if pinned, else the
 /// gateway's default WAN.
-pub(in crate::tunnel) async fn external_ipv4(ctx: &TunnelContext, peer: Ipv4Addr) -> Option<Ipv4Addr> {
-    assigned_wan_for(ctx, peer).await.or_else(|| default_wan(ctx))
+pub(in crate::tunnel) async fn external_ipv4(
+    ctx: &TunnelContext,
+    peer: Ipv4Addr,
+) -> Option<Ipv4Addr> {
+    assigned_wan_for(ctx, peer)
+        .await
+        .or_else(|| default_wan(ctx))
 }
 
 /// First usable WAN candidate across the gateway's non-loopback, non-wg
@@ -345,7 +426,9 @@ fn default_wan(ctx: &TunnelContext) -> Option<Ipv4Addr> {
                 .filter(|v4| crate::net::port_map::upnp::is_wan_candidate(*v4))
                 .or_else(|| {
                     ip_info.subnets.iter().find_map(|s| match s.addr() {
-                        IpAddr::V4(v4) if crate::net::port_map::upnp::is_wan_candidate(v4) => Some(v4),
+                        IpAddr::V4(v4) if crate::net::port_map::upnp::is_wan_candidate(v4) => {
+                            Some(v4)
+                        }
                         _ => None,
                     })
                 })

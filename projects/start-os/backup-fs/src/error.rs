@@ -1,9 +1,10 @@
-use fuser::ReplyEntry;
-use libc::c_int;
-use log::{debug, warn};
 use std::backtrace::Backtrace;
 use std::fmt::{Debug, Display};
 use std::io;
+
+use fuser::{Errno, ReplyEntry};
+use libc::c_int;
+use log::{debug, warn};
 
 use crate::error;
 
@@ -91,7 +92,7 @@ impl BkfsError {
     }
 
     pub fn reply(&self, entry: ReplyEntry) {
-        entry.error(self.to_errno_log());
+        entry.error(Errno::from_i32(self.to_errno_log()));
     }
 }
 

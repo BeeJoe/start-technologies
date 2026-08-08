@@ -11,7 +11,7 @@ export abstract class ApiService {
   abstract openWebsocket$<T>(guid: string): Observable<T>
   abstract subscribe(): Promise<SubscribeRes> // db.subscribe
   // auth
-  abstract login(params: T.Tunnel.SetPasswordParams): Promise<null> // auth.login
+  abstract login(params: T.LoginParams): Promise<null> // auth.login
   abstract logout(): Promise<null> // auth.logout
   abstract setPassword(params: T.Tunnel.SetPasswordParams): Promise<null> // auth.set-password
   // subnets
@@ -25,7 +25,9 @@ export abstract class ApiService {
   abstract setSubnetDns(
     params: T.Tunnel.SubnetParams & T.Tunnel.SetSubnetDnsParams,
   ): Promise<null> // subnet.set-dns
-  abstract setSubnetWan(params: T.Tunnel.SetSubnetWanParams): Promise<null> // subnet.set-wan
+  abstract setSubnetWan(
+    params: T.Tunnel.SubnetParams & T.Tunnel.SetSubnetWanParams,
+  ): Promise<null> // subnet.set-wan
   // devices
   abstract addDevice(params: T.Tunnel.AddDeviceParams): Promise<null> // device.add
   abstract editDevice(params: T.Tunnel.AddDeviceParams): Promise<null> // device.edit
@@ -57,6 +59,24 @@ export abstract class ApiService {
   abstract setForwardEnabled(
     params: T.Tunnel.SetPortForwardEnabledParams,
   ): Promise<null> // port-forward.set-enabled
+
+  abstract addPinhole(params: T.Tunnel.AddPinholeParams): Promise<null> // pinhole.add
+  abstract deletePinhole(params: T.Tunnel.RemovePinholeParams): Promise<null> // pinhole.remove
+  abstract updatePinholeLabel(
+    params: T.Tunnel.UpdatePinholeLabelParams,
+  ): Promise<null> // pinhole.update-label
+  abstract setPinholeEnabled(
+    params: T.Tunnel.SetPinholeEnabledParams,
+  ): Promise<null> // pinhole.set-enabled
+
+  // http redirects
+  abstract setHttpRedirectEnabled(
+    params: T.Tunnel.SetHttpRedirectEnabledParams,
+  ): Promise<null> // http-redirect.set-enabled
+  // ipv6
+  abstract setSubnetIpv6(
+    params: T.Tunnel.SubnetParams & T.Tunnel.SetSubnetIpv6Params,
+  ): Promise<null> // subnet.set-ipv6
   // system
   abstract restart(): Promise<null> // restart
   // update

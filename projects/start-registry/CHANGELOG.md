@@ -2,9 +2,33 @@
 
 All notable changes to `start-registry` (the Start Registry server) are documented here. This project is versioned **independently** (starting at `1.0.0`); its version lives in `Cargo.toml`. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
-## [Unreleased]
+## [1.0.2]
+
+- **`start-registry` works on a registry host that listens on a non-loopback address.** With no
+  `--registry`, the CLI derives the registry's address from `registry-listen` and authenticates
+  with the local authcookie — but it only sent that token when the derived URL was literally
+  loopback. A registry reachable from anywhere but the host itself listens on `0.0.0.0:5959`, so
+  every local command went out unauthenticated and came back `Unauthorized`. A wildcard listen
+  address is now dialled over loopback, and an address derived from the registry's own listen
+  configuration counts as naming this machine. An explicit `--registry` URL is unchanged: the
+  token still goes only to a loopback URL.
+
+## [1.0.1]
+
+- **Registry responses stay compatible with pre-beta.10 clients.** `package.get` re-adds a
+  stubbed (empty-object) manifest `alerts` field for clients older than StartOS `0.4.0-beta.10`,
+  which require it present (`alerts` was removed from the manifest in beta.10). Removed the
+  long-dead `0.4.0-alpha.17`/`alpha.18` client-compatibility shims.
 
 ## [1.0.0]
+
+- **Signer/admin authentication moved to the new request-signature scheme.** Every authenticated
+  request is signed with the client's identity key and carried in the `X-Start-Auth-Sig` header,
+  bound to the registry hostname; on the registry host itself, the local authcookie is presented
+  as an `Authorization: Bearer` token instead of a `Cookie`. Requires `start-cli` ≥ 1.1.0.
+
+- **`--version` reports `start-registry`'s own version** (`1.0.0`), not the StartOS platform
+  version.
 
 - **Independent versioning.** `start-registry` now carries its own version (starting at `1.0.0`) in its `Cargo.toml`, decoupled from the StartOS release line; its `.deb` is versioned from the manifest.
 
@@ -37,5 +61,4 @@ The registry server as it ships in this monorepo. Built as the multi-call binary
 - Inherits the workspace-wide dependency and advisory cleanup shipped this release — resolved Dependabot alerts across the Rust workspace (#3301) and forked-dep RUSTSEC advisories in tokio-tar and async-acme (#3303).
 - Outbound fetches that route through the host SOCKS proxy now correctly handle `.onion` (Tor) and `.local` (mDNS) targets (b5dec33cf).
 
-[Unreleased]: https://github.com/Start9Labs/start-technologies
 [0.4.0-beta.10]: https://github.com/Start9Labs/start-technologies
