@@ -1093,4 +1093,6 @@ export default {
   1188: 'Alle fortsetzen',
   1189: 'Alle automatischen Sicherungen pausieren?',
   1190: 'Alle Zeitpläne werden angehalten. Vorhandene Prüfpunkte und Zeitplaneinstellungen bleiben erhalten.',
+  1191: 'Zeitplan wird gelöscht…',
+  1192: 'Zeitplan und zugehörige Sicherungen werden gelöscht…',
 } satisfies i18n

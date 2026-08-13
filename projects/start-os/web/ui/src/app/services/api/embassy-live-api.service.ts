@@ -598,6 +598,15 @@ export class LiveApiService extends ApiService {
     })
   }
 
+  async deleteArchivedBackupSnapshotsBulk(
+    params: T.DeleteArchivedSnapshotsBulkParams,
+  ): Promise<T.ServiceTargetHistory[]> {
+    return this.rpcRequest({
+      method: 'backup.history.delete-archived-snapshots-bulk',
+      params,
+    })
+  }
+
   async retryScheduledBackupTarget(
     params: T.RetryBackupTargetParams,
   ): Promise<T.BackupJob[]> {
