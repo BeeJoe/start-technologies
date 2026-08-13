@@ -1228,6 +1228,13 @@ export class MockApiService extends ApiService {
     throw new Error('No mock scheduled backup history')
   }
 
+  async deleteArchivedBackupSnapshotsBulk(
+    params: T.DeleteArchivedSnapshotsBulkParams,
+  ): Promise<T.ServiceTargetHistory[]> {
+    if (!params.snapshots.length) return []
+    throw new Error('No mock scheduled backup history')
+  }
+
   async retryScheduledBackupTarget(
     params: T.RetryBackupTargetParams,
   ): Promise<T.BackupJob[]> {

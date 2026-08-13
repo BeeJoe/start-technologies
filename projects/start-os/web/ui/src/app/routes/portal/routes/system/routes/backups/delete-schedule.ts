@@ -1,6 +1,6 @@
 import { Component, inject, Service } from '@angular/core'
 import { FormsModule } from '@angular/forms'
-import { DialogService, i18nPipe } from '@start9labs/shared'
+import { DialogService, i18nPipe, TaskService } from '@start9labs/shared'
 import { T } from '@start9labs/start-core'
 import {
   TuiButton,
@@ -162,6 +162,7 @@ export class DeleteScheduleService {
   private readonly api = inject(ApiService)
   private readonly dialogs = inject(DialogService)
   private readonly i18n = inject(i18nPipe)
+  private readonly tasks = inject(TaskService)
 
   async delete(job: T.BackupJob): Promise<boolean> {
     const histories = await this.api.getScheduledBackupHistories({})
@@ -190,23 +191,29 @@ export class DeleteScheduleService {
     )
     if (!decision) return false
 
-    if (decision.deleteCheckpoints) {
-      const refreshed = await this.api.refreshScheduledBackupHistories({
-        targetId: job.targetId,
-      })
-      unreferenced = this.unreferencedHistories(refreshed, job)
-    }
-    await this.api.deleteScheduledBackupJob({ id: job.id })
-    if (decision.deleteCheckpoints) {
-      for (const history of unreferenced) {
-        await this.api.deleteArchivedBackupSnapshots({
-          targetId: history.targetId,
-          packageId: history.packageId,
-          snapshotIds: history.snapshots.map(snapshot => snapshot.id),
-        })
-      }
-    }
-    return true
+    return this.tasks.run(
+      async () => {
+        if (decision.deleteCheckpoints) {
+          const refreshed = await this.api.refreshScheduledBackupHistories({
+            targetId: job.targetId,
+          })
+          unreferenced = this.unreferencedHistories(refreshed, job)
+        }
+        await this.api.deleteScheduledBackupJob({ id: job.id })
+        if (decision.deleteCheckpoints) {
+          await this.api.deleteArchivedBackupSnapshotsBulk({
+            targetId: job.targetId,
+            snapshots: unreferenced.map(history => ({
+              packageId: history.packageId,
+              snapshotIds: history.snapshots.map(snapshot => snapshot.id),
+            })),
+          })
+        }
+      },
+      decision.deleteCheckpoints
+        ? 'Deleting schedule and related backups…'
+        : 'Deleting schedule…',
+    )
   }
 
   private unreferencedHistories(

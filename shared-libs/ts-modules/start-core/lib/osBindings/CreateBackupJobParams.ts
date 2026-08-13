@@ -6,6 +6,9 @@ import type { PasswordType } from './PasswordType'
 import type { RetentionPolicy } from './RetentionPolicy'
 import type { Schedule } from './Schedule'
 
+/**
+ * Inputs for creating an automatic backup job.
+ */
 export type CreateBackupJobParams = {
   name: string
   targetId: BackupTargetId

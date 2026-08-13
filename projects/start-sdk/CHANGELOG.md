@@ -319,6 +319,7 @@
   connections a process leaves in `TIME_WAIT` when it exits kept its port
   reading as listening for up to a minute: a daemon's `ready` check passed, and
   the health checks that require it ran, while nothing was listening
+
 - **Backup reports now include rsync transfer size when it can be measured.**
   Standard volume and sync backups return the number of bytes transferred so
   StartOS can estimate the target space required by later automatic runs.

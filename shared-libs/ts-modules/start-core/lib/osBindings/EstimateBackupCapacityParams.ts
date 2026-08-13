@@ -4,6 +4,9 @@ import type { BackupTargetId } from './BackupTargetId'
 import type { PackageId } from './PackageId'
 import type { RetentionPolicy } from './RetentionPolicy'
 
+/**
+ * Inputs for estimating the capacity required by an automatic backup policy.
+ */
 export type EstimateBackupCapacityParams = {
   targetId: BackupTargetId
   services: BackupServiceScope
