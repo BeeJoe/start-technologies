@@ -247,6 +247,13 @@
 
 - **Backup and restore progress no longer falls back mid-sync**
 
+- **Backup reports now include rsync transfer size when it can be measured.**
+  Standard volume and sync backups return the number of bytes transferred so
+  StartOS can estimate the target space required by later automatic runs.
+  Packages with custom pre/post-backup behavior, or rsync output without the
+  structured statistic, report the value as unknown instead of inventing an
+  estimate.
+
 ### Security
 
 - **ESLint and typescript-eslint carry patched `brace-expansion` and

@@ -3,7 +3,7 @@
 This directory is a container for two cross-product libraries. There is no build
 or test target for `shared-libs/` itself — operate inside the relevant sub-library and
 read its own `AGENTS.md` first. `CLAUDE.md` is a one-line `@AGENTS.md` import. See
-[ARCHITECTURE.md](ARCHITECTURE.md) and [CONTRIBUTING.md](CONTRIBUTING.md).
+[ARCHITECTURE.md](ARCHITECTURE.md) for how these libraries fit together.
 
 **Read up the tree first.** These docs are hierarchical: before working here, read the `AGENTS.md` in each enclosing directory up to the repo root (and their `ARCHITECTURE.md` / `CONTRIBUTING.md` where relevant). This file covers only what is specific to this scope and does not repeat rules already stated higher up.
 
