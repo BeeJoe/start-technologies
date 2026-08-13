@@ -1,6 +1,6 @@
 import { DatePipe, KeyValuePipe } from '@angular/common'
 import { Component, inject } from '@angular/core'
-import { DialogService, TaskService } from '@start9labs/shared'
+import { DialogService, i18nPipe, TaskService } from '@start9labs/shared'
 import { TuiButton } from '@taiga-ui/core'
 import { injectContext, PolymorpheusComponent } from '@taiga-ui/polymorpheus'
 import { filter, switchMap, take } from 'rxjs'
@@ -11,20 +11,24 @@ import { RECOVER } from './recover.component'
 
 @Component({
   template: `
-    <table [appTable]="['Hostname', 'StartOS Version', 'Created', null]">
-      @for (server of target.entry.startOs | keyvalue; track $index) {
-        <tr>
-          <td class="name">{{ server.value.hostname }}.local</td>
-          <td>{{ server.value.version }}</td>
-          <td>{{ server.value.timestamp | date: 'medium' }}</td>
-          <td>
-            <button tuiButton size="s" (click)="onClick(server.key)">
-              Select
-            </button>
-          </td>
-        </tr>
-      }
-    </table>
+    @if (servers.length > 1) {
+      <table [appTable]="['Hostname', 'StartOS Version', 'Created', null]">
+        @for (server of target.entry.startOs | keyvalue; track server.key) {
+          <tr>
+            <td class="name">{{ server.value.hostname }}.local</td>
+            <td>{{ server.value.version }}</td>
+            <td>{{ server.value.timestamp | date: 'medium' }}</td>
+            <td>
+              <button tuiButton size="s" (click)="onClick(server.key)">
+                {{ 'Select' | i18n }}
+              </button>
+            </td>
+          </tr>
+        }
+      </table>
+    } @else {
+      <p>{{ 'Loading' | i18n }}…</p>
+    }
   `,
   styles: `
     td:last-child {
@@ -48,15 +52,24 @@ import { RECOVER } from './recover.component'
       }
     }
   `,
-  imports: [KeyValuePipe, DatePipe, TuiButton, TableComponent],
+  imports: [KeyValuePipe, DatePipe, TuiButton, TableComponent, i18nPipe],
 })
 export class BackupRestoreComponent {
   private readonly dialog = inject(DialogService)
   private readonly tasks = inject(TaskService)
   private readonly api = inject(ApiService)
   private readonly context = injectContext<BackupContext>()
+  private readonly i18n = inject(i18nPipe)
 
   readonly target = this.context.data
+  readonly servers = Object.entries(this.target.entry.startOs)
+
+  constructor() {
+    const server = this.servers[0]
+    if (this.servers.length === 1 && server) {
+      queueMicrotask(() => this.onClick(server[0]))
+    }
+  }
 
   onClick(serverId: string) {
     this.dialog
@@ -82,8 +95,38 @@ export class BackupRestoreComponent {
   private decrypt(serverId: string, password: string) {
     return this.tasks.run(async () => {
       const params = { targetId: this.target.id, serverId, password }
-      const backupInfo = await this.api.getBackupInfo(params)
-      const data = { targetId: this.target.id, serverId, backupInfo, password }
+      const [manual, automatic] = await Promise.allSettled([
+        this.api.getBackupInfo(params),
+        this.api.discoverScheduledBackupHistories(params),
+      ])
+
+      if (manual.status === 'rejected' && automatic.status === 'rejected') {
+        throw manual.reason
+      }
+
+      const backupInfo =
+        manual.status === 'fulfilled'
+          ? manual.value
+          : { version: '', timestamp: null, packageBackups: {} }
+      const scheduledHistories =
+        automatic.status === 'fulfilled' ? automatic.value : []
+
+      if (
+        !Object.keys(backupInfo.packageBackups).length &&
+        !scheduledHistories.length
+      ) {
+        throw new Error(
+          this.i18n.transform('No restorable checkpoints were found'),
+        )
+      }
+
+      const data = {
+        targetId: this.target.id,
+        serverId,
+        backupInfo,
+        scheduledHistories,
+        password,
+      }
 
       this.context.$implicit.complete()
       this.dialog

@@ -33,7 +33,7 @@ import { TARGET, TARGET_CREATE } from './target.component'
       </tui-textfield>
       <button
         tuiButton
-        appearance="secondary"
+        appearance="primary"
         type="button"
         class="button"
         size="l"
@@ -49,7 +49,7 @@ import { TARGET, TARGET_CREATE } from './target.component'
       </button>
       <button
         tuiButton
-        appearance="secondary"
+        appearance="primary"
         type="button"
         class="button"
         size="l"
@@ -81,8 +81,8 @@ import { TARGET, TARGET_CREATE } from './target.component'
           <input
             tuiSwitch
             type="checkbox"
-            name="now"
             [showIcons]="false"
+            name="now"
             [(ngModel)]="job.now"
           />
         </div>

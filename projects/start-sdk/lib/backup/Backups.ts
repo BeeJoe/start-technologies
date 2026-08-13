@@ -133,6 +133,8 @@ export type BackupHook = (
  * @typeParam M - The service manifest type
  */
 export class Backups<M extends T.SDKManifest> implements InitScript {
+  private customBackupBehavior = false
+
   private constructor(
     private options = DEFAULT_OPTIONS,
     private restoreOptions: Partial<T.SyncOptions> = {},
@@ -650,6 +652,7 @@ export class Backups<M extends T.SDKManifest> implements InitScript {
    * @param fn - Async function receiving backup-scoped effects and a progress tracker for this hook
    */
   setPreBackup(fn: BackupHook, weight: number = DEFAULT_HOOK_WEIGHT) {
+    this.customBackupBehavior = true
     this.preBackup = fn
     this.preBackupWeight = weight
     return this
@@ -660,6 +663,7 @@ export class Backups<M extends T.SDKManifest> implements InitScript {
    * @param fn - Async function receiving backup-scoped effects and a progress tracker for this hook
    */
   setPostBackup(fn: BackupHook, weight: number = DEFAULT_HOOK_WEIGHT) {
+    this.customBackupBehavior = true
     this.postBackup = fn
     this.postBackupWeight = weight
     return this
@@ -744,6 +748,7 @@ export class Backups<M extends T.SDKManifest> implements InitScript {
       preHook.complete()
     }
 
+    let changedBytes = 0
     for (let i = 0; i < this.backupSet.length; i++) {
       const item = this.backupSet[i]!
       const phase = syncs[i]!
@@ -768,7 +773,12 @@ export class Backups<M extends T.SDKManifest> implements InitScript {
         phase.setDone(Math.min(99, Math.floor(pct)))
       }, 500)
       try {
-        await rsyncResults.wait()
+        const transferred = await rsyncResults.wait()
+        if (transferred === null) {
+          this.customBackupBehavior = true
+        } else {
+          changedBytes += transferred
+        }
       } finally {
         clearInterval(interval)
       }
@@ -788,7 +798,12 @@ export class Backups<M extends T.SDKManifest> implements InitScript {
     // package's phase open until the s9pk image finishes writing, so it reports
     // 100%, not "done".
     await tracker.sync()
-    return
+    return {
+      changedBytes:
+        this.customBackupBehavior || !Number.isSafeInteger(changedBytes)
+          ? null
+          : changedBytes,
+    }
   }
 
   async init(
@@ -881,7 +896,7 @@ async function runRsync(rsyncOptions: {
   options: T.SyncOptions
 }): Promise<{
   id: () => Promise<string>
-  wait: () => Promise<null>
+  wait: () => Promise<number | null>
   progress: () => Promise<number>
 }> {
   const { srcPath, dstPath, options } = rsyncOptions
@@ -901,6 +916,7 @@ async function runRsync(rsyncOptions: {
   args.push('--inplace')
   args.push('--timeout=300')
   args.push('--info=progress2')
+  args.push('--stats')
   // --no-inc-recursive would give accurate progress percentages (since rsync
   // knows the full file list up front), but it forces a full pre-scan that
   // causes timeouts on large backups. If we start surfacing progress to users,
@@ -908,10 +924,16 @@ async function runRsync(rsyncOptions: {
   // instead of relying on rsync's own percentage.
   args.push(srcPath)
   args.push(dstPath)
-  const spawned = child_process.spawn(command, args, { detached: true })
+  const spawned = child_process.spawn(command, args, {
+    detached: true,
+    env: { ...process.env, LC_ALL: 'C' },
+  })
   let percentage = 0.0
+  let stdoutTail = ''
   spawned.stdout.on('data', (data: unknown) => {
-    const lines = String(data).replace(/\r/g, '\n').split('\n')
+    const output = String(data)
+    stdoutTail = `${stdoutTail}${output}`.slice(-64 * 1024)
+    const lines = output.replace(/\r/g, '\n').split('\n')
     for (const line of lines) {
       const parsed = /([0-9.]+)%/.exec(line)?.[1]
       if (!parsed) {
@@ -937,10 +959,11 @@ async function runRsync(rsyncOptions: {
     }
     return String(pid)
   }
-  const waitPromise = new Promise<null>((resolve, reject) => {
-    spawned.on('exit', (code: any) => {
+  const waitPromise = new Promise<number | null>((resolve, reject) => {
+    spawned.once('error', reject)
+    spawned.once('close', code => {
       if (code === 0) {
-        resolve(null)
+        resolve(parseRsyncTransferredBytes(stdoutTail))
       } else {
         reject(new Error(`rsync exited with code ${code}\n${stderr}`))
       }
@@ -949,4 +972,14 @@ async function runRsync(rsyncOptions: {
   const wait = () => waitPromise
   const progress = () => Promise.resolve(percentage)
   return { id, wait, progress }
+}
+
+/** Parses rsync's locale-stabilized `--stats` output. `null` means the
+ * structured value was not present and must be surfaced as Unknown. */
+export function parseRsyncTransferredBytes(output: string): number | null {
+  const transferred =
+    /^Total transferred file size:\s*([0-9,]+) bytes\s*$/m.exec(output)?.[1]
+  if (!transferred) return null
+  const value = Number.parseInt(transferred.replaceAll(',', ''), 10)
+  return Number.isSafeInteger(value) ? value : null
 }
