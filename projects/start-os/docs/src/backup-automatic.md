@@ -128,10 +128,12 @@ The dialog opens with the most recently recorded checkpoint count and
 reclaimable space, so you can delete the schedule even when its backup location
 has been removed or is unavailable. Selecting **Delete related backups** makes
 StartOS verify that it can reach the location before removing the schedule, then
-mark and delete its unreferenced checkpoints. If that preliminary check fails,
-the schedule remains. A later cleanup failure can leave the schedule removed and
-its checkpoints archived for a subsequent cleanup attempt. Leaving the option
-off does not contact the location and keeps unreferenced checkpoints as an archive.
+mark and delete its unreferenced checkpoints. A progress message remains visible
+while this runs, and StartOS removes all selected checkpoints from that location
+in one cleanup pass. If the preliminary check fails, the schedule remains. A
+later cleanup failure can leave the schedule removed and its checkpoints
+archived for a subsequent cleanup attempt. Leaving the option off does not
+contact the location and keeps unreferenced checkpoints as an archive.
 Deleting from a multi-schedule editor returns to the schedule list; when one
 schedule remains, the Automatic backups card collapses. Deleting the last
 schedule returns **Automatic backups** to its initial setup state.

@@ -2,6 +2,9 @@
 import type { Guid } from './Guid'
 import type { PackageId } from './PackageId'
 
+/**
+ * Complete inclusion decisions for one newly installed service.
+ */
 export type ResolveNewServiceBackupReviewParams = {
   packageId: PackageId
   /**

@@ -577,6 +577,13 @@ assertRule(deleteScheduleDialog, deleteScheduleDialogFile, '.actions', {
   'flex-wrap': 'wrap',
   'justify-content': 'flex-end',
 })
+assertSource(deleteScheduleDialogFile, [
+  /tasks\.run\([\s\S]*Deleting schedule and related backups…/,
+  /deleteArchivedBackupSnapshotsBulk\(\{[\s\S]*snapshots: unreferenced\.map/,
+])
+assertNotSource(deleteScheduleDialogFile, [
+  /for \(const history of unreferenced\)[\s\S]*deleteArchivedBackupSnapshots/,
+])
 assertRule(
   history,
   historyFile,

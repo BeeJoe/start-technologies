@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -407,44 +407,52 @@ impl<G: GenericMountGuard> ScheduledBackupMountGuard<G> {
             .clone())
     }
 
-    /// Deletes the requested archived checkpoints for a service.
-    pub async fn delete_archived_snapshots(
+    /// Deletes archived checkpoints for multiple services without remounting the target.
+    pub async fn delete_archived_snapshots_bulk(
         &mut self,
-        package_id: &PackageId,
-        snapshot_ids: &std::collections::BTreeSet<ServiceSnapshotId>,
-    ) -> Result<Vec<ServiceSnapshot>, Error> {
-        let history = self
-            .metadata
-            .services
-            .get(package_id)
-            .or_not_found(package_id)?;
-        let existing: std::collections::BTreeSet<_> = history
-            .snapshots
-            .iter()
-            .filter(|snapshot| snapshot.archived)
-            .map(|snapshot| snapshot.id.clone())
-            .collect();
-        if !snapshot_ids.is_subset(&existing) {
-            return Err(Error::new(
-                eyre!("{}", t!("backup.scheduled.snapshot-delete-stale")),
-                ErrorKind::InvalidRequest,
-            ));
+        snapshots: &BTreeMap<PackageId, BTreeSet<ServiceSnapshotId>>,
+    ) -> Result<BTreeMap<PackageId, Vec<ServiceSnapshot>>, Error> {
+        for (package_id, snapshot_ids) in snapshots {
+            let history = self
+                .metadata
+                .services
+                .get(package_id)
+                .or_not_found(package_id)?;
+            let existing: BTreeSet<_> = history
+                .snapshots
+                .iter()
+                .filter(|snapshot| snapshot.archived)
+                .map(|snapshot| snapshot.id.clone())
+                .collect();
+            if !snapshot_ids.is_subset(&existing) {
+                return Err(Error::new(
+                    eyre!("{}", t!("backup.scheduled.snapshot-delete-stale")),
+                    ErrorKind::InvalidRequest,
+                ));
+            }
         }
-        for snapshot_id in snapshot_ids {
-            delete_dir(&self.snapshot_path(package_id, snapshot_id)).await?;
+
+        for (package_id, snapshot_ids) in snapshots {
+            for snapshot_id in snapshot_ids {
+                delete_dir(&self.snapshot_path(package_id, snapshot_id)).await?;
+            }
+            self.metadata
+                .services
+                .get_mut(package_id)
+                .expect("history exists")
+                .snapshots
+                .retain(|snapshot| !snapshot_ids.contains(&snapshot.id));
         }
-        let history = self
-            .metadata
-            .services
-            .get_mut(package_id)
-            .expect("history exists");
-        history
-            .snapshots
-            .retain(|snapshot| !snapshot_ids.contains(&snapshot.id));
-        let remaining = history.snapshots.clone();
         self.remove_unreferenced_runs().await?;
-        self.save().await?;
-        Ok(remaining)
+        Ok(snapshots
+            .keys()
+            .map(|package_id| {
+                (
+                    package_id.clone(),
+                    self.metadata.services[package_id].snapshots.clone(),
+                )
+            })
+            .collect())
     }
 
     /// Persists archive flags from database histories to target metadata.

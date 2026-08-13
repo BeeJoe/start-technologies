@@ -2,6 +2,9 @@
 import type { Guid } from './Guid'
 import type { ServiceSnapshot } from './ServiceSnapshot'
 
+/**
+ * The checkpoints kept and removed by a proposed retention policy.
+ */
 export type RetentionPreview = {
   retained: Array<Guid>
   removed: Array<ServiceSnapshot>

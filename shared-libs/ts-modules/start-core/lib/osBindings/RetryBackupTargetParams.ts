@@ -2,6 +2,9 @@
 import type { BackupTargetId } from './BackupTargetId'
 import type { PasswordType } from './PasswordType'
 
+/**
+ * Inputs for reconnecting a failed automatic backup target.
+ */
 export type RetryBackupTargetParams = {
   /**
    * Backup target to reconnect and resume.
