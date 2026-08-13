@@ -1,74 +1,942 @@
-import { Component, inject } from '@angular/core'
-import { TuiDialogService, TuiIcon, TuiTitle, TuiCell } from '@taiga-ui/core'
-import { BackupsUpcomingComponent } from './components/upcoming.component'
-import { HISTORY } from './modals/history.component'
-import { JOBS } from './modals/jobs.component'
-import { TARGETS } from './modals/targets.component'
-import { BackupsCreateService } from './services/create.service'
-import { BackupsRestoreService } from './services/restore.service'
+import {
+  afterNextRender,
+  Component,
+  computed,
+  effect,
+  ElementRef,
+  inject,
+  Injector,
+  signal,
+  viewChild,
+} from '@angular/core'
+import { toSignal } from '@angular/core/rxjs-interop'
+import { FormsModule } from '@angular/forms'
+import { ActivatedRoute, Router } from '@angular/router'
+import {
+  DocsLinkDirective,
+  ErrorService,
+  getErrorMessage,
+  i18nPipe,
+} from '@start9labs/shared'
+import { T } from '@start9labs/start-core'
+import {
+  TuiAppearance,
+  TuiButton,
+  TuiCell,
+  TuiDataList,
+  TuiDropdown,
+  TuiIcon,
+  TuiLink,
+  TuiTitle,
+} from '@taiga-ui/core'
+import { TuiBadge, TuiSwitch } from '@taiga-ui/kit'
+import { PatchDB } from 'patch-db-client'
+import { ApiService } from 'src/app/services/api/embassy-api.service'
+import { OSService } from 'src/app/services/os.service'
+import { DataModel } from 'src/app/services/patch-db/data-model'
+import { TitleDirective } from 'src/app/services/title.service'
+import { BackupService } from '../system/routes/backups/backup.service'
+import SystemBackupComponent from '../system/routes/backups/backups.component'
+import { DeleteScheduleService } from '../system/routes/backups/delete-schedule'
+import { BackupProgressComponent } from '../system/routes/backups/progress.component'
+import {
+  backupJobNeedsAttention,
+  parseBackupSchedule,
+} from '../system/routes/backups/scheduled-utils'
+import AutomaticBackups from './automatic'
+import { BackupHistory } from './history'
+import BackupLocations from './locations'
+
+type BackupPanel = 'automatic' | 'manual' | 'restore' | 'locations' | 'history'
+
+const WEEKDAYS = [
+  'Sunday',
+  'Monday',
+  'Tuesday',
+  'Wednesday',
+  'Thursday',
+  'Friday',
+  'Saturday',
+]
 
 @Component({
   template: `
-    <section>
-      <h3 class="g-title">Options</h3>
-      @for (option of options; track $index) {
-        <button tuiCell (click)="option.action()">
-          <tui-icon [icon]="option.icon" />
+    <ng-container *title>{{ 'Backups' | i18n }}</ng-container>
+
+    <header class="page-heading">
+      <div>
+        <h2>
+          {{ 'Backups' | i18n }}
+          <a
+            tuiIconButton
+            size="xs"
+            docsLink
+            path="/start-os/"
+            fragment="#backups"
+            appearance="icon"
+            iconStart="@tui.book-open-text"
+            [attr.aria-label]="'Documentation' | i18n"
+          ></a>
+        </h2>
+        <p>
+          {{
+            'Protect your services automatically, create a manual backup, or restore from an earlier checkpoint.'
+              | i18n
+          }}
+        </p>
+      </div>
+    </header>
+
+    @if (operationActivity(); as activity) {
+      @if (manualRunning()) {
+        <section
+          #progressCard
+          class="progress-prominent"
+          role="button"
+          tabindex="0"
+          [attr.aria-label]="'Services' | i18n"
+          (click)="goToServices()"
+          (keydown.enter)="goToServices()"
+          (keydown.space)="$event.preventDefault(); goToServices()"
+        >
+          <section backupProgress></section>
+        </section>
+      } @else {
+        <button
+          #progressCard
+          type="button"
+          class="operation"
+          tuiCell
+          (click)="goToServices()"
+        >
+          <tui-icon icon="@tui.loader-circle" />
           <span tuiTitle>
-            <strong>{{ option.name }}</strong>
-            <span tuiSubtitle>{{ option.description }}</span>
+            <b>{{ operationTitle(activity) | i18n }}</b>
+            <span tuiSubtitle>
+              {{ 'You can leave this page. Progress will continue.' | i18n }}
+            </span>
           </span>
+          <span tuiBadge appearance="info">{{ 'In progress' | i18n }}</span>
         </button>
       }
+    }
+
+    <section
+      class="backup-card g-card"
+      [class.expanded]="expanded() === 'automatic'"
+    >
+      <header
+        class="card-heading automatic-heading"
+        [class.single-job]="jobs().length === 1"
+      >
+        <button
+          type="button"
+          class="card-toggle"
+          [attr.aria-expanded]="expanded() === 'automatic'"
+          (click)="togglePanel('automatic')"
+        >
+          <tui-icon
+            [icon]="
+              needsAttention() ? '@tui.triangle-alert' : '@tui.calendar-clock'
+            "
+          />
+          <span tuiTitle>
+            <b>
+              {{
+                (needsAttention()
+                  ? 'Automatic backups need attention'
+                  : 'Automatic backups'
+                ) | i18n
+              }}
+            </b>
+            <span tuiSubtitle>
+              {{
+                (needsAttention() ? healthDetail() : automaticSummary()) | i18n
+              }}
+            </span>
+          </span>
+        </button>
+
+        @if (needsAttention()) {
+          <button
+            tuiLink
+            type="button"
+            class="attention-link"
+            (click)="openHistory()"
+          >
+            {{ 'See more' | i18n }}
+          </button>
+        }
+
+        @if (jobs().length === 1) {
+          <div class="card-actions">
+            @if (!primary()?.enabled) {
+              <span tuiBadge>{{ 'Paused' | i18n }}</span>
+            }
+            <label class="simple-switch">
+              <input
+                tuiSwitch
+                type="checkbox"
+                [showIcons]="false"
+                [attr.aria-label]="'Automatic backups' | i18n"
+                [ngModel]="primary()?.enabled ?? false"
+                [disabled]="changingAutomatic"
+                (ngModelChange)="setAutomatic($event)"
+              />
+            </label>
+            <button
+              tuiIconButton
+              tuiDropdown
+              tuiDropdownAuto
+              type="button"
+              size="s"
+              appearance="flat-grayscale"
+              iconStart="@tui.ellipsis-vertical"
+            >
+              {{ 'More' | i18n }}
+              <tui-data-list *tuiDropdown="let close" (click)="close()">
+                <button
+                  tuiOption
+                  tuiAppearance="flat"
+                  [disabled]="!canRunNow()"
+                  (click)="runNow()"
+                >
+                  {{ 'Run now' | i18n }}
+                </button>
+                <button tuiOption (click)="openAutomaticEditor()">
+                  {{ 'View/Edit' | i18n }}
+                </button>
+                <button tuiOption (click)="addSchedule()">
+                  {{ 'Add schedule' | i18n }}
+                </button>
+                <button
+                  tuiOption
+                  tuiAppearance="flat-destructive"
+                  (click)="deleteSchedule()"
+                >
+                  {{ 'Delete schedule' | i18n }}
+                </button>
+              </tui-data-list>
+            </button>
+          </div>
+        }
+        @if (jobs().length !== 1) {
+          <button
+            type="button"
+            class="expand-toggle"
+            [attr.aria-label]="'Automatic backups' | i18n"
+            [attr.aria-expanded]="expanded() === 'automatic'"
+            (click)="togglePanel('automatic')"
+          >
+            <tui-icon
+              icon="@tui.chevron-down"
+              [class.rotated]="expanded() === 'automatic'"
+            />
+          </button>
+        }
+      </header>
+
+      @if (expanded() === 'automatic') {
+        <div class="card-body">
+          <automatic-backups
+            [embedded]="true"
+            [mode]="jobs().length ? 'manage' : 'setup'"
+            [createRequest]="createScheduleRequest()"
+            [reviewPackageId]="reviewPackageId"
+            (manageLocations)="openLocations()"
+            (collapseRequested)="collapseAutomatic($event)"
+          />
+        </div>
+      }
     </section>
-    <h3 class="g-title">Upcoming Jobs</h3>
-    <table backupsUpcoming class="g-table"></table>
+
+    <section
+      class="backup-card g-card"
+      [class.expanded]="expanded() === 'manual'"
+    >
+      <header class="card-heading">
+        <button
+          type="button"
+          class="card-toggle"
+          [attr.aria-expanded]="expanded() === 'manual'"
+          (click)="togglePanel('manual')"
+        >
+          <tui-icon icon="@tui.copy-plus" />
+          <span tuiTitle>
+            <b>{{ 'Create a manual backup' | i18n }}</b>
+            <span tuiSubtitle>{{ 'Run a one-time backup now' | i18n }}</span>
+          </span>
+          <tui-icon
+            icon="@tui.chevron-down"
+            [class.rotated]="expanded() === 'manual'"
+          />
+        </button>
+      </header>
+      @if (expanded() === 'manual') {
+        <div class="card-body">
+          <system-backup
+            mode="create"
+            [embedded]="true"
+            [operationActive]="progressActive()"
+            (manageLocations)="openLocations()"
+          />
+        </div>
+      }
+    </section>
+
+    <section
+      class="backup-card g-card"
+      [class.expanded]="expanded() === 'restore'"
+    >
+      <header class="card-heading">
+        <button
+          type="button"
+          class="card-toggle"
+          [attr.aria-expanded]="expanded() === 'restore'"
+          (click)="togglePanel('restore')"
+        >
+          <tui-icon icon="@tui.database-backup" />
+          <span tuiTitle>
+            <b>{{ 'Restore from a backup' | i18n }}</b>
+            <span tuiSubtitle>
+              {{ 'Choose a manual or automatic checkpoint' | i18n }}
+            </span>
+          </span>
+          <tui-icon
+            icon="@tui.chevron-down"
+            [class.rotated]="expanded() === 'restore'"
+          />
+        </button>
+      </header>
+      @if (expanded() === 'restore') {
+        <div class="card-body">
+          <system-backup
+            mode="restore"
+            [embedded]="true"
+            [operationActive]="progressActive()"
+            (manageLocations)="openLocations()"
+          />
+        </div>
+      }
+    </section>
+
+    <section
+      class="backup-card g-card"
+      [class.expanded]="expanded() === 'locations'"
+    >
+      <header class="card-heading">
+        <button
+          type="button"
+          class="card-toggle"
+          [attr.aria-expanded]="expanded() === 'locations'"
+          (click)="togglePanel('locations')"
+        >
+          <tui-icon icon="@tui.hard-drive" />
+          <span tuiTitle>
+            <b>{{ 'Manage backup locations' | i18n }}</b>
+            <span tuiSubtitle>
+              {{ 'Add or repair a physical drive or network folder' | i18n }}
+            </span>
+          </span>
+          <tui-icon
+            icon="@tui.chevron-down"
+            [class.rotated]="expanded() === 'locations'"
+          />
+        </button>
+      </header>
+      @if (expanded() === 'locations') {
+        <div class="card-body">
+          <backup-locations [embedded]="true" />
+        </div>
+      }
+    </section>
+
+    <section
+      #historyCard
+      class="backup-card g-card"
+      [class.expanded]="expanded() === 'history'"
+    >
+      <header class="card-heading">
+        <button
+          type="button"
+          class="card-toggle"
+          [attr.aria-expanded]="expanded() === 'history'"
+          (click)="togglePanel('history')"
+        >
+          <tui-icon icon="@tui.history" />
+          <span tuiTitle>
+            <b>{{ 'Backup history' | i18n }}</b>
+            <span tuiSubtitle>
+              {{ activities().length }} {{ 'All activity' | i18n }}
+            </span>
+          </span>
+          <tui-icon
+            icon="@tui.chevron-down"
+            [class.rotated]="expanded() === 'history'"
+          />
+        </button>
+      </header>
+      @if (expanded() === 'history') {
+        <div class="card-body">
+          <backup-history />
+        </div>
+      }
+    </section>
   `,
-  host: { class: 'g-page' },
-  imports: [BackupsUpcomingComponent, TuiIcon, TuiCell, TuiTitle],
+  styles: `
+    :host {
+      display: grid;
+      gap: 0.75rem;
+      width: 100%;
+      min-width: 0;
+      max-width: 64rem;
+      margin-inline: auto;
+    }
+
+    h2,
+    p {
+      margin: 0;
+    }
+
+    h2 {
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
+    }
+
+    .page-heading p,
+    [tuiSubtitle] {
+      display: block;
+      margin-top: 0.25rem;
+      color: var(--tui-text-secondary);
+    }
+
+    .backup-card {
+      padding: 0;
+      overflow: hidden;
+      container: card / inline-size;
+    }
+
+    .card-heading {
+      position: static;
+      display: flex;
+      align-items: center;
+      min-height: 4.5rem;
+      height: auto;
+      padding: 0;
+      background: transparent;
+    }
+
+    .card-toggle {
+      display: flex;
+      flex: 1;
+      align-items: center;
+      gap: 0.75rem;
+      min-width: 0;
+      min-height: 4.5rem;
+      padding: 1rem 1.25rem;
+      color: inherit;
+      font: inherit;
+      text-align: left;
+      background: transparent;
+      border: 0;
+      cursor: pointer;
+    }
+
+    .card-toggle:disabled {
+      cursor: default;
+      opacity: var(--tui-disabled-opacity);
+    }
+
+    .card-toggle [tuiTitle] {
+      flex: 1;
+      min-width: 0;
+      overflow-wrap: anywhere;
+    }
+
+    .card-toggle > tui-icon:last-child {
+      transition: transform var(--tui-duration, 0.2s);
+    }
+
+    .rotated {
+      transform: rotate(180deg);
+    }
+
+    .card-actions,
+    .simple-switch {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .card-actions {
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      padding: 0.75rem 1.25rem 0.75rem 0;
+    }
+
+    .simple-switch {
+      width: fit-content;
+      white-space: normal;
+    }
+
+    .automatic-heading {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) repeat(3, auto);
+    }
+
+    .automatic-heading.single-job {
+      grid-template-columns: minmax(0, 1fr) repeat(2, auto);
+    }
+
+    .attention-link {
+      align-self: center;
+      justify-self: start;
+      margin-inline-end: 0.5rem;
+      white-space: nowrap;
+    }
+
+    .single-job .card-actions {
+      flex-wrap: nowrap;
+      padding-inline-end: 1.25rem;
+    }
+
+    .expand-toggle {
+      display: grid;
+      place-items: center;
+      align-self: stretch;
+      width: 3.5rem;
+      padding: 0;
+      color: inherit;
+      background: transparent;
+      border: 0;
+      cursor: pointer;
+    }
+
+    .card-body {
+      display: grid;
+      gap: 1rem;
+      min-width: 0;
+      padding: 1.25rem;
+      border-top: 1px solid var(--tui-border-normal);
+    }
+
+    .automatic-heading + .card-body {
+      border-top: 0;
+    }
+
+    .operation,
+    .attention {
+      gap: 0.75rem;
+      min-width: 0;
+    }
+
+    .operation {
+      position: static;
+      z-index: 1;
+      width: 100%;
+      color: inherit;
+      font: inherit;
+      background: color-mix(in hsl, var(--start9-base-1) 50%, transparent);
+      border: 1px solid var(--tui-border-normal);
+      border-radius: var(--tui-radius-l);
+      box-sizing: border-box;
+      cursor: pointer;
+    }
+
+    .operation > tui-icon {
+      color: var(--tui-text-action);
+      animation: backup-progress-spin 1.5s linear infinite;
+    }
+
+    .operation [tuiTitle],
+    .attention [tuiTitle] {
+      flex: 1;
+      min-width: 0;
+      overflow-wrap: anywhere;
+    }
+
+    .progress-prominent {
+      position: static;
+      z-index: 1;
+      display: block;
+      width: 100%;
+      padding: 0.75rem;
+      color: inherit;
+      font: inherit;
+      text-align: left;
+      background: color-mix(in hsl, var(--start9-base-1) 50%, transparent);
+      border: 1px solid var(--tui-border-normal);
+      border-radius: var(--tui-radius-l);
+      box-sizing: border-box;
+      cursor: pointer;
+    }
+
+    .operation:hover,
+    .progress-prominent:hover {
+      border-color: var(--tui-border-hover);
+    }
+
+    @keyframes backup-progress-spin {
+      to {
+        transform: rotate(1turn);
+      }
+    }
+
+    @container card (max-width: 44rem) {
+      .card-heading {
+        align-items: stretch;
+        flex-direction: column;
+      }
+
+      .card-actions {
+        justify-content: flex-start;
+        padding: 0 1.25rem 1rem;
+      }
+
+      .automatic-heading {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto auto;
+      }
+
+      .automatic-heading .card-actions {
+        grid-column: 1 / -1;
+        grid-row: 2;
+      }
+
+      .automatic-heading.single-job .card-actions {
+        grid-column: 3;
+        grid-row: 1;
+        align-self: start;
+        justify-content: flex-end;
+        padding: 0.75rem 1.25rem 0.75rem 0;
+      }
+
+      .automatic-heading.single-job .card-toggle b {
+        white-space: normal;
+      }
+
+      .automatic-heading .expand-toggle {
+        grid-column: 3;
+        grid-row: 1;
+      }
+    }
+
+    /* Dense action cards need a second collapse below the app-wide mobile layout. */
+    @media (max-width: 30rem) {
+      .card-toggle {
+        align-items: flex-start;
+      }
+
+      .automatic-heading.single-job .card-toggle {
+        gap: 0.5rem;
+        padding-inline: 0.75rem;
+      }
+
+      .automatic-heading .attention-link {
+        grid-column: 1;
+        grid-row: 2;
+        margin-block-start: -0.75rem;
+        margin-block-end: 0.75rem;
+        margin-inline: 2.75rem 0;
+      }
+
+      .card-actions {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      .card-actions > button {
+        width: 100%;
+      }
+
+      .single-job .card-actions {
+        display: grid;
+        grid-template-columns: auto auto;
+        align-items: center;
+        row-gap: 0.5rem;
+        padding-inline-end: 0.75rem;
+      }
+
+      .single-job .card-actions > button {
+        grid-column: 2;
+        grid-row: 1;
+        width: auto;
+      }
+
+      .single-job .card-actions > [tuiBadge] {
+        grid-column: 1 / -1;
+        grid-row: 2;
+        justify-self: end;
+      }
+
+      .single-job .simple-switch {
+        grid-column: 1;
+        grid-row: 1;
+      }
+
+      .card-body {
+        padding: 1rem;
+      }
+
+      .operation {
+        align-items: stretch;
+        flex-direction: column;
+      }
+
+      .operation > tui-icon,
+      .operation > [tuiBadge] {
+        align-self: flex-start;
+      }
+    }
+  `,
+  host: { class: 'backup-page' },
+  imports: [
+    FormsModule,
+    TuiAppearance,
+    TuiBadge,
+    TuiButton,
+    TuiCell,
+    TuiDataList,
+    TuiDropdown,
+    TuiIcon,
+    TuiLink,
+    TuiSwitch,
+    TuiTitle,
+    TitleDirective,
+    AutomaticBackups,
+    SystemBackupComponent,
+    BackupLocations,
+    BackupHistory,
+    BackupProgressComponent,
+    DocsLinkDirective,
+    i18nPipe,
+  ],
 })
 export default class BackupsComponent {
-  private readonly dialogs = inject(TuiDialogService)
+  private readonly automatic = viewChild(AutomaticBackups)
+  private readonly historyCard =
+    viewChild<ElementRef<HTMLElement>>('historyCard')
+  private readonly progressCard =
+    viewChild<ElementRef<HTMLElement>>('progressCard')
+  private readonly api = inject(ApiService)
+  private readonly errors = inject(ErrorService)
+  private readonly backupService = inject(BackupService)
+  private readonly deleteScheduleService = inject(DeleteScheduleService)
+  private readonly os = inject(OSService)
+  private readonly router = inject(Router)
+  private readonly route = inject(ActivatedRoute)
+  private readonly injector = inject(Injector)
+  private readonly state = toSignal(
+    inject<PatchDB<DataModel>>(PatchDB).watch$('scheduledBackups'),
+  )
 
-  readonly options = [
-    {
-      name: 'Create a Backup',
-      icon: '@tui.plus',
-      description: 'Create a one-time backup',
-      action: inject(BackupsCreateService).handle,
-    },
-    {
-      name: 'Restore from Backup',
-      icon: '@tui.share',
-      description: 'Restore services from a backup',
-      action: inject(BackupsRestoreService).handle,
-    },
-    {
-      name: 'Jobs',
-      icon: '@tui.wrench',
-      description: 'Manage backup jobs',
-      action: () =>
-        this.dialogs
-          .open(JOBS, { label: 'Backup Jobs', size: 'l' })
-          .subscribe(),
-    },
-    {
-      name: 'Targets',
-      icon: '@tui.database',
-      description: 'Manage backup targets',
-      action: () =>
-        this.dialogs
-          .open(TARGETS, { label: 'Backup Targets', size: 'l' })
-          .subscribe(),
-    },
-    {
-      name: 'History',
-      icon: '@tui.archive',
-      description: 'View your entire backup history',
-      action: () =>
-        this.dialogs
-          .open(HISTORY, { label: 'Backup History', size: 'l' })
-          .subscribe(),
-    },
-  ]
+  protected readonly reviewPackageId =
+    this.route.snapshot.queryParamMap.get('addService') || ''
+  readonly expanded = signal<BackupPanel | null>(
+    this.reviewPackageId ? 'automatic' : null,
+  )
+  private readonly progressRequest = signal<{
+    jobId: string
+    previousActivityId: string | null
+  } | null>(null)
+  protected readonly createScheduleRequest = signal(
+    this.route.snapshot.queryParamMap.has('createSchedule') ? 1 : 0,
+  )
+  readonly manualRunning = toSignal(this.os.backingUp$, { initialValue: false })
+  changingAutomatic = false
+
+  constructor() {
+    void this.backupService.getBackupTargets()
+    effect(() => {
+      const request = this.progressRequest()
+      const activity = this.activities()[0]
+      if (!request || !activity || activity.id === request.previousActivityId) {
+        return
+      }
+      if (activity.jobId !== request.jobId || activity.state !== 'running') {
+        this.progressRequest.set(null)
+        return
+      }
+      afterNextRender(
+        () => {
+          this.progressCard()?.nativeElement.scrollIntoView({
+            behavior: 'smooth',
+            block: 'start',
+          })
+          this.progressRequest.set(null)
+        },
+        { injector: this.injector },
+      )
+    })
+  }
+
+  readonly jobs = computed(() =>
+    Object.values(this.state()?.jobs || {}).sort((a, b) =>
+      a.createdAt.localeCompare(b.createdAt),
+    ),
+  )
+  readonly primary = computed(() => this.jobs()[0])
+  readonly activities = computed(() =>
+    Object.values(this.state()?.activities || {}).sort((a, b) =>
+      b.startedAt.localeCompare(a.startedAt),
+    ),
+  )
+  readonly operationActivity = computed(() => {
+    const latest = this.activities()[0]
+    return latest?.state === 'running' ? latest : null
+  })
+  readonly progressActive = computed(() => !!this.operationActivity())
+  readonly automaticOn = computed(() =>
+    this.jobs().some(job => job.enabled && !job.pause),
+  )
+  readonly needsAttention = computed(() =>
+    this.jobs().some(backupJobNeedsAttention),
+  )
+
+  async togglePanel(panel: BackupPanel) {
+    if (
+      this.expanded() === 'automatic' &&
+      !((await this.automatic()?.confirmDiscardChanges()) ?? true)
+    ) {
+      return
+    }
+    this.expanded.update(current => (current === panel ? null : panel))
+  }
+
+  async openLocations() {
+    if (!((await this.automatic()?.confirmDiscardChanges()) ?? true)) return
+    this.expanded.set('locations')
+  }
+
+  async openHistory() {
+    if (!((await this.automatic()?.confirmDiscardChanges()) ?? true)) return
+    this.expanded.set('history')
+    afterNextRender(
+      () =>
+        this.historyCard()?.nativeElement.scrollIntoView({
+          behavior: 'smooth',
+          block: 'start',
+        }),
+      { injector: this.injector },
+    )
+  }
+
+  async collapseAutomatic(runNowJobId: string | null) {
+    if (!((await this.automatic()?.confirmDiscardChanges()) ?? true)) return
+    this.expanded.set(null)
+    this.progressRequest.set(
+      runNowJobId && !this.operationActivity()
+        ? {
+            jobId: runNowJobId,
+            previousActivityId: this.activities()[0]?.id || null,
+          }
+        : null,
+    )
+  }
+
+  openAutomaticEditor() {
+    this.expanded.set('automatic')
+  }
+
+  addSchedule() {
+    this.expanded.set('automatic')
+    this.createScheduleRequest.update(request => request + 1)
+  }
+
+  async goToServices() {
+    if (!(await this.canDeactivate())) return
+    await this.router.navigate(['/services'])
+  }
+
+  async canDeactivate(): Promise<boolean> {
+    return (await this.automatic()?.confirmDiscardChanges()) ?? true
+  }
+
+  automaticSummary(): string {
+    const jobs = this.jobs()
+    if (!jobs.length) return 'Automatic backups are not set up yet.'
+    if (jobs.length > 1) {
+      const summary = `${jobs.length} schedules`
+      return this.automaticOn() ? summary : `Off · ${summary}`
+    }
+    const primary = jobs[0]!
+    const schedule = parseBackupSchedule(primary.schedule)
+    const time = `${String(schedule.hour).padStart(2, '0')}:${String(
+      schedule.minute,
+    ).padStart(2, '0')}`
+    const timing =
+      schedule.frequency === 'hourly'
+        ? `Hourly at minute ${String(schedule.minute).padStart(2, '0')}`
+        : schedule.frequency === 'weekly'
+          ? `${WEEKDAYS[schedule.weekday] || 'Sunday'} at ${time}`
+          : schedule.frequency === 'monthly'
+            ? `Monthly on day ${schedule.dayOfMonth} at ${time}`
+            : `Daily at ${time}`
+    const state = this.automaticOn() ? timing : `Off · ${timing}`
+    return state
+  }
+
+  healthDetail(): string {
+    const job = this.jobs().find(backupJobNeedsAttention)
+    if (job?.pause?.reason === 'reauthenticationRequired') {
+      return 'The backup location needs your password again.'
+    }
+    if (job?.pause?.reason === 'targetIdentityMismatch') {
+      return 'The connected backup location is not the expected location.'
+    }
+    if (job?.pause?.reason === 'targetUnavailable') {
+      return 'StartOS cannot connect to the backup location.'
+    }
+    return 'The latest automatic backup did not finish successfully.'
+  }
+
+  canRunNow(): boolean {
+    const primary = this.primary()
+    return (
+      !!primary && primary.enabled && !primary.pause && !this.progressActive()
+    )
+  }
+
+  operationTitle(activity: T.BackupActivity): string {
+    if (activity.kind === 'restore') return 'Restoring services'
+    if (activity.kind === 'manual') return 'Creating manual backup'
+    return 'Creating automatic backup'
+  }
+
+  async runNow() {
+    const job = this.primary()
+    if (!job) return
+    try {
+      await this.api.runScheduledBackupJob({ id: job.id })
+    } catch (error) {
+      this.errors.handleError(getErrorMessage(error))
+    }
+  }
+
+  async deleteSchedule() {
+    const job = this.primary()
+    if (!job) return
+    try {
+      await this.deleteScheduleService.delete(job)
+    } catch (error) {
+      this.errors.handleError(getErrorMessage(error))
+    }
+  }
+
+  async setAutomatic(enabled: boolean) {
+    if (enabled === this.jobs().every(job => job.enabled)) return
+    this.changingAutomatic = true
+    try {
+      await Promise.all(
+        this.jobs().map(job =>
+          this.api.setScheduledBackupJobEnabled({ id: job.id, enabled }),
+        ),
+      )
+    } catch (error) {
+      this.errors.handleError(getErrorMessage(error))
+    } finally {
+      this.changingAutomatic = false
+    }
+  }
 }

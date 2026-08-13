@@ -16,7 +16,11 @@ import { CifsBackupTarget } from 'src/app/services/api/api.types'
 import { ApiService } from 'src/app/services/api/embassy-api.service'
 import { FormDialogService } from 'src/app/services/form-dialog.service'
 import { configBuilderToSpec } from 'src/app/utils/configBuilderToSpec'
-import { BackupService, MappedBackupTarget } from './backup.service'
+import {
+  BackupService,
+  formatCifsLocation,
+  MappedBackupTarget,
+} from './backup.service'
 import { BackupLegacyWarningComponent } from './legacy-warning.component'
 import { BackupStatusComponent } from './status.component'
 
@@ -60,10 +64,20 @@ const ERROR =
               </span>
             }
           </td>
-          <td class="name">{{ target.entry.path.split('/').pop() }}</td>
-          <td>{{ target.entry.hostname }}</td>
-          <td>{{ target.entry.path }}</td>
-          <td>
+          <td class="name">
+            <span class="desktop-name">
+              {{ target.entry.path.split('/').pop() }}
+            </span>
+            <span class="mobile-location-line">
+              <b>{{ target.entry.path.split('/').pop() }}</b>
+              <span class="mobile-address">
+                {{ formatCifsLocation(target.entry) }}
+              </span>
+            </span>
+          </td>
+          <td class="hostname">{{ target.entry.hostname }}</td>
+          <td class="location">{{ target.entry.path }}</td>
+          <td class="free">
             @if (target.entry.available !== null) {
               {{ target.entry.available | convertBytes }}
             } @else {
@@ -110,10 +124,12 @@ const ERROR =
           </td>
         </tr>
       } @empty {
-        <tr>
-          <td colspan="6">
+        <tr class="empty-row">
+          <td class="empty-state" colspan="6">
             <app-placeholder icon="@tui.folder-x">
-              No network folders
+              <span class="empty-label">
+                {{ 'No network folders' | i18n }}
+              </span>
             </app-placeholder>
           </td>
         </tr>
@@ -134,11 +150,78 @@ const ERROR =
       }
     }
 
-    td:first-child {
-      width: 16rem;
+    :host {
+      width: 100%;
+      min-width: 0;
     }
 
-    td:last-child {
+    table {
+      width: 100%;
+      table-layout: fixed;
+    }
+
+    td:first-child:not(.empty-state) {
+      width: 15rem;
+    }
+
+    td:nth-child(2) {
+      width: 22%;
+    }
+
+    .name,
+    .hostname,
+    .location,
+    .free {
+      justify-self: start;
+      text-align: left;
+    }
+
+    .hostname,
+    .location {
+      overflow-wrap: anywhere;
+    }
+
+    .mobile-location-line {
+      display: none;
+    }
+
+    .free {
+      white-space: nowrap;
+    }
+
+    .empty-row {
+      width: 100%;
+    }
+
+    .empty-state {
+      display: table-cell;
+      height: 7rem;
+      vertical-align: middle;
+      text-align: center;
+    }
+
+    .empty-state app-placeholder {
+      width: 100%;
+      max-width: 16rem;
+      margin-inline: auto;
+      box-sizing: border-box;
+      padding: 0;
+      gap: 0.25rem;
+    }
+
+    .empty-label {
+      display: block;
+      width: 100%;
+      max-width: 100%;
+      min-height: 1.5rem;
+      flex-shrink: 0;
+      line-height: 1.5rem;
+      overflow-wrap: anywhere;
+      text-align: center;
+    }
+
+    td:last-child:not(.empty-state) {
+      width: 3.5rem;
       white-space: nowrap;
       text-align: right;
     }
@@ -156,40 +239,109 @@ const ERROR =
     }
 
     :host-context(tui-root._mobile) {
+      table {
+        table-layout: auto;
+      }
+
       tr {
-        grid-template-columns: min-content 1fr 4rem;
-        white-space: nowrap;
+        grid-template-columns: minmax(0, 1fr) auto auto;
+        width: 100%;
+        min-width: 0;
+        white-space: normal;
+      }
+
+      tr.empty-row {
+        grid-template-columns: minmax(0, 1fr);
       }
 
       td {
+        min-width: 0;
         grid-column: span 2;
+        overflow-wrap: anywhere;
 
-        &:first-child {
-          font-size: 0;
+        &:first-child:not(:only-child) {
           width: auto;
-          grid-area: 1 / 2;
-          place-content: center;
-          margin: 0 0.5rem;
+          grid-area: 2 / 1 / 3 / -1;
+          justify-self: start;
+          margin-top: 0.25rem;
         }
 
         &:last-child {
-          grid-area: 1 / 3 / 4 / 3;
+          grid-area: 1 / 3;
           align-self: center;
           justify-self: end;
         }
-
-        &:only-child {
-          grid-column: 1 / -1;
-          justify-self: center;
-        }
       }
 
-      .name {
+      td.name {
+        width: auto;
         color: var(--tui-text-primary);
         font: var(--tui-typography-body-m);
+        grid-area: 1 / 1;
+        justify-self: stretch;
+        max-width: 100%;
+        overflow-wrap: normal;
+        text-align: left;
+        word-break: normal;
+      }
+
+      td.free {
+        grid-area: 1 / 2;
+        align-self: center;
+        justify-self: end;
+      }
+
+      .desktop-name,
+      .hostname,
+      .location {
+        display: none;
+      }
+
+      .mobile-location-line {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        column-gap: 0.5rem;
+        row-gap: 0;
+        width: 100%;
+        min-width: 0;
+        max-width: 100%;
+        box-sizing: border-box;
+        overflow-wrap: normal;
+        white-space: normal;
+        word-break: normal;
+      }
+
+      .mobile-location-line b {
         font-weight: bold;
-        grid-column: 1;
-        max-width: 12rem;
+        overflow-wrap: normal;
+        word-break: normal;
+      }
+
+      .mobile-address {
+        flex: 0 0 auto;
+        min-width: min-content;
+        max-width: 100%;
+        color: var(--tui-text-secondary);
+        overflow-wrap: normal;
+        white-space: normal;
+        word-break: normal;
+      }
+
+      .free {
+        max-width: 100%;
+      }
+
+      .empty-row > td.empty-state {
+        display: grid;
+        grid-area: 1 / 1 / auto / -1;
+        place-items: center;
+        justify-self: stretch;
+        width: auto;
+        margin: 0;
+        overflow: visible;
+        white-space: normal;
+        text-align: center;
       }
     }
   `,
@@ -215,6 +367,7 @@ export class BackupNetworkComponent {
   private readonly i18n = inject(i18nPipe)
 
   protected readonly type = inject(ActivatedRoute).snapshot.data['type']
+  protected readonly formatCifsLocation = formatCifsLocation
 
   readonly service = inject(BackupService)
   readonly networkFolders = output<MappedBackupTarget<CifsBackupTarget>>()

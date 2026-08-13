@@ -254,6 +254,68 @@ export abstract class ApiService {
 
   abstract createBackup(params: T.BackupParams): Promise<null>
 
+  abstract getScheduledBackupJobs(params: {}): Promise<T.BackupJob[]>
+  abstract createScheduledBackupJob(
+    params: T.CreateBackupJobParams,
+  ): Promise<T.BackupJob>
+  abstract updateScheduledBackupJob(
+    params: T.UpdateBackupJobParams,
+  ): Promise<T.BackupJob>
+  abstract validateScheduledBackupJob(
+    params: T.ValidateBackupJobParams,
+  ): Promise<null>
+  abstract setScheduledBackupJobEnabled(
+    params: T.SetBackupJobEnabledParams,
+  ): Promise<T.BackupJob>
+  abstract setScheduledBackupJobsEnabled(
+    params: T.SetBackupJobsEnabledParams,
+  ): Promise<T.BackupJob[]>
+  abstract deleteScheduledBackupJob(
+    params: T.DeleteBackupJobParams,
+  ): Promise<null>
+  abstract runScheduledBackupJob(
+    params: T.RunBackupJobNowParams,
+  ): Promise<T.BackupRun>
+  abstract getScheduledBackupHistories(params: {}): Promise<
+    T.ServiceTargetHistory[]
+  >
+  abstract refreshScheduledBackupHistories(params: {
+    targetId: T.BackupTargetId
+  }): Promise<T.ServiceTargetHistory[]>
+  abstract discoverScheduledBackupHistories(
+    params: T.DiscoverScheduledBackupsParams,
+  ): Promise<T.ServiceTargetHistory[]>
+  abstract estimateScheduledBackupCapacity(
+    params: T.EstimateBackupCapacityParams,
+  ): Promise<T.BackupServiceCapacityEstimate[]>
+  abstract previewScheduledRetention(
+    params: T.PreviewRetentionPolicyParams,
+  ): Promise<T.RetentionPolicyChangePreview>
+  abstract updateScheduledRetention(
+    params: T.UpdateRetentionPolicyParams,
+  ): Promise<T.ServiceTargetHistory>
+  abstract deleteArchivedBackupSnapshots(
+    params: T.DeleteArchivedSnapshotsParams,
+  ): Promise<T.ServiceTargetHistory>
+  abstract retryScheduledBackupTarget(
+    params: T.RetryBackupTargetParams,
+  ): Promise<T.BackupJob[]>
+  abstract reassignScheduledBackupTarget(
+    params: T.ReassignBackupTargetParams,
+  ): Promise<T.BackupJob>
+  abstract getNewServiceBackupReviews(params: {}): Promise<
+    T.NewServiceBackupReview[]
+  >
+  abstract resolveNewServiceBackupReview(
+    params: T.ResolveNewServiceBackupReviewParams,
+  ): Promise<null>
+  abstract restoreScheduledBackup(
+    params: T.RestoreScheduledPackagesParams,
+  ): Promise<null>
+  abstract restoreBackupSelection(
+    params: T.RestoreSelectionParams,
+  ): Promise<null>
+
   // @TODO 041
 
   // ** automated backups **

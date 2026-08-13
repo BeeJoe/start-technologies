@@ -32,7 +32,12 @@ projects/start-docs/
 
 ## Product context
 
-- **StartOS 0.4.0** — networking strategies not built into StartOS core (Tor, P2P tunnels, etc.) are distributed as marketplace services. Outbound gateways support a system default plus per-service override.
+- **StartOS 0.4.0** — networking strategies not built into StartOS core (Tor,
+  P2P tunnels, etc.) are distributed as marketplace services. Outbound
+  gateways support a system default plus per-service override. The unified
+  Backups workspace covers encrypted manual and automatic backups, retained and
+  archived checkpoint history, per-service restore selection, location repair,
+  and activity status; the user guide lives with the StartOS product book.
 - **Service Packaging** — single source of truth for service packaging; code examples are based on the [hello-world](https://github.com/Start9Labs/hello-world-startos) template.
 - **StartTunnel** — a WireGuard-based gateway service for clearnet access.
 - **Bitcoin Guides** — wallet indexes, Electrum servers, archival vs pruned nodes, LND migration. The Bitcoin package integrates btc-rpc-proxy for on-demand block fetching, so pruned nodes work transparently with multiple downstream services.

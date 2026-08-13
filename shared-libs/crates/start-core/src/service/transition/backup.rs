@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use futures::FutureExt;
 use futures::future::BoxFuture;
 
+use crate::backup::PackageBackupOutput;
 use crate::disk::mount::filesystem::ReadWrite;
 use crate::prelude::*;
 use crate::progress::PhaseProgressTrackerHandle;
@@ -14,7 +15,6 @@ use crate::service::{ProcedureName, ServiceActor, ServiceActorSeed};
 use crate::status::DesiredStatus;
 use crate::util::actor::background::BackgroundJobQueue;
 use crate::util::actor::{ConflictBuilder, Handler};
-use crate::util::serde::NoOutput;
 
 impl ServiceActorSeed {
     async fn leave_backing_up(&self) -> Result<(), Error> {
@@ -73,7 +73,7 @@ pub(in crate::service) struct Backup {
     pub progress: PhaseProgressTrackerHandle,
 }
 impl Handler<Backup> for ServiceActor {
-    type Response = Result<BoxFuture<'static, Result<(), Error>>, Error>;
+    type Response = Result<BoxFuture<'static, Result<PackageBackupOutput, Error>>, Error>;
     fn conflicts_with(_: &Backup) -> ConflictBuilder<Self> {
         ConflictBuilder::everything().except::<GetActionInput>()
     }
@@ -97,12 +97,18 @@ impl Handler<Backup> for ServiceActor {
                     .persistent_container
                     .mount_backup(path, ReadWrite)
                     .await?;
-                seed.persistent_container
-                    .execute::<NoOutput>(id, ProcedureName::CreateBackup, Value::Null, None)
-                    .await?;
+                let output = seed
+                    .persistent_container
+                    .execute::<Option<PackageBackupOutput>>(
+                        id,
+                        ProcedureName::CreateBackup,
+                        Value::Null,
+                        None,
+                    )
+                    .await?
+                    .unwrap_or_default();
                 backup_guard.unmount(true).await?;
-
-                Ok::<_, Error>(())
+                Ok::<_, Error>(output)
             }
             .await;
             seed.leave_backing_up().await?;

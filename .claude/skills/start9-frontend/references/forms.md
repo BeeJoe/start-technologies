@@ -50,5 +50,10 @@ tuiMapper: match"` with a `match(pw): ValidatorFn` factory — or plain validato
   a full-page form's Cancel is `type="reset"` disabled on `form.pristine`.
 - **Single ad-hoc fields skip reactive forms**: `[(ngModel)]="signal"`
   (+ `[ngModelOptions]="{standalone: true}"` inside a formGroup context), `linkedSignal`
-  clearing the error on edit.
+  clearing the error on edit. The one known exception is a Taiga checkbox inside a dialog on
+  iOS WebKit: its native update can arrive after the overlay's event pass, leaving Angular-bound
+  text stale until another interaction. Keep `ngModel` to back the Taiga control, but use the
+  native checkbox as the source of truth: read a plain-element template reference's native
+  `.checked` value when submitting and use `:host:has(input:checked)` to switch dependent text
+  without another render pass.
 - **Masking**: Maskito (`@maskito/*`) where real masking is needed (start-wrt IP masks).
