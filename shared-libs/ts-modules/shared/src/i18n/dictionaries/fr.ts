@@ -1093,4 +1093,6 @@ export default {
   1188: 'Tout reprendre',
   1189: 'Mettre toutes les sauvegardes automatiques en pause ?',
   1190: 'Toutes les planifications seront interrompues. Les points de contrôle et les paramètres de planification existants seront conservés.',
+  1191: 'Suppression de la planification…',
+  1192: 'Suppression de la planification et des sauvegardes associées…',
 } satisfies i18n

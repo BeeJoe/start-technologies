@@ -1094,4 +1094,6 @@ export const ENGLISH: Record<string, number> = {
   'Resume all': 1188,
   'Pause all automatic backups?': 1189,
   'All schedules will stop running. Existing checkpoints and schedule settings will be kept.': 1190,
+  'Deleting schedule…': 1191,
+  'Deleting schedule and related backups…': 1192,
 }

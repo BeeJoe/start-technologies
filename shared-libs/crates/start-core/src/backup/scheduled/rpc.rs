@@ -122,6 +122,10 @@ pub fn history<C: Context>() -> ParentHandler<C> {
             from_fn_async(delete_archived_snapshots).no_cli(),
         )
         .subcommand(
+            "delete-archived-snapshots-bulk",
+            from_fn_async(delete_archived_snapshots_bulk).no_cli(),
+        )
+        .subcommand(
             "delete-archived",
             from_fn_async(delete_archived_snapshots_cli)
                 .with_display_serializable()
@@ -673,6 +677,24 @@ pub struct DeleteArchivedSnapshotsParams {
     pub snapshot_ids: BTreeSet<ServiceSnapshotId>,
 }
 
+/// Archived automatic backup snapshots selected for one service.
+#[derive(Deserialize, Serialize, TS)]
+#[ts(export)]
+#[serde(rename_all = "camelCase")]
+pub struct ArchivedSnapshotSelection {
+    pub package_id: PackageId,
+    pub snapshot_ids: BTreeSet<ServiceSnapshotId>,
+}
+
+/// Inputs for deleting archived automatic backup snapshots in one target operation.
+#[derive(Deserialize, Serialize, TS)]
+#[ts(export)]
+#[serde(rename_all = "camelCase")]
+pub struct DeleteArchivedSnapshotsBulkParams {
+    pub target_id: BackupTargetId,
+    pub snapshots: Vec<ArchivedSnapshotSelection>,
+}
+
 /// CLI inputs for deleting archived automatic backup snapshots.
 #[derive(Deserialize, Serialize, Parser)]
 #[group(skip)]
@@ -717,26 +739,65 @@ pub async fn delete_archived_snapshots(
         snapshot_ids,
     }: DeleteArchivedSnapshotsParams,
 ) -> Result<ServiceTargetHistory, Error> {
+    delete_archived_snapshots_bulk(
+        ctx,
+        DeleteArchivedSnapshotsBulkParams {
+            target_id,
+            snapshots: vec![ArchivedSnapshotSelection {
+                package_id,
+                snapshot_ids,
+            }],
+        },
+    )
+    .await?
+    .into_iter()
+    .next()
+    .ok_or_else(|| Error::new(eyre!("missing deleted history"), ErrorKind::Unknown))
+}
+
+/// Deletes archived checkpoints for multiple services with one target mount.
+pub async fn delete_archived_snapshots_bulk(
+    ctx: RpcContext,
+    DeleteArchivedSnapshotsBulkParams {
+        target_id,
+        snapshots,
+    }: DeleteArchivedSnapshotsBulkParams,
+) -> Result<Vec<ServiceTargetHistory>, Error> {
+    if snapshots.is_empty() {
+        return Ok(Vec::new());
+    }
+
     let db = ctx.db.peek().await;
-    let key = history_key(&target_id, &package_id);
-    let mut history: ServiceTargetHistory = db
-        .as_public()
-        .as_scheduled_backups()
-        .as_histories()
-        .as_idx(&key)
-        .or_not_found(&key)?
-        .de()?;
-    let archived_ids: BTreeSet<_> = history
-        .snapshots
-        .iter()
-        .filter(|snapshot| snapshot.archived)
-        .map(|snapshot| snapshot.id.clone())
-        .collect();
-    if !snapshot_ids.is_subset(&archived_ids) {
-        return Err(Error::new(
-            eyre!("{}", t!("backup.scheduled.delete-active-history")),
-            ErrorKind::InvalidRequest,
-        ));
+    let mut requested = BTreeMap::<PackageId, BTreeSet<ServiceSnapshotId>>::new();
+    for selection in snapshots {
+        requested
+            .entry(selection.package_id)
+            .or_default()
+            .extend(selection.snapshot_ids);
+    }
+    let mut histories = Vec::with_capacity(requested.len());
+    for (package_id, snapshot_ids) in &requested {
+        let key = history_key(&target_id, package_id);
+        let history: ServiceTargetHistory = db
+            .as_public()
+            .as_scheduled_backups()
+            .as_histories()
+            .as_idx(&key)
+            .or_not_found(&key)?
+            .de()?;
+        let archived_ids: BTreeSet<_> = history
+            .snapshots
+            .iter()
+            .filter(|snapshot| snapshot.archived)
+            .map(|snapshot| snapshot.id.clone())
+            .collect();
+        if !snapshot_ids.is_subset(&archived_ids) {
+            return Err(Error::new(
+                eyre!("{}", t!("backup.scheduled.delete-active-history")),
+                ErrorKind::InvalidRequest,
+            ));
+        }
+        histories.push(history);
     }
     let credential: ScheduledBackupCredential = db
         .as_private()
@@ -754,21 +815,26 @@ pub async fn delete_archived_snapshots(
         &encryption_key,
     )
     .await?;
-    history.snapshots = guard
-        .delete_archived_snapshots(&package_id, &snapshot_ids)
-        .await?;
+    let mut remaining = guard.delete_archived_snapshots_bulk(&requested).await?;
+    for history in &mut histories {
+        history.snapshots = remaining
+            .remove(&history.package_id)
+            .expect("requested history remains present");
+    }
     guard.save_and_unmount().await?;
     ctx.db
         .mutate(|db| {
-            db.as_public_mut()
-                .as_scheduled_backups_mut()
-                .as_histories_mut()
-                .insert(&key, &history)?;
+            for history in &histories {
+                db.as_public_mut()
+                    .as_scheduled_backups_mut()
+                    .as_histories_mut()
+                    .insert(&history_key(&target_id, &history.package_id), history)?;
+            }
             Ok(())
         })
         .await
         .result?;
-    Ok(history)
+    Ok(histories)
 }
 
 /// Inputs for reconnecting a failed automatic backup target.

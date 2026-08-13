@@ -62,10 +62,11 @@ file tracks notable changes since the move to the monorepo.
   data. New-service reviews dynamically include every current schedule,
   including schedules created after installation. Backup operations are
   serialized and recover interrupted state; schedule and checkpoint deletion
-  remain explicit; progress and capacity estimates stay accurate; and narrow
-  layouts remain usable. Multi-schedule views show active and paused totals and
-  can pause or resume every schedule as one operation. Existing state that
-  contains the reserved `x_system` identifier loads safely, System backup
+  remain explicit and show progress while related checkpoints are removed in
+  one target cleanup pass; progress and capacity estimates stay accurate; and
+  narrow layouts remain usable. Multi-schedule views show active and paused
+  totals and can pause or resume every schedule as one operation. Existing
+  state that contains the reserved `x_system` identifier loads safely, System backup
   staging references are released before checkpoint promotion, deleting a
   schedule without its backups does not require a connected target, schedule
   names remain unique, edited schedules collapse before an optional immediate

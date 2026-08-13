@@ -3,6 +3,9 @@ import type { BackupTargetId } from './BackupTargetId'
 import type { Guid } from './Guid'
 import type { PasswordType } from './PasswordType'
 
+/**
+ * Inputs for moving an automatic backup job to another target.
+ */
 export type ReassignBackupTargetParams = {
   /**
    * Automatic backup job ID to move.

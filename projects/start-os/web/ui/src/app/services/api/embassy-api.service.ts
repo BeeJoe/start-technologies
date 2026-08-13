@@ -297,6 +297,9 @@ export abstract class ApiService {
   abstract deleteArchivedBackupSnapshots(
     params: T.DeleteArchivedSnapshotsParams,
   ): Promise<T.ServiceTargetHistory>
+  abstract deleteArchivedBackupSnapshotsBulk(
+    params: T.DeleteArchivedSnapshotsBulkParams,
+  ): Promise<T.ServiceTargetHistory[]>
   abstract retryScheduledBackupTarget(
     params: T.RetryBackupTargetParams,
   ): Promise<T.BackupJob[]>

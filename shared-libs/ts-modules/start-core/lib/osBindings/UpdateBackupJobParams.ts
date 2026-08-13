@@ -5,6 +5,9 @@ import type { PackageId } from './PackageId'
 import type { RetentionPolicy } from './RetentionPolicy'
 import type { Schedule } from './Schedule'
 
+/**
+ * Replacement settings for an existing automatic backup job.
+ */
 export type UpdateBackupJobParams = {
   id: Guid
   name: string

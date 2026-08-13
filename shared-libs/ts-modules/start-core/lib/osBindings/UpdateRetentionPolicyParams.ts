@@ -4,6 +4,9 @@ import type { Guid } from './Guid'
 import type { PackageId } from './PackageId'
 import type { RetentionPolicy } from './RetentionPolicy'
 
+/**
+ * Inputs for applying a retention-policy change after previewing removals.
+ */
 export type UpdateRetentionPolicyParams = {
   targetId: BackupTargetId
   packageId: PackageId

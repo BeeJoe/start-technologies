@@ -1093,4 +1093,6 @@ export default {
   1188: 'Reanudar todas',
   1189: '¿Pausar todas las copias de seguridad automáticas?',
   1190: 'Todas las programaciones se detendrán. Los puntos de control y la configuración de las programaciones se conservarán.',
+  1191: 'Eliminando la programación…',
+  1192: 'Eliminando la programación y las copias relacionadas…',
 } satisfies i18n

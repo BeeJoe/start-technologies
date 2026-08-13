@@ -1093,4 +1093,6 @@ export default {
   1188: 'Wznów wszystkie',
   1189: 'Wstrzymać wszystkie automatyczne kopie zapasowe?',
   1190: 'Wszystkie harmonogramy zostaną zatrzymane. Istniejące punkty kontrolne i ustawienia harmonogramów zostaną zachowane.',
+  1191: 'Usuwanie harmonogramu…',
+  1192: 'Usuwanie harmonogramu i powiązanych kopii zapasowych…',
 } satisfies i18n
