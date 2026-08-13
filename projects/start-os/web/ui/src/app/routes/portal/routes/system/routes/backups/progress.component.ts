@@ -15,18 +15,21 @@ import { DataModel } from 'src/app/services/patch-db/data-model'
     @let overallLeaf = backupProgress()?.overall || null | leafProgress;
     @let overallPct = overallLeaf | installingProgress;
     <header>
-      {{ 'Backup Progress' | i18n }}
-      @if (overallLeaf === true) {
-        <span>{{ 'complete' | i18n }}</span>
-      } @else {
-        <span>{{ overallPct }}%</span>
-      }
+      <span>{{ 'Backup Progress' | i18n }}</span>
+      <span class="progress-status">
+        @if (overallLeaf === true) {
+          {{ 'complete' | i18n }}
+        } @else {
+          <tui-loader class="overall-loader" size="s" />
+          <span>{{ overallPct }}%</span>
+        }
+      </span>
     </header>
     @for (phase of backupProgress()?.phases; track phase.name) {
       @let pkg = pkgs()?.[phase.name];
       @let leaf = phase.progress | leafProgress;
       @let percent = leaf | installingProgress;
-      <div tuiCell>
+      <div tuiCell class="progress-row">
         <span tuiAvatar appearance="action-grayscale" [round]="false">
           @if (pkg) {
             <img alt="" [src]="pkg.icon" />
@@ -35,36 +38,55 @@ import { DataModel } from 'src/app/services/patch-db/data-model'
           }
         </span>
         <span tuiTitle>
-          <span class="title">
-            <span tuiFade>
-              {{ pkg ? (pkg | toManifest).title : ($any(phase.name) | i18n) }}
-            </span>
-            @if (leaf === true) {
-              <tui-icon icon="@tui.check" class="g-positive" />
-              {{ 'complete' | i18n }}
-            } @else if (leaf === null) {
-              <tui-icon icon="@tui.clock" />
-              {{ 'waiting' | i18n }}
-            } @else if (leaf === false) {
-              <tui-loader size="s" />
-              {{ 'backing up' | i18n }}
-            } @else {
-              <tui-loader size="s" />
-              {{ percent }}%
-            }
+          <span tuiFade>
+            {{ pkg ? (pkg | toManifest).title : ($any(phase.name) | i18n) }}
           </span>
+        </span>
+        <span class="phase-status">
+          @if (leaf === true) {
+            <tui-icon icon="@tui.check" class="g-positive" />
+            {{ 'complete' | i18n }}
+          } @else if (leaf === null) {
+            <tui-icon icon="@tui.clock" />
+            {{ 'waiting' | i18n }}
+          } @else if (leaf === false) {
+            <tui-loader size="s" />
+            {{ 'backing up' | i18n }}
+          } @else {
+            <tui-loader size="s" />
+            {{ percent }}%
+          }
         </span>
       </div>
     }
   `,
   styles: `
     :host {
-      max-width: 36rem;
+      display: grid;
+      gap: 0.5rem;
+      width: 100%;
       text-transform: capitalize;
     }
 
     header {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
       justify-content: space-between;
+    }
+
+    .progress-status {
+      display: flex;
+      flex-shrink: 0;
+      align-items: center;
+      gap: 0.5rem;
+      margin-inline-start: auto;
+      margin-inline-end: 1rem;
+    }
+
+    .overall-loader,
+    .phase-status tui-loader {
+      color: var(--tui-text-action);
     }
 
     tui-icon {
@@ -72,7 +94,8 @@ import { DataModel } from 'src/app/services/patch-db/data-model'
     }
 
     [tuiTitle] {
-      flex: 1;
+      grid-area: title;
+      min-width: 0;
       white-space: nowrap;
     }
 
@@ -80,13 +103,35 @@ import { DataModel } from 'src/app/services/patch-db/data-model'
       margin-inline-end: auto;
     }
 
-    .title {
-      display: flex;
+    .progress-row {
+      display: grid;
+      grid-template-areas:
+        'icon title'
+        'icon status';
+      grid-template-columns: auto minmax(0, 1fr);
+      column-gap: 0.75rem;
+      row-gap: 0.125rem;
       align-items: center;
+      min-width: 0;
+    }
+
+    .progress-row [tuiAvatar] {
+      grid-area: icon;
+    }
+
+    .phase-status {
+      grid-area: status;
+      display: inline-flex;
+      align-items: center;
+      justify-content: flex-end;
       gap: 0.25rem;
+      justify-self: end;
+      min-width: 4.75rem;
+      max-width: 100%;
+      text-align: right;
+      white-space: nowrap;
     }
   `,
-  host: { class: 'g-card' },
   imports: [
     TuiFade,
     TuiCell,

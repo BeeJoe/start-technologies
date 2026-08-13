@@ -33,7 +33,12 @@ projects/start-docs/
 
 ## Product context
 
-- **StartOS 0.4.0** — networking strategies not built into StartOS core (Tor, P2P tunnels, etc.) are distributed as marketplace services. Outbound gateways support a system default plus per-service override.
+- **StartOS 0.4.0** — networking strategies not built into StartOS core (Tor,
+  P2P tunnels, etc.) are distributed as marketplace services. Outbound
+  gateways support a system default plus per-service override. The unified
+  Backups workspace covers encrypted manual and automatic backups, retained and
+  archived checkpoint history, per-service restore selection, location repair,
+  and activity status; the user guide lives with the StartOS product book.
 - **Service Packaging** — single source of truth for service packaging; code examples are based on the [hello-world](https://github.com/Start9Labs/hello-world-startos) template.
 - **StartTunnel** — a WireGuard-based gateway service for clearnet access.
 - **StartWRT** — an OpenWrt-based router OS built around per-device Security Profiles, with automatic port forwarding (UPnP/PCP) for StartOS servers behind it.

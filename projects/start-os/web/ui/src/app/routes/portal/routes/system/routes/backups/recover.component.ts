@@ -9,46 +9,117 @@ import { TuiMapperPipe } from '@taiga-ui/cdk'
 import {
   TuiButton,
   TuiCheckbox,
+  TuiDataList,
   TuiDialogContext,
   TuiGroup,
+  TuiLabel,
   TuiTitle,
 } from '@taiga-ui/core'
-import { TuiBlock } from '@taiga-ui/kit'
+import { TuiBlock, TuiChevron, TuiSelect } from '@taiga-ui/kit'
 import { injectContext, PolymorpheusComponent } from '@taiga-ui/polymorpheus'
 import { PatchDB } from 'patch-db-client'
 import { map, take } from 'rxjs'
 import { ApiService } from 'src/app/services/api/embassy-api.service'
 import { ConfigService } from 'src/app/services/config.service'
 import { DataModel } from 'src/app/services/patch-db/data-model'
-import { RecoverData, RecoverOption } from './backup.types'
+import { RecoverCheckpoint, RecoverData, RecoverOption } from './backup.types'
+import { SYSTEM_PACKAGE_ID } from './scheduled-utils'
 
 @Component({
   template: `
     @if (packageData(); as options) {
+      <div class="bulk-controls">
+        <label class="toggle-all">
+          <input
+            tuiCheckbox
+            type="checkbox"
+            [ngModel]="allEligibleSelected(options)"
+            (ngModelChange)="setAll(options, $event)"
+          />
+          <span tuiTitle>
+            <b>{{ 'Toggle all' | i18n }}</b>
+          </span>
+        </label>
+        <tui-textfield
+          tuiChevron
+          [stringify]="stringifyBulkSelection(options)"
+          [tuiTextfieldCleaner]="false"
+        >
+          <label tuiLabel>
+            {{ 'Checkpoint for selected services' | i18n }}
+          </label>
+          <input
+            tuiSelect
+            [disabled]="!selected(options).length"
+            [ngModel]="bulkSelection"
+            (ngModelChange)="applyBulk(options, $event)"
+          />
+          <tui-data-list *tuiDropdown>
+            <button tuiOption value="latest">
+              {{ 'Latest available' | i18n }}
+            </button>
+            <button
+              tuiOption
+              value="manual"
+              [disabled]="!bulkAvailable(options, 'manual')"
+            >
+              {{ 'Latest manual' | i18n }}
+            </button>
+            <button
+              tuiOption
+              value="automatic"
+              [disabled]="!bulkAvailable(options, 'automatic')"
+            >
+              {{ 'Latest automatic' | i18n }}
+            </button>
+            @for (run of sharedRuns(options); track run.id) {
+              <button tuiOption [value]="'run:' + run.id">
+                {{ 'Automatic' | i18n }} — {{ run.timestamp | date: 'medium' }}
+              </button>
+            }
+          </tui-data-list>
+        </tui-textfield>
+      </div>
       <div tuiGroup orientation="vertical" [collapsed]="true">
         @for (option of options; track $index) {
-          <label tuiBlock>
+          <label tuiBlock class="service-choice">
+            <input
+              type="checkbox"
+              tuiCheckbox
+              [disabled]="option.installed || option.newerOs"
+              [(ngModel)]="option.checked"
+              (ngModelChange)="selectionChanged(options)"
+            />
             <span tuiTitle>
               <strong>{{ option.title }}</strong>
-              <span tuiSubtitle>
-                {{ 'Version' | i18n }} {{ option.version }}
-              </span>
-              <span tuiSubtitle>
-                {{ 'Backup made' | i18n }}:
-                {{ option.timestamp | date: 'medium' }}
-              </span>
+              <tui-textfield
+                tuiChevron
+                class="checkpoint"
+                [stringify]="stringifyCheckpoint(option)"
+                [tuiTextfieldCleaner]="false"
+              >
+                <input
+                  tuiSelect
+                  [disabled]="option.installed || option.newerOs"
+                  [(ngModel)]="option.selectedKey"
+                />
+                <tui-data-list *tuiDropdown>
+                  @for (
+                    checkpoint of option.checkpoints;
+                    track checkpoint.key
+                  ) {
+                    <button tuiOption [value]="checkpoint.key">
+                      {{ checkpointLabel(checkpoint) }}
+                    </button>
+                  }
+                </tui-data-list>
+              </tui-textfield>
               @if (option | tuiMapper: toMessage; as message) {
                 <span [style.color]="message.color">
                   {{ message.text | i18n }}
                 </span>
               }
             </span>
-            <input
-              type="checkbox"
-              tuiCheckbox
-              [disabled]="option.installed || option.newerOs"
-              [(ngModel)]="option.checked"
-            />
           </label>
         }
       </div>
@@ -65,11 +136,68 @@ import { RecoverData, RecoverOption } from './backup.types'
     }
   `,
   styles: `
+    .bulk-controls {
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      gap: 1rem;
+    }
+
+    .bulk-controls label {
+      display: grid;
+      gap: 0.25rem;
+      color: var(--tui-text-secondary);
+    }
+
+    .bulk-controls tui-textfield {
+      min-width: 16rem;
+    }
+
     [tuiGroup] {
       width: 100%;
       margin: 1.5rem 0 0;
     }
+
+    .checkpoint {
+      width: 100%;
+      margin-top: 0.5rem;
+    }
+
+    .bulk-controls .toggle-all,
+    .service-choice {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.65rem;
+    }
+
+    .toggle-all {
+      color: var(--tui-text-primary);
+    }
+
+    [tuiTitle] {
+      min-width: 0;
+      overflow-wrap: anywhere;
+    }
+
+    /* Restore controls need a second collapse below the app-wide mobile layout. */
+    @media (max-width: 30rem) {
+      .bulk-controls {
+        align-items: stretch;
+        flex-direction: column;
+      }
+
+      .bulk-controls label,
+      .bulk-controls tui-textfield {
+        width: 100%;
+        min-width: 0;
+      }
+
+      .bulk-controls > .toggle-all {
+        align-self: flex-start;
+      }
+    }
   `,
+  host: { class: 'backup-settings' },
   imports: [
     CommonModule,
     FormsModule,
@@ -77,7 +205,11 @@ import { RecoverData, RecoverOption } from './backup.types'
     TuiGroup,
     TuiMapperPipe,
     TuiCheckbox,
+    TuiChevron,
+    TuiDataList,
     TuiBlock,
+    TuiLabel,
+    TuiSelect,
     TuiTitle,
     i18nPipe,
   ],
@@ -85,6 +217,7 @@ import { RecoverData, RecoverOption } from './backup.types'
 export class BackupsRecoverComponent {
   private readonly config = inject(ConfigService)
   private readonly api = inject(ApiService)
+  private readonly i18n = inject(i18nPipe)
   private readonly tasks = inject(TaskService)
   private readonly router = inject(Router)
   private readonly context =
@@ -97,24 +230,112 @@ export class BackupsRecoverComponent {
         take(1),
         map(packageData => {
           const backups = this.context.data.backupInfo.packageBackups
+          const scheduled = this.context.data.scheduledHistories
+          const ids = new Set([
+            ...Object.keys(backups),
+            ...scheduled.map(history => history.packageId),
+          ])
 
-          return Object.keys(backups)
-            .map(id => ({
-              ...backups[id]!,
-              id,
-              installed: !!packageData[id],
-              checked: false,
-              newerOs:
-                Version.parse(backups[id]?.osVersion || '').compare(
-                  Version.parse(this.config.version),
-                ) === 'greater',
-            }))
+          return [...ids]
+            .filter(id => id !== SYSTEM_PACKAGE_ID)
+            .map(id => {
+              const manual = backups[id]
+              const scheduledCheckpoints = scheduled
+                .filter(history => history.packageId === id)
+                .flatMap(history => history.snapshots)
+                .map(snapshot => ({
+                  key: `scheduled:${snapshot.id}`,
+                  source: 'scheduled' as const,
+                  version: snapshot.packageVersion,
+                  timestamp: snapshot.completedAt,
+                  jobName: snapshot.jobName,
+                  snapshotId: snapshot.id,
+                  runId: snapshot.runId,
+                  archived: snapshot.archived,
+                }))
+              const checkpoints: RecoverCheckpoint[] = [
+                ...(manual
+                  ? [
+                      {
+                        key: 'manual',
+                        source: 'manual' as const,
+                        version: manual.version,
+                        timestamp: manual.timestamp,
+                      },
+                    ]
+                  : []),
+                ...scheduledCheckpoints,
+              ].sort((a, b) => b.timestamp.localeCompare(a.timestamp))
+              const state = packageData[id]?.stateInfo
+              const title =
+                manual?.title ||
+                (state?.state === 'installed' || state?.state === 'removing'
+                  ? state.manifest.title
+                  : state?.installingInfo.newManifest.title) ||
+                id
+              return {
+                id,
+                title,
+                installed: !!packageData[id],
+                checked: false,
+                selectedKey: checkpoints[0]?.key || '',
+                checkpoints,
+                newerOs:
+                  !!manual &&
+                  Version.parse(manual.osVersion || '').compare(
+                    Version.parse(this.config.version),
+                  ) === 'greater',
+              }
+            })
             .sort((a, b) =>
               b.title.toLowerCase() > a.title.toLowerCase() ? -1 : 1,
             )
         }),
       ),
   )
+
+  bulkSelection = 'latest'
+
+  stringifyBulkSelection(options: RecoverOption[]) {
+    return (selection: string) => {
+      if (selection === 'latest') {
+        return this.i18n.transform('Latest available')
+      }
+      if (selection === 'manual') {
+        return this.i18n.transform('Latest manual')
+      }
+      if (selection === 'automatic') {
+        return this.i18n.transform('Latest automatic')
+      }
+      const run = this.sharedRuns(options).find(
+        item => `run:${item.id}` === selection,
+      )
+      return run
+        ? `${this.i18n.transform('Automatic')} — ${new Date(run.timestamp).toLocaleString()}`
+        : selection
+    }
+  }
+
+  stringifyCheckpoint(option: RecoverOption) {
+    return (key: string) =>
+      this.checkpointLabel(
+        option.checkpoints.find(checkpoint => checkpoint.key === key),
+      )
+  }
+
+  checkpointLabel(checkpoint: RecoverCheckpoint | undefined): string {
+    if (!checkpoint) return ''
+    const parts = [
+      this.i18n.transform(
+        checkpoint.source === 'manual' ? 'Manual' : 'Automatic',
+      ),
+      checkpoint.jobName,
+      new Date(checkpoint.timestamp).toLocaleString(),
+      checkpoint.version,
+      checkpoint.archived ? this.i18n.transform('Archived') : '',
+    ]
+    return parts.filter(Boolean).join(' — ')
+  }
 
   readonly toMessage = ({
     newerOs,
@@ -145,15 +366,127 @@ export class BackupsRecoverComponent {
     return options.every(o => !o.checked)
   }
 
-  async restore(options: RecoverOption[]): Promise<void> {
-    const ids = options.filter(({ checked }) => !!checked).map(({ id }) => id)
-    const { targetId, serverId, password } = this.context.data
-    const params = { ids, targetId, password, serverId }
+  selected(options: RecoverOption[]): RecoverOption[] {
+    return options.filter(option => option.checked)
+  }
 
-    this.tasks.run(async () => {
-      await this.api.restorePackages(params)
+  allEligibleSelected(options: RecoverOption[]): boolean {
+    const eligible = options.filter(
+      option => !option.installed && !option.newerOs,
+    )
+    return !!eligible.length && eligible.every(option => option.checked)
+  }
+
+  setAll(options: RecoverOption[], checked: boolean) {
+    options
+      .filter(option => !option.installed && !option.newerOs)
+      .forEach(option => (option.checked = checked))
+    this.selectionChanged(options)
+  }
+
+  selectionChanged(options: RecoverOption[]) {
+    const runId = this.bulkSelection.startsWith('run:')
+      ? this.bulkSelection.slice(4)
+      : null
+    const valid =
+      this.bulkSelection === 'latest' ||
+      (this.bulkSelection === 'manual' &&
+        this.bulkAvailable(options, 'manual')) ||
+      (this.bulkSelection === 'automatic' &&
+        this.bulkAvailable(options, 'automatic')) ||
+      (!!runId && this.sharedRuns(options).some(run => run.id === runId))
+    if (!valid) this.bulkSelection = 'latest'
+    this.applyBulk(options, this.bulkSelection)
+  }
+
+  bulkAvailable(
+    options: RecoverOption[],
+    source: 'manual' | 'automatic',
+  ): boolean {
+    const selected = this.selected(options)
+    return (
+      !!selected.length &&
+      selected.every(option =>
+        option.checkpoints.some(checkpoint =>
+          source === 'manual'
+            ? checkpoint.source === 'manual'
+            : checkpoint.source === 'scheduled',
+        ),
+      )
+    )
+  }
+
+  sharedRuns(options: RecoverOption[]): { id: string; timestamp: string }[] {
+    const selected = this.selected(options)
+    if (!selected.length) return []
+    const common = selected
+      .slice(1)
+      .reduce(
+        (ids, option) =>
+          new Set(
+            [...ids].filter(id =>
+              option.checkpoints.some(checkpoint => checkpoint.runId === id),
+            ),
+          ),
+        new Set(
+          selected[0]!.checkpoints.flatMap(checkpoint =>
+            checkpoint.runId ? [checkpoint.runId] : [],
+          ),
+        ),
+      )
+    return [...common]
+      .map(id => ({
+        id,
+        timestamp:
+          selected[0]!.checkpoints.find(checkpoint => checkpoint.runId === id)
+            ?.timestamp || '',
+      }))
+      .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
+  }
+
+  applyBulk(options: RecoverOption[], selection: string) {
+    this.bulkSelection = selection
+    const runId = selection.startsWith('run:') ? selection.slice(4) : null
+    for (const option of this.selected(options)) {
+      const checkpoint =
+        selection === 'latest'
+          ? option.checkpoints[0]
+          : selection === 'manual'
+            ? option.checkpoints.find(item => item.source === 'manual')
+            : selection === 'automatic'
+              ? option.checkpoints.find(item => item.source === 'scheduled')
+              : option.checkpoints.find(item => item.runId === runId)
+      if (checkpoint) option.selectedKey = checkpoint.key
+    }
+  }
+
+  async restore(options: RecoverOption[]): Promise<void> {
+    const selected = options.filter(({ checked }) => !!checked)
+    const ids = selected
+      .filter(option => option.selectedKey === 'manual')
+      .map(({ id }) => id)
+    const snapshots = Object.fromEntries(
+      selected.flatMap(option => {
+        const checkpoint = option.checkpoints.find(
+          checkpoint => checkpoint.key === option.selectedKey,
+        )
+        return checkpoint?.source === 'scheduled' && checkpoint.snapshotId
+          ? [[option.id, checkpoint.snapshotId]]
+          : []
+      }),
+    )
+    const { targetId, serverId, password } = this.context.data
+    void this.tasks.run(async () => {
+      await this.api.restoreBackupSelection({
+        targetId,
+        manualIds: ids,
+        snapshots,
+        serverId,
+        password,
+      })
+
       this.context.$implicit.complete()
-      this.router.navigate(['services'])
+      void this.router.navigate(['services'])
     }, 'Initializing')
   }
 }

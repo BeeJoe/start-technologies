@@ -2,6 +2,7 @@ import { Component, inject, output } from '@angular/core'
 import { ActivatedRoute } from '@angular/router'
 import { ConvertBytesPipe, DialogService, i18nPipe } from '@start9labs/shared'
 import { TuiButton } from '@taiga-ui/core'
+import { TuiButtonLoading } from '@taiga-ui/kit'
 import { PlaceholderComponent } from 'src/app/routes/portal/components/placeholder.component'
 import { TableComponent } from 'src/app/routes/portal/components/table.component'
 import { DiskBackupTarget } from 'src/app/services/api/api.types'
@@ -29,7 +30,7 @@ import { BackupStatusComponent } from './status.component'
             <span [backupStatus]="target.hasAnyBackup" [physical]="true"></span>
           </td>
           <td class="name">{{ target.entry.logicalname }}</td>
-          <td>{{ driveName(target.entry) }}</td>
+          <td class="location">{{ driveName(target.entry) }}</td>
           <td>{{ formatCapacity(target.entry.capacity) }}</td>
           <td>
             @if (target.entry.available !== null) {
@@ -48,13 +49,14 @@ import { BackupStatusComponent } from './status.component'
           </td>
         </tr>
       } @empty {
-        <tr>
-          <td colspan="6">
+        <tr class="empty-row">
+          <td class="empty-state" colspan="6">
             <app-placeholder icon="@tui.save-off">
               {{ 'No drives detected' | i18n }}
               <button
                 tuiButton
                 iconStart="@tui.refresh-cw"
+                [loading]="service.loading()"
                 (click)="service.getBackupTargets()"
               >
                 {{ 'Refresh' | i18n }}
@@ -79,32 +81,85 @@ import { BackupStatusComponent } from './status.component'
       }
     }
 
-    td.actions {
-      text-align: right;
+    :host {
+      width: 100%;
+      min-width: 0;
+    }
+
+    table {
+      width: 100%;
+      table-layout: fixed;
+    }
+
+    td:first-child:not(.empty-state) {
+      width: 15rem;
+    }
+
+    td:last-child:not(.empty-state),
+    .actions {
+      width: 3.5rem;
       white-space: nowrap;
+      text-align: right;
+    }
+
+    .name,
+    .location {
+      justify-self: start;
+      text-align: left;
+    }
+
+    .empty-state {
+      display: table-cell;
+      height: 7rem;
+      vertical-align: middle;
+      text-align: center;
+    }
+
+    .empty-state app-placeholder {
+      width: min(100%, 16rem);
+      margin-inline: auto;
+      box-sizing: border-box;
     }
 
     :host-context(tui-root._mobile) {
+      table {
+        table-layout: auto;
+      }
+
       tr {
-        grid-template-columns: min-content 1fr 4rem;
-        white-space: nowrap;
+        grid-template-columns: minmax(0, 1fr) minmax(7rem, 45%);
+        width: 100%;
+        min-width: 0;
+        white-space: normal;
       }
 
       td {
+        min-width: 0;
         grid-column: span 2;
+        overflow-wrap: anywhere;
 
-        &:first-child {
-          font-size: 0;
+        &:first-child:not(.empty-state) {
           width: auto;
-          grid-area: 1 / 2;
-          place-content: center;
-          margin: 0 0.5rem;
+          grid-area: 3 / 1 / 4 / -1;
+          justify-self: start;
+          margin-top: 0.25rem;
         }
 
-        &:last-child {
-          grid-area: 1 / 3 / 4 / 3;
-          align-self: center;
-          justify-self: end;
+        &:nth-child(3) {
+          grid-area: 2 / 1;
+        }
+
+        &:nth-child(4) {
+          grid-area: 1 / 2;
+        }
+
+        &:nth-child(5) {
+          grid-area: 2 / 2;
+        }
+
+        &:last-child:not(.empty-state) {
+          grid-column: 1 / -1;
+          width: auto;
         }
       }
 
@@ -112,14 +167,29 @@ import { BackupStatusComponent } from './status.component'
         color: var(--tui-text-primary);
         font: var(--tui-typography-body-m);
         font-weight: bold;
-        grid-column: 1;
-        max-width: 12rem;
+        grid-area: 1 / 1;
+        justify-self: start;
+        max-width: 100%;
+        text-align: left;
+      }
+
+      .empty-state {
+        display: grid;
+        grid-column: 1 / -1;
+        height: auto;
+        min-height: 7rem;
+        place-items: center;
+        justify-self: center;
+        width: 100%;
+        white-space: normal;
+        text-align: center;
       }
     }
   `,
   host: { class: 'g-card' },
   imports: [
     TuiButton,
+    TuiButtonLoading,
     PlaceholderComponent,
     BackupStatusComponent,
     BackupLegacyWarningComponent,

@@ -20,13 +20,21 @@ const ROUTES: Routes = [
         title: titleResolver,
         loadChildren: () => import('./routes/services/services.routes'),
       },
-      // @TODO 041
-      // {
-      //   title: titleResolver,
-      //   path: 'backups',
-      //   loadComponent: () => import('./routes/backups/backups.component'),
-      //   data: toNavigationItem('backups'),
-      // },
+      {
+        path: 'backups',
+        children: [
+          {
+            path: '',
+            redirectTo: '/system/backups',
+            pathMatch: 'full',
+          },
+          {
+            path: ':section',
+            redirectTo: '/system/backups/:section',
+            pathMatch: 'full',
+          },
+        ],
+      },
       {
         title: titleResolver,
         path: 'marketplace',

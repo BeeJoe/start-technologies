@@ -7,6 +7,7 @@ import {
   TuiCheckbox,
   TuiGroup,
   TuiLoader,
+  TuiNotification,
   TuiTitle,
 } from '@taiga-ui/core'
 import { TuiBlock } from '@taiga-ui/kit'
@@ -28,12 +29,16 @@ interface Package {
 
 @Component({
   template: `
+    <div tuiNotification appearance="warning">
+      {{
+        'For each selected service, this replaces its previous manual checkpoint. Automatic checkpoints are not changed.'
+          | i18n
+      }}
+    </div>
     <div tuiGroup orientation="vertical" [collapsed]="true">
       @if (pkgs(); as pkgs) {
         @for (pkg of pkgs; track $index) {
           <label tuiBlock="m">
-            <img alt="" [src]="pkg.icon" />
-            <span tuiTitle>{{ pkg.title }}</span>
             <input
               type="checkbox"
               tuiCheckbox
@@ -41,6 +46,8 @@ interface Package {
               [(ngModel)]="pkg.checked"
               (ngModelChange)="handleChange()"
             />
+            <img alt="" [src]="pkg.icon" />
+            <span tuiTitle>{{ pkg.title }}</span>
           </label>
         } @empty {
           {{ 'No services installed' | i18n }}
@@ -49,10 +56,18 @@ interface Package {
         <tui-loader />
       }
     </div>
+    <label class="toggle-all">
+      <input
+        tuiCheckbox
+        type="checkbox"
+        [ngModel]="allEligibleSelected()"
+        (ngModelChange)="setAll($event)"
+      />
+      <span tuiTitle>
+        <b>{{ 'Toggle all' | i18n }}</b>
+      </span>
+    </label>
     <footer class="g-buttons">
-      <button tuiButton appearance="flat-grayscale" (click)="toggleSelectAll()">
-        {{ 'Toggle all' | i18n }}
-      </button>
       <button tuiButton [disabled]="!hasSelection" (click)="done()">
         {{ 'Done' | i18n }}
       </button>
@@ -68,16 +83,30 @@ interface Package {
       align-items: center;
     }
 
+    [tuiTitle] {
+      min-width: 0;
+      overflow-wrap: anywhere;
+    }
+
     img {
       width: 2.5rem;
       border-radius: 100%;
     }
+
+    .toggle-all {
+      display: flex;
+      align-items: center;
+      gap: 0.65rem;
+      margin-top: 1rem;
+    }
   `,
+  host: { class: 'backup-settings' },
   imports: [
     FormsModule,
     TuiButton,
     TuiGroup,
     TuiLoader,
+    TuiNotification,
     TuiBlock,
     TuiCheckbox,
     TuiTitle,
@@ -89,6 +118,7 @@ export class BackupsBackupComponent {
   private readonly tasks = inject(TaskService)
   private readonly api = inject(ApiService)
   private readonly patch = inject<PatchDB<DataModel>>(PatchDB)
+  private readonly i18n = inject(i18nPipe)
 
   readonly context = injectContext<BackupContext>()
 
@@ -119,13 +149,15 @@ export class BackupsBackupComponent {
   done() {
     this.dialog
       .openPrompt<string>({
-        label: 'Master password needed',
+        label: this.i18n.transform('Master password needed'),
         data: {
-          message: 'Enter your master password to encrypt this backup.',
-          label: 'Master Password',
-          placeholder: 'Enter master password',
+          message: this.i18n.transform(
+            'Enter your master password to encrypt this backup.',
+          ),
+          label: this.i18n.transform('Master Password'),
+          placeholder: this.i18n.transform('Enter master password'),
           useMask: true,
-          buttonText: 'Create Backup',
+          buttonText: this.i18n.transform('Create a manual backup'),
         },
       })
       .pipe(
@@ -141,9 +173,14 @@ export class BackupsBackupComponent {
     this.hasSelection = !!this.pkgs()?.some(p => p.checked)
   }
 
-  toggleSelectAll() {
-    this.pkgs()?.forEach(p => (p.checked = !this.hasSelection && !p.disabled))
-    this.hasSelection = !this.hasSelection
+  allEligibleSelected(): boolean {
+    const eligible = this.pkgs()?.filter(pkg => !pkg.disabled) || []
+    return !!eligible.length && eligible.every(pkg => pkg.checked)
+  }
+
+  setAll(checked: boolean) {
+    this.pkgs()?.forEach(pkg => (pkg.checked = checked && !pkg.disabled))
+    this.handleChange()
   }
 
   private oldPassword(password: string) {

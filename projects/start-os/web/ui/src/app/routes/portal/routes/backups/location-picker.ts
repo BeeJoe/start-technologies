@@ -1,0 +1,247 @@
+import { Component, computed, inject, input, output } from '@angular/core'
+import { convertBytes, i18nPipe } from '@start9labs/shared'
+import {
+  TuiAppearance,
+  TuiButton,
+  TuiCell,
+  TuiIcon,
+  TuiTitle,
+} from '@taiga-ui/core'
+import {
+  CifsBackupTarget,
+  DiskBackupTarget,
+} from 'src/app/services/api/api.types'
+import {
+  BackupService,
+  formatCifsLocation,
+  MappedBackupTarget,
+} from '../system/routes/backups/backup.service'
+
+type Location = MappedBackupTarget<CifsBackupTarget | DiskBackupTarget>
+
+@Component({
+  selector: 'backup-location-picker',
+  template: `
+    <div class="locations">
+      @for (target of targets(); track target.location.id) {
+        <button
+          tuiCell
+          tuiAppearance="outline-grayscale"
+          class="location-option"
+          type="button"
+          [disabled]="!target.available"
+          [class.selected]="selectedId() === target.location.id"
+          [class.manual-or-restore]="mode() !== 'automatic'"
+          (click)="selected.emit(target.location)"
+        >
+          <tui-icon [icon]="target.icon" />
+          <span tuiTitle>
+            <b>{{ target.name }}</b>
+            <span tuiSubtitle>
+              <span class="target-detail">{{ target.detail }}</span>
+              @if (!target.available) {
+                <span class="target-reason">— {{ target.reason | i18n }}</span>
+              }
+            </span>
+          </span>
+          @if (selectedId() === target.location.id) {
+            <tui-icon icon="@tui.circle-check" />
+          }
+        </button>
+      } @empty {
+        <p>{{ 'No backup locations are available.' | i18n }}</p>
+      }
+    </div>
+    <button
+      tuiButton
+      class="manage-location"
+      type="button"
+      appearance="primary"
+      iconStart="@tui.plus"
+      (click)="manage.emit()"
+    >
+      {{ 'Add or repair a location' | i18n }}
+    </button>
+  `,
+  styles: `
+    :host,
+    .locations {
+      display: grid;
+      gap: 0.5rem;
+      justify-items: center;
+    }
+
+    :host {
+      align-items: center;
+      width: 100%;
+      max-width: 48rem;
+      margin-inline: auto;
+      box-sizing: border-box;
+    }
+
+    .locations {
+      width: 100%;
+      max-width: none;
+      margin-inline: 0;
+      box-sizing: border-box;
+    }
+
+    .manage-location {
+      justify-content: flex-start;
+    }
+
+    [tuiCell] {
+      width: 100%;
+      min-width: 0;
+      max-width: 100%;
+      align-items: center;
+      gap: 0.75rem;
+      overflow: hidden;
+      text-align: left;
+      box-sizing: border-box;
+    }
+
+    .location-option,
+    .manage-location {
+      width: 100%;
+      max-width: 40rem;
+      margin-inline: 0;
+      justify-self: center;
+      box-sizing: border-box;
+    }
+
+    [tuiTitle] {
+      flex: 1;
+      min-width: 0;
+      overflow-wrap: anywhere;
+    }
+
+    [tuiSubtitle] {
+      display: block;
+      margin-top: 0.25rem;
+    }
+
+    .selected {
+      box-shadow: inset 0 0 0 2px var(--tui-border-focus);
+    }
+
+    p {
+      color: var(--tui-text-secondary);
+    }
+
+    .manual-or-restore > [tuiTitle] {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(8rem, 45%);
+      align-items: center;
+      gap: 0.75rem;
+      width: 100%;
+    }
+
+    .manual-or-restore.location-option {
+      width: 100%;
+      box-sizing: border-box;
+    }
+
+    .manual-or-restore > [tuiTitle] > b {
+      grid-column: 1;
+    }
+
+    .manual-or-restore > [tuiTitle] [tuiSubtitle] {
+      grid-column: 2;
+      min-width: 0;
+      margin-block-start: 0;
+      overflow-wrap: anywhere;
+      text-align: right;
+    }
+
+    /* Location metadata wraps poorly at the narrower embedded-card width. */
+    @media (max-width: 30rem) {
+      [tuiCell] {
+        padding-inline: 0.75rem;
+      }
+
+      .location-option,
+      .manage-location {
+        justify-self: center;
+      }
+
+      .manual-or-restore > [tuiTitle] {
+        display: flex;
+        flex-direction: row;
+        flex-wrap: wrap;
+        column-gap: 0.5rem;
+        row-gap: 0;
+        min-width: 0;
+      }
+
+      .location-option > [tuiTitle] > b {
+        display: block;
+        flex: 1 1 auto;
+        min-width: 0;
+        max-width: 100%;
+        overflow-wrap: normal;
+        white-space: normal;
+        word-break: normal;
+      }
+
+      .manual-or-restore > [tuiTitle] [tuiSubtitle] {
+        display: flex;
+        flex: 0 1 auto;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        min-width: 0;
+        max-width: 100%;
+        margin-inline-start: auto;
+        overflow-wrap: normal;
+        white-space: normal;
+        word-break: normal;
+      }
+
+      .manual-or-restore > [tuiTitle] .target-detail {
+        white-space: nowrap;
+        word-break: normal;
+      }
+
+      .manual-or-restore > [tuiTitle] .target-reason {
+        overflow-wrap: normal;
+        white-space: normal;
+        word-break: normal;
+      }
+    }
+  `,
+  imports: [TuiAppearance, TuiButton, TuiCell, TuiIcon, TuiTitle, i18nPipe],
+})
+export class BackupLocationPicker {
+  private readonly backupService = inject(BackupService)
+
+  readonly mode = input.required<'automatic' | 'manual' | 'restore'>()
+  readonly selectedId = input('')
+  readonly selected = output<Location>()
+  readonly manage = output<void>()
+
+  protected readonly targets = computed(() => [
+    ...this.backupService.cifs().map(location => ({
+      location,
+      name: location.entry.path.split('/').pop() || location.entry.path,
+      detail: formatCifsLocation(location.entry),
+      icon: '@tui.folder-network',
+      available:
+        location.entry.mountable &&
+        (this.mode() !== 'restore' || location.hasAnyBackup),
+      reason: !location.entry.mountable ? 'Unavailable' : 'No backups found',
+    })),
+    ...this.backupService.drives().map(location => ({
+      location,
+      name:
+        [location.entry.vendor, location.entry.model]
+          .filter(Boolean)
+          .join(' ') || location.entry.logicalname,
+      detail: `${location.entry.logicalname} · ${convertBytes(location.entry.capacity)}`,
+      icon: '@tui.hard-drive',
+      available:
+        location.entry.capacity > 0 &&
+        (this.mode() !== 'restore' || location.hasAnyBackup),
+      reason: 'No backups found',
+    })),
+  ])
+}

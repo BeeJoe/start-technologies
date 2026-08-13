@@ -22,6 +22,8 @@ npm run build:ui             # prod build of a single app
 
 ## Gotchas
 
+- `npm run check:ui` also runs the backup responsive-layout contract.
+
 - `@start9labs/start-core` and `patch-db-client` are `file:` deps built by `build:deps`; a fresh checkout won't type-check until you run it.
 - `start-core` has a jest suite in `start-core/lib/test/`, run by `make -C shared-libs/ts-modules/start-core test` and reached by the root `make test` in CI. The Angular libs have no test runner — for them `npm run check` (tsc, strict + strictTemplates) plus a successful `build:*` is the verification bar.
 - `shared-libs/crates/patch-db` is a first-party crate; `build:deps` runs `npm ci && npm run build` inside its `client/` directory.
