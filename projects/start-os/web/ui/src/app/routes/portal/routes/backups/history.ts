@@ -147,6 +147,8 @@ type HistoryFilter = 'all' | T.BackupActivityKind
       display: flex;
       align-items: center;
       gap: 0.75rem;
+      min-height: 3.5rem;
+      height: auto;
       padding: 1rem 1.25rem;
       cursor: pointer;
       list-style: none;

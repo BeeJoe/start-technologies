@@ -55,18 +55,19 @@ interface Package {
       } @else {
         <tui-loader />
       }
+      <label class="toggle-all" tuiBlock="m">
+        <input
+          tuiCheckbox
+          type="checkbox"
+          [ngModel]="allEligibleSelected()"
+          (ngModelChange)="setAll($event)"
+        />
+        <span class="service-icon-placeholder" aria-hidden="true"></span>
+        <span tuiTitle>
+          <b>{{ 'Toggle all' | i18n }}</b>
+        </span>
+      </label>
     </div>
-    <label class="toggle-all">
-      <input
-        tuiCheckbox
-        type="checkbox"
-        [ngModel]="allEligibleSelected()"
-        (ngModelChange)="setAll($event)"
-      />
-      <span tuiTitle>
-        <b>{{ 'Toggle all' | i18n }}</b>
-      </span>
-    </label>
     <footer class="g-buttons">
       <button tuiButton [disabled]="!hasSelection" (click)="done()">
         {{ 'Done' | i18n }}
@@ -88,16 +89,14 @@ interface Package {
       overflow-wrap: anywhere;
     }
 
-    img {
+    img,
+    .service-icon-placeholder {
       width: 2.5rem;
-      border-radius: 100%;
+      flex-shrink: 0;
     }
 
-    .toggle-all {
-      display: flex;
-      align-items: center;
-      gap: 0.65rem;
-      margin-top: 1rem;
+    img {
+      border-radius: 100%;
     }
   `,
   host: { class: 'backup-settings' },
