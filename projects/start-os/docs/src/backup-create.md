@@ -59,6 +59,8 @@ one.
   schedule list; select one to reveal its controls and editor, or select **Add
   schedule**. Service selection is collapsed under **Services** by default.
 - **Create a manual backup** creates a one-time backup for selected services.
+  In service selection, **Toggle all** uses the same checkbox and text columns
+  as each service and selects or clears every eligible service.
 - **Restore from a backup** chooses a manual or automatic checkpoint.
 - **Manage backup locations** adds or repairs physical drives and network
   folders. Location details align with their table headings, and empty network
@@ -69,7 +71,8 @@ one.
   the same centered width as the location-management action, while long names
   stay on one readable line.
 - **Backup history** shows completed manual backups, automatic backups, and
-  restores.
+  restores. On phones, activity headers expand to keep their date, state, and
+  status text visible.
 
 When a backup or restore starts, its flat, single-panel progress display appears
 at the top of the page without blocking navigation. The page normally keeps
