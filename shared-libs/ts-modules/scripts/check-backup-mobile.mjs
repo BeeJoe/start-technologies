@@ -442,6 +442,10 @@ assertRule(history, historyFile, ':host', {
   width: '100%',
   'min-width': '0',
 })
+assertRule(history, historyFile, '.activity > button', {
+  height: 'auto',
+  'min-height': '3.5rem',
+})
 assertRule(location, locationFile, '.manual-or-restore > [tuiTitle]', {
   display: 'grid',
   'grid-template-columns': 'minmax(0, 1fr) minmax(8rem, 45%)',
@@ -591,6 +595,14 @@ assertRule(
   { 'align-items': 'flex-start', 'flex-direction': 'column' },
   phone,
 )
+assertSource(manualFile, [
+  /<label[^>]*class="toggle-all"[^>]*tuiBlock="m"[^>]*>/,
+  /<span class="service-icon-placeholder" aria-hidden="true"><\/span>/,
+])
+assertRule(manual, manualFile, '.service-icon-placeholder', {
+  width: '2.5rem',
+  'flex-shrink': '0',
+})
 assertRule(
   editor,
   editorFile,
