@@ -59,6 +59,26 @@ export interface BackupRetentionTierEditor {
   customCoverageHours: number
 }
 
+/** Returns whether two editor rows describe the same retained checkpoint tier. */
+export function hasDuplicateRetentionRules(
+  rules: readonly (Pick<BackupRetentionTierEditor, 'interval' | 'duration'> &
+    Partial<
+      Pick<
+        BackupRetentionTierEditor,
+        'customIntervalHours' | 'customCoverageHours'
+      >
+    >)[],
+): boolean {
+  const keys = rules.map(rule => {
+    if (rule.interval === 'custom') {
+      return `custom:${rule.customIntervalHours}:${rule.customCoverageHours}`
+    }
+    return `${rule.interval}:${rule.duration}`
+  })
+
+  return new Set(keys).size !== keys.length
+}
+
 export function serializeBackupSchedule(
   form: BackupScheduleFormValue,
 ): T.Schedule {

@@ -69,10 +69,15 @@ one.
   address moves intact to the next line when needed instead of being clipped or
   splitting its hostname. Manual, restore, and automatic location choices use
   the same centered width as the location-management action, while long names
-  stay on one readable line.
+  stay on one readable line. Removing a network location names the folder in
+  the confirmation and leaves its stored backup files untouched, so reconnecting
+  the folder later makes those backups available again. Physical-drive sizes use
+  the same units in location management and backup selection.
 - **Backup history** shows completed manual backups, automatic backups, and
-  restores. On phones, activity headers expand to keep their date, state, and
-  status text visible.
+  restores, 20 at a time. Search by date, status, or service, or filter by
+  activity type and status. Failure summaries explain what action to take;
+  expand **Technical details** when raw backend details are needed. On phones,
+  activity headers expand to keep their date, state, and status text visible.
 
 When a backup or restore starts, its flat, single-panel progress display appears
 at the top of the page without blocking navigation. The page normally keeps
@@ -93,8 +98,9 @@ for the active operation without advancing their schedule, while a second
 manual backup, automatic backup, or restore request is rejected instead of
 being queued to run afterward.
 
-Whenever a backup workflow asks for a master password, select the eye icon in
-the password field to show or hide what you typed. This applies to manual
+Whenever a backup workflow asks for a master password, use the **Show password**
+or **Hide password** button in the password field to check what you typed. The
+button can be focused and activated with a keyboard. This applies to manual
 backups, restores, automatic-backup setup, and target repair or reassignment.
 
 Turning off automatic backups pauses every schedule while keeping its settings
