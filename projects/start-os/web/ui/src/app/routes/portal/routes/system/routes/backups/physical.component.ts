@@ -31,7 +31,7 @@ import { BackupStatusComponent } from './status.component'
           </td>
           <td class="name">{{ target.entry.logicalname }}</td>
           <td class="location">{{ driveName(target.entry) }}</td>
-          <td>{{ formatCapacity(target.entry.capacity) }}</td>
+          <td>{{ target.entry.capacity | convertBytes }}</td>
           <td>
             @if (target.entry.available !== null) {
               {{ target.entry.available | convertBytes }}
@@ -212,17 +212,6 @@ export class BackupPhysicalComponent {
       [entry.vendor, entry.model].filter(Boolean).join(' ') ||
       this.i18n.transform('Unknown Drive')
     )
-  }
-
-  formatCapacity(bytes: number): string {
-    const gb = bytes / 1e9
-    if (gb >= 1000) {
-      return `${(gb / 1000).toFixed(1)} TB`
-    }
-    if (gb < 1) {
-      return `${(bytes / 1e6).toFixed(0)} MB`
-    }
-    return `${gb.toFixed(0)} GB`
   }
 
   select(target: MappedBackupTarget<DiskBackupTarget>) {

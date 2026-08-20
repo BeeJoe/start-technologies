@@ -7,7 +7,14 @@ import {
   TaskService,
 } from '@start9labs/shared'
 import { ISB, T } from '@start9labs/start-core'
-import { TuiButton, TuiDataList, TuiDropdown, TuiIcon } from '@taiga-ui/core'
+import {
+  TuiButton,
+  TuiDataList,
+  TuiDialogContext,
+  TuiDropdown,
+  TuiIcon,
+} from '@taiga-ui/core'
+import { injectContext, PolymorpheusComponent } from '@taiga-ui/polymorpheus'
 import { filter } from 'rxjs'
 import { FormComponent } from 'src/app/routes/portal/components/form.component'
 import { PlaceholderComponent } from 'src/app/routes/portal/components/placeholder.component'
@@ -26,6 +33,46 @@ import { BackupStatusComponent } from './status.component'
 
 const ERROR =
   'Ensure (1) target computer is connected to the same LAN as your Start9 Server, (2) target folder is being shared, and (3) hostname, path, and credentials are accurate.'
+
+@Component({
+  template: `
+    <p>
+      <strong>{{ context.data.name }}</strong>
+    </p>
+    <p>{{ 'Remove this network folder from StartOS?' | i18n }}</p>
+    <p>
+      {{
+        'Stored backup files will remain on the network folder and can be reconnected later.'
+          | i18n
+      }}
+    </p>
+    <footer class="g-buttons">
+      <button
+        tuiButton
+        type="button"
+        appearance="flat"
+        (click)="context.$implicit.complete()"
+      >
+        {{ 'Cancel' | i18n }}
+      </button>
+      <button
+        tuiButton
+        type="button"
+        appearance="primary-destructive"
+        (click)="context.completeWith(true)"
+      >
+        {{ 'Delete' | i18n }}
+      </button>
+    </footer>
+  `,
+  imports: [TuiButton, i18nPipe],
+})
+class NetworkDeleteDialog {
+  protected readonly context =
+    injectContext<TuiDialogContext<boolean, { name: string }>>()
+}
+
+const NETWORK_DELETE = new PolymorpheusComponent(NetworkDeleteDialog)
 
 @Component({
   selector: '[networkFolders]',
@@ -426,13 +473,17 @@ export class BackupNetworkComponent {
     })
   }
 
-  forget({ id }: MappedBackupTarget<CifsBackupTarget>, index: number) {
+  forget(target: MappedBackupTarget<CifsBackupTarget>, index: number) {
     this.dialog
-      .openConfirm({ label: 'Are you sure?', size: 's' })
+      .openComponent<boolean>(NETWORK_DELETE, {
+        label: 'Delete network folder?',
+        data: { name: formatCifsLocation(target.entry) },
+        size: 's',
+      })
       .pipe(filter(Boolean))
       .subscribe(() =>
         this.tasks.run(async () => {
-          await this.api.removeBackupTarget({ id })
+          await this.api.removeBackupTarget({ id: target.id })
           this.service.cifs.update(cifs => cifs.filter((_, i) => i !== index))
         }, 'Removing'),
       )

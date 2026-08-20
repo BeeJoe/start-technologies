@@ -120,6 +120,7 @@ import { HeaderStatusComponent } from './status.component'
 
       .mobile {
         display: flex;
+        gap: 0.25rem;
         height: 100%;
         align-items: center;
         font: var(--tui-typography-body-l);

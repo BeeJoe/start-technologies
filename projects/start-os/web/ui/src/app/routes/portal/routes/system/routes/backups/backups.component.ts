@@ -169,7 +169,7 @@ export default class SystemBackupComponent implements OnInit {
     } else {
       this.dialog
         .openComponent(BACKUP_RESTORE, {
-          label: 'Select server',
+          label: 'Unlock backup',
           data: target,
           size: 'l',
         })

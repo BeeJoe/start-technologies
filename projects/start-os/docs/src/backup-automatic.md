@@ -38,7 +38,9 @@ and manual backups, restores, locations, and activity history together under
    version per hour, day, week, or month for the duration you select; day is the
    default interval. Each row requires a frequency. Select the plus button at
    the right edge to add another version-history rule with the same frequency
-   and duration controls. Every row, including the first, can be removed;
+   and duration controls. Each rule must use a unique frequency and duration;
+   StartOS keeps the editor open and identifies duplicate rules. Every row,
+   including the first, can be removed;
    removing the last row turns **Keep additional versions** off and returns to
    the latest-checkpoint-only default.
 
@@ -54,7 +56,8 @@ and manual backups, restores, locations, and activity history together under
 
 1. Review the estimated storage, decide whether to **Create the first backup
    now**, and enter the master password. The password field follows that choice;
-   use its eye icon to check what you typed. Select **Turn on automatic
+   use its keyboard-accessible **Show password** or **Hide password** button to
+   check what you typed. Select **Turn on automatic
    backups**, or press Enter while the password field is focused. After StartOS
    saves the first schedule, the **Automatic backups** card collapses.
 
@@ -76,7 +79,9 @@ those controls, and offers the purple **Run now**, **View/Edit**, and red
 that schedule. Saving or canceling an edit fully collapses the Automatic
 backups card. Expanding a card with several schedules returns to the
 schedules list; expanding a card with one schedule returns directly to that
-schedule. **View all schedules** asks before discarding an unsaved editor and
+schedule. Creating a schedule is acknowledged once, so reopening the card with
+several schedules returns to the list instead of opening another blank editor.
+**View all schedules** asks before discarding an unsaved editor and
 returning to the list. Above the list, a compact status row shows how many
 schedules are active or paused. Use **Pause all** to pause every schedule after
 confirmation, or **Resume all** to turn them all back on. **Add schedule**
@@ -205,7 +210,9 @@ it records the interrupted activity as failed and clears stale progress so the
 next operation can proceed.
 
 Use **Backup history** to review manual backups, automatic runs, and restores,
-including partial failures and service-level errors. During restore, each
+20 at a time. Search by date, status, or service and filter by activity type or
+status. Failures show a short action-oriented summary; expand **Technical
+details** for raw backend information. During restore, each
 service defaults to its newest available checkpoint, but you can choose a
 different manual or automatic checkpoint before starting. See [Restoring
 Backups](./backup-restore.md).

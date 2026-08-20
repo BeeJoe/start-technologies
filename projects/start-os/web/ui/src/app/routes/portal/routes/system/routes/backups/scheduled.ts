@@ -43,7 +43,6 @@ import {
   TuiBlock,
   TuiChevron,
   TuiInputNumber,
-  TuiPassword,
   TuiSelect,
   TuiSwitch,
 } from '@taiga-ui/kit'
@@ -59,6 +58,7 @@ import {
   BackupRetentionTierEditor,
   BackupScheduleFrequency,
   formatBackupTime,
+  hasDuplicateRetentionRules,
   parseBackupRetentionTier,
   parseBackupSchedule,
   parseBackupServiceSelection,
@@ -709,6 +709,11 @@ interface JobEditor extends EditableRetentionRule {
                   {{ 'Add' | i18n }}
                 </button>
               </div>
+              @if (retentionHasDuplicates(form)) {
+                <div tuiNotification appearance="negative">
+                  {{ 'Each version-history rule must be unique.' | i18n }}
+                </div>
+              }
             }
           </div>
 
@@ -826,13 +831,24 @@ interface JobEditor extends EditableRetentionRule {
               <label tuiLabel>{{ 'Master Password' | i18n }}</label>
               <input
                 tuiInput
-                type="password"
+                [type]="passwordMasked ? 'password' : 'text'"
                 name="password"
                 required
                 autocomplete="off"
                 [(ngModel)]="form.password"
               />
-              <tui-icon tuiPassword />
+              <button
+                tuiIconButton
+                type="button"
+                size="xs"
+                appearance="icon"
+                [iconStart]="passwordMasked ? '@tui.eye' : '@tui.eye-off'"
+                (click)="passwordMasked = !passwordMasked"
+              >
+                {{
+                  (passwordMasked ? 'Show password' : 'Hide password') | i18n
+                }}
+              </button>
             </tui-textfield>
           }
 
@@ -914,12 +930,26 @@ interface JobEditor extends EditableRetentionRule {
               <input
                 tuiInput
                 name="reassignPassword"
-                type="password"
+                [type]="reassignPasswordMasked ? 'password' : 'text'"
                 required
                 autocomplete="off"
                 [(ngModel)]="reassignPassword"
               />
-              <tui-icon tuiPassword />
+              <button
+                tuiIconButton
+                type="button"
+                size="xs"
+                appearance="icon"
+                [iconStart]="
+                  reassignPasswordMasked ? '@tui.eye' : '@tui.eye-off'
+                "
+                (click)="reassignPasswordMasked = !reassignPasswordMasked"
+              >
+                {{
+                  (reassignPasswordMasked ? 'Show password' : 'Hide password')
+                    | i18n
+                }}
+              </button>
             </tui-textfield>
             <label class="switch-row">
               <input
@@ -1538,7 +1568,6 @@ interface JobEditor extends EditableRetentionRule {
     TuiLabel,
     TuiInputNumber,
     TuiNotification,
-    TuiPassword,
     TuiSelect,
     TuiSwitch,
     TuiTitle,
@@ -1547,8 +1576,9 @@ interface JobEditor extends EditableRetentionRule {
 })
 export class ScheduledBackups {
   readonly mode = input.required<'manage' | 'restore'>()
-  readonly createRequest = input(0)
+  readonly createRequest = input(false)
   readonly reviewPackageId = input('')
+  readonly createRequestHandled = output<void>()
   readonly collapseRequested = output<string | null>()
 
   private readonly api = inject(ApiService)
@@ -1589,20 +1619,18 @@ export class ScheduledBackups {
 
   protected reassignTargetId = ''
   protected reassignPassword = ''
+  protected passwordMasked = true
+  protected reassignPasswordMasked = true
   protected waitForSchedule = false
   protected confirmPrune = false
   private editorBaseline: string | null = null
-  private handledCreateRequest = 0
   private pendingReview: T.NewServiceBackupReview | null = null
 
   constructor() {
     void this.initialize()
     effect(() => {
-      const request = this.createRequest()
-      if (!request || request === this.handledCreateRequest || this.loading()) {
-        return
-      }
-      this.handledCreateRequest = request
+      if (!this.createRequest() || this.loading()) return
+      this.createRequestHandled.emit()
       const review = this.visibleReviews()[0]
       if (review) {
         void this.createForReview(review)
@@ -2549,15 +2577,23 @@ export class ScheduledBackups {
 
   private validRetention(form: JobEditor): boolean {
     if (!form.keepAdditional) return true
-    return [form, ...form.additionalTiers].every(
-      rule =>
-        this.retentionIntervals.includes(
-          rule.interval as (typeof this.retentionIntervals)[number],
-        ) &&
-        Number.isInteger(rule.duration) &&
-        rule.duration >= 1 &&
-        rule.duration <= 365,
+    const tiers = [form, ...form.additionalTiers]
+    return (
+      !hasDuplicateRetentionRules(tiers) &&
+      tiers.every(
+        rule =>
+          this.retentionIntervals.includes(
+            rule.interval as (typeof this.retentionIntervals)[number],
+          ) &&
+          Number.isInteger(rule.duration) &&
+          rule.duration >= 1 &&
+          rule.duration <= 365,
+      )
     )
+  }
+
+  retentionHasDuplicates(form: JobEditor): boolean {
+    return hasDuplicateRetentionRules([form, ...form.additionalTiers])
   }
 
   projectedCount(form: JobEditor): number {
