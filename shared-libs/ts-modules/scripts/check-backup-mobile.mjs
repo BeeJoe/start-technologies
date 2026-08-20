@@ -186,6 +186,11 @@ const backupServiceFile =
   'projects/start-os/web/ui/src/app/routes/portal/routes/system/routes/backups/backup.service.ts'
 const liveApiFile =
   'projects/start-os/web/ui/src/app/services/api/embassy-live-api.service.ts'
+const rpcErrorFile = 'shared-libs/ts-modules/shared/src/classes/rpc-error.ts'
+const promptFile =
+  'shared-libs/ts-modules/shared/src/components/prompt.component.ts'
+const restoreDialogFile =
+  'projects/start-os/web/ui/src/app/routes/portal/routes/system/routes/backups/restore.component.ts'
 const osServiceFile = 'projects/start-os/web/ui/src/app/services/os.service.ts'
 const dataModelFile =
   'projects/start-os/web/ui/src/app/services/patch-db/data-model.ts'
@@ -596,12 +601,13 @@ assertRule(
   phone,
 )
 assertSource(manualFile, [
-  /<label[^>]*class="toggle-all"[^>]*tuiBlock="m"[^>]*>/,
-  /<span class="service-icon-placeholder" aria-hidden="true"><\/span>/,
+  /<label class="toggle-all">[\s\S]{0,420}<\/label>\s*<div tuiGroup/,
 ])
-assertRule(manual, manualFile, '.service-icon-placeholder', {
-  width: '2.5rem',
-  'flex-shrink': '0',
+assertNotSource(manualFile, [/class="toggle-all"[^>]*tuiBlock/])
+assertRule(manual, manualFile, '.toggle-all', {
+  display: 'flex',
+  'align-items': 'center',
+  padding: '1.5rem 1rem 0.75rem',
 })
 assertRule(
   editor,
@@ -989,7 +995,7 @@ for (const file of [manualFile, recoverFile]) {
   ])
 }
 assertSource(manualFile, [
-  /class="toggle-all"[\s\S]{0,500}<footer class="g-buttons">[\s\S]{0,240}\(click\)="done\(\)"/,
+  /class="toggle-all"[\s\S]{0,1800}<footer class="g-buttons">[\s\S]{0,240}\(click\)="done\(\)"/,
 ])
 
 for (const file of [editorFile, advancedFile]) {
@@ -1043,7 +1049,7 @@ assertSource(homeFile, [
   /\[operationActive\]="progressActive\(\)"/,
   /readonly progressActive = computed\(\s*\(\) => !!this\.operationActivity\(\)/,
   /async togglePanel\(panel: BackupPanel\)[\s\S]{0,500}this\.expanded\.update\(/,
-  /addSchedule\(\)[\s\S]{0,120}this\.createScheduleRequest\.update\(/,
+  /addSchedule\(\)[\s\S]{0,120}this\.createScheduleRequest\.set\(true\)/,
   /@if \(needsAttention\(\)\)[\s\S]{0,220}tuiLink[\s\S]{0,180}class="attention-link"[\s\S]{0,180}\(click\)="openHistory\(\)"[\s\S]{0,160}['"]See more['"]\s*\|\s*i18n/,
   /async openHistory\(\)[\s\S]{0,180}confirmDiscardChanges\(\)[\s\S]{0,120}this\.expanded\.set\('history'\)/,
   /#historyCard[\s\S]{0,250}class="backup-card g-card"[\s\S]{0,160}\[class\.expanded\]="expanded\(\) === 'history'"/,
@@ -1128,6 +1134,52 @@ assertSource(historyFile, [
   /filteredActivities\(\)/,
   /['"]Backup location['"]/,
 ])
+assertSource(rpcErrorFile, [/export class RpcError extends Error/])
+assertSource(homeFile, [
+  /\(createRequestHandled\)="createScheduleRequest\.set\(false\)"/,
+  /createScheduleRequest\.set\(true\)/,
+])
+assertSource(advancedFile, [
+  /readonly createRequest = input\(false\)/,
+  /readonly createRequestHandled = output<void>\(\)/,
+  /this\.createRequestHandled\.emit\(\)/,
+  /hasDuplicateRetentionRules/,
+])
+assertNotSource(advancedFile, [/handledCreateRequest/, /tuiPassword/])
+assertSource(editorFile, [
+  /\(createRequestHandled\)="createRequestHandled\.emit\(\)"/,
+  /hasDuplicateRetentionRules/,
+  /passwordMasked \? 'Show password' : 'Hide password'/,
+])
+assertNotSource(editorFile, [/tuiPassword/])
+assertSource(promptFile, [
+  /tuiIconButton[\s\S]{0,240}passwordMasked|tuiIconButton[\s\S]{0,240}masked \? '@tui\.eye'/,
+  /masked \? 'Show password' : 'Hide password'/,
+])
+assertNotSource(promptFile, [/tuiPassword/])
+assertSource(restoreDialogFile, [
+  /class="unlock-flow"/,
+  /autocomplete="current-password"/,
+  /passwordMasked \? 'Show password' : 'Hide password'/,
+])
+assertNotSource(restoreDialogFile, [
+  /openPrompt/,
+  /queueMicrotask/,
+  /'Loading'/,
+])
+assertNotSource(recoverFile, [/router\.navigate\(\[['"]services['"]\]\)/])
+assertSource(historyFile, [
+  /Search date, status, or service/,
+  /<tui-pagination/,
+  /Technical details/,
+  /private readonly pageSize = 20/,
+])
+assertSource(networkFile, [
+  /Delete network folder\?/,
+  /Stored backup files will remain on the network folder/,
+])
+assertSource(physicalFile, [/target\.entry\.capacity \| convertBytes/])
+assertNotSource(physicalFile, [/formatCapacity/])
 assertNotSource(manualPageFile, [/'Last Backup'/, /<backup-navigation/])
 assertSource(locationFile, [
   /readonly manage = output<void>\(\)/,

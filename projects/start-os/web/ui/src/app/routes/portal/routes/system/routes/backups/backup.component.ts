@@ -35,6 +35,17 @@ interface Package {
           | i18n
       }}
     </div>
+    <label class="toggle-all">
+      <input
+        tuiCheckbox
+        type="checkbox"
+        [ngModel]="allEligibleSelected()"
+        (ngModelChange)="setAll($event)"
+      />
+      <span tuiTitle>
+        <b>{{ 'Toggle all' | i18n }}</b>
+      </span>
+    </label>
     <div tuiGroup orientation="vertical" [collapsed]="true">
       @if (pkgs(); as pkgs) {
         @for (pkg of pkgs; track $index) {
@@ -55,18 +66,6 @@ interface Package {
       } @else {
         <tui-loader />
       }
-      <label class="toggle-all" tuiBlock="m">
-        <input
-          tuiCheckbox
-          type="checkbox"
-          [ngModel]="allEligibleSelected()"
-          (ngModelChange)="setAll($event)"
-        />
-        <span class="service-icon-placeholder" aria-hidden="true"></span>
-        <span tuiTitle>
-          <b>{{ 'Toggle all' | i18n }}</b>
-        </span>
-      </label>
     </div>
     <footer class="g-buttons">
       <button tuiButton [disabled]="!hasSelection" (click)="done()">
@@ -77,7 +76,7 @@ interface Package {
   styles: `
     [tuiGroup] {
       width: 100%;
-      margin: 1.5rem 0 0;
+      margin: 0;
     }
 
     [tuiBlock] {
@@ -89,14 +88,20 @@ interface Package {
       overflow-wrap: anywhere;
     }
 
-    img,
-    .service-icon-placeholder {
+    img {
       width: 2.5rem;
       flex-shrink: 0;
     }
 
     img {
       border-radius: 100%;
+    }
+
+    .toggle-all {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 1.5rem 1rem 0.75rem;
     }
   `,
   host: { class: 'backup-settings' },

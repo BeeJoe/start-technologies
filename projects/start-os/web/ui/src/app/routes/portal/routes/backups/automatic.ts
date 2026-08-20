@@ -34,7 +34,6 @@ import {
   TuiBlock,
   TuiChevron,
   TuiInputNumber,
-  TuiPassword,
   TuiSelect,
   TuiSwitch,
 } from '@taiga-ui/kit'
@@ -54,6 +53,7 @@ import {
   BackupRetentionInterval,
   BackupScheduleFrequency,
   formatBackupTime,
+  hasDuplicateRetentionRules,
   retentionIntervalSeconds,
   retentionPeriodLabel,
   scheduleNeedsMoreFrequentRuns,
@@ -447,6 +447,11 @@ interface AutomaticRetentionRule {
                 {{ 'Add' | i18n }}
               </button>
             </div>
+            @if (retentionHasDuplicates()) {
+              <div tuiNotification appearance="negative">
+                {{ 'Each version-history rule must be unique.' | i18n }}
+              </div>
+            }
             @if (retentionNeedsMoreFrequentRuns()) {
               <div tuiNotification appearance="negative">
                 {{
@@ -546,12 +551,21 @@ interface AutomaticRetentionRule {
             <label tuiLabel>{{ 'Master Password' | i18n }}</label>
             <input
               tuiInput
-              type="password"
+              [type]="passwordMasked ? 'password' : 'text'"
               autocomplete="off"
               [(ngModel)]="editor.password"
               (keyup.enter)="createAutomaticBackup()"
             />
-            <tui-icon tuiPassword />
+            <button
+              tuiIconButton
+              type="button"
+              size="xs"
+              appearance="icon"
+              [iconStart]="passwordMasked ? '@tui.eye' : '@tui.eye-off'"
+              (click)="passwordMasked = !passwordMasked"
+            >
+              {{ (passwordMasked ? 'Show password' : 'Hide password') | i18n }}
+            </button>
           </tui-textfield>
         </section>
       }
@@ -628,6 +642,7 @@ interface AutomaticRetentionRule {
           mode="manage"
           [createRequest]="createRequest()"
           [reviewPackageId]="reviewPackageId()"
+          (createRequestHandled)="createRequestHandled.emit()"
           (collapseRequested)="collapseRequested.emit($event)"
         ></section>
       } @else {
@@ -1015,7 +1030,6 @@ interface AutomaticRetentionRule {
     TuiInput,
     TuiInputNumber,
     TuiNotification,
-    TuiPassword,
     TuiSelect,
     TuiSwitch,
     TuiTitle,
@@ -1040,9 +1054,10 @@ export default class AutomaticBackups {
 
   readonly mode = input<'setup' | 'manage'>()
   readonly embedded = input(false)
-  readonly createRequest = input(0)
+  readonly createRequest = input(false)
   readonly reviewPackageId = input('')
   readonly manageLocations = output<void>()
+  readonly createRequestHandled = output<void>()
   readonly collapseRequested = output<string | null>()
   private readonly route = inject(ActivatedRoute)
   protected readonly setupMode = computed(
@@ -1158,6 +1173,7 @@ export default class AutomaticBackups {
   ])
 
   protected editor: AutomaticEditor = this.defaultEditor()
+  protected passwordMasked = true
   private setupBaseline = ''
   protected readonly estimates = signal<T.BackupServiceCapacityEstimate[]>([])
 
@@ -1393,8 +1409,14 @@ export default class AutomaticBackups {
           Number.isInteger(rule.duration) &&
           rule.duration >= 1 &&
           rule.duration <= 365,
-      ) && !this.retentionNeedsMoreFrequentRuns()
+      ) &&
+      !hasDuplicateRetentionRules(this.retentionRules()) &&
+      !this.retentionNeedsMoreFrequentRuns()
     )
+  }
+
+  retentionHasDuplicates(): boolean {
+    return hasDuplicateRetentionRules(this.retentionRules())
   }
 
   retentionNeedsMoreFrequentRuns(): boolean {

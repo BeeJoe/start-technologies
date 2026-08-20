@@ -61,7 +61,7 @@ const WEEKDAYS = [
 
 @Component({
   template: `
-    <ng-container *title>{{ 'Backups' | i18n }}</ng-container>
+    <span *title>{{ 'Backups' | i18n }}</span>
 
     <header class="page-heading">
       <div>
@@ -244,6 +244,7 @@ const WEEKDAYS = [
             [createRequest]="createScheduleRequest()"
             [reviewPackageId]="reviewPackageId"
             (manageLocations)="openLocations()"
+            (createRequestHandled)="createScheduleRequest.set(false)"
             (collapseRequested)="collapseAutomatic($event)"
           />
         </div>
@@ -741,7 +742,7 @@ export default class BackupsComponent {
     previousActivityId: string | null
   } | null>(null)
   protected readonly createScheduleRequest = signal(
-    this.route.snapshot.queryParamMap.has('createSchedule') ? 1 : 0,
+    this.route.snapshot.queryParamMap.has('createSchedule'),
   )
   readonly manualRunning = toSignal(this.os.backingUp$, { initialValue: false })
   changingAutomatic = false
@@ -841,7 +842,7 @@ export default class BackupsComponent {
 
   addSchedule() {
     this.expanded.set('automatic')
-    this.createScheduleRequest.update(request => request + 1)
+    this.createScheduleRequest.set(true)
   }
 
   async goToServices() {
