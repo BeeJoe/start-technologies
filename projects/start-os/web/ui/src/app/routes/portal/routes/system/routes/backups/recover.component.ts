@@ -2,7 +2,6 @@ import { CommonModule } from '@angular/common'
 import { Component, inject } from '@angular/core'
 import { toSignal } from '@angular/core/rxjs-interop'
 import { FormsModule } from '@angular/forms'
-import { Router } from '@angular/router'
 import { i18nKey, i18nPipe, TaskService } from '@start9labs/shared'
 import { Version } from '@start9labs/start-core'
 import { TuiMapperPipe } from '@taiga-ui/cdk'
@@ -219,7 +218,6 @@ export class BackupsRecoverComponent {
   private readonly api = inject(ApiService)
   private readonly i18n = inject(i18nPipe)
   private readonly tasks = inject(TaskService)
-  private readonly router = inject(Router)
   private readonly context =
     injectContext<TuiDialogContext<void, RecoverData>>()
 
@@ -486,7 +484,6 @@ export class BackupsRecoverComponent {
       })
 
       this.context.$implicit.complete()
-      void this.router.navigate(['services'])
     }, 'Initializing')
   }
 }

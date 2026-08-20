@@ -1,5 +1,4 @@
 import { inject, Injectable } from '@angular/core'
-import { Router } from '@angular/router'
 import { ErrorService, StartOSDiskInfo } from '@start9labs/shared'
 import { T } from '@start9labs/start-core'
 import { TuiDialogOptions, TuiDialogService } from '@taiga-ui/core'
@@ -30,7 +29,6 @@ import { RecoverData } from '../types/recover-data'
 export class BackupsRestoreService {
   private readonly errorService = inject(ErrorService)
   private readonly dialogs = inject(TuiDialogService)
-  private readonly router = inject(Router)
   private readonly api = inject(ApiService)
   private readonly loader = inject(TuiNotificationMiddleService)
 
@@ -62,9 +60,7 @@ export class BackupsRestoreService {
             ),
         ),
       )
-      .subscribe(() => {
-        this.router.navigate(['services'])
-      })
+      .subscribe()
   }
 
   private getRecoverData(

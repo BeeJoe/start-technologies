@@ -71,9 +71,17 @@ file tracks notable changes since the move to the monorepo.
   loads safely, System backup staging references are released before checkpoint
   promotion, deleting a
   schedule without its backups does not require a connected target, schedule
-  names remain unique, edited schedules collapse before an optional immediate
-  run, failed-run links reveal their history, and retention and deletion
-  controls remain usable across practical display sizes and translations.
+  names and retention rules remain unique, edited schedules collapse before an
+  optional immediate run, and reopening a multi-schedule card returns to its
+  schedule list. Password and network errors identify the failure instead of
+  reporting an unknown error, password-visibility buttons support keyboards and
+  assistive technology, and restore keeps backup progress and history in view.
+  History is searchable, filterable, and paginated, with friendly failure
+  summaries and expandable technical details. Network-location deletion names
+  the location and explains that stored files remain, physical-drive capacity
+  uses consistent units, failed-run links reveal their history, and retention
+  and deletion controls remain usable across practical display sizes and
+  translations.
 
 - **A service can permanently retire a network host or a port it no longer
   uses, and the port numbers it held become available again.** A service that

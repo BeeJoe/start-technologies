@@ -11,15 +11,16 @@ data changes, or recovering from service-data corruption.
 1.  Go to `System > Backups` and expand **Restore from a backup**.
 1.  Select the physical drive or network folder containing the backup. A
     location needing attention remains visible so you can repair it first.
-1.  Enter the master password used to create the backup. Select the eye icon to
-    show or hide the password while checking it.
+1.  Enter the master password used to create the backup in the same unlock
+    dialog. Use the keyboard-accessible **Show password** or **Hide password**
+    button to check it.
 1.  Select the services to restore. StartOS combines the restorable manual and
     automatic history on that location and chooses the newest checkpoint for
     each service by default. Use a service's checkpoint menu to choose another
     timestamp, including an older retained or archived automatic checkpoint.
-1.  Select **Restore Selected**. You may leave the Backups page while the restore
-    continues, click the progress card to return to the main Services list, and
-    return to **Backup history** later to review the result.
+1.  Select **Restore Selected**. StartOS keeps the Backups page open so its
+    progress and history remain in context. You may leave while the restore
+    continues or click the progress card to open the main Services list.
 
 Only one backup or restore can run at a time. A second request is rejected
 instead of waiting invisibly, and scheduled backups wait until the active
