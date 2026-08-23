@@ -199,6 +199,11 @@ card links to the main Services list. While that card is out of view, the
 **Backups** item in the System sidebar shows the same animated purple progress
 circle.
 
+StartOS stops a service backup that has not completed within six hours, safely
+disconnects the backup location, and records the service as failed. Later
+backups can then proceed normally; a late response from the timed-out service
+cannot create a checkpoint.
+
 Only one backup or restore owns the backup system at a time. A scheduled run
 waits while another operation is active; another manual backup, explicit
 automatic run, or restore request is rejected instead of being silently queued.
@@ -239,6 +244,9 @@ explain the next action:
   current master password or move the schedule.
 - **Backup Target Identity Changed** — reconnect the original device or folder,
   or explicitly reassign the schedule before it writes to the replacement.
+- **Backup Target Metadata Invalid** — reconnect the expected location and
+  verify that its StartOS backup files are intact. StartOS rejects abnormally
+  large or excessive target metadata instead of loading it into memory.
 - **Add to backup schedule** — on the newly installed service, decide whether
   it belongs in each selective schedule or dismiss the recommendation.
 
@@ -248,5 +256,7 @@ and service-level entries, including **automatic backup service started**,
 service completed**, and failure details. These include useful identifiers,
 durations, sizes, the schedule and location names, trigger, run state, and service
 counts without logging the master password. See the [start-cli backup
-reference](./cli-reference.md#backups) for the command corresponding to every
-backup action in the UI.
+reference](./cli-reference.md#backups) for command-line administration.
+UI bulk controls are composed from per-schedule CLI commands, and deleting a
+schedule together with its archived checkpoints is a deliberate multi-command
+CLI workflow.

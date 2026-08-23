@@ -766,6 +766,7 @@ pub async fn delete_archived_snapshots_bulk(
     if snapshots.is_empty() {
         return Ok(Vec::new());
     }
+    let _coordinator = crate::backup::try_backup_coordinator(ctx.backup_coordinator.clone())?;
 
     let db = ctx.db.peek().await;
     let mut requested = BTreeMap::<PackageId, BTreeSet<ServiceSnapshotId>>::new();
@@ -860,6 +861,7 @@ pub async fn retry_target(
     }: RetryBackupTargetParams,
 ) -> Result<Vec<BackupJob>, Error> {
     let password = password.decrypt(&ctx)?;
+    let coordinator = crate::backup::try_backup_coordinator(ctx.backup_coordinator.clone())?;
     let db = ctx.db.peek().await;
     RpcContext::check_password(&db, &password)?;
     let credential: ScheduledBackupCredential = db
@@ -937,7 +939,9 @@ pub async fn retry_target(
         })
         .await
         .result?;
-    sync_archive_states(&ctx, &target_id).await.log_err();
+    sync_archive_states(&ctx, &target_id, &coordinator)
+        .await
+        .log_err();
     Ok(jobs)
 }
 
@@ -973,6 +977,7 @@ pub async fn reassign_target(
     }: ReassignBackupTargetParams,
 ) -> Result<BackupJob, Error> {
     let password = password.decrypt(&ctx)?;
+    let coordinator = crate::backup::try_backup_coordinator(ctx.backup_coordinator.clone())?;
     let db = ctx.db.peek().await;
     RpcContext::check_password(&db, &password)?;
     let mut job: BackupJob = db
@@ -1040,10 +1045,12 @@ pub async fn reassign_target(
         })
         .await
         .result?;
-    sync_archive_states(&ctx, &old_job.target_id)
+    sync_archive_states(&ctx, &old_job.target_id, &coordinator)
         .await
         .log_err();
-    sync_archive_states(&ctx, &job.target_id).await.log_err();
+    sync_archive_states(&ctx, &job.target_id, &coordinator)
+        .await
+        .log_err();
     Ok(job)
 }
 
@@ -1216,6 +1223,7 @@ pub async fn update_policy(
     }: UpdateRetentionPolicyParams,
 ) -> Result<ServiceTargetHistory, Error> {
     policy.validate()?;
+    let _coordinator = crate::backup::try_backup_coordinator(ctx.backup_coordinator.clone())?;
     let db = ctx.db.peek().await;
     let preview = policy_preview(
         &db,
@@ -1896,6 +1904,7 @@ pub async fn create(
 ) -> Result<BackupJob, Error> {
     validate_job_input(&name, &schedule, &default_retention, &retention_overrides)?;
     let password = password.decrypt(&ctx)?;
+    let coordinator = crate::backup::try_backup_coordinator(ctx.backup_coordinator.clone())?;
     let db = ctx.db.peek().await;
     RpcContext::check_password(&db, &password)?;
     validate_unique_job_name(&db, &name, None)?;
@@ -1965,7 +1974,10 @@ pub async fn create(
         })
         .await
         .result?;
-    sync_archive_states(&ctx, &job.target_id).await.log_err();
+    sync_archive_states(&ctx, &job.target_id, &coordinator)
+        .await
+        .log_err();
+    drop(coordinator);
     if job.status.run_requested {
         super::scheduler::dispatch_due_jobs(&ctx).await.log_err();
         let db = ctx.db.peek().await;
@@ -2006,6 +2018,7 @@ pub async fn update(
     }: UpdateBackupJobParams,
 ) -> Result<BackupJob, Error> {
     validate_job_input(&name, &schedule, &default_retention, &retention_overrides)?;
+    let coordinator = crate::backup::try_backup_coordinator(ctx.backup_coordinator.clone())?;
     let snapshot = ctx.db.peek().await;
     validate_unique_job_name(&snapshot, &name, Some(&id))?;
     let mut job: BackupJob = snapshot
@@ -2055,7 +2068,9 @@ pub async fn update(
         })
         .await
         .result?;
-    sync_archive_states(&ctx, &job.target_id).await.log_err();
+    sync_archive_states(&ctx, &job.target_id, &coordinator)
+        .await
+        .log_err();
     Ok(job)
 }
 
@@ -2118,6 +2133,7 @@ pub async fn set_enabled(
     ctx: RpcContext,
     SetBackupJobEnabledParams { id, enabled }: SetBackupJobEnabledParams,
 ) -> Result<BackupJob, Error> {
+    let coordinator = crate::backup::try_backup_coordinator(ctx.backup_coordinator.clone())?;
     let job = ctx
         .db
         .mutate(|db| {
@@ -2181,7 +2197,9 @@ pub async fn set_enabled(
         })
         .await
         .result?;
-    sync_archive_states(&ctx, &job.target_id).await.log_err();
+    sync_archive_states(&ctx, &job.target_id, &coordinator)
+        .await
+        .log_err();
     Ok(job)
 }
 
@@ -2190,6 +2208,7 @@ pub async fn set_enabled_bulk(
     SetBackupJobsEnabledParams { ids, enabled }: SetBackupJobsEnabledParams,
 ) -> Result<Vec<BackupJob>, Error> {
     let ids = ids.into_iter().collect::<BTreeSet<_>>();
+    let coordinator = crate::backup::try_backup_coordinator(ctx.backup_coordinator.clone())?;
     let (jobs, targets) = ctx
         .db
         .mutate(|db| {
@@ -2261,7 +2280,9 @@ pub async fn set_enabled_bulk(
         .await
         .result?;
     for target in targets {
-        sync_archive_states(&ctx, &target).await.log_err();
+        sync_archive_states(&ctx, &target, &coordinator)
+            .await
+            .log_err();
     }
     Ok(jobs)
 }
@@ -2326,6 +2347,7 @@ pub async fn delete(
     ctx: RpcContext,
     DeleteBackupJobParams { id }: DeleteBackupJobParams,
 ) -> Result<(), Error> {
+    let coordinator = crate::backup::try_backup_coordinator(ctx.backup_coordinator.clone())?;
     let target_id = ctx
         .db
         .mutate(|db| {
@@ -2348,7 +2370,9 @@ pub async fn delete(
         })
         .await
         .result?;
-    sync_archive_states(&ctx, &target_id).await.log_err();
+    sync_archive_states(&ctx, &target_id, &coordinator)
+        .await
+        .log_err();
     Ok(())
 }
 
@@ -2652,6 +2676,7 @@ pub fn history_key(target_id: &BackupTargetId, package_id: &PackageId) -> String
 pub(crate) async fn sync_archive_states(
     ctx: &RpcContext,
     target_id: &BackupTargetId,
+    _coordinator: &tokio::sync::OwnedMutexGuard<()>,
 ) -> Result<(), Error> {
     let db = ctx.db.peek().await;
     let archived: BTreeMap<PackageId, (bool, BTreeSet<ServiceSnapshotId>)> = db

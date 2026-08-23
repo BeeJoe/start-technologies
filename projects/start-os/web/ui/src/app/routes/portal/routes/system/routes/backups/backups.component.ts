@@ -32,7 +32,7 @@ import { BACKUP_RESTORE } from './restore.component'
       <ng-container *title>
         <div>
           <a
-            appearance="backup-back"
+            appearance="flat-grayscale"
             routerLink=".."
             tuiIconButton
             iconStart="@tui.arrow-left"

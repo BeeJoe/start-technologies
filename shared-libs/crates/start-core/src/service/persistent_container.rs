@@ -529,6 +529,85 @@ impl PersistentContainer {
             .and_then(from_value)
     }
 
+    /// Executes a package backup while the caller owns the host-controlled
+    /// deadline. The deadline is still forwarded for legacy procedure
+    /// containers, but this request deliberately has no second competing host
+    /// timer: the backup transition must win the deadline race so it can stop
+    /// the in-process JavaScript runtime before unmounting the backup bind.
+    #[instrument(skip_all)]
+    pub(in crate::service) async fn execute_backup<O>(
+        &self,
+        id: Guid,
+        input: Value,
+        timeout: Duration,
+    ) -> Result<O, Error>
+    where
+        O: DeserializeOwned,
+    {
+        self.rpc_client
+            .request(
+                rpc::Execute,
+                rpc::ExecuteParams::new(id, ProcedureName::CreateBackup, input, Some(timeout)),
+            )
+            .await
+            .map_err(Error::from)
+            .and_then(from_value)
+    }
+
+    #[instrument(skip_all)]
+    pub(in crate::service) async fn stop_runtime_after_backup_timeout(&self) -> Result<(), Error> {
+        let container = self.lxc_container.get().ok_or_else(|| {
+            Error::new(
+                eyre!("{}", t!("service.persistent-container.container-destroyed")),
+                ErrorKind::Incoherent,
+            )
+        })?;
+        container
+            .command(&["systemctl", "stop", "container-runtime"])
+            .await?;
+        Ok(())
+    }
+
+    #[instrument(skip_all)]
+    pub(in crate::service) async fn restart_runtime_after_backup_timeout(
+        &self,
+        procedure_id: Guid,
+    ) -> Result<(), Error> {
+        let container = self.lxc_container.get().ok_or_else(|| {
+            Error::new(
+                eyre!("{}", t!("service.persistent-container.container-destroyed")),
+                ErrorKind::Incoherent,
+            )
+        })?;
+        container
+            .command(&["systemctl", "start", "container-runtime"])
+            .await?;
+
+        tokio::time::timeout(RPC_CONNECT_TIMEOUT, async {
+            loop {
+                match self
+                    .rpc_client
+                    .request(
+                        rpc::Init,
+                        InitParams {
+                            id: procedure_id.clone(),
+                            kind: None,
+                        },
+                    )
+                    .await
+                {
+                    Ok(()) => return Ok(()),
+                    Err(error) if error.code == rpc_toolkit::yajrc::INTERNAL_ERROR.code => {
+                        tokio::time::sleep(Duration::from_millis(100)).await;
+                    }
+                    Err(error) => return Err(Error::from(error)),
+                }
+            }
+        })
+        .await
+        .with_kind(ErrorKind::Timeout)?
+    }
+
     #[instrument(skip_all)]
     pub async fn sanboxed<O>(
         &self,

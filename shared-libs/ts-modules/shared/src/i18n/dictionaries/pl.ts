@@ -1111,4 +1111,7 @@ export default {
   1206: 'Przywracanie nie zostało ukończone. Sprawdź hasło i lokalizację kopii zapasowej, a następnie spróbuj ponownie.',
   1207: 'Tworzenie kopii zapasowej nie zostało ukończone. Sprawdź hasło i lokalizację, a następnie spróbuj ponownie.',
   1208: 'Operacja',
+  1209: 'Wprowadź prawidłową nazwę hosta lub adres IP.',
+  1210: 'Folder sieciowy odrzucił nazwę użytkownika lub hasło. Sprawdź dane logowania i uprawnienia udostępniania, a następnie spróbuj ponownie.',
+  1211: 'StartOS nie mógł połączyć się z folderem sieciowym. Sprawdź nazwę hosta, ścieżkę i połączenie sieciowe, a następnie spróbuj ponownie.',
 } satisfies i18n

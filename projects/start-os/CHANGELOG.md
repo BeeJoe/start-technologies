@@ -45,43 +45,22 @@ file tracks notable changes since the move to the monorepo.
   `balance_power` when available. Without a saved preference, all other systems
   retain their current value.
 
-- **Automatic backups.** StartOS can protect optional System data plus selected
-  current and future services on one or more hourly, daily, weekly, or monthly
-  schedules; estimate required capacity; retain configurable version history;
-  preserve unreferenced checkpoints as archives; recover or reassign
-  unavailable locations; and restore a different manual or automatic
-  checkpoint for each service. Backup activity, actionable notifications, a
-  direct history link for failed schedules, and new-service selection reviews
-  keep the scheduled lifecycle visible and recoverable. Schedule setup,
-  editing, retention, service selection, target repair, checkpoint history,
-  and CLI administration form one consistent workflow across single- and
-  multi-schedule setups. System data can be included or excluded independently,
-  while displayed service counts cover installed services only and schedule
-  summaries identify jobs that exclude System data or future services.
-  **Toggle all services** changes service selections without changing System
-  data. New-service reviews dynamically include every current schedule,
-  including schedules created after installation. Backup operations are
-  serialized and recover interrupted state; schedule and checkpoint deletion
-  remain explicit and show progress while related checkpoints are removed in
-  one target cleanup pass; progress and capacity estimates stay accurate; and
-  narrow layouts keep backup-activity text visible. Manual backup service
-  selection aligns **Toggle all** with every service row. Multi-schedule views
-  show active and paused totals and can pause or resume every schedule as one
-  operation. Existing state that contains the reserved `x_system` identifier
-  loads safely, System backup staging references are released before checkpoint
-  promotion, deleting a
-  schedule without its backups does not require a connected target, schedule
-  names and retention rules remain unique, edited schedules collapse before an
-  optional immediate run, and reopening a multi-schedule card returns to its
-  schedule list. Password and network errors identify the failure instead of
-  reporting an unknown error, password-visibility buttons support keyboards and
-  assistive technology, and restore keeps backup progress and history in view.
-  History is searchable, filterable, and paginated, with friendly failure
-  summaries and expandable technical details. Network-location deletion names
-  the location and explains that stored files remain, physical-drive capacity
-  uses consistent units, failed-run links reveal their history, and retention
-  and deletion controls remain usable across practical display sizes and
-  translations.
+- **Automatic backups.** StartOS can protect optional System data and selected
+  current or future services on hourly, daily, weekly, or monthly schedules,
+  with capacity estimates and configurable version history. Multiple schedules
+  can be created, edited, paused, resumed, run immediately, repaired, reassigned,
+  or deleted while unreferenced checkpoints remain available as archives.
+  New-service reviews keep selective schedules current. Backup history is
+  searchable, filterable, and paginated, with clear failure summaries and
+  expandable technical details. Authentication, network, and validation errors
+  identify the action users can take; password controls are keyboard accessible;
+  and backup management remains usable on narrow displays. Restore can mix
+  manual and automatic checkpoints by service and keeps backup progress and
+  history in view. The same schedules, history, retention, repair, and restore
+  operations are available for command-line administration. Backup-target
+  metadata is now read with strict size and discovery limits, mutations on a
+  shared target are serialized, and a stalled service backup is timed out and
+  cleaned up so it cannot block later backups indefinitely.
 
 - **A service can permanently retire a network host or a port it no longer
   uses, and the port numbers it held become available again.** A service that

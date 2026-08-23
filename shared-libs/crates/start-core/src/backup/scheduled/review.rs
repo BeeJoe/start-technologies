@@ -75,6 +75,7 @@ pub async fn resolve(
         decisions,
     }: ResolveNewServiceBackupReviewParams,
 ) -> Result<(), Error> {
+    let coordinator = crate::backup::try_backup_coordinator(ctx.backup_coordinator.clone())?;
     let affected_targets = ctx
         .db
         .mutate(|db| {
@@ -157,7 +158,7 @@ pub async fn resolve(
         .await
         .result?;
     for target_id in affected_targets {
-        super::rpc::sync_archive_states(&ctx, &target_id)
+        super::rpc::sync_archive_states(&ctx, &target_id, &coordinator)
             .await
             .log_err();
     }

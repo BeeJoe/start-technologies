@@ -117,16 +117,6 @@ To create a local VM, install `virt-manager`, add the user to `libvirt`, build
 walkthrough in [`assets/create-vm/`](assets/create-vm/) to create a generic VM
 whose storage pool points at `results/`.
 
-## Cross-layer changes
-
-When exported Rust types change, verify in this order:
-
-1. `cargo check -p start-os`
-2. `make start-core-ts-bindings`
-3. `cd projects/start-sdk && make bundle`
-4. `npm run check:ui && npm run check:setup`
-5. `cd projects/start-os/container-runtime && npm run check`
-
 ## Gotchas
 
 - **UIs are embedded into `startbox` at compile time** (`include_dir!`), so the

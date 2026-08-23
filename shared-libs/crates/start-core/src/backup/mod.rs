@@ -160,8 +160,12 @@ mod tests {
     #[test]
     fn backup_coordinator_rejects_a_second_request() {
         let coordinator = std::sync::Arc::new(tokio::sync::Mutex::new(()));
-        let _first = try_backup_coordinator(coordinator.clone()).unwrap();
+        let first = try_backup_coordinator(coordinator.clone()).unwrap();
 
-        assert!(try_backup_coordinator(coordinator).is_err());
+        let error = try_backup_coordinator(coordinator.clone()).unwrap_err();
+        assert_eq!(error.kind, ErrorKind::InvalidRequest);
+
+        drop(first);
+        assert!(try_backup_coordinator(coordinator).is_ok());
     }
 }

@@ -28,16 +28,11 @@ or the CLI's externally observable behavior.
   edit, enable, disable, delete, and immediately run automatic jobs; reconnect
   or reassign their targets; inspect activity and checkpoint history; delete
   archived checkpoints; estimate capacity; resolve new-service reviews; and
-  restore selected automatic checkpoints. System data can be included or
-  excluded independently from current and future service filters. New-service
-  review listings and decisions use the current schedule set, including jobs
-  created after the service was installed, and reviews with no current jobs can
-  be dismissed without a `--decision` flag.
+  restore selected automatic checkpoints. Service selection can include or
+  exclude System data and future services independently.
 - **Safe version-history commands.** Operators can preview rule-based or
   latest-only retention changes and then apply the exact previewed checkpoint
-  removals. Version-history rules accept seconds, minutes, hours, days, and weeks,
-  with per-service overrides available when a service needs a different policy
-  from the job default.
+  removals, including per-service overrides.
 
 - **An `s9pk` command says when `start-cli` is behind the published release.** It compares
   itself against the `start-cli` version named by the workspace's `start-technologies`

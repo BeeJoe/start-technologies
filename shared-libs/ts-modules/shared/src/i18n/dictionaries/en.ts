@@ -1112,4 +1112,7 @@ export const ENGLISH: Record<string, number> = {
   'The restore did not complete. Check the password and backup location, then try again.': 1206,
   'The backup did not complete. Check the password and backup location, then try again.': 1207,
   'Operation': 1208,
+  'Enter a valid hostname or IP address.': 1209,
+  'The network folder rejected the username or password. Check the credentials and sharing permissions, then try again.': 1210,
+  'StartOS could not reach the network folder. Check the hostname, path, and network connection, then try again.': 1211,
 }

@@ -29,7 +29,10 @@ protected readonly form = inject(NonNullableFormBuilder).group({
 </form>
 ```
 
-Password reveal: `<tui-icon tuiPassword />` inside the textfield. Selects:
+Password reveal: use a real `button[tuiIconButton]` inside the textfield with `type="button"`,
+an eye icon, and a translated `aria-label` that switches between “Show password” and “Hide
+password”. The control must remain keyboard-focusable; a bare icon or `tuiPassword` directive is
+not an interactive control. Selects:
 `<tui-textfield tuiChevron [stringify]="fn"><input tuiSelect /><tui-data-list *tuiDropdown>…`
 (or `<tui-data-list-wrapper *tuiDropdown [items]="…" />`).
 

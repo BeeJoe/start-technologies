@@ -1111,4 +1111,7 @@ export default {
   1206: 'La restauración no se completó. Compruebe la contraseña y la ubicación de la copia e inténtelo de nuevo.',
   1207: 'La copia de seguridad no se completó. Compruebe la contraseña y la ubicación e inténtelo de nuevo.',
   1208: 'Operación',
+  1209: 'Introduce un nombre de host o una dirección IP válidos.',
+  1210: 'La carpeta de red rechazó el nombre de usuario o la contraseña. Comprueba las credenciales y los permisos de uso compartido e inténtalo de nuevo.',
+  1211: 'StartOS no pudo acceder a la carpeta de red. Comprueba el nombre de host, la ruta y la conexión de red e inténtalo de nuevo.',
 } satisfies i18n

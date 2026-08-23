@@ -490,15 +490,17 @@ Use `--latest-only` instead of `--keep-rule` to retain only the newest automatic
 checkpoint. Apply fails if the confirmation set differs from a fresh preview,
 which prevents stale or unintended deletion.
 
-### UI and CLI action parity
+### Using the CLI for UI workflows
 
-Every backup action exposed by the StartOS UI has a `start-cli` command:
+Most UI backup actions have a direct `start-cli` command:
 
 - backup locations use `backup target list`, `backup target cifs add|update|remove`,
   and `backup target delete-legacy`;
 - one-time backups use `backup create`;
 - automatic schedules use `backup job list|add|edit|enable|disable|run-now|delete`,
-  with `retry-target` and `reassign-target` for repair;
+  with `retry-target` and `reassign-target` for repair. The UI's **Pause all**
+  and **Resume all** controls correspond to running `disable` or `enable` for
+  each job ID;
 - estimates, activity, history, version-history changes, and new-service
   decisions use `backup estimate-capacity`, `backup activity`, `backup history`,
   `backup policy`, and `backup review`;
@@ -506,6 +508,13 @@ Every backup action exposed by the StartOS UI has a `start-cli` command:
 backup restore-checkpoint`, and a UI-style selection mixing manual and
   automatic checkpoints uses `package backup restore-mixed` with repeatable
   `--checkpoint PACKAGE_ID=SNAPSHOT_ID` values and `--manual-ids`.
+
+The UI can delete a schedule and its related backups in one confirmation. The
+CLI keeps those destructive operations separate: record the applicable target,
+package, and checkpoint IDs from `backup history list`, run `backup job delete
+<ID>`, then remove the archived checkpoints with `backup history
+delete-archived <TARGET_ID> <PACKAGE_ID> <SNAPSHOT_IDS>` for each affected
+package.
 
 ### New-service reviews
 
