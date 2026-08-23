@@ -13,7 +13,7 @@ import { BackupService } from '../system/routes/backups/backup.service'
     @if (!embedded()) {
       <ng-container *title>
         <a
-          appearance="backup-back"
+          appearance="flat-grayscale"
           routerLink="/system/backups"
           tuiIconButton
           iconStart="@tui.arrow-left"

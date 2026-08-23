@@ -14,12 +14,13 @@ use crate::disk::BACKUP_DIR_NAME;
 use crate::disk::mount::filesystem::ReadWrite;
 use crate::disk::mount::filesystem::backupfs::BackupFS;
 use crate::disk::mount::guard::{GenericMountGuard, SubPath, TmpMountGuard};
+use crate::disk::util::{MAX_BACKUP_RECOVERY_METADATA_BYTES, MAX_BACKUP_TARGET_METADATA_BYTES};
 use crate::hostname::ServerHostname;
 use crate::prelude::*;
 use crate::rpc_continuations::Guid;
 use crate::util::crypto::{decrypt_slice, encrypt_slice};
 use crate::util::io::{AtomicFile, delete_dir, delete_file, dir_copy, dir_size, rename};
-use crate::util::serde::IoFormat;
+use crate::util::serde::{IoFormat, read_json_file_bounded};
 use crate::version::VersionT;
 
 /// Unencrypted recovery metadata needed to unlock a scheduled backup target.
@@ -81,7 +82,8 @@ impl<G: GenericMountGuard> ScheduledBackupMountGuard<G> {
         let root = scheduled_root(target_guard.path(), server_id);
         let recovery_path = root.join("unencrypted-metadata.json");
         let (recovery, encryption_key) = if tokio::fs::metadata(&recovery_path).await.is_ok() {
-            let recovery: ScheduledBackupRecoveryInfo = read_json(&recovery_path).await?;
+            let recovery: ScheduledBackupRecoveryInfo =
+                read_json_file_bounded(&recovery_path, MAX_BACKUP_RECOVERY_METADATA_BYTES).await?;
             check_password(&recovery.password_hash, password)?;
             let wrapped_key = base32::decode(
                 base32::Alphabet::Rfc4648 { padding: true },
@@ -138,7 +140,8 @@ impl<G: GenericMountGuard> ScheduledBackupMountGuard<G> {
     ) -> Result<Self, Error> {
         let recovery_path =
             scheduled_root(target_guard.path(), server_id).join("unencrypted-metadata.json");
-        let recovery: ScheduledBackupRecoveryInfo = read_json(&recovery_path).await?;
+        let recovery: ScheduledBackupRecoveryInfo =
+            read_json_file_bounded(&recovery_path, MAX_BACKUP_RECOVERY_METADATA_BYTES).await?;
         if recovery.target_instance_id != expected_target_instance_id {
             return Err(Error::new(
                 eyre!("{}", t!("backup.scheduled.target-identity-mismatch")),
@@ -181,7 +184,8 @@ impl<G: GenericMountGuard> ScheduledBackupMountGuard<G> {
     ) -> Result<(Self, String), Error> {
         let recovery_path =
             scheduled_root(target_guard.path(), server_id).join("unencrypted-metadata.json");
-        let recovery: ScheduledBackupRecoveryInfo = read_json(&recovery_path).await?;
+        let recovery: ScheduledBackupRecoveryInfo =
+            read_json_file_bounded(&recovery_path, MAX_BACKUP_RECOVERY_METADATA_BYTES).await?;
         check_password(&recovery.password_hash, password)?;
         let wrapped_key = base32::decode(
             base32::Alphabet::Rfc4648 { padding: true },
@@ -220,7 +224,7 @@ impl<G: GenericMountGuard> ScheduledBackupMountGuard<G> {
             TmpMountGuard::mount(&BackupFS::new(&crypt_path, encryption_key), ReadWrite).await?;
         let metadata_path = encrypted_guard.path().join("metadata.json");
         let metadata = if tokio::fs::metadata(&metadata_path).await.is_ok() {
-            read_json(&metadata_path).await?
+            read_json_file_bounded(&metadata_path, MAX_BACKUP_TARGET_METADATA_BYTES).await?
         } else {
             ScheduledBackupOnTargetMetadata {
                 target_instance_id: recovery.target_instance_id.clone(),
@@ -571,14 +575,6 @@ fn set_archive_state(history: &mut OnTargetServiceHistory, archived: bool) {
             snapshot.archived = true;
         }
     }
-}
-
-async fn read_json<T: serde::de::DeserializeOwned>(path: &Path) -> Result<T, Error> {
-    IoFormat::Json.from_slice(
-        &tokio::fs::read(path)
-            .await
-            .with_ctx(|_| (ErrorKind::Filesystem, path.display()))?,
-    )
 }
 
 async fn write_json(path: &Path, value: &impl Serialize) -> Result<(), Error> {

@@ -165,7 +165,12 @@ export class DeleteScheduleService {
   private readonly tasks = inject(TaskService)
 
   async delete(job: T.BackupJob): Promise<boolean> {
-    const histories = await this.api.getScheduledBackupHistories({})
+    let histories: T.ServiceTargetHistory[] = []
+    const loaded = await this.tasks.run(async () => {
+      histories = await this.api.getScheduledBackupHistories({})
+    }, 'Loading')
+    if (!loaded) return false
+
     let unreferenced = this.unreferencedHistories(histories, job)
     const checkpointCount = unreferenced.reduce(
       (sum, history) => sum + history.snapshots.length,
