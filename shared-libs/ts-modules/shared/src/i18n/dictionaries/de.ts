@@ -1111,4 +1111,7 @@ export default {
   1206: 'Die Wiederherstellung wurde nicht abgeschlossen. Prüfen Sie das Passwort und den Sicherungsort und versuchen Sie es erneut.',
   1207: 'Die Sicherung wurde nicht abgeschlossen. Prüfen Sie das Passwort und den Sicherungsort und versuchen Sie es erneut.',
   1208: 'Vorgang',
+  1209: 'Geben Sie einen gültigen Hostnamen oder eine gültige IP-Adresse ein.',
+  1210: 'Der Netzwerkordner hat den Benutzernamen oder das Passwort abgelehnt. Überprüfen Sie die Zugangsdaten und Freigabeberechtigungen und versuchen Sie es erneut.',
+  1211: 'StartOS konnte den Netzwerkordner nicht erreichen. Überprüfen Sie Hostnamen, Pfad und Netzwerkverbindung und versuchen Sie es erneut.',
 } satisfies i18n

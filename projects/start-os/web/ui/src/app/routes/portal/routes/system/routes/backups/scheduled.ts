@@ -2004,23 +2004,23 @@ export class ScheduledBackups {
         ]),
       ),
     }
-    try {
-      await this.api.validateScheduledBackupJob({
-        id: form.id || null,
-        targetId: existingJob?.targetId || form.targetId,
-        services: common.services,
-        schedule: common.schedule,
-        defaultRetention: common.defaultRetention,
-        retentionOverrides: common.retentionOverrides,
-        enabled: existingJob
-          ? (existingJob.enabled && !existingJob.pause) ||
-            (form.firstBackupNow && !existingJob.enabled)
-          : true,
-      })
-    } catch (error) {
-      this.errors.handleError(getErrorMessage(error))
-      return
-    }
+    const valid = await this.tasks.run(
+      () =>
+        this.api.validateScheduledBackupJob({
+          id: form.id || null,
+          targetId: existingJob?.targetId || form.targetId,
+          services: common.services,
+          schedule: common.schedule,
+          defaultRetention: common.defaultRetention,
+          retentionOverrides: common.retentionOverrides,
+          enabled: existingJob
+            ? (existingJob.enabled && !existingJob.pause) ||
+              (form.firstBackupNow && !existingJob.enabled)
+            : true,
+        }),
+      'Validating',
+    )
+    if (!valid) return
     const retentionChanges = form.id
       ? await this.confirmJobRetentionChanges(form)
       : []
@@ -2113,8 +2113,9 @@ export class ScheduledBackups {
         ? []
         : [{ history, policy }]
     })
-    try {
-      const changes = await Promise.all(
+    let changes: ConfirmedRetentionChange[] = []
+    const loaded = await this.tasks.run(async () => {
+      changes = await Promise.all(
         candidates.map(async ({ history, policy }) => ({
           history,
           policy,
@@ -2125,29 +2126,27 @@ export class ScheduledBackups {
           }),
         })),
       )
-      const removals = changes.flatMap(change => change.preview.removed)
-      if (!removals.length) return changes
-      const reclaimed = changes.reduce(
-        (sum, change) => sum + change.preview.estimatedReclaimedBytes,
-        0,
-      )
-      const confirmed = await firstValueFrom(
-        this.dialogs.openConfirm({
-          label: 'Apply version-history change?',
-          size: 's',
-          data: {
-            content: `This permanently deletes ${removals.length} checkpoints (${removals.map(snapshot => snapshot.id).join(', ')}) and reclaims about ${convertBytes(reclaimed)}.`,
-            yes: 'Apply',
-            no: 'Cancel',
-          },
-        }),
-        { defaultValue: false },
-      )
-      return confirmed ? changes : null
-    } catch (error) {
-      this.errors.handleError(getErrorMessage(error))
-      return null
-    }
+    }, 'Loading')
+    if (!loaded) return null
+    const removals = changes.flatMap(change => change.preview.removed)
+    if (!removals.length) return changes
+    const reclaimed = changes.reduce(
+      (sum, change) => sum + change.preview.estimatedReclaimedBytes,
+      0,
+    )
+    const confirmed = await firstValueFrom(
+      this.dialogs.openConfirm({
+        label: 'Apply version-history change?',
+        size: 's',
+        data: {
+          content: `This permanently deletes ${removals.length} checkpoints (${removals.map(snapshot => snapshot.id).join(', ')}) and reclaims about ${convertBytes(reclaimed)}.`,
+          yes: 'Apply',
+          no: 'Cancel',
+        },
+      }),
+      { defaultValue: false },
+    )
+    return confirmed ? changes : null
   }
 
   private hasDuplicateJobName(form: JobEditor): boolean {
@@ -2206,18 +2205,14 @@ export class ScheduledBackups {
   }
 
   async deleteJob(job: T.BackupJob) {
-    try {
-      if (await this.deleteSchedule.delete(job)) {
-        this.showSingleJobList = true
-        this.selectedJobId.set('')
-        this.editor.set(null)
-        this.editorBaseline = null
-        this.pendingReview = null
-        await this.reload()
-        if (this.jobs().length <= 1) this.collapseRequested.emit(null)
-      }
-    } catch (error) {
-      this.errors.handleError(getErrorMessage(error))
+    if (await this.deleteSchedule.delete(job)) {
+      this.showSingleJobList = true
+      this.selectedJobId.set('')
+      this.editor.set(null)
+      this.editorBaseline = null
+      this.pendingReview = null
+      await this.reload()
+      if (this.jobs().length <= 1) this.collapseRequested.emit(null)
     }
   }
 
@@ -2330,7 +2325,7 @@ export class ScheduledBackups {
   }
 
   async previewPolicy(history: T.ServiceTargetHistory) {
-    try {
+    await this.tasks.run(async () => {
       this.policyPreview.set(
         await this.api.previewScheduledRetention({
           targetId: history.targetId,
@@ -2339,9 +2334,7 @@ export class ScheduledBackups {
         }),
       )
       this.confirmPrune = false
-    } catch (error) {
-      this.errors.handleError(getErrorMessage(error))
-    }
+    }, 'Loading')
   }
 
   async applyPolicy(history: T.ServiceTargetHistory) {
@@ -2624,7 +2617,7 @@ export class ScheduledBackups {
 
   async refreshEstimates(form: JobEditor) {
     if (!form.targetId) return
-    try {
+    await this.tasks.run(async () => {
       this.estimates.set(
         await this.api.estimateScheduledBackupCapacity({
           targetId: form.targetId,
@@ -2643,9 +2636,7 @@ export class ScheduledBackups {
           ),
         }),
       )
-    } catch (error) {
-      this.errors.handleError(getErrorMessage(error))
-    }
+    }, 'Loading')
   }
 
   maximumProjected(policy: T.RetentionPolicy): number {
@@ -2751,11 +2742,9 @@ export class ScheduledBackups {
   }
 
   private async perform<T>(action: () => Promise<T>) {
-    try {
+    await this.tasks.run(async () => {
       await action()
       await this.reload()
-    } catch (error) {
-      this.errors.handleError(getErrorMessage(error))
-    }
+    }, 'Saving')
   }
 }

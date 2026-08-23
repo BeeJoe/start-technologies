@@ -209,11 +209,8 @@
   side
 
 - **Backup reports now include rsync transfer size when it can be measured.**
-  Standard volume and sync backups return the number of bytes transferred so
-  StartOS can estimate the target space required by later automatic runs.
-  Packages with custom pre/post-backup behavior, or rsync output without the
-  structured statistic, report the value as unknown instead of inventing an
-  estimate.
+  StartOS uses it to estimate space for later automatic backups and treats an
+  unavailable measurement as unknown.
 
 ### Security
 

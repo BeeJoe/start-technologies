@@ -13,8 +13,6 @@ import { ActivatedRoute, Router, RouterLink } from '@angular/router'
 import {
   convertBytes,
   DialogService,
-  ErrorService,
-  getErrorMessage,
   i18nPipe,
   TaskService,
 } from '@start9labs/shared'
@@ -103,7 +101,7 @@ interface AutomaticRetentionRule {
     @if (!embedded()) {
       <ng-container *title>
         <a
-          appearance="backup-back"
+          appearance="flat-grayscale"
           routerLink="/system/backups"
           tuiIconButton
           iconStart="@tui.arrow-left"
@@ -572,7 +570,7 @@ interface AutomaticRetentionRule {
 
       <footer class="wizard-actions">
         @if (step() > 1) {
-          <button tuiButton appearance="backup-back" (click)="previous()">
+          <button tuiButton appearance="flat-grayscale" (click)="previous()">
             {{ 'Back' | i18n }}
           </button>
         }
@@ -1043,7 +1041,6 @@ export default class AutomaticBackups {
   private readonly api = inject(ApiService)
   private readonly backupService = inject(BackupService)
   private readonly tasks = inject(TaskService)
-  private readonly errors = inject(ErrorService)
   private readonly dialogs = inject(DialogService)
   private readonly i18n = inject(i18nPipe)
   private readonly router = inject(Router)
@@ -1475,7 +1472,8 @@ export default class AutomaticBackups {
   }
 
   async refreshCapacity() {
-    try {
+    this.estimates.set([])
+    await this.tasks.run(async () => {
       this.estimates.set(
         await this.api.estimateScheduledBackupCapacity({
           targetId: this.targetId(),
@@ -1484,10 +1482,7 @@ export default class AutomaticBackups {
           retentionOverrides: {},
         }),
       )
-    } catch (error) {
-      this.errors.handleError(getErrorMessage(error))
-      this.estimates.set([])
-    }
+    }, 'Loading')
   }
 
   capacityNeeded(): number | null {
@@ -1530,20 +1525,20 @@ export default class AutomaticBackups {
     const services = this.serviceScope()
     const schedule = serializeBackupSchedule(this.editor)
     const defaultRetention = this.policy()
-    try {
-      await this.api.validateScheduledBackupJob({
-        id: null,
-        targetId: this.targetId(),
-        services,
-        schedule,
-        defaultRetention,
-        retentionOverrides: {},
-        enabled: true,
-      })
-    } catch (error) {
-      this.errors.handleError(getErrorMessage(error))
-      return
-    }
+    const valid = await this.tasks.run(
+      () =>
+        this.api.validateScheduledBackupJob({
+          id: null,
+          targetId: this.targetId(),
+          services,
+          schedule,
+          defaultRetention,
+          retentionOverrides: {},
+          enabled: true,
+        }),
+      'Validating',
+    )
+    if (!valid) return
     await this.tasks.run(async () => {
       const created = await this.api.createScheduledBackupJob({
         name: 'Default',

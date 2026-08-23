@@ -507,4 +507,7 @@ A network folder backup sends your encrypted backup over the LAN to a shared fol
 {{#endtabs}}
 
 > [!WARNING]
-> If you receive `Filesystem I/O Error mount error(13): Permission denied`, ensure you have entered the correct values. The hostname can be particularly tricky.
+> If StartOS cannot connect, it identifies whether the network folder rejected
+> the credentials or could not be reached. Check the hostname, path, sharing
+> permissions, and credentials. Expand **Technical details** only when you need
+> the underlying connection error for troubleshooting.

@@ -22,7 +22,7 @@ use crate::disk::mount::guard::GenericMountGuard;
 use crate::hostname::ServerHostname;
 use crate::prelude::*;
 use crate::util::Invoke;
-use crate::util::serde::IoFormat;
+use crate::util::serde::read_json_file_bounded;
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -119,6 +119,13 @@ const SYS_BLOCK_PATH: &str = "/sys/block";
 /// EFI System Partition type ids as reported by `lsblk -no PARTTYPE`: the GPT
 /// partition type GUID and the MBR partition type.
 const ESP_PART_TYPES: [&str; 2] = ["c12a7328-f81f-11d2-ba4b-00a0c93ec93b", "0xef"];
+
+/// Recovery metadata contains only scalar identity and key-wrapping fields.
+pub(crate) const MAX_BACKUP_RECOVERY_METADATA_BYTES: u64 = 1024 * 1024;
+/// Encrypted target metadata may contain histories for many services and snapshots.
+pub(crate) const MAX_BACKUP_TARGET_METADATA_BYTES: u64 = 64 * 1024 * 1024;
+/// A target scan must not perform unbounded work over attacker-controlled entries.
+const MAX_BACKUP_RECOVERY_ENTRIES: usize = 1024;
 
 lazy_static::lazy_static! {
     static ref PARTITION_REGEX: Regex = Regex::new("-part[0-9]+$").unwrap();
@@ -298,25 +305,37 @@ pub async fn pvscan() -> Result<BTreeMap<PathBuf, Option<InternedString>>, Error
 pub async fn recovery_info(
     mountpoint: impl AsRef<Path>,
 ) -> Result<BTreeMap<String, StartOsRecoveryInfo>, Error> {
-    let backup_root = mountpoint.as_ref().join(super::BACKUP_DIR_NAME);
+    recovery_info_with_limit(mountpoint.as_ref(), MAX_BACKUP_RECOVERY_ENTRIES).await
+}
+
+async fn recovery_info_with_limit(
+    mountpoint: &Path,
+    max_entries: usize,
+) -> Result<BTreeMap<String, StartOsRecoveryInfo>, Error> {
+    let backup_root = mountpoint.join(super::BACKUP_DIR_NAME);
     let mut res = BTreeMap::new();
     if tokio::fs::metadata(&backup_root).await.is_ok() {
         let mut dir = tokio::fs::read_dir(&backup_root).await?;
+        let mut entry_count = 0usize;
         while let Some(entry) = dir.next_entry().await? {
+            entry_count = entry_count.saturating_add(1);
+            if entry_count > max_entries {
+                return Err(Error::new(
+                    eyre!(
+                        "backup target contains more than {max_entries} recovery entries: {}",
+                        backup_root.display()
+                    ),
+                    ErrorKind::Backup,
+                ));
+            }
             let server_id = entry.file_name().to_string_lossy().into_owned();
             if server_id.ends_with(".automatic") {
                 let base_server_id = server_id.trim_end_matches(".automatic").to_owned();
                 let metadata_path = entry.path().join("unencrypted-metadata.json");
                 if tokio::fs::metadata(&metadata_path).await.is_ok() {
                     let scheduled: crate::backup::scheduled::ScheduledBackupRecoveryInfo =
-                        IoFormat::Json.from_slice(
-                            &tokio::fs::read(&metadata_path).await.with_ctx(|_| {
-                                (
-                                    crate::ErrorKind::Filesystem,
-                                    metadata_path.display().to_string(),
-                                )
-                            })?,
-                        )?;
+                        read_json_file_bounded(&metadata_path, MAX_BACKUP_RECOVERY_METADATA_BYTES)
+                            .await?;
                     // Make a scheduled-only backup set discoverable, but let
                     // legacy/manual recovery metadata win when both exist.
                     res.entry(base_server_id).or_insert(StartOsRecoveryInfo {
@@ -334,21 +353,12 @@ pub async fn recovery_info(
                 .await
                 .is_ok()
             {
-                res.insert(
-                    server_id,
-                    IoFormat::Json
-                        .from_slice::<BackupUnencryptedMetadata>(
-                            &tokio::fs::read(&backup_unencrypted_metadata_path)
-                                .await
-                                .with_ctx(|_| {
-                                    (
-                                        crate::ErrorKind::Filesystem,
-                                        backup_unencrypted_metadata_path.display().to_string(),
-                                    )
-                                })?,
-                        )?
-                        .into(),
-                );
+                let metadata: BackupUnencryptedMetadata = read_json_file_bounded(
+                    &backup_unencrypted_metadata_path,
+                    MAX_BACKUP_RECOVERY_METADATA_BYTES,
+                )
+                .await?;
+                res.insert(server_id, metadata.into());
             }
         }
     }
@@ -794,4 +804,56 @@ fn test_pvscan_parser() {
     println!("{:?}", parse_pvscan_output(s2));
     println!("{:?}", parse_pvscan_output(s3));
     println!("{:?}", parse_pvscan_output(s4));
+}
+
+#[tokio::test]
+async fn recovery_info_rejects_oversized_scheduled_and_legacy_metadata() {
+    let root = PathBuf::from(format!(
+        "/tmp/start-core-recovery-metadata-{}",
+        std::process::id()
+    ));
+    let backup_root = root.join(super::BACKUP_DIR_NAME);
+    let oversized = vec![b' '; MAX_BACKUP_RECOVERY_METADATA_BYTES as usize + 1];
+
+    let scheduled = backup_root.join("server.automatic");
+    tokio::fs::create_dir_all(&scheduled).await.unwrap();
+    tokio::fs::write(scheduled.join("unencrypted-metadata.json"), &oversized)
+        .await
+        .unwrap();
+    let error = recovery_info(&root).await.unwrap_err();
+    assert_eq!(error.kind, ErrorKind::Filesystem);
+    assert!(error.to_string().contains("size limit"));
+
+    tokio::fs::remove_dir_all(&backup_root).await.unwrap();
+    let legacy = backup_root.join("server");
+    tokio::fs::create_dir_all(&legacy).await.unwrap();
+    tokio::fs::write(legacy.join("unencrypted-metadata.json"), &oversized)
+        .await
+        .unwrap();
+    let error = recovery_info(&root).await.unwrap_err();
+    assert_eq!(error.kind, ErrorKind::Filesystem);
+    assert!(error.to_string().contains("size limit"));
+
+    tokio::fs::remove_dir_all(root).await.unwrap();
+}
+
+#[tokio::test]
+async fn recovery_info_rejects_entry_limit_plus_one() {
+    let root = PathBuf::from(format!(
+        "/tmp/start-core-recovery-entries-{}",
+        std::process::id()
+    ));
+    let backup_root = root.join(super::BACKUP_DIR_NAME);
+    tokio::fs::create_dir_all(&backup_root).await.unwrap();
+    for entry in ["one", "two", "three"] {
+        tokio::fs::create_dir(backup_root.join(entry))
+            .await
+            .unwrap();
+    }
+
+    let error = recovery_info_with_limit(&root, 2).await.unwrap_err();
+    assert_eq!(error.kind, ErrorKind::Backup);
+    assert!(error.to_string().contains("more than 2 recovery entries"));
+
+    tokio::fs::remove_dir_all(root).await.unwrap();
 }

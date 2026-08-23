@@ -1111,4 +1111,7 @@ export default {
   1206: 'La restauration ne s’est pas terminée. Vérifiez le mot de passe et l’emplacement de sauvegarde, puis réessayez.',
   1207: 'La sauvegarde ne s’est pas terminée. Vérifiez le mot de passe et l’emplacement de sauvegarde, puis réessayez.',
   1208: 'Opération',
+  1209: 'Saisissez un nom d’hôte ou une adresse IP valide.',
+  1210: 'Le dossier réseau a refusé le nom d’utilisateur ou le mot de passe. Vérifiez les identifiants et les autorisations de partage, puis réessayez.',
+  1211: 'StartOS n’a pas pu joindre le dossier réseau. Vérifiez le nom d’hôte, le chemin et la connexion réseau, puis réessayez.',
 } satisfies i18n
