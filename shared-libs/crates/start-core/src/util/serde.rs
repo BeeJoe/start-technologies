@@ -1,6 +1,7 @@
 use std::collections::VecDeque;
 use std::marker::PhantomData;
 use std::ops::Deref;
+use std::path::Path;
 use std::str::FromStr;
 
 use base64::Engine;
@@ -19,6 +20,7 @@ use serde::de::DeserializeOwned;
 use serde::ser::{SerializeMap, SerializeSeq};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use sha2::Digest;
+use tokio::io::AsyncReadExt;
 use ts_rs::TS;
 
 use super::IntoDoubleEndedIterator;
@@ -402,6 +404,34 @@ impl IoFormat {
             }
         }
     }
+}
+
+/// Reads and deserializes a JSON file without allowing its byte length to
+/// control an unbounded allocation. The stream cap remains authoritative even
+/// if a remote or concurrently modified file grows after it is opened.
+pub async fn read_json_file_bounded<T: DeserializeOwned>(
+    path: &Path,
+    max_bytes: u64,
+) -> Result<T, Error> {
+    let file = tokio::fs::File::open(path)
+        .await
+        .with_ctx(|_| (ErrorKind::Filesystem, path.display()))?;
+    let mut reader = file.take(max_bytes.saturating_add(1));
+    let mut bytes = Vec::with_capacity(max_bytes.min(8 * 1024) as usize);
+    reader
+        .read_to_end(&mut bytes)
+        .await
+        .with_ctx(|_| (ErrorKind::Filesystem, path.display()))?;
+    if bytes.len() as u64 > max_bytes {
+        return Err(Error::new(
+            eyre!(
+                "JSON file exceeds its {max_bytes}-byte size limit: {}",
+                path.display()
+            ),
+            ErrorKind::Filesystem,
+        ));
+    }
+    IoFormat::Json.from_slice(&bytes)
 }
 
 pub fn display_serializable<T: Serialize>(format: IoFormat, result: T) -> Result<(), Error> {
@@ -1516,4 +1546,42 @@ pub fn hash_serializable<D: Digest + Update, T: Serialize>(
         })
         .with_kind(ErrorKind::Serialization)?;
     Ok(digest.finalize())
+}
+
+#[cfg(test)]
+mod bounded_json_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn bounded_json_accepts_boundary_and_rejects_streamed_extra_byte() {
+        let path = std::path::PathBuf::from(format!(
+            "/tmp/start-core-bounded-json-{}.json",
+            std::process::id()
+        ));
+        let json = br#"{"accepted":true}"#;
+        let max_bytes = json.len() + 32;
+
+        tokio::fs::write(&path, json).await.unwrap();
+        let below: serde_json::Value = read_json_file_bounded(&path, max_bytes as u64)
+            .await
+            .unwrap();
+        assert_eq!(below["accepted"], true);
+
+        let mut exact = json.to_vec();
+        exact.resize(max_bytes, b' ');
+        tokio::fs::write(&path, &exact).await.unwrap();
+        read_json_file_bounded::<serde_json::Value>(&path, max_bytes as u64)
+            .await
+            .unwrap();
+
+        exact.push(b' ');
+        tokio::fs::write(&path, &exact).await.unwrap();
+        let error = read_json_file_bounded::<serde_json::Value>(&path, max_bytes as u64)
+            .await
+            .unwrap_err();
+        assert_eq!(error.kind, ErrorKind::Filesystem);
+        assert!(error.to_string().contains("size limit"));
+
+        tokio::fs::remove_file(path).await.unwrap();
+    }
 }

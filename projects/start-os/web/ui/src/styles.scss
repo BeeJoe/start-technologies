@@ -380,15 +380,6 @@ tui-root._mobile tui-action-bar {
   }
 }
 
-[tuiAppearance][data-appearance='backup-back'] {
-  color: #000;
-  background: #fff;
-
-  &:hover {
-    background: #e8e8e8;
-  }
-}
-
 .services-accordion,
 .services-accordion > button {
   width: 100%;

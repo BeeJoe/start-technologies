@@ -1,4 +1,6 @@
+use std::future::Future;
 use std::path::PathBuf;
+use std::time::Duration;
 
 use futures::FutureExt;
 use futures::future::BoxFuture;
@@ -11,10 +13,62 @@ use crate::rpc_continuations::Guid;
 use crate::service::action::GetActionInput;
 use crate::service::start_stop::StartStop;
 use crate::service::transition::{Transition, TransitionKind};
-use crate::service::{ProcedureName, ServiceActor, ServiceActorSeed};
+use crate::service::{ServiceActor, ServiceActorSeed};
 use crate::status::DesiredStatus;
 use crate::util::actor::background::BackgroundJobQueue;
 use crate::util::actor::{ConflictBuilder, Handler};
+
+/// Maximum wall-clock time an installed package may hold backup resources.
+const PACKAGE_BACKUP_TIMEOUT: Duration = Duration::from_secs(6 * 60 * 60);
+
+async fn run_backup_procedure<T>(
+    execute: impl Future<Output = Result<T, Error>>,
+    stop_runtime: impl Future<Output = Result<(), Error>>,
+    unmount: impl Future<Output = Result<(), Error>>,
+    restart_runtime: impl Future<Output = Result<(), Error>>,
+    timeout: Duration,
+) -> Result<T, Error> {
+    let (execute_result, timed_out) = match tokio::time::timeout(timeout, execute).await {
+        Ok(result) => (result, false),
+        Err(error) => (Err(error).with_kind(ErrorKind::Timeout), true),
+    };
+    // A modern package hook runs inside the persistent JavaScript runtime and
+    // cannot be cancelled by dropping its Promise. Stop that runtime before
+    // removing the bind so timed-out package code cannot keep writing.
+    let stop_result = if timed_out {
+        Some(stop_runtime.await)
+    } else {
+        None
+    };
+    let unmount_result = unmount.await;
+    // Only restore the runtime after both cancellation and unmount completed.
+    // Otherwise leave it stopped rather than let package code regain a target
+    // whose cleanup failed.
+    let restart_result =
+        if timed_out && stop_result.as_ref().is_some_and(Result::is_ok) && unmount_result.is_ok() {
+            Some(restart_runtime.await)
+        } else {
+            None
+        };
+
+    if let Some(Err(error)) = &stop_result {
+        tracing::error!(%error, "failed to stop package runtime after backup timeout");
+    }
+    if let Err(error) = &unmount_result {
+        tracing::error!(%error, "failed to unmount package backup");
+    }
+    if let Some(Err(error)) = &restart_result {
+        tracing::error!(%error, "failed to restart package runtime after backup timeout");
+    }
+
+    match execute_result {
+        Ok(output) => {
+            unmount_result?;
+            Ok(output)
+        }
+        Err(error) => Err(error),
+    }
+}
 
 impl ServiceActorSeed {
     async fn leave_backing_up(&self) -> Result<(), Error> {
@@ -97,18 +151,23 @@ impl Handler<Backup> for ServiceActor {
                     .persistent_container
                     .mount_backup(path, ReadWrite)
                     .await?;
-                let output = seed
-                    .persistent_container
-                    .execute::<Option<PackageBackupOutput>>(
-                        id,
-                        ProcedureName::CreateBackup,
-                        Value::Null,
-                        None,
-                    )
-                    .await?
-                    .unwrap_or_default();
-                backup_guard.unmount(true).await?;
-                Ok::<_, Error>(output)
+                let restart_id = id.clone();
+                let output = run_backup_procedure(
+                    seed.persistent_container
+                        .execute_backup::<Option<PackageBackupOutput>>(
+                            id,
+                            Value::Null,
+                            PACKAGE_BACKUP_TIMEOUT,
+                        ),
+                    seed.persistent_container
+                        .stop_runtime_after_backup_timeout(),
+                    backup_guard.unmount(true),
+                    seed.persistent_container
+                        .restart_runtime_after_backup_timeout(restart_id),
+                    PACKAGE_BACKUP_TIMEOUT,
+                )
+                .await?;
+                Ok::<_, Error>(output.unwrap_or_default())
             }
             .await;
             seed.leave_backing_up().await?;
@@ -119,5 +178,89 @@ impl Handler<Backup> for ServiceActor {
         self.0.backup.replace(Some(remote.boxed()));
 
         Ok(handle.boxed())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+
+    use super::*;
+
+    #[tokio::test]
+    async fn package_backup_timeout_stops_unmounts_and_restarts_in_order() {
+        let step = Arc::new(AtomicUsize::new(0));
+        let stopped = step.clone();
+        let unmounted = step.clone();
+        let restarted = step.clone();
+        let execute = std::future::pending::<Result<PackageBackupOutput, Error>>();
+        let stop_runtime = async move {
+            assert_eq!(stopped.fetch_add(1, Ordering::SeqCst), 0);
+            Ok(())
+        };
+        let unmount = async move {
+            assert_eq!(unmounted.fetch_add(1, Ordering::SeqCst), 1);
+            Ok(())
+        };
+        let restart_runtime = async move {
+            assert_eq!(restarted.fetch_add(1, Ordering::SeqCst), 2);
+            Ok(())
+        };
+
+        let error = run_backup_procedure(
+            execute,
+            stop_runtime,
+            unmount,
+            restart_runtime,
+            Duration::ZERO,
+        )
+        .await
+        .unwrap_err();
+
+        assert_eq!(error.kind, ErrorKind::Timeout);
+        assert_eq!(step.load(Ordering::SeqCst), 3);
+    }
+
+    #[tokio::test]
+    async fn package_backup_success_preserves_output_and_unmounts() {
+        let unmounted = Arc::new(AtomicBool::new(false));
+        let unmounted_after = unmounted.clone();
+        let stopped = Arc::new(AtomicBool::new(false));
+        let stopped_after = stopped.clone();
+        let restarted = Arc::new(AtomicBool::new(false));
+        let restarted_after = restarted.clone();
+        let execute = async {
+            Ok(PackageBackupOutput {
+                changed_bytes: Some(42),
+            })
+        };
+        let unmount = async move {
+            unmounted_after.store(true, Ordering::SeqCst);
+            Ok(())
+        };
+        let stop_runtime = async move {
+            stopped_after.store(true, Ordering::SeqCst);
+            Ok(())
+        };
+        let restart_runtime = async move {
+            restarted_after.store(true, Ordering::SeqCst);
+            Ok(())
+        };
+
+        let output = run_backup_procedure(
+            execute,
+            stop_runtime,
+            unmount,
+            restart_runtime,
+            Duration::from_secs(1),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(output.changed_bytes, Some(42));
+        assert!(unmounted.load(Ordering::SeqCst));
+        assert!(!stopped.load(Ordering::SeqCst));
+        assert!(!restarted.load(Ordering::SeqCst));
     }
 }

@@ -12,12 +12,7 @@ import {
 import { toSignal } from '@angular/core/rxjs-interop'
 import { FormsModule } from '@angular/forms'
 import { ActivatedRoute, Router } from '@angular/router'
-import {
-  DocsLinkDirective,
-  ErrorService,
-  getErrorMessage,
-  i18nPipe,
-} from '@start9labs/shared'
+import { DocsLinkDirective, i18nPipe, TaskService } from '@start9labs/shared'
 import { T } from '@start9labs/start-core'
 import {
   TuiAppearance,
@@ -89,18 +84,13 @@ const WEEKDAYS = [
 
     @if (operationActivity(); as activity) {
       @if (manualRunning()) {
-        <section
+        <button
           #progressCard
+          backupProgress
+          type="button"
           class="progress-prominent"
-          role="button"
-          tabindex="0"
-          [attr.aria-label]="'Services' | i18n"
           (click)="goToServices()"
-          (keydown.enter)="goToServices()"
-          (keydown.space)="$event.preventDefault(); goToServices()"
-        >
-          <section backupProgress></section>
-        </section>
+        ></button>
       } @else {
         <button
           #progressCard
@@ -560,7 +550,7 @@ const WEEKDAYS = [
     .progress-prominent {
       position: static;
       z-index: 1;
-      display: block;
+      display: grid;
       width: 100%;
       padding: 0.75rem;
       color: inherit;
@@ -721,7 +711,7 @@ export default class BackupsComponent {
   private readonly progressCard =
     viewChild<ElementRef<HTMLElement>>('progressCard')
   private readonly api = inject(ApiService)
-  private readonly errors = inject(ErrorService)
+  private readonly tasks = inject(TaskService)
   private readonly backupService = inject(BackupService)
   private readonly deleteScheduleService = inject(DeleteScheduleService)
   private readonly os = inject(OSService)
@@ -908,36 +898,30 @@ export default class BackupsComponent {
   async runNow() {
     const job = this.primary()
     if (!job) return
-    try {
-      await this.api.runScheduledBackupJob({ id: job.id })
-    } catch (error) {
-      this.errors.handleError(getErrorMessage(error))
-    }
+    await this.tasks.run(
+      () => this.api.runScheduledBackupJob({ id: job.id }),
+      'Creating automatic backup',
+    )
   }
 
   async deleteSchedule() {
     const job = this.primary()
     if (!job) return
-    try {
-      await this.deleteScheduleService.delete(job)
-    } catch (error) {
-      this.errors.handleError(getErrorMessage(error))
-    }
+    await this.deleteScheduleService.delete(job)
   }
 
   async setAutomatic(enabled: boolean) {
     if (enabled === this.jobs().every(job => job.enabled)) return
     this.changingAutomatic = true
-    try {
-      await Promise.all(
-        this.jobs().map(job =>
-          this.api.setScheduledBackupJobEnabled({ id: job.id, enabled }),
+    await this.tasks.run(
+      () =>
+        Promise.all(
+          this.jobs().map(job =>
+            this.api.setScheduledBackupJobEnabled({ id: job.id, enabled }),
+          ),
         ),
-      )
-    } catch (error) {
-      this.errors.handleError(getErrorMessage(error))
-    } finally {
-      this.changingAutomatic = false
-    }
+      enabled ? 'Resume all' : 'Pause all',
+    )
+    this.changingAutomatic = false
   }
 }

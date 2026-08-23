@@ -6,7 +6,7 @@ import {
   i18nPipe,
   TaskService,
 } from '@start9labs/shared'
-import { ISB, T } from '@start9labs/start-core'
+import { ISB, T, utils } from '@start9labs/start-core'
 import {
   TuiButton,
   TuiDataList,
@@ -457,7 +457,7 @@ export class BackupNetworkComponent {
           {
             text: this.i18n.transform('Connect'),
             handler: async (value: T.CifsAddParams) =>
-              this.tasks.run(async () => {
+              this.connect(async () => {
                 const res = await this.api.updateBackupTarget({
                   id: target.id,
                   ...value,
@@ -465,7 +465,7 @@ export class BackupNetworkComponent {
 
                 target.entry = Object.values(res)[0]!
                 this.service.cifs.update(cifs => [...cifs])
-              }, 'Testing connectivity to shared folder'),
+              }),
           },
         ],
         value: { ...target.entry },
@@ -490,7 +490,7 @@ export class BackupNetworkComponent {
   }
 
   private async addTarget(v: T.CifsAddParams): Promise<boolean> {
-    return this.tasks.run(async () => {
+    return this.connect(async () => {
       const [item] = Object.entries(await this.api.addBackupTarget(v))
       const [id, entry] = item || []
 
@@ -502,6 +502,32 @@ export class BackupNetworkComponent {
       const hasCurrentBackup = this.service.hasCurrentBackup(entry)
       const added = { id, entry, hasAnyBackup, hasCurrentBackup }
       this.service.cifs.update(cifs => [added, ...cifs])
+    })
+  }
+
+  private connect(task: () => Promise<void>): Promise<boolean> {
+    return this.tasks.run(async () => {
+      try {
+        await task()
+      } catch (error) {
+        const technical =
+          error instanceof Error
+            ? error.message
+            : typeof error === 'string'
+              ? error
+              : JSON.stringify(error) || String(error)
+        const summary = this.i18n.transform(
+          /permission denied|mount error\(13\)|logon failure|authentication/i.test(
+            technical,
+          )
+            ? 'The network folder rejected the username or password. Check the credentials and sharing permissions, then try again.'
+            : 'StartOS could not reach the network folder. Check the hostname, path, and network connection, then try again.',
+        )
+        throw new Error(
+          `${summary}\n\n${this.i18n.transform('Technical details')}:\n${technical}`,
+          { cause: error },
+        )
+      }
     }, 'Testing connectivity to shared folder')
   }
 
@@ -516,7 +542,14 @@ export class BackupNetworkComponent {
         placeholder: `e.g. 'My Computer' OR 'my-computer.local'`,
         required: true,
         default: null,
-        patterns: [],
+        patterns: [
+          {
+            regex: `^(${utils.regexes.hostname.contains()}|${utils.regexes.ipv6.contains()})$`,
+            description: this.i18n.transform(
+              'Enter a valid hostname or IP address.',
+            ),
+          },
+        ],
       }),
       path: ISB.Value.text({
         name: this.i18n.transform('Path')!,
