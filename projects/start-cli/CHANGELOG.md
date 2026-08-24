@@ -27,8 +27,9 @@ or the CLI's externally observable behavior.
 - **Complete automatic-backup administration.** `start-cli` can now create,
   edit, enable, disable, delete, and immediately run automatic jobs; reconnect
   or reassign their targets; inspect activity and checkpoint history; delete
-  archived checkpoints; estimate capacity; resolve new-service reviews; and
-  restore selected automatic checkpoints. Service selection can include or
+  archived checkpoints, including after reconnecting a location; estimate
+  capacity; resolve new-service reviews; and restore selected automatic
+  checkpoints. Service selection can include or
   exclude System data and future services independently.
 - **Safe version-history commands.** Operators can preview rule-based or
   latest-only retention changes and then apply the exact previewed checkpoint
