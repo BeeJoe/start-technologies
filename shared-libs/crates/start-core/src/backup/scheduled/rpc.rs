@@ -312,6 +312,7 @@ pub struct BackupServiceCapacityEstimate {
     pub conservative_peak_excluding_manual_bytes: u64,
 }
 
+/// Estimates the storage required by each selected service and retention policy.
 pub async fn estimate_capacity(
     ctx: RpcContext,
     EstimateBackupCapacityParams {
@@ -459,6 +460,7 @@ pub async fn estimate_capacity_cli(
     .await
 }
 
+/// Lists all configured automatic backup jobs.
 pub async fn list(ctx: RpcContext) -> Result<Vec<BackupJob>, Error> {
     Ok(ctx
         .db
@@ -473,6 +475,7 @@ pub async fn list(ctx: RpcContext) -> Result<Vec<BackupJob>, Error> {
         .collect::<Result<_, _>>()?)
 }
 
+/// Lists the locally indexed automatic backup histories.
 pub async fn list_histories(ctx: RpcContext) -> Result<Vec<ServiceTargetHistory>, Error> {
     ctx.db
         .peek()
@@ -608,6 +611,7 @@ pub struct DiscoverScheduledBackupsParams {
     pub password: String,
 }
 
+/// Discovers automatic backup histories on a target using supplied recovery credentials.
 pub async fn discover_histories(
     ctx: RpcContext,
     DiscoverScheduledBackupsParams {
@@ -712,6 +716,7 @@ pub struct DeleteArchivedSnapshotsCliParams {
     pub snapshot_ids: Vec<ServiceSnapshotId>,
 }
 
+/// Deletes selected archived checkpoints from the command line.
 pub async fn delete_archived_snapshots_cli(
     ctx: RpcContext,
     DeleteArchivedSnapshotsCliParams {
@@ -731,6 +736,7 @@ pub async fn delete_archived_snapshots_cli(
     .await
 }
 
+/// Deletes selected archived checkpoints for one service.
 pub async fn delete_archived_snapshots(
     ctx: RpcContext,
     DeleteArchivedSnapshotsParams {
@@ -739,7 +745,7 @@ pub async fn delete_archived_snapshots(
         snapshot_ids,
     }: DeleteArchivedSnapshotsParams,
 ) -> Result<ServiceTargetHistory, Error> {
-    delete_archived_snapshots_bulk(
+    let mut histories = delete_archived_snapshots_bulk(
         ctx,
         DeleteArchivedSnapshotsBulkParams {
             target_id,
@@ -749,10 +755,10 @@ pub async fn delete_archived_snapshots(
             }],
         },
     )
-    .await?
-    .into_iter()
-    .next()
-    .ok_or_else(|| Error::new(eyre!("missing deleted history"), ErrorKind::Unknown))
+    .await?;
+    Ok(histories
+        .pop()
+        .expect("one service selection produces one history"))
 }
 
 /// Deletes archived checkpoints for multiple services with one target mount.
@@ -853,6 +859,7 @@ pub struct RetryBackupTargetParams {
     pub password: PasswordType,
 }
 
+/// Reconnects a failed automatic backup target and resumes affected jobs.
 pub async fn retry_target(
     ctx: RpcContext,
     RetryBackupTargetParams {
@@ -967,6 +974,7 @@ pub struct ReassignBackupTargetParams {
     pub wait_for_schedule: bool,
 }
 
+/// Moves an automatic backup job to another target.
 pub async fn reassign_target(
     ctx: RpcContext,
     ReassignBackupTargetParams {
@@ -1064,6 +1072,7 @@ pub struct PreviewRetentionPolicyParams {
     pub policy: RetentionPolicy,
 }
 
+/// Previews the checkpoints removed by a retention-policy change.
 pub async fn preview_policy_change(
     ctx: RpcContext,
     params: PreviewRetentionPolicyParams,
@@ -1104,6 +1113,7 @@ pub struct PreviewRetentionPolicyCliParams {
     pub latest_only: bool,
 }
 
+/// Previews a retention-policy change from command-line inputs.
 pub async fn preview_policy_change_cli(
     ctx: RpcContext,
     PreviewRetentionPolicyCliParams {
@@ -1174,6 +1184,7 @@ pub struct ApplyRetentionPolicyCliParams {
     pub confirmed_removals: Vec<ServiceSnapshotId>,
 }
 
+/// Applies a retention-policy change from command-line inputs.
 pub async fn apply_retention_policy_cli(
     ctx: RpcContext,
     ApplyRetentionPolicyCliParams {
@@ -1213,6 +1224,7 @@ fn retention_policy_from_cli(
     Ok(policy)
 }
 
+/// Applies a confirmed retention-policy change to one service history.
 pub async fn update_policy(
     ctx: RpcContext,
     UpdateRetentionPolicyParams {
@@ -1432,6 +1444,7 @@ pub struct AddBackupJobCliParams {
     pub disabled: bool,
 }
 
+/// Creates an automatic backup job from command-line inputs.
 pub async fn add_cli(
     ctx: RpcContext,
     AddBackupJobCliParams {
@@ -1556,6 +1569,7 @@ pub struct EditBackupJobCliParams {
     pub default_retention_packages: Vec<PackageId>,
 }
 
+/// Updates an automatic backup job from command-line inputs.
 pub async fn edit_cli(
     ctx: RpcContext,
     EditBackupJobCliParams {
@@ -1731,6 +1745,7 @@ fn parse_duration_seconds(value: &str) -> Result<u64, String> {
         .ok_or_else(|| t!("backup.scheduled.invalid-duration", value = value).to_string())
 }
 
+/// Parses a package and checkpoint selection from `PACKAGE_ID=SNAPSHOT_ID`.
 pub fn parse_checkpoint_selection(value: &str) -> Result<(PackageId, ServiceSnapshotId), String> {
     let (package_id, snapshot_id) = value
         .split_once('=')
@@ -1745,6 +1760,7 @@ pub fn parse_checkpoint_selection(value: &str) -> Result<(PackageId, ServiceSnap
     ))
 }
 
+/// Parses a new-service review decision from `JOB_ID=add|skip`.
 pub fn parse_review_decision(value: &str) -> Result<(BackupJobId, bool), String> {
     let (job_id, decision) = value
         .split_once('=')
@@ -1780,6 +1796,7 @@ pub struct ResolveBackupReviewCliParams {
     pub decisions: Vec<(BackupJobId, bool)>,
 }
 
+/// Resolves pending new-service backup reviews from command-line inputs.
 pub async fn resolve_review_cli(
     ctx: RpcContext,
     ResolveBackupReviewCliParams {
@@ -1843,6 +1860,7 @@ pub async fn restore_automatic_checkpoint_cli(
     .await
 }
 
+/// Validates a proposed automatic backup job without storing it.
 pub async fn validate(
     ctx: RpcContext,
     ValidateBackupJobParams {
@@ -1888,6 +1906,7 @@ pub async fn validate(
     )
 }
 
+/// Creates and optionally queues an automatic backup job.
 pub async fn create(
     ctx: RpcContext,
     CreateBackupJobParams {
@@ -2006,6 +2025,7 @@ pub struct UpdateBackupJobParams {
     pub retention_overrides: BTreeMap<PackageId, RetentionPolicy>,
 }
 
+/// Replaces the editable settings of an automatic backup job.
 pub async fn update(
     ctx: RpcContext,
     UpdateBackupJobParams {
@@ -2129,6 +2149,7 @@ fn validate_projected_enabled_jobs(
     Ok(())
 }
 
+/// Enables or disables one automatic backup job.
 pub async fn set_enabled(
     ctx: RpcContext,
     SetBackupJobEnabledParams { id, enabled }: SetBackupJobEnabledParams,
@@ -2203,6 +2224,7 @@ pub async fn set_enabled(
     Ok(job)
 }
 
+/// Atomically enables or disables multiple automatic backup jobs.
 pub async fn set_enabled_bulk(
     ctx: RpcContext,
     SetBackupJobsEnabledParams { ids, enabled }: SetBackupJobsEnabledParams,
@@ -2322,6 +2344,7 @@ pub struct BackupJobIdCliParams {
     pub id: BackupJobId,
 }
 
+/// Enables one automatic backup job from the command line.
 pub async fn enable_cli(
     ctx: RpcContext,
     BackupJobIdCliParams { id }: BackupJobIdCliParams,
@@ -2329,6 +2352,7 @@ pub async fn enable_cli(
     set_enabled(ctx, SetBackupJobEnabledParams { id, enabled: true }).await
 }
 
+/// Disables one automatic backup job from the command line.
 pub async fn disable_cli(
     ctx: RpcContext,
     BackupJobIdCliParams { id }: BackupJobIdCliParams,
@@ -2336,6 +2360,7 @@ pub async fn disable_cli(
     set_enabled(ctx, SetBackupJobEnabledParams { id, enabled: false }).await
 }
 
+/// Requests an immediate run of one automatic backup job.
 pub async fn run_now(
     ctx: RpcContext,
     RunBackupJobNowParams { id }: RunBackupJobNowParams,
@@ -2343,6 +2368,7 @@ pub async fn run_now(
     run_job(ctx, id, BackupRunTrigger::RunNow).await
 }
 
+/// Deletes one automatic backup job while preserving shared histories.
 pub async fn delete(
     ctx: RpcContext,
     DeleteBackupJobParams { id }: DeleteBackupJobParams,
@@ -2669,6 +2695,7 @@ pub(crate) fn refresh_archive_state(
     Ok(())
 }
 
+/// Builds the database key for one target and service history.
 pub fn history_key(target_id: &BackupTargetId, package_id: &PackageId) -> String {
     format!("{target_id}::{package_id}")
 }

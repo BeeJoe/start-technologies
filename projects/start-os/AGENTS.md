@@ -3,7 +3,7 @@
 Operating rules for AI developers working in `start-os/`. `CLAUDE.md` is a
 one-line `@AGENTS.md` import. See the root [AGENTS.md](../../AGENTS.md) for
 monorepo-wide rules and [ARCHITECTURE.md](ARCHITECTURE.md) for how this product
-is wired.
+is wired and built.
 
 ## Layout
 
