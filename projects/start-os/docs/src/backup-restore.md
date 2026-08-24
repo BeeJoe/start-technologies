@@ -5,10 +5,10 @@ a server backup during disaster recovery after a data-drive failure.
 
 ## Restoring Individual Services
 
-An individual restore can recover an uninstalled service, roll back unwanted
-data changes, or replace corrupted service data. It requires access to the
-physical drive or network folder containing the backup and the master password
-used to encrypt it.
+An individual restore can recover service data from a manual or automatic
+checkpoint. A service that is already installed must be uninstalled before its
+checkpoint can be restored. Restore requires access to the physical drive or
+network folder containing the backup and the master password used to encrypt it.
 
 StartOS combines the restorable manual and automatic history on the selected
 location. It chooses the newest checkpoint for each service by default, but a

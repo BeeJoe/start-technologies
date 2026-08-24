@@ -570,11 +570,12 @@ async fn refresh_histories(
         merged.entry(package_id).or_insert(history);
     }
     for history in merged.values_mut() {
-        history.feeding_jobs = jobs
-            .iter()
-            .filter(|job| job.target_id == target_id && job.services.includes(&history.package_id))
-            .map(|job| job.id.clone())
-            .collect();
+        history.feeding_jobs = current_feeding_jobs(
+            &jobs,
+            &target_id,
+            &history.target_instance_id,
+            &history.package_id,
+        );
     }
     drop(db);
     let histories: Vec<_> = merged.into_values().collect();
@@ -621,6 +622,14 @@ pub async fn discover_histories(
     }: DiscoverScheduledBackupsParams,
 ) -> Result<Vec<ServiceTargetHistory>, Error> {
     let db = ctx.db.peek().await;
+    let jobs = db
+        .as_public()
+        .as_scheduled_backups()
+        .as_jobs()
+        .as_entries()?
+        .into_iter()
+        .map(|(_, job)| job.de())
+        .collect::<Result<Vec<BackupJob>, Error>>()?;
     let guard = ScheduledBackupMountGuard::discover_with_password(
         TmpMountGuard::mount(&target_id.clone().load(&db)?, ReadWrite).await?,
         &server_id,
@@ -634,11 +643,8 @@ pub async fn discover_histories(
         .services
         .iter()
         .map(|(package_id, history)| {
-            let feeding_jobs = history
-                .snapshots
-                .iter()
-                .map(|snapshot| snapshot.job_id.clone())
-                .collect();
+            let feeding_jobs =
+                current_feeding_jobs(&jobs, &target_id, &target_instance_id, package_id);
             service_target_history(
                 &target_id,
                 &target_instance_id,
@@ -650,6 +656,22 @@ pub async fn discover_histories(
         .collect();
     guard.unmount().await?;
     Ok(histories)
+}
+
+fn current_feeding_jobs(
+    jobs: &[BackupJob],
+    target_id: &BackupTargetId,
+    target_instance_id: &str,
+    package_id: &PackageId,
+) -> BTreeSet<BackupJobId> {
+    jobs.iter()
+        .filter(|job| {
+            job.target_id == *target_id
+                && job.target_instance_id == target_instance_id
+                && job.services.includes(package_id)
+        })
+        .map(|job| job.id.clone())
+        .collect()
 }
 
 fn service_target_history(
@@ -679,6 +701,9 @@ pub struct DeleteArchivedSnapshotsParams {
     pub target_id: BackupTargetId,
     pub package_id: PackageId,
     pub snapshot_ids: BTreeSet<ServiceSnapshotId>,
+    #[serde(default)]
+    #[ts(optional)]
+    pub password: Option<String>,
 }
 
 /// Archived automatic backup snapshots selected for one service.
@@ -697,6 +722,9 @@ pub struct ArchivedSnapshotSelection {
 pub struct DeleteArchivedSnapshotsBulkParams {
     pub target_id: BackupTargetId,
     pub snapshots: Vec<ArchivedSnapshotSelection>,
+    #[serde(default)]
+    #[ts(optional)]
+    pub password: Option<String>,
 }
 
 /// CLI inputs for deleting archived automatic backup snapshots.
@@ -714,6 +742,9 @@ pub struct DeleteArchivedSnapshotsCliParams {
     /// Automatic checkpoint IDs to delete.
     #[arg(required = true, help = "help.arg.automatic-backup-snapshot-ids")]
     pub snapshot_ids: Vec<ServiceSnapshotId>,
+    /// Current master password, required when the saved target credential is unavailable.
+    #[arg(long, help = "help.arg.backup-password")]
+    pub password: Option<String>,
 }
 
 /// Deletes selected archived checkpoints from the command line.
@@ -723,6 +754,7 @@ pub async fn delete_archived_snapshots_cli(
         target_id,
         package_id,
         snapshot_ids,
+        password,
     }: DeleteArchivedSnapshotsCliParams,
 ) -> Result<ServiceTargetHistory, Error> {
     delete_archived_snapshots(
@@ -731,6 +763,7 @@ pub async fn delete_archived_snapshots_cli(
             target_id,
             package_id,
             snapshot_ids: snapshot_ids.into_iter().collect(),
+            password,
         },
     )
     .await
@@ -743,6 +776,7 @@ pub async fn delete_archived_snapshots(
         target_id,
         package_id,
         snapshot_ids,
+        password,
     }: DeleteArchivedSnapshotsParams,
 ) -> Result<ServiceTargetHistory, Error> {
     let mut histories = delete_archived_snapshots_bulk(
@@ -753,6 +787,7 @@ pub async fn delete_archived_snapshots(
                 package_id,
                 snapshot_ids,
             }],
+            password,
         },
     )
     .await?;
@@ -767,6 +802,7 @@ pub async fn delete_archived_snapshots_bulk(
     DeleteArchivedSnapshotsBulkParams {
         target_id,
         snapshots,
+        password,
     }: DeleteArchivedSnapshotsBulkParams,
 ) -> Result<Vec<ServiceTargetHistory>, Error> {
     if snapshots.is_empty() {
@@ -775,6 +811,9 @@ pub async fn delete_archived_snapshots_bulk(
     let _coordinator = crate::backup::try_backup_coordinator(ctx.backup_coordinator.clone())?;
 
     let db = ctx.db.peek().await;
+    if let Some(password) = &password {
+        RpcContext::check_password(&db, password)?;
+    }
     let mut requested = BTreeMap::<PackageId, BTreeSet<ServiceSnapshotId>>::new();
     for selection in snapshots {
         requested
@@ -806,20 +845,16 @@ pub async fn delete_archived_snapshots_bulk(
         }
         histories.push(history);
     }
-    let credential: ScheduledBackupCredential = db
-        .as_private()
-        .as_scheduled_backup_credentials()
-        .as_idx(&target_id.to_string())
-        .or_not_found(target_id.to_string())?
-        .de()?;
-    let encryption_key =
-        credential.open(&db.as_private().as_scheduled_backup_device_key().de()?)?;
-    let server_id = db.as_public().as_server_info().as_id().de()?;
-    let mut guard = ScheduledBackupMountGuard::mount_with_key(
-        TmpMountGuard::mount(&target_id.clone().load(&db)?, ReadWrite).await?,
-        &server_id,
-        &credential.target_instance_id,
-        &encryption_key,
+    let expected_target_instance_id = one_target_instance_id(
+        histories
+            .iter()
+            .map(|history| history.target_instance_id.clone()),
+    )?;
+    let (mut guard, credential) = mount_scheduled_target(
+        &db,
+        &target_id,
+        &expected_target_instance_id,
+        password.as_deref(),
     )
     .await?;
     let mut remaining = guard.delete_archived_snapshots_bulk(&requested).await?;
@@ -831,6 +866,9 @@ pub async fn delete_archived_snapshots_bulk(
     guard.save_and_unmount().await?;
     ctx.db
         .mutate(|db| {
+            db.as_private_mut()
+                .as_scheduled_backup_credentials_mut()
+                .insert(&target_id.to_string(), &credential)?;
             for history in &histories {
                 db.as_public_mut()
                     .as_scheduled_backups_mut()
@@ -842,6 +880,80 @@ pub async fn delete_archived_snapshots_bulk(
         .await
         .result?;
     Ok(histories)
+}
+
+async fn mount_scheduled_target(
+    db: &DatabaseModel,
+    target_id: &BackupTargetId,
+    expected_target_instance_id: &str,
+    password: Option<&str>,
+) -> Result<
+    (
+        ScheduledBackupMountGuard<TmpMountGuard>,
+        ScheduledBackupCredential,
+    ),
+    Error,
+> {
+    let target = target_id.clone().load(db)?;
+    let device_key = db.as_private().as_scheduled_backup_device_key().de()?;
+    let server_id = db.as_public().as_server_info().as_id().de()?;
+    let credential = db
+        .as_private()
+        .as_scheduled_backup_credentials()
+        .as_idx(&target_id.to_string())
+        .map(|credential| credential.de())
+        .transpose()?;
+
+    if let Some(credential) = credential {
+        if credential.target_instance_id == expected_target_instance_id {
+            if let Ok(encryption_key) = credential.open(&device_key) {
+                let guard = ScheduledBackupMountGuard::mount_with_key(
+                    TmpMountGuard::mount(&target, ReadWrite).await?,
+                    &server_id,
+                    expected_target_instance_id,
+                    &encryption_key,
+                )
+                .await?;
+                return Ok((guard, credential));
+            }
+        }
+    }
+
+    let password = password.ok_or_else(|| {
+        Error::new(
+            eyre!("{}", t!("backup.scheduled.reauth-required")),
+            ErrorKind::InvalidRequest,
+        )
+    })?;
+    let (guard, encryption_key) = ScheduledBackupMountGuard::mount_with_password(
+        TmpMountGuard::mount(&target, ReadWrite).await?,
+        &server_id,
+        expected_target_instance_id,
+        password,
+    )
+    .await?;
+    let credential = ScheduledBackupCredential::seal(
+        expected_target_instance_id.to_owned(),
+        &encryption_key,
+        &device_key,
+    )?;
+    Ok((guard, credential))
+}
+
+fn one_target_instance_id(
+    target_instance_ids: impl IntoIterator<Item = String>,
+) -> Result<String, Error> {
+    let target_instance_ids: BTreeSet<_> = target_instance_ids.into_iter().collect();
+    if target_instance_ids.len() != 1 {
+        return Err(Error::new(
+            eyre!("{}", t!("backup.scheduled.target-identity-mismatch")),
+            ErrorKind::InvalidRequest,
+        ));
+    }
+    Ok(target_instance_ids
+        .first()
+        .expect("one target instance ID exists")
+        .clone())
 }
 
 /// Inputs for reconnecting a failed automatic backup target.
@@ -871,31 +983,24 @@ pub async fn retry_target(
     let coordinator = crate::backup::try_backup_coordinator(ctx.backup_coordinator.clone())?;
     let db = ctx.db.peek().await;
     RpcContext::check_password(&db, &password)?;
-    let credential: ScheduledBackupCredential = db
-        .as_private()
-        .as_scheduled_backup_credentials()
-        .as_idx(&target_id.to_string())
-        .or_not_found(target_id.to_string())?
-        .de()?;
+    let target_instance_id = target_instance_id_for_target(&db, &target_id)?;
+    let target = target_id.clone().load(&db)?;
     let server_id = db.as_public().as_server_info().as_id().de()?;
+    let device_key = db.as_private().as_scheduled_backup_device_key().de()?;
     let (guard, encryption_key) = ScheduledBackupMountGuard::mount_with_password(
-        TmpMountGuard::mount(&target_id.clone().load(&db)?, ReadWrite).await?,
+        TmpMountGuard::mount(&target, ReadWrite).await?,
         &server_id,
-        &credential.target_instance_id,
+        &target_instance_id,
         &password,
     )
     .await?;
+    let credential =
+        ScheduledBackupCredential::seal(target_instance_id, &encryption_key, &device_key)?;
     guard.save_and_unmount().await?;
 
     let jobs = ctx
         .db
         .mutate(|db| {
-            let device_key = db.as_private().as_scheduled_backup_device_key().de()?;
-            let credential = ScheduledBackupCredential::seal(
-                credential.target_instance_id.clone(),
-                &encryption_key,
-                &device_key,
-            )?;
             db.as_private_mut()
                 .as_scheduled_backup_credentials_mut()
                 .insert(&target_id.to_string(), &credential)?;
@@ -952,6 +1057,51 @@ pub async fn retry_target(
     Ok(jobs)
 }
 
+fn target_instance_id_for_target(
+    db: &DatabaseModel,
+    target_id: &BackupTargetId,
+) -> Result<String, Error> {
+    let job_instance_ids = db
+        .as_public()
+        .as_scheduled_backups()
+        .as_jobs()
+        .as_entries()?
+        .into_iter()
+        .map(|(_, job)| job.de())
+        .collect::<Result<Vec<BackupJob>, Error>>()?
+        .into_iter()
+        .filter(|job| job.target_id == *target_id)
+        .map(|job| job.target_instance_id)
+        .collect::<BTreeSet<_>>();
+    if !job_instance_ids.is_empty() {
+        return one_target_instance_id(job_instance_ids);
+    }
+
+    let history_instance_ids = db
+        .as_public()
+        .as_scheduled_backups()
+        .as_histories()
+        .as_entries()?
+        .into_iter()
+        .map(|(_, history)| history.de())
+        .collect::<Result<Vec<ServiceTargetHistory>, Error>>()?
+        .into_iter()
+        .filter(|history| history.target_id == *target_id && !history.snapshots.is_empty())
+        .map(|history| history.target_instance_id)
+        .collect::<BTreeSet<_>>();
+    if !history_instance_ids.is_empty() {
+        return one_target_instance_id(history_instance_ids);
+    }
+
+    let credential: ScheduledBackupCredential = db
+        .as_private()
+        .as_scheduled_backup_credentials()
+        .as_idx(&target_id.to_string())
+        .or_not_found(target_id.to_string())?
+        .de()?;
+    Ok(credential.target_instance_id)
+}
+
 /// Inputs for moving an automatic backup job to another target.
 #[derive(Deserialize, Serialize, Parser, TS)]
 #[group(skip)]
@@ -995,6 +1145,7 @@ pub async fn reassign_target(
         .as_idx(&id)
         .or_not_found(&id)?
         .de()?;
+    validate_unique_job_name(&db, &job.name, Some(&id))?;
     let package_ids = selected_installed_services(&db, &job.services)?;
     validate_new_job_coverage(
         &db,
@@ -1034,7 +1185,7 @@ pub async fn reassign_target(
     };
     ctx.db
         .mutate(|db| {
-            validate_unique_job_name(db, &job.name, None)?;
+            validate_unique_job_name(db, &job.name, Some(&id))?;
             let device_key = db.as_private().as_scheduled_backup_device_key().de()?;
             let credential =
                 ScheduledBackupCredential::seal(target_instance_id, &encryption_key, &device_key)?;
@@ -2435,10 +2586,7 @@ fn validate_unique_job_name(
         .into_iter()
         .map(|(_, job)| job.de())
         .collect::<Result<Vec<BackupJob>, Error>>()?;
-    if jobs
-        .iter()
-        .any(|job| Some(&job.id) != replacing && job_names_match(&job.name, name))
-    {
+    if job_name_conflicts(&jobs, name, replacing) {
         return Err(Error::new(
             eyre!("{}", t!("backup.scheduled.duplicate-job-name")),
             ErrorKind::InvalidRequest,
@@ -2449,6 +2597,11 @@ fn validate_unique_job_name(
 
 fn job_names_match(left: &str, right: &str) -> bool {
     left.trim() == right.trim()
+}
+
+fn job_name_conflicts(jobs: &[BackupJob], name: &str, replacing: Option<&BackupJobId>) -> bool {
+    jobs.iter()
+        .any(|job| Some(&job.id) != replacing && job_names_match(&job.name, name))
 }
 
 pub(crate) fn validate_new_job_coverage(
@@ -2759,6 +2912,34 @@ const fn default_true() -> bool {
 mod cli_tests {
     use super::*;
 
+    fn backup_job(
+        id: BackupJobId,
+        name: &str,
+        target_id: &str,
+        target_instance_id: &str,
+        package_id: &str,
+    ) -> BackupJob {
+        let now = Utc::now();
+        BackupJob {
+            id,
+            name: name.to_owned(),
+            enabled: true,
+            pause: None,
+            target_id: target_id.parse().unwrap(),
+            target_instance_id: target_instance_id.to_owned(),
+            services: BackupServiceScope::Selected {
+                package_ids: BTreeSet::from([package_id.parse().unwrap()]),
+                include_system: Some(false),
+            },
+            schedule: Schedule::new("0 * * * *", "UTC").unwrap(),
+            default_retention: RetentionPolicy::latest_only(),
+            retention_overrides: BTreeMap::new(),
+            status: BackupJobStatus::default(),
+            created_at: now,
+            updated_at: now,
+        }
+    }
+
     #[test]
     fn retention_changes_control_existing_or_reactivated_histories() {
         let controlling_job = BackupJobId::new();
@@ -2789,6 +2970,69 @@ mod cli_tests {
     fn backup_job_names_are_unique_after_trimming() {
         assert!(job_names_match("Nightly", " Nightly "));
         assert!(!job_names_match("Nightly", "Weekly"));
+
+        let id = BackupJobId::new();
+        let job = backup_job(id.clone(), "Nightly", "cifs-0", "instance", "hello-world");
+        assert!(!job_name_conflicts(&[job.clone()], "Nightly", Some(&id)));
+        assert!(job_name_conflicts(&[job], "Nightly", None));
+    }
+
+    #[test]
+    fn discovered_histories_only_report_current_feeding_jobs() {
+        let package_id: PackageId = "hello-world".parse().unwrap();
+        let matching = backup_job(
+            BackupJobId::new(),
+            "Matching",
+            "cifs-0",
+            "instance",
+            "hello-world",
+        );
+        let wrong_target = backup_job(
+            BackupJobId::new(),
+            "Wrong target",
+            "disk-/dev/sda1",
+            "instance",
+            "hello-world",
+        );
+        let wrong_instance = backup_job(
+            BackupJobId::new(),
+            "Wrong instance",
+            "cifs-0",
+            "other-instance",
+            "hello-world",
+        );
+        let wrong_service = backup_job(
+            BackupJobId::new(),
+            "Wrong service",
+            "cifs-0",
+            "instance",
+            "other-service",
+        );
+        let jobs = vec![
+            matching.clone(),
+            wrong_target,
+            wrong_instance,
+            wrong_service,
+        ];
+
+        assert_eq!(
+            current_feeding_jobs(&jobs, &"cifs-0".parse().unwrap(), "instance", &package_id,),
+            BTreeSet::from([matching.id]),
+        );
+        assert!(
+            current_feeding_jobs(&[], &"cifs-0".parse().unwrap(), "instance", &package_id,)
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn archive_operations_require_one_target_instance() {
+        assert_eq!(
+            one_target_instance_id(["instance".to_owned()]).unwrap(),
+            "instance"
+        );
+        assert!(one_target_instance_id(Vec::new()).is_err());
+        assert!(one_target_instance_id(["one".to_owned(), "two".to_owned()]).is_err());
     }
 
     #[test]
