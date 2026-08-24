@@ -1115,4 +1115,7 @@ export const ENGLISH: Record<string, number> = {
   'Enter a valid hostname or IP address.': 1209,
   'The network folder rejected the username or password. Check the credentials and sharing permissions, then try again.': 1210,
   'StartOS could not reach the network folder. Check the hostname, path, and network connection, then try again.': 1211,
+  'Apply version-history change?': 1212,
+  'This permanently deletes the checkpoints listed in the preview.': 1213,
+  'Apply': 1214,
 }

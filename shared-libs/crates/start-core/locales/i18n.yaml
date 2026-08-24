@@ -3534,6 +3534,13 @@ util.serde.invalid-units-for-duration:
   fr_FR: "Unités invalides pour la durée"
   pl_PL: "Nieprawidłowe jednostki dla czasu trwania"
 
+util.serde.json-file-too-large:
+  en_US: "JSON file exceeds the %{max_bytes}-byte size limit"
+  de_DE: "JSON-Datei überschreitet die Größenbeschränkung von %{max_bytes} Byte"
+  es_ES: "El archivo JSON supera el límite de tamaño de %{max_bytes} bytes"
+  fr_FR: "Le fichier JSON dépasse la limite de %{max_bytes} octets"
+  pl_PL: "Plik JSON przekracza limit rozmiaru %{max_bytes} bajtów"
+
 util.serde.failed-to-create-from-buffer:
   en_US: "failed to create from buffer"
   de_DE: "Erstellung aus Puffer fehlgeschlagen"

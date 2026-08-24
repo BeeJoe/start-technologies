@@ -1114,4 +1114,7 @@ export default {
   1209: 'Geben Sie einen gültigen Hostnamen oder eine gültige IP-Adresse ein.',
   1210: 'Der Netzwerkordner hat den Benutzernamen oder das Passwort abgelehnt. Überprüfen Sie die Zugangsdaten und Freigabeberechtigungen und versuchen Sie es erneut.',
   1211: 'StartOS konnte den Netzwerkordner nicht erreichen. Überprüfen Sie Hostnamen, Pfad und Netzwerkverbindung und versuchen Sie es erneut.',
+  1212: 'Änderung am Versionsverlauf anwenden?',
+  1213: 'Dadurch werden die in der Vorschau aufgeführten Prüfpunkte dauerhaft gelöscht.',
+  1214: 'Anwenden',
 } satisfies i18n

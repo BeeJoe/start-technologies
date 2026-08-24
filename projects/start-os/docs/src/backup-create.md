@@ -32,7 +32,7 @@ Back up your server's data to a physical drive or a network folder.
 1. Backups taken from a specific system architecture (x86, ARM, RISC-V) are backed up for just that architecture. If restored to another architecture, they will likely need to be reinstalled to run efficiently.
 
 1. The backup format changed. New backups are written to a `StartOSBackupsV2` folder on the target, replacing the older `StartOSBackups` (V1) format. StartOS helps you clean up the obsolete V1 data:
-   - When you select a target that still holds a V1 backup for this server, StartOS warns you before backing up and shows how much free space remains on the target (see below). StartOS checks for the old folder without measuring all of its contents, so slow network folders do not prevent the backup page from loading.
+   - When you select a target that still holds a V1 backup for this server, StartOS warns you before backing up and shows how much free space remains on the target (see below).
    - After a backup completes, if the target still contains this server's V1 backup, StartOS raises a notification reminding you it is no longer needed.
    - On the `Create Backup` page, any target holding this server's V1 backup shows a **Delete old backup** button — whether or not a new (V2) backup exists yet. After you confirm, StartOS removes this server's old V1 backup from the target immediately and reclaims the space it occupied in the background, raising a notification once the space has been fully freed (on a large backup this can take a while); your current `StartOSBackupsV2` backup — and any backups belonging to other servers that share the target — are untouched. If this server has no current (V2) backup on that target, StartOS asks for an extra confirmation first, since deleting the old backup would leave this server with no backup there.
 
@@ -47,68 +47,6 @@ Even with proper backups the risk of data corruption is always non-zero. Therefo
 - Backup to multiple targets.
 - If backing up to multiple targets make sure all backups are up to date.
 
-## Using Backups in StartOS
-
-Go to `System > Backups`. Backup tools appear together as collapsed cards on
-one page. Select a card to expand it; opening another card closes the current
-one.
-
-- **Automatic backups** creates or manages scheduled backups. The collapsed
-  card summarizes the primary schedule. A single schedule keeps its On switch
-  and **Run now** action at card level. Multiple schedules expand first into a
-  schedule list; select one to reveal its controls and editor, or select **Add
-  schedule**. Service selection is collapsed under **Services** by default.
-- **Create a manual backup** creates a one-time backup for selected services.
-  In service selection, **Toggle all** uses the same checkbox and text columns
-  as each service and selects or clears every eligible service.
-- **Restore from a backup** chooses a manual or automatic checkpoint.
-- **Manage backup locations** adds or repairs physical drives and network
-  folders. Location details align with their table headings, and empty network
-  and physical-drive messages remain fully visible and centered across their
-  frames on desktop and phones. On narrow screens, a network location's full
-  address moves intact to the next line when needed instead of being clipped or
-  splitting its hostname. Manual, restore, and automatic location choices use
-  the same centered width as the location-management action, while long names
-  stay on one readable line. Removing a network location names the folder in
-  the confirmation and leaves its stored backup files untouched, so reconnecting
-  the folder later makes those backups available again. Physical-drive sizes use
-  the same units in location management and backup selection.
-- **Backup history** shows completed manual backups, automatic backups, and
-  restores, 20 at a time. Search by date, status, or service, or filter by
-  activity type and status. Failure summaries explain what action to take;
-  expand **Technical details** when raw backend details are needed. On phones,
-  activity headers expand to keep their date, state, and status text visible.
-
-When a backup or restore starts, its flat, single-panel progress display appears
-at the top of the page without blocking navigation. The page normally keeps
-your current view; saving an edited automatic schedule with **Run now** selected
-moves to the progress display as soon as the run starts.
-Scroll to the top to see the service status column, progress spinner, and
-percentage, click the progress card to return to the main Services list, or
-leave the page while the operation continues. Completed or failed operations,
-including backups that stop because the target does not have enough room, remain
-available in **Backup history** instead of leaving a stale progress card on the
-Backups page. The newest activity determines whether progress is active, so an
-older interrupted record cannot keep the card visible after a newer attempt has
-failed. StartOS reconciles interrupted activity during startup, while the backup
-system is idle, and before the next backup or restore. While a backup or restore
-is genuinely active, expanding **Create a manual backup** shows a busy message
-rather than an empty panel or another location picker. Automatic schedules wait
-for the active operation without advancing their schedule, while a second
-manual backup, automatic backup, or restore request is rejected instead of
-being queued to run afterward.
-
-Whenever a backup workflow asks for a master password, use the **Show password**
-or **Hide password** button in the password field to check what you typed. The
-button can be focused and activated with a keyboard. This applies to manual
-backups, restores, automatic-backup setup, and target repair or reassignment.
-
-Turning off automatic backups pauses every schedule while keeping its settings
-and checkpoints. To remove one permanently, open its editor and select **Delete
-schedule**. You can keep its automatic checkpoints as an archive or explicitly
-delete the related backups. Manual checkpoints are never deleted by either
-action.
-
 ## Automatic Backups
 
 Automatic backups protect selected services on hourly, daily, weekly, or
@@ -116,9 +54,8 @@ multiple schedules. They support future-service selection, version history,
 capacity estimates, archived checkpoints, target recovery, and per-service
 restore choices while keeping the latest manual checkpoint separate.
 
-See [Automatic Backups](./backup-automatic.md) for setup, schedules, storage and
-retention, activity history, failure recovery, notifications, OS logs, and
-command-line administration.
+See [Automatic Backups](./backup-automatic.md) for schedules, retention,
+storage, failure recovery, and command-line administration.
 
 ## Physical Drive
 
@@ -421,9 +358,7 @@ A network folder backup sends your encrypted backup over the LAN to a shared fol
 
 ### Step 2. Connect from StartOS
 
-1. In StartOS, go to `System > Backups > Locations`.
-
-1. Under Network Folders, click "New".
+1. Add the network folder as a backup location in StartOS.
 
 1. Complete the form:
 
@@ -509,5 +444,4 @@ A network folder backup sends your encrypted backup over the LAN to a shared fol
 > [!WARNING]
 > If StartOS cannot connect, it identifies whether the network folder rejected
 > the credentials or could not be reached. Check the hostname, path, sharing
-> permissions, and credentials. Expand **Technical details** only when you need
-> the underlying connection error for troubleshooting.
+> permissions, and credentials.

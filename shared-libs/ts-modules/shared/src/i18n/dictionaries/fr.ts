@@ -1114,4 +1114,7 @@ export default {
   1209: 'Saisissez un nom d’hôte ou une adresse IP valide.',
   1210: 'Le dossier réseau a refusé le nom d’utilisateur ou le mot de passe. Vérifiez les identifiants et les autorisations de partage, puis réessayez.',
   1211: 'StartOS n’a pas pu joindre le dossier réseau. Vérifiez le nom d’hôte, le chemin et la connexion réseau, puis réessayez.',
+  1212: 'Appliquer la modification de l’historique des versions ?',
+  1213: 'Cette action supprime définitivement les points de contrôle indiqués dans l’aperçu.',
+  1214: 'Appliquer',
 } satisfies i18n

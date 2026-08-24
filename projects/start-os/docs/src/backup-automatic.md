@@ -1,262 +1,86 @@
 # Automatic Backups
 
-Automatic backups protect System data and services on a schedule and keep their
-checkpoints separate from the latest manual backup. StartOS brings automatic
-and manual backups, restores, locations, and activity history together under
-`System > Backups`.
+Automatic backups protect System data and selected services on a schedule. They
+keep their checkpoints separate from the latest manual backup.
 
 > [!IMPORTANT]
-> Automatic backups reduce the chance that a missed manual backup becomes data
-> loss, but the backup location is still a single point of failure. Protect
-> important data on more than one high-quality drive or network folder.
+> A backup location is still a single point of failure. Protect important data
+> on more than one high-quality drive or network folder.
 
-## Set Up Automatic Backups
+## Protection and Encryption
 
-1. Go to `System > Backups` and expand **Automatic backups**.
-1. Choose a physical drive or network folder. Locations needing repair remain
-   visible so you can fix them or select **Add or repair a location**.
-1. Choose an hourly, daily, weekly, or monthly schedule and its exact time.
-   Weekly schedules include a day of the week; monthly schedules include a day
-   of the month. A monthly schedule set for the 30th or 31st runs on the
-   month's last available day when that date does not exist. StartOS captures
-   the timezone of the device used for setup, so the displayed local time
-   remains meaningful through daylight-saving changes.
-1. Choose the services and System data to protect. StartOS selects **System**
-   and all current services by default, but each can be excluded from an
-   individual schedule. System remains separate from installed services and is
-   not included in the selected-service count.
-   Expand the **Services** heading to place **Automatically include
-   future services** and **Toggle all services** above the separated service
-   list. **Toggle all services** changes installed services only and leaves the
-   System data checkbox unchanged. During initial setup System data starts
-   selected and can only be excluded by manually clearing its own checkbox. The
-   collapsed heading reports how many installed services are selected and
-   whether future services are included. It also says **No System data** when
-   System is excluded, without adding System to the service count.
-1. Choose version-history settings. The safe storage default keeps only the
-   latest automatic checkpoint. **Keep additional versions** can retain one
-   version per hour, day, week, or month for the duration you select; day is the
-   default interval. Each row requires a frequency. Select the plus button at
-   the right edge to add another version-history rule with the same frequency
-   and duration controls. Each rule must use a unique frequency and duration;
-   StartOS keeps the editor open and identifies duplicate rules. Every row,
-   including the first, can be removed;
-   removing the last row turns **Keep additional versions** off and returns to
-   the latest-checkpoint-only default.
+Each schedule has its own backup location, timing, service selection, and
+version-history policy. System data and installed services are selected by
+default when the first schedule is created. A schedule can also include future
+services automatically.
 
-   A backup schedule must run at least as often as the most frequent
-   version-history rule it feeds. For example, hourly version history requires
-   an hourly backup schedule. StartOS flags an obvious mismatch while you edit
-   and verifies the complete set of enabled schedules before it saves anything.
-   If the schedules do not provide enough backups, run them more often or keep
-   versions less often.
+StartOS stops each selected service while copying its data, then starts it again
+if it was running before the backup. Other services remain available. A service
+backup that runs for more than six hours fails so it cannot block later backup
+or restore operations indefinitely.
 
-   Existing nonstandard version-history intervals created with `start-cli` are
-   preserved unless you change or remove that specific row in the UI.
+Automatic backups use the same master-password encryption as manual backups.
+StartOS uses the password to initialize or unlock the backup location but does
+not store it. Changing the server password does not re-encrypt existing backups.
 
-1. Review the estimated storage, decide whether to **Create the first backup
-   now**, and enter the master password. The password field follows that choice;
-   use its keyboard-accessible **Show password** or **Hide password** button to
-   check what you typed. Select **Turn on automatic
-   backups**, or press Enter while the password field is focused. After StartOS
-   saves the first schedule, the **Automatic backups** card collapses.
+## Schedules
 
-StartOS uses the password to initialize or unlock the encrypted backup and does
-not store the password. Changing the server password does not change the
-password on existing backups.
+Schedules can run hourly, daily, weekly, or monthly at a chosen local time.
+StartOS stores the timezone with the schedule so daylight-saving changes are
+handled correctly. A monthly schedule set for a date that does not occur in a
+given month runs on that month's final day.
 
-## Schedules and Service Selection
+Multiple schedules can protect different services, use different locations, or
+run at different times. Pausing a schedule keeps its settings and checkpoints.
+When no schedule includes future services, StartOS recommends adding each newly
+installed service to one or more schedules; the recommendation can be dismissed.
 
-With one schedule, the main **Automatic backups** card right-aligns its switch
-and replaces the expand arrow with a three-dot menu containing **Run now**,
-**View/Edit**, **Add schedule**, and **Delete schedule**. The card shows a
-**Paused** badge when that only schedule is switched off. With multiple
-schedules, expanding the card first shows the unboxed schedules list. Each row
-keeps its unlabeled switch and three-dot menu level with the schedule name,
-places the location, service count, and next run across the full row below
-those controls, and offers the purple **Run now**, **View/Edit**, and red
-**Delete schedule** actions. Select **View/Edit** to collapse the list and open
-that schedule. Saving or canceling an edit fully collapses the Automatic
-backups card. Expanding a card with several schedules returns to the
-schedules list; expanding a card with one schedule returns directly to that
-schedule. Creating a schedule is acknowledged once, so reopening the card with
-several schedules returns to the list instead of opening another blank editor.
-**View all schedules** asks before discarding an unsaved editor and
-returning to the list. Above the list, a compact status row shows how many
-schedules are active or paused. Use **Pause all** to pause every schedule after
-confirmation, or **Resume all** to turn them all back on. **Add schedule**
-appears below the list and moves focus directly to the schedule name field.
-
-The unchanged **Default** name stays hidden while it is the only schedule. If
-you rename that schedule, its name remains editable; once there is more than
-one schedule, every schedule name is editable. Each schedule must have a
-unique name; StartOS opens a dialog and keeps the editor open when another
-schedule already uses the name. Each schedule summary says **No
-System data** when System is excluded and **Future services not included** when
-new services will not be added automatically, while its service count continues
-to cover installed services only. Each schedule can use a different exact time,
-backup location, service selection, or version-history rules. StartOS validates
-enabled schedules together so their frequency can support the version history
-they feed.
-
-When an enabled schedule needs attention, the collapsed main **Automatic
-backups** card says so and explains the problem. The warning clears after the
-schedule runs successfully or is turned off. With several schedules, the
-collapsed summary reports the number of schedules without presenting one
-schedule's time as though it applied to every schedule.
-
-When no automatic schedule is configured to include future services, a newly
-installed service gets a dismissible **Add to backup schedule** recommended
-task on its service page. The task does not block starting the service. With one
-schedule, run the compact task dialog and choose either **Add to current
-schedule** to update it without leaving Services or **Create a new schedule**
-to open a new schedule editor. With several schedules, the service name appears
-in the heading. The selection screen always uses the current schedule list, so
-a schedule created after the service was installed appears without being tied
-to the install-time snapshot. Existing inclusion is preselected, schedule names
-stay on the left, and compact checkboxes align on the right with their top and
-bottom edges matching the lettering. **Toggle all** sits immediately beside its
-right-aligned checkbox on desktop and mobile. Use **Add new schedule** at the
-bottom of the selection screen when needed. If automatic backups are not
-configured yet, the task opens initial setup instead.
-
-Pausing all automatic backups keeps every schedule's settings and checkpoints.
-Delete a schedule from its editor when you want to remove it.
-
-The bottom of every schedule editor places **Delete schedule** opposite **Save**,
-including the first or only schedule. The **Delete backup schedule?** dialog
-uses **Delete Schedule** by default and immediately changes the button to
-**Delete Schedule and Backups** when you select **Delete related backups**. The
-destructive action expands and wraps as needed so its complete label stays
-visible across practical screen sizes and supported languages.
-The dialog opens with the most recently recorded checkpoint count and
-reclaimable space, so you can delete the schedule even when its backup location
-has been removed or is unavailable. Selecting **Delete related backups** makes
-StartOS verify that it can reach the location before removing the schedule, then
-mark and delete its unreferenced checkpoints. A progress message remains visible
-while this runs, and StartOS removes all selected checkpoints from that location
-in one cleanup pass. If the preliminary check fails, the schedule remains. A
-later cleanup failure can leave the schedule removed and its checkpoints
-archived for a subsequent cleanup attempt. Leaving the option off does not
-contact the location and keeps unreferenced checkpoints as an archive.
-Deleting from a multi-schedule editor returns to the schedule list; when one
-schedule remains, the Automatic backups card collapses. Deleting the last
-schedule returns **Automatic backups** to its initial setup state.
-
-Every detailed schedule editor also offers **Run now**. Select it before
-**Save** to save the changed schedule before StartOS requests the run. After the
-schedule is saved, the Automatic backups card collapses immediately and a
-**Saving** indicator remains until the progress card appears; StartOS then
-moves that card into view. A schedule paused by its switch is resumed first. If
-an edited schedule is left through **Back**, the schedule list, another Backups
-panel, navigation, or closing the page, StartOS warns that the changes were not
-saved.
+Only one backup or restore operation runs at a time. Scheduled backups wait for
+an active operation to finish. A second manual backup, restore, or explicit
+automatic run is rejected rather than queued silently. A requested first run
+for a newly created schedule waits and starts when the backup system becomes
+free. If StartOS restarts during an operation, the interrupted activity is
+recorded as failed and stale progress is cleared.
 
 ## Version History and Storage
 
-Every retained automatic version is a full target-side copy, not a small
-incremental delta. A run also needs temporary staging space. More frequent
-version history therefore increases required space, run time, and I/O,
-especially on network storage and slower external drives. The setup review
-and every schedule editor require acknowledging this full-copy impact before a
-multi-version policy can be saved. The setup review mentions available space
-only when the selected location reports it.
+By default, StartOS keeps only the latest automatic checkpoint for each item.
+Version-history rules can additionally retain one checkpoint per hour, day,
+week, or month for a chosen duration. A schedule must run at least as often as
+the most frequent rule it supplies; for example, hourly history requires an
+hourly schedule.
 
-Changing version history on an existing schedule applies to the shared history
-it already feeds. Reusing an archived history also applies the new schedule's
-version-history policy instead of silently keeping the archive's old policy.
+Each retained checkpoint is a full copy on the backup location, not an
+incremental delta. A run also needs temporary staging space. Keeping more
+versions therefore increases storage use, run time, and I/O, especially on
+network folders and slower drives. Capacity estimates account for current data,
+retained checkpoints, and staging space.
 
-When version history contains several retention tiers, the collapsed summary
-lists every tier so the editor never hides part of the active policy.
+Retention applies to a service's shared automatic history on a backup location.
+If several schedules use that history, StartOS previews the checkpoints a policy
+change would remove and the schedules it would affect before applying it.
 
-Capacity estimates initially show only each backup item's maximum required
-space. Select **More Info** on System or a service to expand clearly labeled
-details for:
+Changing a schedule's location does not copy its existing checkpoints. They
+remain archived on the old location, and the next run begins a history on the
+new one. Deleting a schedule can either leave its automatic checkpoints archived
+or remove checkpoints no longer referenced by another schedule. Manual
+checkpoints are never removed by schedule deletion.
 
-- current System or service data;
-- retained automatic checkpoints;
-- the number of checkpoints retained by the policy; and
-- staging for the next run.
+## History, Restore, and Failures
 
-**Backup history** shows active and archived automatic checkpoints by service
-and location. Version-history settings shared by several schedules cannot be
-changed silently: StartOS previews the checkpoints that would be removed,
-estimates the space reclaimed, names affected schedules, and requires confirmation
-of that exact set before applying the change.
-
-Changing a schedule to another location does not copy its existing checkpoints. They
-remain archived on the original location, and the next run begins history on
-the new location.
-
-## Runs, Activity, and Restore
-
-Each run captures System data, then stops each selected service, backs it up,
-and starts it again only if it was running before the backup. Other services
-and the rest of StartOS remain available. System checkpoints use the same
-schedule, version history, deletion, and activity reporting as service
-checkpoints. Progress continues if you leave the Backups page, and the progress
-card links to the main Services list. While that card is out of view, the
-**Backups** item in the System sidebar shows the same animated purple progress
-circle.
-
-StartOS stops a service backup that has not completed within six hours, safely
-disconnects the backup location, and records the service as failed. Later
-backups can then proceed normally; a late response from the timed-out service
-cannot create a checkpoint.
-
-Only one backup or restore owns the backup system at a time. A scheduled run
-waits while another operation is active; another manual backup, explicit
-automatic run, or restore request is rejected instead of being silently queued.
-One intentional exception is **Create the first backup now**: StartOS saves the
-new schedule and starts that requested first run automatically as soon as the
-backup system is free. It only shows the queued notification when another backup
-or restore is actually blocking the run. If StartOS restarts during an operation,
-it records the interrupted activity as failed and clears stale progress so the
-next operation can proceed.
-
-Use **Backup history** to review manual backups, automatic runs, and restores,
-20 at a time. Search by date, status, or service and filter by activity type or
-status. Failures show a short action-oriented summary; expand **Technical
-details** for raw backend information. During restore, each
-service defaults to its newest available checkpoint, but you can choose a
-different manual or automatic checkpoint before starting. See [Restoring
+Backup history records manual backups, automatic runs, and restores, including
+service-level failures. Successful checkpoints remain available when another
+service in the same run fails. During restore, StartOS selects the newest
+available checkpoint for each service by default, but any retained or archived
+manual or automatic checkpoint can be chosen instead. See [Restoring
 Backups](./backup-restore.md).
 
-## When a Backup Needs Attention
+StartOS pauses affected schedules after three consecutive failures to connect to
+a backup location. It also refuses to write when credentials are no longer
+valid, the location's identity has changed, or its metadata is invalid. Repair
+the original location, provide current credentials, or explicitly move the
+schedule to another location before resuming it.
 
-When the Backups page reports **Automatic backups need attention**, select
-**See more** to open **Backup history** and review the failed run and any
-service-level errors. StartOS expands Backup history and moves the card into
-view; on phones the link appears directly below and aligned with the warning
-text.
-
-StartOS notifications identify the schedule, the human-readable backup location,
-and the affected services, while preserving earlier checkpoints. They also
-explain the next action:
-
-- **Scheduled Backup Needs More Space** — free space, reduce retention or
-  service scope, change the location, or delete the schedule.
-- **Scheduled Backup Had Failures** — inspect the named services in **Backup
-  history**; unaffected checkpoints remain available.
-- **Backup Target Unavailable** — after three consecutive connection failures,
-  affected schedules pause until you retry, reassign, or remove them.
-- **Backup Target Requires Authentication** — retry the location with the
-  current master password or move the schedule.
-- **Backup Target Identity Changed** — reconnect the original device or folder,
-  or explicitly reassign the schedule before it writes to the replacement.
-- **Backup Target Metadata Invalid** — reconnect the expected location and
-  verify that its StartOS backup files are intact. StartOS rejects abnormally
-  large or excessive target metadata instead of loading it into memory.
-- **Add to backup schedule** — on the newly installed service, decide whether
-  it belongs in each selective schedule or dismiss the recommendation.
-
-For deeper troubleshooting, `start-cli server logs` shows structured run-level
-and service-level entries, including **automatic backup service started**,
-**automatic backup service snapshot promotion started**, **automatic backup
-service completed**, and failure details. These include useful identifiers,
-durations, sizes, the schedule and location names, trigger, run state, and service
-counts without logging the master password. See the [start-cli backup
-reference](./cli-reference.md#backups) for command-line administration.
-UI bulk controls are composed from per-schedule CLI commands, and deleting a
-schedule together with its archived checkpoints is a deliberate multi-command
-CLI workflow.
+The command-line backup interface can list and manage schedules, inspect
+activity and checkpoints, preview retention changes, repair targets, and start
+runs. See the [start-cli backup reference](./cli-reference.md#backups).
