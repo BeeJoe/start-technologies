@@ -413,9 +413,7 @@ pub async fn read_json_file_bounded<T: DeserializeOwned>(
     path: &Path,
     max_bytes: u64,
 ) -> Result<T, Error> {
-    let file = tokio::fs::File::open(path)
-        .await
-        .with_ctx(|_| (ErrorKind::Filesystem, path.display()))?;
+    let file = crate::util::io::open_file(path).await?;
     let mut reader = file.take(max_bytes.saturating_add(1));
     let mut bytes = Vec::with_capacity(max_bytes.min(8 * 1024) as usize);
     reader
@@ -425,8 +423,8 @@ pub async fn read_json_file_bounded<T: DeserializeOwned>(
     if bytes.len() as u64 > max_bytes {
         return Err(Error::new(
             eyre!(
-                "JSON file exceeds its {max_bytes}-byte size limit: {}",
-                path.display()
+                "{}",
+                t!("util.serde.json-file-too-large", max_bytes = max_bytes)
             ),
             ErrorKind::Filesystem,
         ));
