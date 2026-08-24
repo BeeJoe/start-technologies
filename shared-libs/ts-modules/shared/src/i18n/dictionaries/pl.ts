@@ -1114,4 +1114,7 @@ export default {
   1209: 'Wprowadź prawidłową nazwę hosta lub adres IP.',
   1210: 'Folder sieciowy odrzucił nazwę użytkownika lub hasło. Sprawdź dane logowania i uprawnienia udostępniania, a następnie spróbuj ponownie.',
   1211: 'StartOS nie mógł połączyć się z folderem sieciowym. Sprawdź nazwę hosta, ścieżkę i połączenie sieciowe, a następnie spróbuj ponownie.',
+  1212: 'Zastosować zmianę historii wersji?',
+  1213: 'Spowoduje to trwałe usunięcie punktów kontrolnych wymienionych w podglądzie.',
+  1214: 'Zastosuj',
 } satisfies i18n

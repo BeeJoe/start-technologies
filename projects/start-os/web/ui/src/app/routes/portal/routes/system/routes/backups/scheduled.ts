@@ -2130,16 +2130,13 @@ export class ScheduledBackups {
     if (!loaded) return null
     const removals = changes.flatMap(change => change.preview.removed)
     if (!removals.length) return changes
-    const reclaimed = changes.reduce(
-      (sum, change) => sum + change.preview.estimatedReclaimedBytes,
-      0,
-    )
     const confirmed = await firstValueFrom(
       this.dialogs.openConfirm({
         label: 'Apply version-history change?',
         size: 's',
         data: {
-          content: `This permanently deletes ${removals.length} checkpoints (${removals.map(snapshot => snapshot.id).join(', ')}) and reclaims about ${convertBytes(reclaimed)}.`,
+          content:
+            'This permanently deletes the checkpoints listed in the preview.',
           yes: 'Apply',
           no: 'Cancel',
         },

@@ -1114,4 +1114,7 @@ export default {
   1209: 'Introduce un nombre de host o una dirección IP válidos.',
   1210: 'La carpeta de red rechazó el nombre de usuario o la contraseña. Comprueba las credenciales y los permisos de uso compartido e inténtalo de nuevo.',
   1211: 'StartOS no pudo acceder a la carpeta de red. Comprueba el nombre de host, la ruta y la conexión de red e inténtalo de nuevo.',
+  1212: '¿Aplicar el cambio del historial de versiones?',
+  1213: 'Esto elimina permanentemente los puntos de control mostrados en la vista previa.',
+  1214: 'Aplicar',
 } satisfies i18n
