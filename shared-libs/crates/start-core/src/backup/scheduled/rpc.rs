@@ -1102,6 +1102,28 @@ fn target_instance_id_for_target(
     Ok(credential.target_instance_id)
 }
 
+fn update_reassigned_job(
+    job: &mut BackupJob,
+    target_id: BackupTargetId,
+    target_instance_id: String,
+    wait_for_schedule: bool,
+    now: chrono::DateTime<Utc>,
+) -> Result<(), Error> {
+    job.target_id = target_id;
+    job.target_instance_id = target_instance_id;
+    job.pause = None;
+    job.updated_at = now;
+    job.status.consecutive_failures = 0;
+    job.status.next_run_at = if !job.enabled {
+        None
+    } else if wait_for_schedule {
+        Some(job.schedule.next_after(now, None)?.utc)
+    } else {
+        Some(now)
+    };
+    Ok(())
+}
+
 /// Inputs for moving an automatic backup job to another target.
 #[derive(Deserialize, Serialize, Parser, TS)]
 #[group(skip)]
@@ -1172,17 +1194,13 @@ pub async fn reassign_target(
     guard.save_and_unmount().await?;
 
     let old_job = job.clone();
-    job.target_id = target_id.clone();
-    job.target_instance_id = target_instance_id.clone();
-    job.pause = None;
-    job.enabled = true;
-    job.updated_at = Utc::now();
-    job.status.consecutive_failures = 0;
-    job.status.next_run_at = if wait_for_schedule {
-        Some(job.schedule.next_after(Utc::now(), None)?.utc)
-    } else {
-        Some(Utc::now())
-    };
+    update_reassigned_job(
+        &mut job,
+        target_id.clone(),
+        target_instance_id.clone(),
+        wait_for_schedule,
+        Utc::now(),
+    )?;
     ctx.db
         .mutate(|db| {
             validate_unique_job_name(db, &job.name, Some(&id))?;
@@ -2975,6 +2993,35 @@ mod cli_tests {
         let job = backup_job(id.clone(), "Nightly", "cifs-0", "instance", "hello-world");
         assert!(!job_name_conflicts(&[job.clone()], "Nightly", Some(&id)));
         assert!(job_name_conflicts(&[job], "Nightly", None));
+    }
+
+    #[test]
+    fn reassignment_preserves_disabled_state() {
+        let mut job = backup_job(
+            BackupJobId::new(),
+            "Disabled",
+            "cifs-0",
+            "old-instance",
+            "hello-world",
+        );
+        job.enabled = false;
+        job.status.next_run_at = Some(Utc::now());
+        let now = Utc::now();
+
+        update_reassigned_job(
+            &mut job,
+            "disk-/dev/sda1".parse().unwrap(),
+            "new-instance".to_owned(),
+            false,
+            now,
+        )
+        .unwrap();
+
+        assert!(!job.enabled);
+        assert_eq!(job.target_id, "disk-/dev/sda1".parse().unwrap());
+        assert_eq!(job.target_instance_id, "new-instance");
+        assert_eq!(job.updated_at, now);
+        assert!(job.status.next_run_at.is_none());
     }
 
     #[test]
