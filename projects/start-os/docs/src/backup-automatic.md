@@ -64,7 +64,8 @@ Changing a schedule's location does not copy its existing checkpoints. They
 remain archived on the old location, and the next run begins a history on the
 new one. Deleting a schedule can either leave its automatic checkpoints archived
 or remove checkpoints no longer referenced by another schedule. Manual
-checkpoints are never removed by schedule deletion.
+checkpoints are never removed by schedule deletion. Deleting archived
+checkpoints after reconnecting a location requires the current master password.
 
 ## History, Restore, and Failures
 

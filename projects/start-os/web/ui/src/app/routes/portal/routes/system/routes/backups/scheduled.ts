@@ -2365,6 +2365,20 @@ export class ScheduledBackups {
       { defaultValue: false },
     )
     if (!confirmed) return
+    const password = await firstValueFrom(
+      this.dialogs.openPrompt<string>({
+        label: 'Enter Password',
+        data: {
+          message: 'Enter your current master password',
+          label: 'Password',
+          placeholder: 'Password',
+          buttonText: 'Delete',
+          useMask: true,
+        },
+      }),
+      { defaultValue: '' },
+    )
+    if (!password) return
     await this.perform(() =>
       this.api.deleteArchivedBackupSnapshots({
         targetId: history.targetId,
@@ -2372,6 +2386,7 @@ export class ScheduledBackups {
         snapshotIds: this.archivedSnapshots(history).map(
           snapshot => snapshot.id,
         ),
+        password,
       }),
     )
   }

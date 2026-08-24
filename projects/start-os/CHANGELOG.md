@@ -50,6 +50,7 @@ file tracks notable changes since the move to the monorepo.
   with capacity estimates and configurable version history. Multiple schedules
   can be created, edited, paused, resumed, run immediately, repaired, reassigned,
   or deleted while unreferenced checkpoints remain available as archives.
+  Reconnected locations can authenticate again to manage those archives.
   New-service reviews keep selective schedules current. Backup history is
   searchable, filterable, and paginated, with clear failure summaries and
   expandable technical details. Authentication, network, and validation errors
