@@ -120,7 +120,7 @@ const BACKUP_REVIEW_DIALOG = new PolymorpheusComponent(BackupReviewDialog)
   styles: `
     .name {
       white-space: nowrap;
-      max-width: 15rem;
+      max-inline-size: 15rem;
       overflow: hidden;
     }
 
@@ -156,7 +156,7 @@ const BACKUP_REVIEW_DIALOG = new PolymorpheusComponent(BackupReviewDialog)
 
       .name {
         grid-area: 1 / 1;
-        max-width: none;
+        max-inline-size: none;
         white-space: normal;
         overflow: visible;
       }
@@ -191,17 +191,21 @@ export class ServiceTaskComponent {
   readonly task = input.required<T.Task & { replayId: string }>()
   readonly services = input.required<Record<string, PackageDataEntry>>()
 
-  readonly pkg = computed(() => this.services()[this.task().packageId])
+  protected readonly pkg = computed(
+    () => this.services()[this.task().packageId],
+  )
   protected readonly backupReview = computed(
     () => this.task().actionId === 'add-to-backup-schedule',
   )
-  readonly title = computed((pkg = this.pkg()) => pkg && getManifest(pkg).title)
+  protected readonly title = computed(
+    (pkg = this.pkg()) => pkg && getManifest(pkg).title,
+  )
 
-  readonly fallback = computed(
+  protected readonly fallback = computed(
     () => this.component.pkg().currentDependencies[this.task().packageId],
   )
 
-  readonly disabled = computed(() => {
+  protected readonly disabled = computed(() => {
     if (this.backupReview()) return false
 
     const pkg = this.pkg()
@@ -225,7 +229,7 @@ export class ServiceTaskComponent {
     return false
   })
 
-  async dismiss() {
+  protected async dismiss() {
     const { packageId, replayId } = this.task()
 
     this.dialog
@@ -255,7 +259,7 @@ export class ServiceTaskComponent {
       )
   }
 
-  async handle() {
+  protected async handle() {
     const task = this.task()
     if (this.backupReview()) {
       const [jobs, reviews] = await Promise.all([

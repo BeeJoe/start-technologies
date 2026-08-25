@@ -25,6 +25,7 @@ import {
   TuiTitle,
 } from '@taiga-ui/core'
 import { TuiBadge, TuiSwitch } from '@taiga-ui/kit'
+import { TuiCardLarge } from '@taiga-ui/layout'
 import { PatchDB } from 'patch-db-client'
 import { ApiService } from 'src/app/services/api/embassy-api.service'
 import { OSService } from 'src/app/services/os.service'
@@ -112,7 +113,9 @@ const WEEKDAYS = [
     }
 
     <section
-      class="backup-card g-card"
+      tuiCardLarge="compact"
+      appearance="secondary-grayscale"
+      class="backup-card"
       [class.expanded]="expanded() === 'automatic'"
     >
       <header
@@ -242,7 +245,9 @@ const WEEKDAYS = [
     </section>
 
     <section
-      class="backup-card g-card"
+      tuiCardLarge="compact"
+      appearance="secondary-grayscale"
+      class="backup-card"
       [class.expanded]="expanded() === 'manual'"
     >
       <header class="card-heading">
@@ -276,7 +281,9 @@ const WEEKDAYS = [
     </section>
 
     <section
-      class="backup-card g-card"
+      tuiCardLarge="compact"
+      appearance="secondary-grayscale"
+      class="backup-card"
       [class.expanded]="expanded() === 'restore'"
     >
       <header class="card-heading">
@@ -312,7 +319,9 @@ const WEEKDAYS = [
     </section>
 
     <section
-      class="backup-card g-card"
+      tuiCardLarge="compact"
+      appearance="secondary-grayscale"
+      class="backup-card"
       [class.expanded]="expanded() === 'locations'"
     >
       <header class="card-heading">
@@ -344,7 +353,9 @@ const WEEKDAYS = [
 
     <section
       #historyCard
-      class="backup-card g-card"
+      tuiCardLarge="compact"
+      appearance="secondary-grayscale"
+      class="backup-card"
       [class.expanded]="expanded() === 'history'"
     >
       <header class="card-heading">
@@ -378,10 +389,11 @@ const WEEKDAYS = [
     :host {
       display: grid;
       gap: 0.75rem;
-      width: 100%;
-      min-width: 0;
-      max-width: 64rem;
+      inline-size: 100%;
+      min-inline-size: 0;
+      max-inline-size: 64rem;
       margin-inline: auto;
+      container-type: inline-size;
     }
 
     h2,
@@ -398,11 +410,12 @@ const WEEKDAYS = [
     .page-heading p,
     [tuiSubtitle] {
       display: block;
-      margin-top: 0.25rem;
+      margin-block-start: 0.25rem;
       color: var(--tui-text-secondary);
     }
 
-    .backup-card {
+    [tuiCardLarge].backup-card {
+      gap: 0;
       padding: 0;
       overflow: hidden;
       container: card / inline-size;
@@ -412,8 +425,8 @@ const WEEKDAYS = [
       position: static;
       display: flex;
       align-items: center;
-      min-height: 4.5rem;
-      height: auto;
+      min-block-size: 4.5rem;
+      block-size: auto;
       padding: 0;
       background: transparent;
     }
@@ -423,12 +436,12 @@ const WEEKDAYS = [
       flex: 1;
       align-items: center;
       gap: 0.75rem;
-      min-width: 0;
-      min-height: 4.5rem;
+      min-inline-size: 0;
+      min-block-size: 4.5rem;
       padding: 1rem 1.25rem;
       color: inherit;
       font: inherit;
-      text-align: left;
+      text-align: start;
       background: transparent;
       border: 0;
       cursor: pointer;
@@ -441,7 +454,7 @@ const WEEKDAYS = [
 
     .card-toggle [tuiTitle] {
       flex: 1;
-      min-width: 0;
+      min-inline-size: 0;
       overflow-wrap: anywhere;
     }
 
@@ -467,7 +480,7 @@ const WEEKDAYS = [
     }
 
     .simple-switch {
-      width: fit-content;
+      inline-size: fit-content;
       white-space: normal;
     }
 
@@ -496,7 +509,7 @@ const WEEKDAYS = [
       display: grid;
       place-items: center;
       align-self: stretch;
-      width: 3.5rem;
+      inline-size: 3.5rem;
       padding: 0;
       color: inherit;
       background: transparent;
@@ -507,25 +520,25 @@ const WEEKDAYS = [
     .card-body {
       display: grid;
       gap: 1rem;
-      min-width: 0;
+      min-inline-size: 0;
       padding: 1.25rem;
-      border-top: 1px solid var(--tui-border-normal);
+      border-block-start: 1px solid var(--tui-border-normal);
     }
 
     .automatic-heading + .card-body {
-      border-top: 0;
+      border-block-start: 0;
     }
 
     .operation,
     .attention {
       gap: 0.75rem;
-      min-width: 0;
+      min-inline-size: 0;
     }
 
     .operation {
       position: static;
       z-index: 1;
-      width: 100%;
+      inline-size: 100%;
       color: inherit;
       font: inherit;
       background: color-mix(in hsl, var(--start9-base-1) 50%, transparent);
@@ -543,7 +556,7 @@ const WEEKDAYS = [
     .operation [tuiTitle],
     .attention [tuiTitle] {
       flex: 1;
-      min-width: 0;
+      min-inline-size: 0;
       overflow-wrap: anywhere;
     }
 
@@ -551,11 +564,11 @@ const WEEKDAYS = [
       position: static;
       z-index: 1;
       display: grid;
-      width: 100%;
+      inline-size: 100%;
       padding: 0.75rem;
       color: inherit;
       font: inherit;
-      text-align: left;
+      text-align: start;
       background: color-mix(in hsl, var(--start9-base-1) 50%, transparent);
       border: 1px solid var(--tui-border-normal);
       border-radius: var(--tui-radius-l);
@@ -574,7 +587,7 @@ const WEEKDAYS = [
       }
     }
 
-    @container card (max-width: 44rem) {
+    @container card (max-inline-size: 44rem) {
       .card-heading {
         align-items: stretch;
         flex-direction: column;
@@ -613,8 +626,7 @@ const WEEKDAYS = [
       }
     }
 
-    /* Dense action cards need a second collapse below the app-wide mobile layout. */
-    @media (max-width: 30rem) {
+    @container (max-inline-size: 30rem) {
       .card-toggle {
         align-items: flex-start;
       }
@@ -638,7 +650,7 @@ const WEEKDAYS = [
       }
 
       .card-actions > button {
-        width: 100%;
+        inline-size: 100%;
       }
 
       .single-job .card-actions {
@@ -652,7 +664,7 @@ const WEEKDAYS = [
       .single-job .card-actions > button {
         grid-column: 2;
         grid-row: 1;
-        width: auto;
+        inline-size: auto;
       }
 
       .single-job .card-actions > [tuiBadge] {
@@ -687,6 +699,7 @@ const WEEKDAYS = [
     TuiAppearance,
     TuiBadge,
     TuiButton,
+    TuiCardLarge,
     TuiCell,
     TuiDataList,
     TuiDropdown,
@@ -724,7 +737,7 @@ export default class BackupsComponent {
 
   protected readonly reviewPackageId =
     this.route.snapshot.queryParamMap.get('addService') || ''
-  readonly expanded = signal<BackupPanel | null>(
+  protected readonly expanded = signal<BackupPanel | null>(
     this.reviewPackageId ? 'automatic' : null,
   )
   private readonly progressRequest = signal<{
@@ -734,8 +747,10 @@ export default class BackupsComponent {
   protected readonly createScheduleRequest = signal(
     this.route.snapshot.queryParamMap.has('createSchedule'),
   )
-  readonly manualRunning = toSignal(this.os.backingUp$, { initialValue: false })
-  changingAutomatic = false
+  protected readonly manualRunning = toSignal(this.os.backingUp$, {
+    initialValue: false,
+  })
+  protected changingAutomatic = false
 
   constructor() {
     void this.backupService.getBackupTargets()
@@ -762,30 +777,30 @@ export default class BackupsComponent {
     })
   }
 
-  readonly jobs = computed(() =>
+  protected readonly jobs = computed(() =>
     Object.values(this.state()?.jobs || {}).sort((a, b) =>
       a.createdAt.localeCompare(b.createdAt),
     ),
   )
-  readonly primary = computed(() => this.jobs()[0])
-  readonly activities = computed(() =>
+  protected readonly primary = computed(() => this.jobs()[0])
+  protected readonly activities = computed(() =>
     Object.values(this.state()?.activities || {}).sort((a, b) =>
       b.startedAt.localeCompare(a.startedAt),
     ),
   )
-  readonly operationActivity = computed(() => {
+  protected readonly operationActivity = computed(() => {
     const latest = this.activities()[0]
     return latest?.state === 'running' ? latest : null
   })
-  readonly progressActive = computed(() => !!this.operationActivity())
-  readonly automaticOn = computed(() =>
+  protected readonly progressActive = computed(() => !!this.operationActivity())
+  protected readonly automaticOn = computed(() =>
     this.jobs().some(job => job.enabled && !job.pause),
   )
-  readonly needsAttention = computed(() =>
+  protected readonly needsAttention = computed(() =>
     this.jobs().some(backupJobNeedsAttention),
   )
 
-  async togglePanel(panel: BackupPanel) {
+  protected async togglePanel(panel: BackupPanel) {
     if (
       this.expanded() === 'automatic' &&
       !((await this.automatic()?.confirmDiscardChanges()) ?? true)
@@ -795,12 +810,12 @@ export default class BackupsComponent {
     this.expanded.update(current => (current === panel ? null : panel))
   }
 
-  async openLocations() {
+  protected async openLocations() {
     if (!((await this.automatic()?.confirmDiscardChanges()) ?? true)) return
     this.expanded.set('locations')
   }
 
-  async openHistory() {
+  protected async openHistory() {
     if (!((await this.automatic()?.confirmDiscardChanges()) ?? true)) return
     this.expanded.set('history')
     afterNextRender(
@@ -813,7 +828,7 @@ export default class BackupsComponent {
     )
   }
 
-  async collapseAutomatic(runNowJobId: string | null) {
+  protected async collapseAutomatic(runNowJobId: string | null) {
     if (!((await this.automatic()?.confirmDiscardChanges()) ?? true)) return
     this.expanded.set(null)
     this.progressRequest.set(
@@ -826,16 +841,16 @@ export default class BackupsComponent {
     )
   }
 
-  openAutomaticEditor() {
+  protected openAutomaticEditor() {
     this.expanded.set('automatic')
   }
 
-  addSchedule() {
+  protected addSchedule() {
     this.expanded.set('automatic')
     this.createScheduleRequest.set(true)
   }
 
-  async goToServices() {
+  protected async goToServices() {
     if (!(await this.canDeactivate())) return
     await this.router.navigate(['/services'])
   }
@@ -844,7 +859,7 @@ export default class BackupsComponent {
     return (await this.automatic()?.confirmDiscardChanges()) ?? true
   }
 
-  automaticSummary(): string {
+  protected automaticSummary(): string {
     const jobs = this.jobs()
     if (!jobs.length) return 'Automatic backups are not set up yet.'
     if (jobs.length > 1) {
@@ -868,7 +883,7 @@ export default class BackupsComponent {
     return state
   }
 
-  healthDetail(): string {
+  protected healthDetail(): string {
     const job = this.jobs().find(backupJobNeedsAttention)
     if (job?.pause?.reason === 'reauthenticationRequired') {
       return 'The backup location needs your password again.'
@@ -882,20 +897,20 @@ export default class BackupsComponent {
     return 'The latest automatic backup did not finish successfully.'
   }
 
-  canRunNow(): boolean {
+  protected canRunNow(): boolean {
     const primary = this.primary()
     return (
       !!primary && primary.enabled && !primary.pause && !this.progressActive()
     )
   }
 
-  operationTitle(activity: T.BackupActivity): string {
+  protected operationTitle(activity: T.BackupActivity): string {
     if (activity.kind === 'restore') return 'Restoring services'
     if (activity.kind === 'manual') return 'Creating manual backup'
     return 'Creating automatic backup'
   }
 
-  async runNow() {
+  protected async runNow() {
     const job = this.primary()
     if (!job) return
     await this.tasks.run(
@@ -904,13 +919,13 @@ export default class BackupsComponent {
     )
   }
 
-  async deleteSchedule() {
+  protected async deleteSchedule() {
     const job = this.primary()
     if (!job) return
     await this.deleteScheduleService.delete(job)
   }
 
-  async setAutomatic(enabled: boolean) {
+  protected async setAutomatic(enabled: boolean) {
     if (enabled === this.jobs().every(job => job.enabled)) return
     this.changingAutomatic = true
     await this.tasks.run(

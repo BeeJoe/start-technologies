@@ -1119,4 +1119,5 @@ export const ENGLISH: Record<string, number> = {
   'Apply version-history change?': 1212,
   'This permanently deletes the checkpoints listed in the preview.': 1213,
   'Apply': 1214,
+  'Search backups': 1215,
 }
