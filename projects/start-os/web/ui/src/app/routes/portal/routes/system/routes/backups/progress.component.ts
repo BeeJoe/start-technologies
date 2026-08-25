@@ -15,7 +15,7 @@ import { DataModel } from 'src/app/services/patch-db/data-model'
     @let overallLeaf = backupProgress()?.overall || null | leafProgress;
     @let overallPct = overallLeaf | installingProgress;
     <header>
-      <span>{{ 'Backup Progress' | i18n }}</span>
+      <span>{{ 'Backup progress' | i18n }}</span>
       <span class="progress-status">
         @if (overallLeaf === true) {
           {{ 'complete' | i18n }}
