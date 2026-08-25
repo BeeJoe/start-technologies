@@ -5,7 +5,7 @@ use rpc_toolkit::{Context, HandlerExt, ParentHandler, from_fn_async};
 
 use super::{
     BackupActivity, BackupActivityId, BackupActivityKind, BackupJob, BackupRun, BackupRunState,
-    BackupRunTrigger,
+    BackupRunTrigger, completed_activity_overflow, completed_run_overflow,
 };
 use crate::PackageId;
 use crate::backup::PackageBackupReport;
@@ -94,6 +94,34 @@ pub(crate) fn insert(db: &mut DatabaseModel, activity: &BackupActivity) -> Resul
         .map(|_| ())
 }
 
+pub(crate) fn prune_completed_history(db: &mut DatabaseModel) -> Result<usize, Error> {
+    let scheduled = db.as_public_mut().as_scheduled_backups_mut();
+    let activities = scheduled
+        .as_activities()
+        .as_entries()?
+        .into_iter()
+        .map(|(_, activity)| activity.de())
+        .collect::<Result<Vec<BackupActivity>, Error>>()?;
+    let runs = scheduled
+        .as_runs()
+        .as_entries()?
+        .into_iter()
+        .map(|(_, run)| run.de())
+        .collect::<Result<Vec<BackupRun>, Error>>()?;
+    let activity_ids = completed_activity_overflow(&activities);
+    let run_ids = completed_run_overflow(&runs);
+    let removed = activity_ids.len() + run_ids.len();
+
+    for id in activity_ids {
+        scheduled.as_activities_mut().remove(&id)?;
+    }
+    for id in run_ids {
+        scheduled.as_runs_mut().remove(&id)?;
+    }
+
+    Ok(removed)
+}
+
 pub(crate) fn complete(
     db: &mut DatabaseModel,
     id: &BackupActivityId,
@@ -110,5 +138,7 @@ pub(crate) fn complete(
     activity.as_state_mut().ser(&state)?;
     activity.as_services_mut().ser(&services)?;
     activity.as_error_mut().ser(&error)?;
-    activity.as_completed_at_mut().ser(&Some(Utc::now()))
+    activity.as_completed_at_mut().ser(&Some(Utc::now()))?;
+    prune_completed_history(db)?;
+    Ok(())
 }

@@ -62,7 +62,8 @@ pub(crate) async fn reconcile_interrupted_backup_state(ctx: &RpcContext) -> Resu
             let mut state: ScheduledBackupState = scheduled.de()?;
             let repaired =
                 reconcile_interrupted_activities(&mut state, Utc::now(), &interrupted_error);
-            if repaired > 0 {
+            let pruned = state.prune_completed_history();
+            if repaired > 0 || pruned > 0 {
                 scheduled.ser(&state)?;
             }
             db.as_public_mut()

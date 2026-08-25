@@ -70,11 +70,12 @@ checkpoints after reconnecting a location requires the current master password.
 ## History, Restore, and Failures
 
 Backup history records manual backups, automatic runs, and restores, including
-service-level failures. Successful checkpoints remain available when another
-service in the same run fails. During restore, StartOS selects the newest
-available checkpoint for each service by default, but any retained or archived
-manual or automatic checkpoint can be chosen instead. See [Restoring
-Backups](./backup-restore.md).
+service-level failures. It retains the newest 1,000 completed entries in addition
+to any backup or restore still in progress. Successful checkpoints remain
+available when another service in the same run fails. During restore, StartOS
+selects the newest available checkpoint for each service by default, but any
+retained or archived manual or automatic checkpoint can be chosen instead. See
+[Restoring Backups](./backup-restore.md).
 
 StartOS pauses affected schedules after three consecutive failures to connect to
 a backup location. It also refuses to write when credentials are no longer
