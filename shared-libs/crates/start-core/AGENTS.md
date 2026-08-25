@@ -5,7 +5,9 @@ All six product bins (`startbox`/`startd`, `start-container`, `start-cli`, `regi
 `tunnelbox`, `startwrt`) link against it; all but `startwrt` are thin wrappers in the product
 crates (`startwrt` is a full backend of its own that imports this crate aliased as `startos`).
 
-`CLAUDE.md` is a one-line `@AGENTS.md` import. See [ARCHITECTURE.md](ARCHITECTURE.md).
+`CLAUDE.md` is a one-line `@AGENTS.md` import. This file is both the contribution guide and the
+agent/dev operating rules for this scope. See [ARCHITECTURE.md](ARCHITECTURE.md) for the module
+layout and design.
 
 Topical references: [rpc-toolkit.md](rpc-toolkit.md), [patchdb.md](patchdb.md),
 [i18n-patterns.md](i18n-patterns.md), [core-rust-patterns.md](core-rust-patterns.md),
@@ -32,18 +34,22 @@ Install stable Rust and Docker. `rust-analyzer` is recommended.
 - `make start-core-format` — format the shared Rust crates with the pinned nightly container (`make start-core-format-check` checks formatting). Set `FMT_NATIVE=1` only when that nightly is installed locally.
 - `cargo build -p start-os --bin startbox` (or the other product crate/bin) to build a binary.
 
-Keep `README.md`, `ARCHITECTURE.md`, this file, and the topical references current when changing
-project structure, conventions, build process, or product context.
+## Development patterns
 
-## Adding an RPC endpoint
+When adding an RPC endpoint, define serializable params, choose the matching handler shape
+(`from_fn_async` for the common async case), implement the handler against `RpcContext`, and
+register it in the appropriate `ParentHandler` tree. See [rpc-toolkit.md](rpc-toolkit.md) when
+choosing among the handler shapes.
 
-1. Define serializable request and response types.
-2. Choose a handler type (`from_fn_async` for most cases).
-3. Write the async handler.
-4. Register it in the appropriate `ParentHandler` tree.
-5. Add `#[derive(TS)]` and `#[ts(export)]` where TypeScript needs the types.
+When an RPC type belongs in TypeScript, derive `TS`, add `#[ts(export)]`, use camel-case serde
+field names, and add explicit `#[ts(type = "...")]` projections for Rust-only types such as
+`DateTime<Utc>`, `exver::Version`, or `u64` values represented as JavaScript numbers. Regenerate
+and rebuild consumers as described below.
 
-See [rpc-toolkit.md](rpc-toolkit.md) for handler patterns.
+User-facing strings use keys in `locales/i18n.yaml`, with real translations in all five locales.
+Keep keys alphabetically ordered within their section, use kebab-case for multi-word segments,
+and match the namespace to the module that consumes the key. See [i18n-patterns.md](i18n-patterns.md)
+for the established key and interpolation shapes.
 
 ## Gotchas
 

@@ -1,8 +1,9 @@
 # AGENTS.md — start-cli
 
-Agent/dev notes for the `start-cli` crate. `CLAUDE.md` is a one-line `@AGENTS.md` import. See
-[`ARCHITECTURE.md`](./ARCHITECTURE.md) and [`CONTRIBUTING.md`](./CONTRIBUTING.md) for this crate, and the root
-[`AGENTS.md`](../../AGENTS.md) and [`CONTRIBUTING.md`](../../CONTRIBUTING.md) for repo-wide rules.
+Agent/dev notes for the `start-cli` crate. `CLAUDE.md` is a one-line `@AGENTS.md` import. This
+file is both the contribution guide and the agent/dev operating rules for this scope. See
+[`ARCHITECTURE.md`](./ARCHITECTURE.md) for the crate structure, and the root [`AGENTS.md`](../../AGENTS.md)
+and [`CONTRIBUTING.md`](../../CONTRIBUTING.md) for repo-wide rules.
 
 **Read up the tree first.** These docs are hierarchical: before working here, read the `AGENTS.md` in each enclosing directory up to the repo root (and their `ARCHITECTURE.md` / `CONTRIBUTING.md` where relevant). This file covers only what is specific to this scope and does not repeat rules already stated higher up.
 
@@ -36,6 +37,14 @@ target/debug/start-cli --help                        # smoke test
 There are no tests in this crate itself. CLI behavior is tested in `start-core`; the man-page
 generator is `cargo test -p start-core export_manpage_start_cli`.
 
+Format and lint from the monorepo root:
+
+```sh
+make start-cli-format
+make start-cli-format-check
+cargo clippy -p start-cli
+```
+
 ## Gotchas
 
 - **Don't add command logic here.** New/changed subcommands go in `start-core` —
@@ -50,6 +59,8 @@ generator is `cargo test -p start-core export_manpage_start_cli`.
   falsey → `PREFER_DOCKER` is set (Docker). Truthy (`1/true/y/yes`) → Podman.
 - **In a StartOS image `start-cli` is a symlink to `startbox`** (see OS `Makefile`), the same
   `MultiExecutable` multiplexer. The standalone bin here enables only the `start-cli` sub-bin.
+- **CLI surface changes ship with user docs.** Update the relevant StartOS and packaging book
+  pages in `projects/start-os/docs/` and `projects/start-sdk/docs/` in the same change.
 
 ## Verifying a command
 

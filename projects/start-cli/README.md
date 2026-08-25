@@ -156,8 +156,7 @@ None are enabled by default.
 ## Documentation
 
 - [`ARCHITECTURE.md`](./ARCHITECTURE.md) — how the crate is built (entrypoint, request flow, config).
-- [`CONTRIBUTING.md`](./CONTRIBUTING.md) — how to contribute.
-- [`AGENTS.md`](./AGENTS.md) — agent/dev rules; `CLAUDE.md` is a one-line `@AGENTS.md` import.
+- [`AGENTS.md`](./AGENTS.md) — how to build, test, and contribute; `CLAUDE.md` is a one-line `@AGENTS.md` import.
 
 ## License
 
