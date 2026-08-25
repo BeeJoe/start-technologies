@@ -21,6 +21,8 @@ pub type BackupActivityId = Guid;
 /// Stable identifier for a retained service checkpoint.
 pub type ServiceSnapshotId = Guid;
 
+pub(crate) const MAX_COMPLETED_HISTORY_ITEMS: usize = 1_000;
+
 /// Selects the installed services covered by an automatic backup schedule.
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize, TS)]
 #[serde(rename_all = "camelCase", tag = "type")]
@@ -294,6 +296,53 @@ pub struct ScheduledBackupState {
     pub pending_service_reviews: BTreeMap<PackageId, NewServiceBackupReview>,
 }
 
+impl ScheduledBackupState {
+    pub(crate) fn prune_completed_history(&mut self) -> usize {
+        let activity_ids = completed_activity_overflow(self.activities.values());
+        let run_ids = completed_run_overflow(self.runs.values());
+        let removed = activity_ids.len() + run_ids.len();
+
+        for id in activity_ids {
+            self.activities.remove(&id);
+        }
+        for id in run_ids {
+            self.runs.remove(&id);
+        }
+
+        removed
+    }
+}
+
+pub(crate) fn completed_activity_overflow<'a>(
+    activities: impl IntoIterator<Item = &'a BackupActivity>,
+) -> Vec<BackupActivityId> {
+    completed_history_overflow(activities.into_iter().filter_map(|activity| {
+        (activity.state != BackupRunState::Running)
+            .then_some((activity.started_at, activity.id.clone()))
+    }))
+}
+
+pub(crate) fn completed_run_overflow<'a>(
+    runs: impl IntoIterator<Item = &'a BackupRun>,
+) -> Vec<BackupRunId> {
+    completed_history_overflow(runs.into_iter().filter_map(|run| {
+        (run.state != BackupRunState::Running).then_some((run.started_at, run.id.clone()))
+    }))
+}
+
+fn completed_history_overflow(
+    completed: impl IntoIterator<Item = (DateTime<Utc>, Guid)>,
+) -> Vec<Guid> {
+    let mut completed = completed.into_iter().collect::<Vec<_>>();
+    completed.sort();
+    let overflow = completed.len().saturating_sub(MAX_COMPLETED_HISTORY_ITEMS);
+    completed
+        .into_iter()
+        .take(overflow)
+        .map(|(_, id)| id)
+        .collect()
+}
+
 /// Shared checkpoint history for one service on one backup target.
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize, HasModel, TS)]
 #[serde(rename_all = "camelCase")]
@@ -395,6 +444,97 @@ mod tests {
         }))
         .unwrap();
         assert!(state.activities.is_empty());
+    }
+
+    #[test]
+    fn completed_history_is_bounded_without_removing_running_entries() {
+        let mut state = ScheduledBackupState::default();
+        let target_id = BackupTargetId::Cifs { id: 1 };
+        let job_id = BackupJobId::new();
+        let mut oldest_completed_ids = Vec::new();
+
+        for offset in 0..(MAX_COMPLETED_HISTORY_ITEMS + 2) {
+            let started_at = DateTime::from_timestamp(offset as i64, 0).unwrap();
+            let run = BackupRun {
+                id: BackupRunId::new(),
+                job_id: job_id.clone(),
+                job_name: "Nightly".to_owned(),
+                target_id: target_id.clone(),
+                trigger: BackupRunTrigger::Scheduled,
+                state: BackupRunState::Succeeded,
+                started_at,
+                completed_at: Some(started_at),
+                intended_services: BTreeSet::new(),
+                services: BTreeMap::new(),
+                error: None,
+            };
+            if offset < 2 {
+                oldest_completed_ids.push(run.id.clone());
+            }
+            state.activities.insert(
+                run.id.clone(),
+                BackupActivity {
+                    id: run.id.clone(),
+                    kind: BackupActivityKind::Automatic,
+                    state: run.state,
+                    target_id: run.target_id.clone(),
+                    source_server_id: None,
+                    job_id: Some(run.job_id.clone()),
+                    job_name: Some(run.job_name.clone()),
+                    trigger: Some(run.trigger),
+                    started_at: run.started_at,
+                    completed_at: run.completed_at,
+                    intended_services: run.intended_services.clone(),
+                    services: run.services.clone(),
+                    error: run.error.clone(),
+                },
+            );
+            state.runs.insert(run.id.clone(), run);
+        }
+
+        let running = BackupRun {
+            id: BackupRunId::new(),
+            job_id,
+            job_name: "Nightly".to_owned(),
+            target_id,
+            trigger: BackupRunTrigger::RunNow,
+            state: BackupRunState::Running,
+            started_at: DateTime::from_timestamp(-1, 0).unwrap(),
+            completed_at: None,
+            intended_services: BTreeSet::new(),
+            services: BTreeMap::new(),
+            error: None,
+        };
+        let running_id = running.id.clone();
+        state.activities.insert(
+            running.id.clone(),
+            BackupActivity {
+                id: running.id.clone(),
+                kind: BackupActivityKind::Automatic,
+                state: running.state,
+                target_id: running.target_id.clone(),
+                source_server_id: None,
+                job_id: Some(running.job_id.clone()),
+                job_name: Some(running.job_name.clone()),
+                trigger: Some(running.trigger),
+                started_at: running.started_at,
+                completed_at: None,
+                intended_services: BTreeSet::new(),
+                services: BTreeMap::new(),
+                error: None,
+            },
+        );
+        state.runs.insert(running.id.clone(), running);
+
+        assert_eq!(state.prune_completed_history(), 4);
+        assert_eq!(state.activities.len(), MAX_COMPLETED_HISTORY_ITEMS + 1);
+        assert_eq!(state.runs.len(), MAX_COMPLETED_HISTORY_ITEMS + 1);
+        assert!(state.activities.contains_key(&running_id));
+        assert!(state.runs.contains_key(&running_id));
+        for id in oldest_completed_ids {
+            assert!(!state.activities.contains_key(&id));
+            assert!(!state.runs.contains_key(&id));
+        }
     }
 
     #[test]

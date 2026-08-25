@@ -12,7 +12,7 @@ use super::{
     BackupJob, BackupJobId, BackupJobPause, BackupRun, BackupRunState, BackupRunTrigger,
     BackupServiceScope, BackupTargetFailureState, ScheduledBackupCredential,
     ScheduledBackupMountGuard, ServiceSnapshot, ServiceSnapshotId, activity_from_run,
-    insert_activity,
+    insert_activity, prune_completed_history,
 };
 use crate::backup::PackageBackupReport;
 use crate::backup::scheduled::rpc::history_key;
@@ -547,6 +547,7 @@ async fn run_job_inner(
             }
             persisted_job.status.last_result = Some(run.state);
             state.as_jobs_mut().insert(&job.id, &persisted_job)?;
+            prune_completed_history(db)?;
             Ok(())
         })
         .await
@@ -927,6 +928,7 @@ async fn record_failed_run(
                 persisted.status.consecutive_failures.saturating_add(1);
             persisted.status.last_result = Some(BackupRunState::Failed);
             state.as_jobs_mut().insert(&job.id, &persisted)?;
+            prune_completed_history(db)?;
             Ok(())
         })
         .await

@@ -18,7 +18,7 @@ mod storage;
 pub use activity::activity;
 pub(crate) use activity::{
     complete as complete_activity, from_run as activity_from_run, insert as insert_activity,
-    running as running_activity,
+    prune_completed_history, running as running_activity,
 };
 pub use credential::*;
 pub use model::*;
