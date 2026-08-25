@@ -51,9 +51,9 @@ export interface DeleteScheduleDecision {
         appearance="primary-destructive"
         (click)="confirm(deleteOption)"
       >
-        <span class="delete-only">{{ 'Delete Schedule' | i18n }}</span>
+        <span class="delete-only">{{ 'Delete schedule' | i18n }}</span>
         <span class="delete-with-backups">
-          {{ 'Delete Schedule and Backups' | i18n }}
+          {{ 'Delete schedule and backups' | i18n }}
         </span>
       </button>
     </footer>

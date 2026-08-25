@@ -107,7 +107,9 @@ export class MockApiService extends ApiService {
   readonly mockWsSource$ = new Subject<Revision>()
   private readonly storage = inject(WA_SESSION_STORAGE)
   private readonly revertTime = 1800
-  private scheduledBackupJobs: T.BackupJob[] = []
+  private scheduledBackupJobs: T.BackupJob[] = structuredClone(
+    Object.values(mockPatchData.scheduledBackups.jobs),
+  )
   sequence = 0
 
   constructor() {

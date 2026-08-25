@@ -195,20 +195,24 @@ type Location = MappedBackupTarget<CifsBackupTarget | DiskBackupTarget>
 
       .manual-or-restore > [tuiTitle] [tuiSubtitle] {
         display: flex;
-        flex: 0 1 auto;
+        flex: 1 1 100%;
         flex-wrap: wrap;
-        justify-content: flex-end;
+        justify-content: flex-start;
         min-inline-size: 0;
         max-inline-size: 100%;
-        margin-inline-start: auto;
-        overflow-wrap: normal;
+        margin-inline-start: 0;
+        overflow-wrap: anywhere;
+        text-align: start;
         white-space: normal;
-        word-break: normal;
+        word-break: break-word;
       }
 
       .manual-or-restore > [tuiTitle] .target-detail {
-        white-space: nowrap;
-        word-break: normal;
+        min-inline-size: 0;
+        max-inline-size: 100%;
+        overflow-wrap: anywhere;
+        white-space: normal;
+        word-break: break-word;
       }
 
       .manual-or-restore > [tuiTitle] .target-reason {
@@ -233,7 +237,7 @@ export class BackupLocationPicker {
       location,
       name: location.entry.path.split('/').pop() || location.entry.path,
       detail: formatCifsLocation(location.entry),
-      icon: '@tui.folder-network',
+      icon: '@tui.network',
       available:
         location.entry.mountable &&
         (this.mode() !== 'restore' || location.hasAnyBackup),
