@@ -369,12 +369,12 @@ tui-root._mobile tui-action-bar {
 
 .backup-page,
 .backup-settings {
-  min-width: 0;
+  min-inline-size: 0;
 
   [tuiTitle],
   [tuiCell] {
-    min-width: 0;
-    max-width: 100%;
+    min-inline-size: 0;
+    max-inline-size: 100%;
     overflow-wrap: anywhere;
     box-sizing: border-box;
   }
@@ -382,13 +382,13 @@ tui-root._mobile tui-action-bar {
 
 .services-accordion,
 .services-accordion > button {
-  width: 100%;
-  min-width: 0;
+  inline-size: 100%;
+  min-inline-size: 0;
 }
 
 .services-accordion > button {
-  height: auto;
-  min-height: 3.5rem;
+  block-size: auto;
+  min-block-size: 3.5rem;
   color: var(--tui-text-primary);
   white-space: normal;
 }
@@ -396,8 +396,8 @@ tui-root._mobile tui-action-bar {
 .services-accordion > button [tuiTitle] {
   display: block;
   flex: 1;
-  width: auto;
-  min-width: 0;
+  inline-size: auto;
+  min-inline-size: 0;
   color: var(--tui-text-primary);
   visibility: visible;
   overflow-wrap: anywhere;
@@ -410,11 +410,11 @@ tui-root._mobile tui-action-bar {
 }
 
 tui-data-list.backup-menu {
-  min-width: 12rem;
+  min-inline-size: 12rem;
   padding-block: 0.375rem;
 
   [tuiOption] {
-    min-height: 3rem;
+    min-block-size: 3rem;
     padding-inline: 1rem;
   }
 }

@@ -34,7 +34,7 @@ type StatusFilter = 'all' | T.BackupRunState
   template: `
     <section class="history-toolbar">
       <tui-textfield class="history-search">
-        <label tuiLabel>{{ 'Search date, status, or service' | i18n }}</label>
+        <label tuiLabel>{{ 'Search backups' | i18n }}</label>
         <input tuiInput [ngModel]="query" (ngModelChange)="setQuery($event)" />
       </tui-textfield>
       <tui-textfield
@@ -79,7 +79,7 @@ type StatusFilter = 'all' | T.BackupRunState
 
     <section class="timeline">
       @for (activity of pagedActivities(); track activity.id) {
-        <tui-accordion class="g-card activity">
+        <tui-accordion class="activity">
           <button tuiAccordion>
             <tui-icon [icon]="activityIcon(activity)" />
             <span tuiTitle>
@@ -193,58 +193,86 @@ type StatusFilter = 'all' | T.BackupRunState
     .timeline {
       display: grid;
       gap: 0.75rem;
-      width: 100%;
-      min-width: 0;
+      inline-size: 100%;
+      min-inline-size: 0;
+    }
+
+    :host {
+      container-type: inline-size;
     }
 
     .history-toolbar {
       display: grid;
-      grid-template-columns: minmax(14rem, 1fr) repeat(2, minmax(10rem, 14rem));
+      grid-template-columns: minmax(0, 1fr) repeat(2, minmax(0, 14rem));
       gap: 0.75rem;
+      min-inline-size: 0;
     }
 
     .history-toolbar tui-textfield {
-      width: 100%;
+      inline-size: 100%;
+      min-inline-size: 0;
+      max-inline-size: 100%;
       color: var(--tui-text-secondary);
+      box-sizing: border-box;
+    }
+
+    tui-pagination {
+      inline-size: 100%;
+      min-inline-size: 0;
+      max-inline-size: 100%;
+      overflow-x: auto;
     }
 
     .activity {
       padding: 0;
       overflow: hidden;
+      inline-size: 100%;
+      min-inline-size: 0;
+      box-sizing: border-box;
     }
 
     .activity > button {
       display: flex;
       align-items: center;
       gap: 0.75rem;
-      min-height: 3.5rem;
-      height: auto;
+      min-block-size: 3.5rem;
+      block-size: auto;
       padding: 1rem 1.25rem;
       cursor: pointer;
       list-style: none;
+      inline-size: 100%;
+      min-inline-size: 0;
+      max-inline-size: 100%;
+      box-sizing: border-box;
+      text-align: start;
     }
 
     .activity > button > *,
     .activity > button [tuiTitle] {
-      min-width: 0;
+      min-inline-size: 0;
       overflow-wrap: anywhere;
     }
 
     .activity > button [tuiTitle] {
       flex: 1;
+      white-space: normal;
     }
 
     [tuiSubtitle] {
       display: block;
-      margin-top: 0.25rem;
+      margin-block-start: 0.25rem;
+      white-space: normal;
     }
 
     .activity-details {
-      padding: 0 1.25rem 1rem 3.25rem;
+      min-inline-size: 0;
+      padding-block: 0 1rem;
+      padding-inline: 3.25rem 1.25rem;
     }
 
     .activity-details p {
-      margin: 0.35rem 0;
+      margin-block: 0.35rem;
+      margin-inline: 0;
     }
 
     .error {
@@ -265,7 +293,7 @@ type StatusFilter = 'all' | T.BackupRunState
       display: grid;
       gap: 0.25rem;
       padding-block: 0.75rem;
-      border-top: 1px solid var(--tui-border-normal);
+      border-block-start: 1px solid var(--tui-border-normal);
     }
 
     .service-report p {
@@ -277,14 +305,27 @@ type StatusFilter = 'all' | T.BackupRunState
       color: var(--tui-text-secondary);
     }
 
-    /* Timeline cards need a second collapse below the app-wide mobile layout. */
-    @media (max-width: 30rem) {
+    @container (max-inline-size: 42rem) {
+      .history-search {
+        grid-column: 1 / -1;
+      }
+
+      .history-toolbar {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    @container (max-inline-size: 30rem) {
       .history-toolbar {
         grid-template-columns: 1fr;
       }
 
+      .history-search {
+        grid-column: auto;
+      }
+
       .history-toolbar tui-textfield {
-        width: 100%;
+        inline-size: 100%;
       }
 
       .activity > button {
@@ -377,7 +418,7 @@ export class BackupHistory {
     void this.backupService.getBackupTargets()
   }
 
-  filteredActivities(): T.BackupActivity[] {
+  protected filteredActivities(): T.BackupActivity[] {
     const query = this.query.trim().toLocaleLowerCase()
     return this.activities().filter(activity => {
       const kindMatches =
@@ -388,38 +429,38 @@ export class BackupHistory {
     })
   }
 
-  pagedActivities(): T.BackupActivity[] {
+  protected pagedActivities(): T.BackupActivity[] {
     const activities = this.filteredActivities()
     const page = Math.min(this.page, Math.max(0, this.pageCount() - 1))
     return activities.slice(page * this.pageSize, (page + 1) * this.pageSize)
   }
 
-  pageCount(): number {
+  protected pageCount(): number {
     return Math.ceil(this.filteredActivities().length / this.pageSize)
   }
 
-  setQuery(query: string) {
+  protected setQuery(query: string) {
     this.query = query
     this.page = 0
   }
 
-  setHistoryFilter(filter: HistoryFilter) {
+  protected setHistoryFilter(filter: HistoryFilter) {
     this.historyFilter = filter
     this.page = 0
   }
 
-  setStatusFilter(filter: StatusFilter) {
+  protected setStatusFilter(filter: StatusFilter) {
     this.statusFilter = filter
     this.page = 0
   }
 
-  activityLabel(activity: T.BackupActivity): string {
+  protected activityLabel(activity: T.BackupActivity): string {
     if (activity.kind === 'manual') return 'Manual backup'
     if (activity.kind === 'restore') return 'Restore'
     return activity.jobName || 'Automatic backup'
   }
 
-  activityState(activity: T.BackupActivity): string {
+  protected activityState(activity: T.BackupActivity): string {
     return this.activityStateValue(activity.state)
   }
 
@@ -436,7 +477,7 @@ export class BackupHistory {
     }
   }
 
-  failureSummary(activity: T.BackupActivity): string {
+  protected failureSummary(activity: T.BackupActivity): string {
     if (activity.state === 'partiallyFailed') {
       return 'Some services did not complete successfully. Review the affected services and try again.'
     }
@@ -445,7 +486,7 @@ export class BackupHistory {
       : 'The backup did not complete. Check the password and backup location, then try again.'
   }
 
-  technicalErrors(
+  protected technicalErrors(
     activity: T.BackupActivity,
   ): { label: string; detail: string }[] {
     return [
@@ -465,13 +506,13 @@ export class BackupHistory {
     ]
   }
 
-  activityIcon(activity: T.BackupActivity): string {
+  protected activityIcon(activity: T.BackupActivity): string {
     if (activity.kind === 'manual') return '@tui.copy-plus'
     if (activity.kind === 'restore') return '@tui.database-backup'
     return '@tui.calendar-clock'
   }
 
-  activityAppearance(
+  protected activityAppearance(
     activity: T.BackupActivity,
   ): 'positive' | 'warning' | 'negative' | 'neutral' {
     if (activity.state === 'succeeded') return 'positive'
@@ -480,14 +521,14 @@ export class BackupHistory {
     return 'neutral'
   }
 
-  serviceReports(activity: T.BackupActivity) {
+  protected serviceReports(activity: T.BackupActivity) {
     return Object.entries(activity.services).map(([packageId, value]) => ({
       packageId,
       value,
     }))
   }
 
-  snapshotsFor(
+  protected snapshotsFor(
     activity: T.BackupActivity,
     packageId: string,
   ): T.ServiceSnapshot[] {
@@ -498,12 +539,12 @@ export class BackupHistory {
     )
   }
 
-  reportSize(report: T.PackageBackupReport): string {
+  protected reportSize(report: T.PackageBackupReport): string {
     const bytes = report.physical_size ?? report.logical_size
     return bytes === null ? '—' : convertBytes(bytes)
   }
 
-  packageName(id: string): string {
+  protected packageName(id: string): string {
     const state = this.packageData()?.[id]?.stateInfo
     const manifest =
       state?.state === 'installed' || state?.state === 'removing'
@@ -512,7 +553,7 @@ export class BackupHistory {
     return manifest?.title || id
   }
 
-  targetName(id: string): string {
+  protected targetName(id: string): string {
     const cifs = this.backupService.cifs().find(target => target.id === id)
     if (cifs) return formatCifsLocation(cifs.entry)
     const drive = this.backupService.drives().find(target => target.id === id)

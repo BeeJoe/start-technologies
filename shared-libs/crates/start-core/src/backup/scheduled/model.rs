@@ -378,8 +378,6 @@ pub struct RetentionPolicyChangePreview {
 pub struct ScheduledBackupCredential {
     pub target_instance_id: String,
     pub sealed_key: Vec<u8>,
-    #[serde(default)]
-    pub requires_reauthentication: bool,
 }
 
 #[cfg(test)]

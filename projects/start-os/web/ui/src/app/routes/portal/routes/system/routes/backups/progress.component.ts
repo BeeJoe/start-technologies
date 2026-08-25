@@ -64,7 +64,7 @@ import { DataModel } from 'src/app/services/patch-db/data-model'
     :host {
       display: grid;
       gap: 0.5rem;
-      width: 100%;
+      inline-size: 100%;
       text-transform: capitalize;
     }
 
@@ -95,7 +95,7 @@ import { DataModel } from 'src/app/services/patch-db/data-model'
 
     [tuiTitle] {
       grid-area: title;
-      min-width: 0;
+      min-inline-size: 0;
       white-space: nowrap;
     }
 
@@ -112,7 +112,7 @@ import { DataModel } from 'src/app/services/patch-db/data-model'
       column-gap: 0.75rem;
       row-gap: 0.125rem;
       align-items: center;
-      min-width: 0;
+      min-inline-size: 0;
     }
 
     .progress-row [tuiAvatar] {
@@ -126,9 +126,9 @@ import { DataModel } from 'src/app/services/patch-db/data-model'
       justify-content: flex-end;
       gap: 0.25rem;
       justify-self: end;
-      min-width: 4.75rem;
-      max-width: 100%;
-      text-align: right;
+      min-inline-size: 4.75rem;
+      max-inline-size: 100%;
+      text-align: end;
       white-space: nowrap;
     }
   `,
@@ -148,8 +148,10 @@ import { DataModel } from 'src/app/services/patch-db/data-model'
 export class BackupProgressComponent {
   private readonly patch = inject<PatchDB<DataModel>>(PatchDB)
 
-  readonly pkgs = toSignal(this.patch.watch$('packageData').pipe(take(1)))
-  readonly backupProgress = toSignal(
+  protected readonly pkgs = toSignal(
+    this.patch.watch$('packageData').pipe(take(1)),
+  )
+  protected readonly backupProgress = toSignal(
     this.patch.watch$('serverInfo', 'statusInfo', 'backupProgress'),
   )
 }

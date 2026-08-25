@@ -1117,4 +1117,5 @@ export default {
   1212: 'Appliquer la modification de l’historique des versions ?',
   1213: 'Cette action supprime définitivement les points de contrôle indiqués dans l’aperçu.',
   1214: 'Appliquer',
+  1215: 'Rechercher',
 } satisfies i18n

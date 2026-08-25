@@ -59,6 +59,7 @@ import {
   BackupScheduleFrequency,
   formatBackupTime,
   hasDuplicateRetentionRules,
+  isValidBackupSchedule,
   parseBackupRetentionTier,
   parseBackupSchedule,
   parseBackupServiceSelection,
@@ -984,13 +985,15 @@ interface JobEditor extends EditableRetentionRule {
     :host {
       display: grid;
       gap: 1rem;
-      margin-bottom: 2rem;
+      margin-block-end: 2rem;
+      min-inline-size: 0;
+      container-type: inline-size;
     }
 
     [tuiTitle],
     .schedule-controls > *,
     .schedule-list > * {
-      min-width: 0;
+      min-inline-size: 0;
       overflow-wrap: anywhere;
     }
 
@@ -1007,9 +1010,9 @@ interface JobEditor extends EditableRetentionRule {
     }
 
     .table-wrap {
-      width: 100%;
-      max-width: 100%;
-      min-width: 0;
+      inline-size: 100%;
+      max-inline-size: 100%;
+      min-inline-size: 0;
       overflow-x: auto;
     }
 
@@ -1042,7 +1045,7 @@ interface JobEditor extends EditableRetentionRule {
       align-items: center;
       justify-content: flex-end;
       gap: 1rem;
-      min-width: 0;
+      min-inline-size: 0;
     }
 
     .editor-actions {
@@ -1066,13 +1069,13 @@ interface JobEditor extends EditableRetentionRule {
       align-items: center;
       justify-content: space-between;
       gap: 1rem;
-      width: 100%;
-      min-width: 0;
+      inline-size: 100%;
+      min-inline-size: 0;
       box-sizing: border-box;
     }
 
     .inline-switch.job-switch {
-      width: fit-content;
+      inline-size: fit-content;
       justify-content: flex-start;
     }
 
@@ -1090,20 +1093,20 @@ interface JobEditor extends EditableRetentionRule {
     .editor {
       display: grid;
       gap: 1rem;
-      margin-top: 1rem;
+      margin-block-start: 1rem;
       padding: 1rem;
       border: 1px solid var(--tui-border-normal);
       border-radius: 0.75rem;
-      min-width: 0;
+      min-inline-size: 0;
       overflow: hidden;
     }
 
     .review {
       display: grid;
       gap: 1rem;
-      margin-top: 1rem;
+      margin-block-start: 1rem;
       padding: 1rem;
-      min-width: 0;
+      min-inline-size: 0;
       overflow: hidden;
     }
 
@@ -1141,7 +1144,7 @@ interface JobEditor extends EditableRetentionRule {
     }
 
     .editor.panel {
-      width: 100%;
+      inline-size: 100%;
       padding: 1.25rem;
       box-sizing: border-box;
     }
@@ -1156,17 +1159,17 @@ interface JobEditor extends EditableRetentionRule {
       grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
       gap: 0.75rem;
       align-items: end;
-      width: 100%;
-      min-width: 0;
+      inline-size: 100%;
+      min-inline-size: 0;
     }
 
     .schedule-controls tui-textfield,
     [tuiGroup] {
-      width: 100%;
+      inline-size: 100%;
     }
 
     [tuiBlock] img {
-      width: 2.5rem;
+      inline-size: 2.5rem;
       border-radius: 50%;
     }
 
@@ -1178,28 +1181,28 @@ interface JobEditor extends EditableRetentionRule {
     [tuiBlock],
     [tuiBlock] [tuiTitle] {
       justify-content: flex-start;
-      text-align: left;
+      text-align: start;
     }
 
     .toggle-all,
     .first-backup {
-      width: fit-content;
-      max-width: 100%;
+      inline-size: fit-content;
+      max-inline-size: 100%;
       justify-content: flex-start;
     }
 
     .toggle-all {
-      width: 100%;
+      inline-size: 100%;
       gap: 0.5rem;
       padding: 0 1rem 1rem;
-      border-bottom: 1px solid var(--tui-border-normal);
+      border-block-end: 1px solid var(--tui-border-normal);
       box-sizing: border-box;
     }
 
     .include-future {
       align-items: flex-start;
-      width: 100%;
-      max-width: 100%;
+      inline-size: 100%;
+      max-inline-size: 100%;
       padding-block: 0.75rem;
       padding-inline: 1rem;
       border-radius: var(--tui-radius-m);
@@ -1213,14 +1216,14 @@ interface JobEditor extends EditableRetentionRule {
     }
 
     .inline-switch.left {
-      width: fit-content;
+      inline-size: fit-content;
       justify-content: flex-start;
     }
 
     .retention-heading .inline-switch {
       flex: 0 0 auto;
       justify-content: flex-start;
-      width: fit-content;
+      inline-size: fit-content;
       margin-inline-start: auto;
     }
 
@@ -1231,15 +1234,15 @@ interface JobEditor extends EditableRetentionRule {
         auto auto;
       gap: 0.5rem;
       align-items: center;
-      width: 100%;
-      min-width: 0;
+      inline-size: 100%;
+      min-inline-size: 0;
     }
 
     .retention-rules {
       display: grid;
       gap: 0.75rem;
-      width: 100%;
-      min-width: 0;
+      inline-size: 100%;
+      min-inline-size: 0;
     }
 
     .retention-rules {
@@ -1251,7 +1254,7 @@ interface JobEditor extends EditableRetentionRule {
     }
 
     .duration-field {
-      min-width: 10rem;
+      min-inline-size: 10rem;
     }
 
     .grid {
@@ -1263,14 +1266,14 @@ interface JobEditor extends EditableRetentionRule {
 
     label > span:first-child {
       display: block;
-      margin-bottom: 0.35rem;
+      margin-block-end: 0.35rem;
       color: var(--tui-text-secondary);
     }
 
     fieldset {
       display: grid;
       gap: 0.65rem;
-      min-width: 0;
+      min-inline-size: 0;
       border: 1px solid var(--tui-border-normal);
       border-radius: 0.5rem;
     }
@@ -1284,7 +1287,7 @@ interface JobEditor extends EditableRetentionRule {
 
     .switch-row {
       justify-content: flex-start;
-      min-height: 2.75rem;
+      min-block-size: 2.75rem;
     }
 
     .muted,
@@ -1300,27 +1303,27 @@ interface JobEditor extends EditableRetentionRule {
 
     .snapshot-row button,
     .actions button {
-      max-width: 100%;
-      height: auto;
+      max-inline-size: 100%;
+      block-size: auto;
       white-space: normal;
       overflow-wrap: anywhere;
     }
 
     .grid > *,
     .histories td {
-      min-width: 0;
+      min-inline-size: 0;
       overflow-wrap: anywhere;
     }
 
     .history-heading {
-      margin-top: 2rem;
+      margin-block-start: 2rem;
     }
 
     .schedule-job,
     .view-all-jobs {
       inline-size: 100%;
       min-inline-size: 0;
-      text-align: left;
+      text-align: start;
       box-sizing: border-box;
     }
 
@@ -1329,11 +1332,11 @@ interface JobEditor extends EditableRetentionRule {
       align-items: center;
       gap: 0.75rem;
       padding: 0.75rem 0;
-      border-bottom: 1px solid var(--tui-border-normal);
+      border-block-end: 1px solid var(--tui-border-normal);
     }
 
     .schedule-job:last-child {
-      border-bottom: 0;
+      border-block-end: 0;
     }
 
     .schedule-job [tuiTitle],
@@ -1345,7 +1348,7 @@ interface JobEditor extends EditableRetentionRule {
     .schedule-list {
       display: grid;
       gap: 0.75rem;
-      min-width: 0;
+      min-inline-size: 0;
     }
 
     .estimate-heading {
@@ -1355,7 +1358,7 @@ interface JobEditor extends EditableRetentionRule {
     .capacity-list,
     .capacity-details {
       display: grid;
-      min-width: 0;
+      min-inline-size: 0;
     }
 
     .capacity-list {
@@ -1363,29 +1366,29 @@ interface JobEditor extends EditableRetentionRule {
     }
 
     .capacity-service {
-      min-width: 0;
+      min-inline-size: 0;
       overflow: hidden;
       border: 1px solid var(--tui-border-normal);
       border-radius: var(--tui-radius-m);
     }
 
     .capacity-summary {
-      width: 100%;
-      min-width: 0;
-      min-height: 3.5rem;
-      height: auto;
+      inline-size: 100%;
+      min-inline-size: 0;
+      min-block-size: 3.5rem;
+      block-size: auto;
       white-space: normal;
     }
 
     .capacity-summary [tuiTitle] {
       flex: 1;
-      min-width: 0;
-      text-align: left;
+      min-inline-size: 0;
+      text-align: start;
     }
 
     .capacity-summary [tuiSubtitle] {
       display: block;
-      margin-top: 0.2rem;
+      margin-block-start: 0.2rem;
       white-space: normal;
     }
 
@@ -1405,7 +1408,7 @@ interface JobEditor extends EditableRetentionRule {
       grid-template-columns: minmax(10rem, 1fr) auto;
       gap: 1rem;
       padding-block: 0.65rem;
-      border-top: 1px solid var(--tui-border-normal);
+      border-block-start: 1px solid var(--tui-border-normal);
     }
 
     .capacity-details dt {
@@ -1415,7 +1418,7 @@ interface JobEditor extends EditableRetentionRule {
 
     .capacity-details dd {
       margin: 0;
-      text-align: right;
+      text-align: end;
     }
 
     .capacity-unknown {
@@ -1424,8 +1427,7 @@ interface JobEditor extends EditableRetentionRule {
       color: var(--tui-text-secondary);
     }
 
-    /* Embedded schedule cards need the narrow layout below the app-wide mobile breakpoint. */
-    @media (max-width: 30rem) {
+    @container (max-inline-size: 30rem) {
       .heading,
       .jobs-toolbar,
       .selected-job,
@@ -1504,7 +1506,7 @@ interface JobEditor extends EditableRetentionRule {
       }
 
       .job-switch {
-        width: fit-content;
+        inline-size: fit-content;
       }
 
       .retention-heading {
@@ -1513,12 +1515,12 @@ interface JobEditor extends EditableRetentionRule {
 
       .retention-heading > [tuiTitle] {
         flex: 1;
-        min-width: 0;
+        min-inline-size: 0;
       }
 
       .retention-heading .inline-switch {
         flex: 0 0 auto;
-        width: fit-content;
+        inline-size: fit-content;
       }
 
       .retention-heading .retention-toggle-label {
@@ -1531,7 +1533,7 @@ interface JobEditor extends EditableRetentionRule {
       }
 
       .capacity-details dd {
-        text-align: left;
+        text-align: start;
       }
 
       .capacity-summary {
@@ -1540,7 +1542,7 @@ interface JobEditor extends EditableRetentionRule {
 
       .capacity-summary .more-info {
         flex-basis: 100%;
-        text-align: right;
+        text-align: end;
       }
     }
   `,
@@ -1777,7 +1779,7 @@ export class ScheduledBackups {
     }
   }
 
-  async create(): Promise<boolean> {
+  protected async create(): Promise<boolean> {
     if (!(await this.confirmDiscardChanges())) return false
     const now = new Date()
     const form: JobEditor = {
@@ -1815,7 +1817,7 @@ export class ScheduledBackups {
     return true
   }
 
-  async viewAllJobs() {
+  protected async viewAllJobs() {
     if (!(await this.confirmDiscardChanges())) return
     this.reassigning.set(null)
     this.showSingleJobList = true
@@ -1826,7 +1828,7 @@ export class ScheduledBackups {
     this.showServices.set(false)
   }
 
-  async cancelEditor() {
+  protected async cancelEditor() {
     if (!(await this.confirmDiscardChanges())) return
     this.selectedJobId.set('')
     this.editor.set(null)
@@ -1872,7 +1874,7 @@ export class ScheduledBackups {
     return confirmed
   }
 
-  async createForReview(review: T.NewServiceBackupReview) {
+  protected async createForReview(review: T.NewServiceBackupReview) {
     if (!(await this.create())) return
     const form = this.editor()
     if (!form) return
@@ -1883,11 +1885,11 @@ export class ScheduledBackups {
     void this.refreshEstimates(form)
   }
 
-  isDefaultJob(form: JobEditor): boolean {
+  protected isDefaultJob(form: JobEditor): boolean {
     return !!form.id && this.jobs().length === 1 && form.name === 'Default'
   }
 
-  async edit(job?: T.BackupJob) {
+  protected async edit(job?: T.BackupJob) {
     if (!job) return
     if (!(await this.confirmDiscardChanges())) return
     this.showSingleJobList = false
@@ -1929,7 +1931,7 @@ export class ScheduledBackups {
     void this.refreshEstimates(form)
   }
 
-  removeRetentionRule(form: JobEditor, index: number) {
+  protected removeRetentionRule(form: JobEditor, index: number) {
     if (index === 0 && form.additionalTiers.length) {
       const next = form.additionalTiers.shift()!
       Object.assign(form, next)
@@ -1942,7 +1944,11 @@ export class ScheduledBackups {
     form.capacityConfirmed = false
   }
 
-  togglePackage(form: JobEditor, packageId: string, checked: boolean) {
+  protected togglePackage(
+    form: JobEditor,
+    packageId: string,
+    checked: boolean,
+  ) {
     form.packageIds = checked
       ? [...new Set([...form.packageIds, packageId])]
       : form.packageIds.filter(id => id !== packageId)
@@ -1950,7 +1956,7 @@ export class ScheduledBackups {
     form.capacityConfirmed = false
   }
 
-  allPackagesSelected(form: JobEditor): boolean {
+  protected allPackagesSelected(form: JobEditor): boolean {
     const services = this.packages().filter(pkg => pkg.id !== SYSTEM_PACKAGE_ID)
     return (
       services.length > 0 &&
@@ -1958,7 +1964,7 @@ export class ScheduledBackups {
     )
   }
 
-  setAllPackages(form: JobEditor, checked: boolean) {
+  protected setAllPackages(form: JobEditor, checked: boolean) {
     const includesSystem = form.packageIds.includes(SYSTEM_PACKAGE_ID)
     const services = this.packages().filter(pkg => pkg.id !== SYSTEM_PACKAGE_ID)
     form.packageIds = [
@@ -1971,7 +1977,7 @@ export class ScheduledBackups {
     form.capacityConfirmed = false
   }
 
-  async save(form: JobEditor) {
+  protected async save(form: JobEditor) {
     if (!this.canSave(form)) return
     if (this.hasDuplicateJobName(form)) {
       this.dialogs
@@ -2187,11 +2193,11 @@ export class ScheduledBackups {
     }
   }
 
-  async runNow(job: T.BackupJob) {
+  protected async runNow(job: T.BackupJob) {
     await this.perform(() => this.api.runScheduledBackupJob({ id: job.id }))
   }
 
-  async setJobEnabled(job: T.BackupJob, enabled: boolean) {
+  protected async setJobEnabled(job: T.BackupJob, enabled: boolean) {
     if (enabled === job.enabled && !job.pause) return
     await this.perform(() =>
       this.api.setScheduledBackupJobEnabled({
@@ -2201,7 +2207,7 @@ export class ScheduledBackups {
     )
   }
 
-  async deleteJob(job: T.BackupJob) {
+  protected async deleteJob(job: T.BackupJob) {
     if (await this.deleteSchedule.delete(job)) {
       this.showSingleJobList = true
       this.selectedJobId.set('')
@@ -2213,7 +2219,7 @@ export class ScheduledBackups {
     }
   }
 
-  async retry(job: T.BackupJob) {
+  protected async retry(job: T.BackupJob) {
     const password = await firstValueFrom(
       this.dialogs.openPrompt<string>({
         label: 'Enter Password',
@@ -2236,7 +2242,7 @@ export class ScheduledBackups {
     )
   }
 
-  async beginReassign(job: T.BackupJob) {
+  protected async beginReassign(job: T.BackupJob) {
     if (!(await this.confirmDiscardChanges())) return
     this.editor.set(null)
     this.editorBaseline = null
@@ -2249,12 +2255,12 @@ export class ScheduledBackups {
     this.waitForSchedule = false
   }
 
-  cancelReassign(job: T.BackupJob) {
+  protected cancelReassign(job: T.BackupJob) {
     this.reassigning.set(null)
     void this.edit(job)
   }
 
-  async reassign(job: T.BackupJob) {
+  protected async reassign(job: T.BackupJob) {
     await this.perform(() =>
       this.api.reassignScheduledBackupTarget({
         id: job.id,
@@ -2266,17 +2272,21 @@ export class ScheduledBackups {
     this.reassigning.set(null)
   }
 
-  reviewDecision(packageId: string, jobId: string): boolean {
+  protected reviewDecision(packageId: string, jobId: string): boolean {
     return this.reviewDecisions.get(packageId)?.[jobId] ?? false
   }
 
-  setReviewDecision(packageId: string, jobId: string, value: boolean) {
+  protected setReviewDecision(
+    packageId: string,
+    jobId: string,
+    value: boolean,
+  ) {
     const decisions = this.reviewDecisions.get(packageId) || {}
     decisions[jobId] = value
     this.reviewDecisions.set(packageId, decisions)
   }
 
-  allReviewJobsSelected(review: T.NewServiceBackupReview): boolean {
+  protected allReviewJobsSelected(review: T.NewServiceBackupReview): boolean {
     const decisions = this.reviewDecisions.get(review.packageId)
     return (
       this.jobs().length > 0 &&
@@ -2284,14 +2294,17 @@ export class ScheduledBackups {
     )
   }
 
-  setAllReviewJobs(review: T.NewServiceBackupReview, checked: boolean) {
+  protected setAllReviewJobs(
+    review: T.NewServiceBackupReview,
+    checked: boolean,
+  ) {
     this.reviewDecisions.set(
       review.packageId,
       Object.fromEntries(this.jobs().map(job => [job.id, checked])),
     )
   }
 
-  async resolveReview(review: T.NewServiceBackupReview) {
+  protected async resolveReview(review: T.NewServiceBackupReview) {
     const selected = this.reviewDecisions.get(review.packageId) || {}
     const decisions = Object.fromEntries(
       this.jobs().map(job => [job.id, selected[job.id] === true]),
@@ -2314,14 +2327,14 @@ export class ScheduledBackups {
     )
   }
 
-  editPolicy(history: T.ServiceTargetHistory) {
+  protected editPolicy(history: T.ServiceTargetHistory) {
     this.policyHistory.set(history)
     this.policyTiers.set(this.toTierEditors(history.policy))
     this.policyPreview.set(null)
     this.confirmPrune = false
   }
 
-  async previewPolicy(history: T.ServiceTargetHistory) {
+  protected async previewPolicy(history: T.ServiceTargetHistory) {
     await this.tasks.run(async () => {
       this.policyPreview.set(
         await this.api.previewScheduledRetention({
@@ -2334,7 +2347,7 @@ export class ScheduledBackups {
     }, 'Loading')
   }
 
-  async applyPolicy(history: T.ServiceTargetHistory) {
+  protected async applyPolicy(history: T.ServiceTargetHistory) {
     const preview = this.policyPreview()
     if (!preview) return
     await this.perform(() =>
@@ -2348,7 +2361,7 @@ export class ScheduledBackups {
     this.policyHistory.set(null)
   }
 
-  async deleteArchive(history: T.ServiceTargetHistory) {
+  protected async deleteArchive(history: T.ServiceTargetHistory) {
     const confirmed = await firstValueFrom(
       this.dialogs
         .openConfirm({
@@ -2391,12 +2404,12 @@ export class ScheduledBackups {
     )
   }
 
-  restoreLatest(history: T.ServiceTargetHistory) {
+  protected restoreLatest(history: T.ServiceTargetHistory) {
     const latest = this.newestFirst(history.snapshots)[0]
     if (latest) this.restoreSnapshot(history, latest)
   }
 
-  async restoreSnapshot(
+  protected async restoreSnapshot(
     history: T.ServiceTargetHistory,
     snapshot: T.ServiceSnapshot,
   ) {
@@ -2423,24 +2436,24 @@ export class ScheduledBackups {
     )
   }
 
-  jobName(id: string): string {
+  protected jobName(id: string): string {
     return this.jobs().find(job => job.id === id)?.name || id
   }
 
-  packageName(id: string): string {
+  protected packageName(id: string): string {
     if (id === SYSTEM_PACKAGE_ID) return this.i18n.transform('System')
     return this.packages().find(pkg => pkg.id === id)?.name || id
   }
 
-  affectedJobNames(history: T.ServiceTargetHistory): string[] {
+  protected affectedJobNames(history: T.ServiceTargetHistory): string[] {
     return history.feedingJobs.map(id => this.jobName(id))
   }
 
-  targetName(id: string): string {
+  protected targetName(id: string): string {
     return this.targets().find(target => target.id === id)?.name || id
   }
 
-  pauseLabel(pause: T.BackupJobPause) {
+  protected pauseLabel(pause: T.BackupJobPause) {
     switch (pause.reason) {
       case 'targetUnavailable':
         return 'Backup location unavailable' as const
@@ -2453,7 +2466,7 @@ export class ScheduledBackups {
     }
   }
 
-  scheduleSummary(form: JobEditor): string {
+  protected scheduleSummary(form: JobEditor): string {
     const minute = String(form.minute).padStart(2, '0')
     const time = `${String(form.hour).padStart(2, '0')}:${minute}`
     if (form.frequency === 'hourly') {
@@ -2491,7 +2504,7 @@ export class ScheduledBackups {
     return this.i18n.transform(count === 1 ? 'Service' : 'Services')
   }
 
-  selectedServiceSummary(form: JobEditor): string {
+  protected selectedServiceSummary(form: JobEditor): string {
     const total = this.packages().filter(
       pkg => pkg.id !== SYSTEM_PACKAGE_ID,
     ).length
@@ -2510,7 +2523,7 @@ export class ScheduledBackups {
     return `${count} · ${future}${system}`
   }
 
-  retentionSummary(form: JobEditor): string {
+  protected retentionSummary(form: JobEditor): string {
     if (!form.keepAdditional) {
       return this.i18n.transform('Keep only the latest automatic checkpoint')
     }
@@ -2536,48 +2549,33 @@ export class ScheduledBackups {
     return `${every} ${interval} ${forLabel} ${rule.duration} ${period}`
   }
 
-  retentionPeriod(form: JobEditor) {
+  protected retentionPeriod(form: JobEditor) {
     return this.retentionPeriodFor(form)
   }
 
-  retentionPeriodFor(rule: BackupRetentionTierEditor) {
+  protected retentionPeriodFor(rule: BackupRetentionTierEditor) {
     return rule.interval === 'custom'
       ? 'hours'
       : retentionPeriodLabel(rule.interval, rule.duration)
   }
 
-  newRetentionRule(): EditableRetentionRule {
+  protected newRetentionRule(): EditableRetentionRule {
     return {
       ...parseBackupRetentionTier(),
       preserved: null,
     }
   }
 
-  canSave(form: JobEditor): boolean {
+  protected canSave(form: JobEditor): boolean {
     return !!(
       form.name.trim() &&
       form.targetId &&
       form.packageIds.length &&
-      this.validSchedule(form) &&
+      isValidBackupSchedule(form) &&
       this.validRetention(form) &&
       (form.id || form.password) &&
       (this.projectedCount(form) <= 1 || form.capacityConfirmed)
     )
-  }
-
-  private validSchedule(form: JobEditor): boolean {
-    const validFrequency = this.frequencies.includes(form.frequency)
-    const validMinute =
-      Number.isInteger(form.minute) && form.minute >= 0 && form.minute <= 59
-    const validHour =
-      form.frequency === 'hourly' ||
-      (Number.isInteger(form.hour) && form.hour >= 0 && form.hour <= 23)
-    const validDayOfMonth =
-      form.frequency !== 'monthly' ||
-      (Number.isInteger(form.dayOfMonth) &&
-        form.dayOfMonth >= 1 &&
-        form.dayOfMonth <= 31)
-    return validFrequency && validMinute && validHour && validDayOfMonth
   }
 
   private validRetention(form: JobEditor): boolean {
@@ -2597,11 +2595,11 @@ export class ScheduledBackups {
     )
   }
 
-  retentionHasDuplicates(form: JobEditor): boolean {
+  protected retentionHasDuplicates(form: JobEditor): boolean {
     return hasDuplicateRetentionRules([form, ...form.additionalTiers])
   }
 
-  projectedCount(form: JobEditor): number {
+  protected projectedCount(form: JobEditor): number {
     return Math.max(
       this.maximumProjected(this.defaultPolicy(form)),
       ...Object.values(form.retentionOverrides).map(override =>
@@ -2610,15 +2608,15 @@ export class ScheduledBackups {
     )
   }
 
-  selectedPackages(form: JobEditor) {
+  protected selectedPackages(form: JobEditor) {
     return this.packages().filter(pkg => form.packageIds.includes(pkg.id))
   }
 
-  capacityEstimate(packageId: string) {
+  protected capacityEstimate(packageId: string) {
     return this.estimates().find(estimate => estimate.packageId === packageId)
   }
 
-  setCapacityDetailsOpen(packageId: string, open: boolean) {
+  protected setCapacityDetailsOpen(packageId: string, open: boolean) {
     this.capacityDetailsOpen.update(current => {
       const next = new Set(current)
       if (open) next.add(packageId)
@@ -2627,7 +2625,7 @@ export class ScheduledBackups {
     })
   }
 
-  async refreshEstimates(form: JobEditor) {
+  protected async refreshEstimates(form: JobEditor) {
     if (!form.targetId) return
     await this.tasks.run(async () => {
       this.estimates.set(
@@ -2651,7 +2649,7 @@ export class ScheduledBackups {
     }, 'Loading')
   }
 
-  maximumProjected(policy: T.RetentionPolicy): number {
+  protected maximumProjected(policy: T.RetentionPolicy): number {
     return (
       1 +
       policy.tiers.reduce(
@@ -2662,7 +2660,7 @@ export class ScheduledBackups {
     )
   }
 
-  stagingBytes(history: T.ServiceTargetHistory): number | null {
+  protected stagingBytes(history: T.ServiceTargetHistory): number | null {
     const latest = this.newestFirst(
       history.snapshots.filter(snapshot => !snapshot.archived),
     )[0]
@@ -2671,21 +2669,23 @@ export class ScheduledBackups {
       : null
   }
 
-  lastChanged(history: T.ServiceTargetHistory): number | null {
+  protected lastChanged(history: T.ServiceTargetHistory): number | null {
     return this.newestFirst(history.snapshots)[0]?.changedBytes ?? null
   }
 
-  bytes(value: number | null): string {
+  protected bytes(value: number | null): string {
     return value === null ? '—' : convertBytes(value)
   }
 
-  newestFirst(snapshots: T.ServiceSnapshot[]): T.ServiceSnapshot[] {
+  protected newestFirst(snapshots: T.ServiceSnapshot[]): T.ServiceSnapshot[] {
     return [...snapshots].sort((a, b) =>
       b.completedAt.localeCompare(a.completedAt),
     )
   }
 
-  archivedSnapshots(history: T.ServiceTargetHistory): T.ServiceSnapshot[] {
+  protected archivedSnapshots(
+    history: T.ServiceTargetHistory,
+  ): T.ServiceSnapshot[] {
     return history.snapshots.filter(snapshot => snapshot.archived)
   }
 

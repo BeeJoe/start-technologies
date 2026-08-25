@@ -1117,4 +1117,5 @@ export default {
   1212: 'Zastosować zmianę historii wersji?',
   1213: 'Spowoduje to trwałe usunięcie punktów kontrolnych wymienionych w podglądzie.',
   1214: 'Zastosuj',
+  1215: 'Szukaj kopii',
 } satisfies i18n

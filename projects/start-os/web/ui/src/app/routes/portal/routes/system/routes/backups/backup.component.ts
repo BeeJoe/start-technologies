@@ -75,7 +75,7 @@ interface Package {
   `,
   styles: `
     [tuiGroup] {
-      width: 100%;
+      inline-size: 100%;
       margin: 0;
     }
 
@@ -84,12 +84,12 @@ interface Package {
     }
 
     [tuiTitle] {
-      min-width: 0;
+      min-inline-size: 0;
       overflow-wrap: anywhere;
     }
 
     img {
-      width: 2.5rem;
+      inline-size: 2.5rem;
       flex-shrink: 0;
     }
 
@@ -124,10 +124,10 @@ export class BackupsBackupComponent {
   private readonly patch = inject<PatchDB<DataModel>>(PatchDB)
   private readonly i18n = inject(i18nPipe)
 
-  readonly context = injectContext<BackupContext>()
+  protected readonly context = injectContext<BackupContext>()
 
-  hasSelection = false
-  readonly pkgs = toSignal<readonly Package[] | null>(
+  protected hasSelection = false
+  protected readonly pkgs = toSignal<readonly Package[] | null>(
     this.patch.watch$('packageData').pipe(
       take(1),
       map(pkgs =>
@@ -150,7 +150,7 @@ export class BackupsBackupComponent {
     { initialValue: null },
   )
 
-  done() {
+  protected done() {
     this.dialog
       .openPrompt<string>({
         label: this.i18n.transform('Master password needed'),
@@ -173,16 +173,16 @@ export class BackupsBackupComponent {
       .subscribe()
   }
 
-  handleChange() {
+  protected handleChange() {
     this.hasSelection = !!this.pkgs()?.some(p => p.checked)
   }
 
-  allEligibleSelected(): boolean {
+  protected allEligibleSelected(): boolean {
     const eligible = this.pkgs()?.filter(pkg => !pkg.disabled) || []
     return !!eligible.length && eligible.every(pkg => pkg.checked)
   }
 
-  setAll(checked: boolean) {
+  protected setAll(checked: boolean) {
     this.pkgs()?.forEach(pkg => (pkg.checked = checked && !pkg.disabled))
     this.handleChange()
   }
