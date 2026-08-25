@@ -52,8 +52,9 @@ file tracks notable changes since the move to the monorepo.
   or deleted while unreferenced checkpoints remain available as archives.
   Reconnected locations can authenticate again to manage those archives.
   New-service reviews keep selective schedules current. Backup history is
-  searchable, filterable, and paginated, with clear failure summaries and
-  expandable technical details. Authentication, network, and validation errors
+  searchable, filterable, and paginated, and retains the newest 1,000 completed
+  entries, with clear failure summaries and expandable technical details.
+  Authentication, network, and validation errors
   identify the action users can take; password controls are keyboard accessible;
   and backup management remains usable on narrow displays. Restore can mix
   manual and automatic checkpoints by service and keeps backup progress and
