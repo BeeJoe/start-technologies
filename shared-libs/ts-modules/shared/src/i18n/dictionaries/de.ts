@@ -1117,4 +1117,5 @@ export default {
   1212: 'Änderung am Versionsverlauf anwenden?',
   1213: 'Dadurch werden die in der Vorschau aufgeführten Prüfpunkte dauerhaft gelöscht.',
   1214: 'Anwenden',
+  1215: 'Sicherungen suchen',
 } satisfies i18n

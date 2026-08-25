@@ -27,7 +27,6 @@ impl ScheduledBackupCredential {
         Ok(Self {
             target_instance_id,
             sealed_key,
-            requires_reauthentication: false,
         })
     }
 

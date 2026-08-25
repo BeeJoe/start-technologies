@@ -58,10 +58,8 @@ for the detail behind its highlights.
   and backup management remains usable on narrow displays. Restore can mix
   manual and automatic checkpoints by service and keeps backup progress and
   history in view. The same schedules, history, retention, repair, and restore
-  operations are available for command-line administration. Backup-target
-  metadata is now read with strict size and discovery limits, mutations on a
-  shared target are serialized, and a stalled service backup is timed out and
-  cleaned up so it cannot block later backups indefinitely.
+  operations are available for command-line administration. A stalled service
+  backup stops after six hours so later backups can run.
 
 - **A service can permanently retire a network host or a port it no longer
   uses, and the port numbers it held become available again.** A service that

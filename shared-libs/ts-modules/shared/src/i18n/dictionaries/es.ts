@@ -1117,4 +1117,5 @@ export default {
   1212: '¿Aplicar el cambio del historial de versiones?',
   1213: 'Esto elimina permanentemente los puntos de control mostrados en la vista previa.',
   1214: 'Aplicar',
+  1215: 'Buscar copias',
 } satisfies i18n
