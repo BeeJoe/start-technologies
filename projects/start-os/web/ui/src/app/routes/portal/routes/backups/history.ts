@@ -1,7 +1,8 @@
 import { DatePipe, DecimalPipe } from '@angular/common'
-import { Component, computed, inject } from '@angular/core'
-import { toSignal } from '@angular/core/rxjs-interop'
+import { Component, computed, inject, signal } from '@angular/core'
+import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop'
 import { FormsModule } from '@angular/forms'
+import { ActivatedRoute, Router } from '@angular/router'
 import { convertBytes, i18nPipe } from '@start9labs/shared'
 import { T } from '@start9labs/start-core'
 import {
@@ -20,6 +21,7 @@ import {
   TuiSelect,
 } from '@taiga-ui/kit'
 import { PatchDB } from 'patch-db-client'
+import { tap } from 'rxjs'
 import { DataModel } from 'src/app/services/patch-db/data-model'
 import {
   BackupService,
@@ -29,13 +31,31 @@ import {
 type HistoryFilter = 'all' | T.BackupActivityKind
 type StatusFilter = 'all' | T.BackupRunState
 
+const HISTORY_FILTERS: HistoryFilter[] = [
+  'all',
+  'manual',
+  'automatic',
+  'restore',
+]
+const STATUS_FILTERS: StatusFilter[] = [
+  'all',
+  'running',
+  'succeeded',
+  'partiallyFailed',
+  'failed',
+]
+
 @Component({
   selector: 'backup-history',
   template: `
     <section class="history-toolbar">
       <tui-textfield class="history-search">
         <label tuiLabel>{{ 'Search backups' | i18n }}</label>
-        <input tuiInput [ngModel]="query" (ngModelChange)="setQuery($event)" />
+        <input
+          tuiInput
+          [ngModel]="query()"
+          (ngModelChange)="setQuery($event)"
+        />
       </tui-textfield>
       <tui-textfield
         tuiChevron
@@ -45,7 +65,7 @@ type StatusFilter = 'all' | T.BackupRunState
         <label tuiLabel>{{ 'Show' | i18n }}</label>
         <input
           tuiSelect
-          [ngModel]="historyFilter"
+          [ngModel]="historyFilter()"
           (ngModelChange)="setHistoryFilter($event)"
         />
         <tui-data-list *tuiDropdown>
@@ -64,7 +84,7 @@ type StatusFilter = 'all' | T.BackupRunState
         <label tuiLabel>{{ 'Status' | i18n }}</label>
         <input
           tuiSelect
-          [ngModel]="statusFilter"
+          [ngModel]="statusFilter()"
           (ngModelChange)="setStatusFilter($event)"
         />
         <tui-data-list *tuiDropdown>
@@ -183,8 +203,8 @@ type StatusFilter = 'all' | T.BackupRunState
     @if (pageCount() > 1) {
       <tui-pagination
         [length]="pageCount()"
-        [index]="page"
-        (indexChange)="page = $event"
+        [index]="page()"
+        (indexChange)="setPage($event)"
       />
     }
   `,
@@ -365,6 +385,8 @@ type StatusFilter = 'all' | T.BackupRunState
 export class BackupHistory {
   private readonly backupService = inject(BackupService)
   private readonly i18n = inject(i18nPipe)
+  private readonly route = inject(ActivatedRoute)
+  private readonly router = inject(Router)
   private readonly state = toSignal(
     inject<PatchDB<DataModel>>(PatchDB).watch$('scheduledBackups'),
   )
@@ -372,17 +394,12 @@ export class BackupHistory {
     inject<PatchDB<DataModel>>(PatchDB).watch$('packageData'),
   )
 
-  protected historyFilter: HistoryFilter = 'all'
-  protected statusFilter: StatusFilter = 'all'
-  protected query = ''
-  protected page = 0
+  protected readonly historyFilter = signal<HistoryFilter>('all')
+  protected readonly statusFilter = signal<StatusFilter>('all')
+  protected readonly query = signal('')
+  protected readonly page = signal(0)
   private readonly pageSize = 20
-  protected readonly historyFilters: HistoryFilter[] = [
-    'all',
-    'manual',
-    'automatic',
-    'restore',
-  ]
+  protected readonly historyFilters = HISTORY_FILTERS
   protected readonly stringifyFilter = (filter: HistoryFilter) =>
     this.i18n.transform(
       filter === 'all'
@@ -393,13 +410,7 @@ export class BackupHistory {
             ? 'Automatic'
             : 'Restore',
     )
-  protected readonly statusFilters: StatusFilter[] = [
-    'all',
-    'running',
-    'succeeded',
-    'partiallyFailed',
-    'failed',
-  ]
+  protected readonly statusFilters = STATUS_FILTERS
   protected readonly stringifyStatusFilter = (status: StatusFilter) =>
     this.i18n.transform(
       status === 'all' ? 'All statuses' : this.activityStateValue(status),
@@ -410,48 +421,88 @@ export class BackupHistory {
     ),
   )
 
-  constructor() {
-    void this.initialize()
-  }
+  protected readonly filteredActivities = computed(() => {
+    const query = this.query().trim().toLocaleLowerCase()
+    return this.activities().filter(activity => {
+      const kindMatches =
+        this.historyFilter() === 'all' || activity.kind === this.historyFilter()
+      const statusMatches =
+        this.statusFilter() === 'all' || activity.state === this.statusFilter()
+      return kindMatches && statusMatches && this.matchesQuery(activity, query)
+    })
+  })
+  protected readonly pageCount = computed(() =>
+    Math.ceil(this.filteredActivities().length / this.pageSize),
+  )
+  protected readonly pagedActivities = computed(() => {
+    const page = Math.min(this.page(), Math.max(0, this.pageCount() - 1))
+    return this.filteredActivities().slice(
+      page * this.pageSize,
+      (page + 1) * this.pageSize,
+    )
+  })
 
-  private initialize() {
+  constructor() {
+    this.route.queryParamMap
+      .pipe(
+        takeUntilDestroyed(),
+        tap(params => {
+          const historyFilter = params.get('historyKind')
+          const statusFilter = params.get('historyStatus')
+          const page = Number(params.get('historyPage')) - 1
+          this.query.set(params.get('historySearch') || '')
+          this.historyFilter.set(
+            HISTORY_FILTERS.includes(historyFilter as HistoryFilter)
+              ? (historyFilter as HistoryFilter)
+              : 'all',
+          )
+          this.statusFilter.set(
+            STATUS_FILTERS.includes(statusFilter as StatusFilter)
+              ? (statusFilter as StatusFilter)
+              : 'all',
+          )
+          this.page.set(Number.isInteger(page) && page >= 0 ? page : 0)
+        }),
+      )
+      .subscribe()
     void this.backupService.getBackupTargets()
   }
 
-  protected filteredActivities(): T.BackupActivity[] {
-    const query = this.query.trim().toLocaleLowerCase()
-    return this.activities().filter(activity => {
-      const kindMatches =
-        this.historyFilter === 'all' || activity.kind === this.historyFilter
-      const statusMatches =
-        this.statusFilter === 'all' || activity.state === this.statusFilter
-      return kindMatches && statusMatches && this.matchesQuery(activity, query)
-    })
-  }
-
-  protected pagedActivities(): T.BackupActivity[] {
-    const activities = this.filteredActivities()
-    const page = Math.min(this.page, Math.max(0, this.pageCount() - 1))
-    return activities.slice(page * this.pageSize, (page + 1) * this.pageSize)
-  }
-
-  protected pageCount(): number {
-    return Math.ceil(this.filteredActivities().length / this.pageSize)
-  }
-
   protected setQuery(query: string) {
-    this.query = query
-    this.page = 0
+    this.query.set(query)
+    this.updateQueryParams({ historySearch: query || null, historyPage: null })
   }
 
   protected setHistoryFilter(filter: HistoryFilter) {
-    this.historyFilter = filter
-    this.page = 0
+    this.historyFilter.set(filter)
+    this.updateQueryParams({
+      historyKind: filter === 'all' ? null : filter,
+      historyPage: null,
+    })
   }
 
   protected setStatusFilter(filter: StatusFilter) {
-    this.statusFilter = filter
-    this.page = 0
+    this.statusFilter.set(filter)
+    this.updateQueryParams({
+      historyStatus: filter === 'all' ? null : filter,
+      historyPage: null,
+    })
+  }
+
+  protected setPage(page: number) {
+    this.page.set(page)
+    this.updateQueryParams({ historyPage: page ? page + 1 : null })
+  }
+
+  private updateQueryParams(
+    queryParams: Record<string, string | number | null>,
+  ) {
+    void this.router.navigate([], {
+      relativeTo: this.route,
+      queryParams,
+      queryParamsHandling: 'merge',
+      replaceUrl: true,
+    })
   }
 
   protected activityLabel(activity: T.BackupActivity): string {

@@ -579,18 +579,7 @@ async fn refresh_histories(
     }
     drop(db);
     let histories: Vec<_> = merged.into_values().collect();
-    ctx.db
-        .mutate(|db| {
-            let state = db.as_public_mut().as_scheduled_backups_mut();
-            for history in &histories {
-                state
-                    .as_histories_mut()
-                    .insert(&history_key(&target_id, &history.package_id), history)?;
-            }
-            Ok(())
-        })
-        .await
-        .result?;
+    persist_histories(&ctx, &histories).await?;
     Ok(histories)
 }
 
@@ -638,7 +627,7 @@ pub async fn discover_histories(
     .await?
     .0;
     let target_instance_id = guard.recovery.target_instance_id.clone();
-    let histories = guard
+    let histories: Vec<_> = guard
         .metadata
         .services
         .iter()
@@ -655,7 +644,27 @@ pub async fn discover_histories(
         })
         .collect();
     guard.unmount().await?;
+    persist_histories(&ctx, &histories).await?;
     Ok(histories)
+}
+
+async fn persist_histories(
+    ctx: &RpcContext,
+    histories: &[ServiceTargetHistory],
+) -> Result<(), Error> {
+    ctx.db
+        .mutate(|db| {
+            let state = db.as_public_mut().as_scheduled_backups_mut();
+            for history in histories {
+                state.as_histories_mut().insert(
+                    &history_key(&history.target_id, &history.package_id),
+                    history,
+                )?;
+            }
+            Ok(())
+        })
+        .await
+        .result
 }
 
 fn current_feeding_jobs(
@@ -986,18 +995,15 @@ pub async fn retry_target(
     let db = ctx.db.peek().await;
     RpcContext::check_password(&db, &password)?;
     let target_instance_id = target_instance_id_for_target(&db, &target_id)?;
-    let target = target_id.clone().load(&db)?;
     let server_id = db.as_public().as_server_info().as_id().de()?;
-    let device_key = db.as_private().as_scheduled_backup_device_key().de()?;
-    let (guard, encryption_key) = ScheduledBackupMountGuard::mount_with_password(
-        TmpMountGuard::mount(&target, ReadWrite).await?,
+    let (guard, credential) = mount_scheduled_target(
+        &db,
+        &target_id,
         &server_id,
         &target_instance_id,
-        &password,
+        Some(&password),
     )
     .await?;
-    let credential =
-        ScheduledBackupCredential::seal(target_instance_id, &encryption_key, &device_key)?;
     guard.save_and_unmount().await?;
 
     let jobs = ctx

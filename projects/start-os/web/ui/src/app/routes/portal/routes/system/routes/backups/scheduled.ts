@@ -57,6 +57,8 @@ import {
   BACKUP_MONTH_DAYS,
   BackupRetentionTierEditor,
   BackupScheduleFrequency,
+  BackupScheduleFormValue,
+  BackupServiceSelection,
   formatBackupTime,
   hasDuplicateRetentionRules,
   isValidBackupSchedule,
@@ -91,20 +93,14 @@ interface ConfirmedRetentionChange {
   preview: T.RetentionPolicyChangePreview
 }
 
-interface JobEditor extends EditableRetentionRule {
+interface JobEditor
+  extends
+    EditableRetentionRule,
+    BackupScheduleFormValue,
+    BackupServiceSelection {
   id?: string
   name: string
   targetId: string
-  packageIds: string[]
-  includeFuture: boolean
-  preservedSelectedPackageIds: string[]
-  preservedExcludedPackageIds: string[]
-  frequency: BackupScheduleFrequency
-  minute: number
-  hour: number
-  weekday: number
-  dayOfMonth: number
-  timezone: string
   keepAdditional: boolean
   additionalTiers: EditableRetentionRule[]
   retentionOverrides: Record<string, RetentionOverrideEditor>
@@ -754,7 +750,7 @@ interface JobEditor extends EditableRetentionRule {
                         }
                       </span>
                     </span>
-                    <span class="more-info">{{ 'More Info' | i18n }}</span>
+                    <span class="more-info">{{ 'More info' | i18n }}</span>
                   </button>
                   <tui-expand>
                     @if (capacityEstimate(pkg.id); as estimate) {
@@ -1428,6 +1424,17 @@ interface JobEditor extends EditableRetentionRule {
     }
 
     @container (max-inline-size: 30rem) {
+      .include-future {
+        flex-direction: column;
+        gap: 0.5rem;
+        padding-inline: 0.75rem;
+      }
+
+      .include-future [tuiTitle] {
+        inline-size: 100%;
+        min-inline-size: 0;
+      }
+
       .heading,
       .jobs-toolbar,
       .selected-job,
@@ -2222,9 +2229,9 @@ export class ScheduledBackups {
   protected async retry(job: T.BackupJob) {
     const password = await firstValueFrom(
       this.dialogs.openPrompt<string>({
-        label: 'Enter Password',
+        label: 'Enter password',
         data: {
-          message: 'Enter Password',
+          message: 'Enter password',
           label: 'Password',
           placeholder: 'Password',
           buttonText: 'Retry',
@@ -2380,7 +2387,7 @@ export class ScheduledBackups {
     if (!confirmed) return
     const password = await firstValueFrom(
       this.dialogs.openPrompt<string>({
-        label: 'Enter Password',
+        label: 'Enter password',
         data: {
           message: 'Enter your current master password',
           label: 'Password',
