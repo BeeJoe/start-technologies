@@ -35,6 +35,7 @@ import {
   TuiSelect,
   TuiSwitch,
 } from '@taiga-ui/kit'
+import { TuiCardLarge } from '@taiga-ui/layout'
 import { PatchDB } from 'patch-db-client'
 import { firstValueFrom } from 'rxjs'
 import { ApiService } from 'src/app/services/api/embassy-api.service'
@@ -52,6 +53,7 @@ import {
   BackupScheduleFrequency,
   formatBackupTime,
   hasDuplicateRetentionRules,
+  isValidBackupSchedule,
   retentionIntervalSeconds,
   retentionPeriodLabel,
   scheduleNeedsMoreFrequentRuns,
@@ -156,8 +158,8 @@ interface AutomaticRetentionRule {
 
       @if (step() === 1) {
         <section
+          tuiCardLarge="compact"
           class="panel"
-          [class.g-card]="!embedded()"
           [class.embedded-panel]="embedded()"
         >
           <header>
@@ -183,8 +185,8 @@ interface AutomaticRetentionRule {
 
       @if (step() === 2) {
         <section
+          tuiCardLarge="compact"
           class="panel"
-          [class.g-card]="!embedded()"
           [class.embedded-panel]="embedded()"
         >
           <header>
@@ -464,8 +466,8 @@ interface AutomaticRetentionRule {
 
       @if (step() === 3) {
         <section
+          tuiCardLarge="compact"
           class="panel review-panel"
-          [class.g-card]="!embedded()"
           [class.embedded-panel]="embedded()"
         >
           <header>
@@ -592,7 +594,7 @@ interface AutomaticRetentionRule {
     } @else {
       @if (primary(); as job) {
         @if (!embedded()) {
-          <section class="panel g-card">
+          <section tuiCardLarge="compact" class="panel">
             <header>
               <span tuiTitle>
                 <b>{{ 'Automatic backups' | i18n }}</b>
@@ -654,10 +656,11 @@ interface AutomaticRetentionRule {
     :host {
       display: grid;
       gap: 1rem;
-      width: 100%;
-      min-width: 0;
-      max-width: 64rem;
+      inline-size: 100%;
+      min-inline-size: 0;
+      max-inline-size: 64rem;
       margin-inline: auto;
+      container-type: inline-size;
     }
 
     h2,
@@ -669,12 +672,12 @@ interface AutomaticRetentionRule {
     .helper,
     .block-helper {
       display: block;
-      margin-top: 0.25rem;
+      margin-block-start: 0.25rem;
     }
 
     [tuiTitle],
     .schedule-controls > * {
-      min-width: 0;
+      min-inline-size: 0;
       overflow-wrap: anywhere;
     }
 
@@ -701,8 +704,8 @@ interface AutomaticRetentionRule {
     .steps b {
       display: grid;
       place-items: center;
-      width: 1.5rem;
-      height: 1.5rem;
+      inline-size: 1.5rem;
+      block-size: 1.5rem;
       border-radius: 50%;
       background: var(--tui-background-neutral-1);
     }
@@ -719,8 +722,8 @@ interface AutomaticRetentionRule {
     .panel {
       display: grid;
       gap: 1rem;
-      width: 100%;
-      min-width: 0;
+      inline-size: 100%;
+      min-inline-size: 0;
       padding: 1.25rem;
       box-sizing: border-box;
     }
@@ -728,7 +731,7 @@ interface AutomaticRetentionRule {
     .panel > header {
       position: static;
       inset: auto;
-      height: auto;
+      block-size: auto;
       padding: 0;
       background: transparent;
       font: inherit;
@@ -746,8 +749,8 @@ interface AutomaticRetentionRule {
     }
 
     .setting-row {
-      width: 100%;
-      min-width: 0;
+      inline-size: 100%;
+      min-inline-size: 0;
     }
 
     .services-options {
@@ -760,13 +763,13 @@ interface AutomaticRetentionRule {
       grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
       gap: 0.75rem;
       align-items: end;
-      width: 100%;
-      min-width: 0;
+      inline-size: 100%;
+      min-inline-size: 0;
     }
 
     .schedule-controls select,
     .schedule-controls tui-textfield {
-      width: 100%;
+      inline-size: 100%;
     }
 
     label > span:first-child,
@@ -775,11 +778,11 @@ interface AutomaticRetentionRule {
     }
 
     [tuiGroup] {
-      width: 100%;
+      inline-size: 100%;
     }
 
     [tuiBlock] img {
-      width: 2.5rem;
+      inline-size: 2.5rem;
       border-radius: 50%;
     }
 
@@ -790,7 +793,7 @@ interface AutomaticRetentionRule {
     [tuiBlock],
     [tuiBlock] [tuiTitle] {
       justify-content: flex-start;
-      text-align: left;
+      text-align: start;
     }
 
     .retention-rule {
@@ -800,16 +803,16 @@ interface AutomaticRetentionRule {
         auto auto;
       gap: 0.5rem;
       align-items: center;
-      width: 100%;
-      min-width: 0;
+      inline-size: 100%;
+      min-inline-size: 0;
     }
 
     .retention-rules {
       display: grid;
       justify-items: stretch;
       gap: 0.75rem;
-      width: 100%;
-      min-width: 0;
+      inline-size: 100%;
+      min-inline-size: 0;
     }
 
     .add-retention-rule {
@@ -817,7 +820,7 @@ interface AutomaticRetentionRule {
     }
 
     .duration-field {
-      min-width: 10rem;
+      min-inline-size: 10rem;
     }
 
     .inline-switch {
@@ -830,23 +833,23 @@ interface AutomaticRetentionRule {
 
     .main-switch,
     .toggle-all {
-      width: fit-content;
-      max-width: 100%;
+      inline-size: fit-content;
+      max-inline-size: 100%;
       justify-content: flex-start;
     }
 
     .toggle-all {
-      width: 100%;
+      inline-size: 100%;
       gap: 0.5rem;
       padding: 0 1rem 1rem;
-      border-bottom: 1px solid var(--tui-border-normal);
+      border-block-end: 1px solid var(--tui-border-normal);
       box-sizing: border-box;
     }
 
     .include-future {
       align-items: flex-start;
-      width: 100%;
-      max-width: 100%;
+      inline-size: 100%;
+      max-inline-size: 100%;
       padding-block: 0.75rem;
       padding-inline: 1rem;
       border-radius: var(--tui-radius-m);
@@ -898,9 +901,9 @@ interface AutomaticRetentionRule {
     }
 
     .advanced-link {
-      width: 100%;
-      min-width: 0;
-      text-align: left;
+      inline-size: 100%;
+      min-inline-size: 0;
+      text-align: start;
       gap: 0.75rem;
       box-sizing: border-box;
     }
@@ -922,9 +925,9 @@ interface AutomaticRetentionRule {
       align-items: center;
       justify-content: space-between;
       gap: 1rem;
-      min-width: 0;
+      min-inline-size: 0;
       padding-block-end: 1rem;
-      border-bottom: 1px solid var(--tui-border-normal);
+      border-block-end: 1px solid var(--tui-border-normal);
     }
 
     .bulk-schedule-control > button {
@@ -932,7 +935,7 @@ interface AutomaticRetentionRule {
     }
 
     .bulk-schedule-summary {
-      min-width: 0;
+      min-inline-size: 0;
       color: var(--tui-text-secondary);
       overflow-wrap: anywhere;
     }
@@ -941,8 +944,7 @@ interface AutomaticRetentionRule {
       justify-content: flex-end;
     }
 
-    /* The multi-column schedule editor becomes cramped before the app-wide mobile breakpoint. */
-    @media (max-width: 48rem) {
+    @container (max-inline-size: 48rem) {
       .steps span {
         font-size: 0;
       }
@@ -965,8 +967,7 @@ interface AutomaticRetentionRule {
       }
     }
 
-    /* Embedded cards need a second collapse below the app-wide mobile layout. */
-    @media (max-width: 30rem) {
+    @container (max-inline-size: 30rem) {
       .panel > header,
       .setting-row:not(.vertical),
       .advanced-link {
@@ -982,7 +983,7 @@ interface AutomaticRetentionRule {
       }
 
       .inline-switch {
-        width: fit-content;
+        inline-size: fit-content;
         justify-content: flex-start;
       }
 
@@ -993,7 +994,7 @@ interface AutomaticRetentionRule {
 
       .retention-heading > [tuiTitle] {
         flex: 1;
-        min-width: 0;
+        min-inline-size: 0;
       }
 
       .retention-heading .inline-switch {
@@ -1020,6 +1021,7 @@ interface AutomaticRetentionRule {
     TuiAccordion,
     TuiBlock,
     TuiButton,
+    TuiCardLarge,
     TuiCheckbox,
     TuiChevron,
     TuiDataList,
@@ -1273,12 +1275,12 @@ export default class AutomaticBackups {
     }
   }
 
-  canContinue(): boolean {
+  protected canContinue(): boolean {
     if (this.step() === 1) return !!this.targetId()
     if (this.step() === 2) {
       this.ensureServices()
       return (
-        this.validSchedule() &&
+        isValidBackupSchedule(this.editor) &&
         this.validRetention() &&
         this.editor.services.some(service => service.checked)
       )
@@ -1286,10 +1288,10 @@ export default class AutomaticBackups {
     return true
   }
 
-  canSaveSetup(): boolean {
+  protected canSaveSetup(): boolean {
     return (
       !!this.editor.password &&
-      this.validSchedule() &&
+      isValidBackupSchedule(this.editor) &&
       this.validRetention() &&
       !this.capacityBlocked() &&
       (!this.editor.keepAdditional || this.editor.capacityConfirmed) &&
@@ -1297,32 +1299,32 @@ export default class AutomaticBackups {
     )
   }
 
-  async next() {
+  protected async next() {
     if (!this.canContinue()) return
     if (this.step() === 1) this.ensureServices()
     if (this.step() === 2) await this.refreshCapacity()
     this.step.update(step => Math.min(3, step + 1))
   }
 
-  previous() {
+  protected previous() {
     if (this.step() === 3) this.editor.capacityConfirmed = false
     this.step.update(step => Math.max(1, step - 1))
   }
 
-  allServicesSelected(): boolean {
+  protected allServicesSelected(): boolean {
     this.ensureServices()
     const services = this.editor.services.filter(service => !service.system)
     return services.length > 0 && services.every(service => service.checked)
   }
 
-  setAllServices(checked: boolean) {
+  protected setAllServices(checked: boolean) {
     this.ensureServices()
     this.editor.services
       .filter(service => !service.system)
       .forEach(service => (service.checked = checked))
   }
 
-  scheduleSummary(): string {
+  protected scheduleSummary(): string {
     const minute = String(this.editor.minute).padStart(2, '0')
     const time = `${String(this.editor.hour).padStart(2, '0')}:${minute}`
     if (this.editor.frequency === 'hourly') {
@@ -1338,7 +1340,7 @@ export default class AutomaticBackups {
     return `${this.i18n.transform('Daily')} · ${time}`
   }
 
-  retentionSummary(): string {
+  protected retentionSummary(): string {
     const every = this.i18n.transform('Keep one backup every')
     const forLabel = this.i18n.transform('for')
     return this.retentionRules()
@@ -1350,19 +1352,19 @@ export default class AutomaticBackups {
       .join(', ')
   }
 
-  retentionPeriod(rule: AutomaticRetentionRule) {
+  protected retentionPeriod(rule: AutomaticRetentionRule) {
     return retentionPeriodLabel(rule.interval, rule.duration)
   }
 
-  retentionRules(): AutomaticRetentionRule[] {
+  protected retentionRules(): AutomaticRetentionRule[] {
     return [this.editor, ...this.editor.additionalRules]
   }
 
-  newRetentionRule(): AutomaticRetentionRule {
+  protected newRetentionRule(): AutomaticRetentionRule {
     return { interval: 'day', duration: 7 }
   }
 
-  removeRetentionRule(index: number) {
+  protected removeRetentionRule(index: number) {
     if (index === 0 && this.editor.additionalRules.length) {
       const next = this.editor.additionalRules.shift()!
       this.editor.interval = next.interval
@@ -1374,27 +1376,6 @@ export default class AutomaticBackups {
       Object.assign(this.editor, this.newRetentionRule())
     }
     this.editor.capacityConfirmed = false
-  }
-
-  private validSchedule(): boolean {
-    const validFrequency = ['hourly', 'daily', 'weekly', 'monthly'].includes(
-      this.editor.frequency,
-    )
-    const validMinute =
-      Number.isInteger(this.editor.minute) &&
-      this.editor.minute >= 0 &&
-      this.editor.minute <= 59
-    const validHour =
-      this.editor.frequency === 'hourly' ||
-      (Number.isInteger(this.editor.hour) &&
-        this.editor.hour >= 0 &&
-        this.editor.hour <= 23)
-    const validDayOfMonth =
-      this.editor.frequency !== 'monthly' ||
-      (Number.isInteger(this.editor.dayOfMonth) &&
-        this.editor.dayOfMonth >= 1 &&
-        this.editor.dayOfMonth <= 31)
-    return validFrequency && validMinute && validHour && validDayOfMonth
   }
 
   private validRetention(): boolean {
@@ -1412,15 +1393,15 @@ export default class AutomaticBackups {
     )
   }
 
-  retentionHasDuplicates(): boolean {
+  protected retentionHasDuplicates(): boolean {
     return hasDuplicateRetentionRules(this.retentionRules())
   }
 
-  retentionNeedsMoreFrequentRuns(): boolean {
+  protected retentionNeedsMoreFrequentRuns(): boolean {
     return scheduleNeedsMoreFrequentRuns(this.editor.frequency, [this.policy()])
   }
 
-  selectedServiceSummary(): string {
+  protected selectedServiceSummary(): string {
     const services = this.editor.services.filter(service => !service.system)
     const selected = services.filter(service => service.checked)
     const total = services.length
@@ -1438,7 +1419,7 @@ export default class AutomaticBackups {
     return `${count} · ${future}${system}`
   }
 
-  selectedTargetName(): string {
+  protected selectedTargetName(): string {
     return (
       this.targets().find(target => target.id === this.targetId())?.name || '—'
     )
@@ -1471,7 +1452,7 @@ export default class AutomaticBackups {
     }
   }
 
-  async refreshCapacity() {
+  protected async refreshCapacity() {
     this.estimates.set([])
     await this.tasks.run(async () => {
       this.estimates.set(
@@ -1485,7 +1466,7 @@ export default class AutomaticBackups {
     }, 'Loading')
   }
 
-  capacityNeeded(): number | null {
+  protected capacityNeeded(): number | null {
     if (!this.estimates().length) return null
     return this.estimates().reduce(
       (sum, item) => sum + item.conservativePeakExcludingManualBytes,
@@ -1493,24 +1474,24 @@ export default class AutomaticBackups {
     )
   }
 
-  capacityAvailable(): number | null {
+  protected capacityAvailable(): number | null {
     const target = this.targets().find(item => item.id === this.targetId())
     return target?.capacity != null && target.used != null
       ? Math.max(0, target.capacity - target.used)
       : null
   }
 
-  capacityBlocked(): boolean {
+  protected capacityBlocked(): boolean {
     const needed = this.capacityNeeded()
     const available = this.capacityAvailable()
     return needed !== null && available !== null && needed > available
   }
 
-  capacityAppearance(): 'info' | 'negative' {
+  protected capacityAppearance(): 'info' | 'negative' {
     return this.capacityBlocked() ? 'negative' : 'info'
   }
 
-  capacitySummary(): string {
+  protected capacitySummary(): string {
     const needed = this.capacityNeeded()
     if (needed === null) return ''
     const available = this.capacityAvailable()
@@ -1520,7 +1501,7 @@ export default class AutomaticBackups {
       : `${summary}; ${convertBytes(available)} ${this.i18n.transform('available')}.`
   }
 
-  async createAutomaticBackup() {
+  protected async createAutomaticBackup() {
     if (!this.canSaveSetup()) return
     const services = this.serviceScope()
     const schedule = serializeBackupSchedule(this.editor)
@@ -1576,7 +1557,7 @@ export default class AutomaticBackups {
     }, 'Creating Backup Schedule')
   }
 
-  async toggleAllJobs(enabled: boolean) {
+  protected async toggleAllJobs(enabled: boolean) {
     await this.tasks.run(
       async () => {
         await this.api.setScheduledBackupJobsEnabled({
@@ -1589,7 +1570,7 @@ export default class AutomaticBackups {
     )
   }
 
-  async pauseAllJobs() {
+  protected async pauseAllJobs() {
     const confirmed = await firstValueFrom(
       this.dialogs.openConfirm({
         label: 'Pause all automatic backups?',
@@ -1606,7 +1587,7 @@ export default class AutomaticBackups {
     if (confirmed) await this.toggleAllJobs(false)
   }
 
-  async toggleMain(enabled: boolean) {
+  protected async toggleMain(enabled: boolean) {
     await this.toggleAllJobs(enabled)
   }
 }

@@ -97,6 +97,21 @@ export function serializeBackupSchedule(
   return { cron, timezone: form.timezone }
 }
 
+export function isValidBackupSchedule(form: BackupScheduleFormValue): boolean {
+  return !!(
+    ['hourly', 'daily', 'weekly', 'monthly'].includes(form.frequency) &&
+    Number.isInteger(form.minute) &&
+    form.minute >= 0 &&
+    form.minute <= 59 &&
+    (form.frequency === 'hourly' ||
+      (Number.isInteger(form.hour) && form.hour >= 0 && form.hour <= 23)) &&
+    (form.frequency !== 'monthly' ||
+      (Number.isInteger(form.dayOfMonth) &&
+        form.dayOfMonth >= 1 &&
+        form.dayOfMonth <= 31))
+  )
+}
+
 export function parseBackupSchedule(
   schedule: T.Schedule,
 ): BackupScheduleFormValue {

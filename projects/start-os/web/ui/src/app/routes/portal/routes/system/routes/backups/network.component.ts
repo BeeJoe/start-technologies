@@ -198,21 +198,21 @@ const NETWORK_DELETE = new PolymorpheusComponent(NetworkDeleteDialog)
     }
 
     :host {
-      width: 100%;
-      min-width: 0;
+      inline-size: 100%;
+      min-inline-size: 0;
     }
 
     table {
-      width: 100%;
+      inline-size: 100%;
       table-layout: fixed;
     }
 
     td:first-child:not(.empty-state) {
-      width: 15rem;
+      inline-size: 15rem;
     }
 
     td:nth-child(2) {
-      width: 22%;
+      inline-size: 22%;
     }
 
     .name,
@@ -220,7 +220,7 @@ const NETWORK_DELETE = new PolymorpheusComponent(NetworkDeleteDialog)
     .location,
     .free {
       justify-self: start;
-      text-align: left;
+      text-align: start;
     }
 
     .hostname,
@@ -237,19 +237,19 @@ const NETWORK_DELETE = new PolymorpheusComponent(NetworkDeleteDialog)
     }
 
     .empty-row {
-      width: 100%;
+      inline-size: 100%;
     }
 
     .empty-state {
       display: table-cell;
-      height: 7rem;
+      block-size: 7rem;
       vertical-align: middle;
       text-align: center;
     }
 
     .empty-state app-placeholder {
-      width: 100%;
-      max-width: 16rem;
+      inline-size: 100%;
+      max-inline-size: 16rem;
       margin-inline: auto;
       box-sizing: border-box;
       padding: 0;
@@ -258,9 +258,9 @@ const NETWORK_DELETE = new PolymorpheusComponent(NetworkDeleteDialog)
 
     .empty-label {
       display: block;
-      width: 100%;
-      max-width: 100%;
-      min-height: 1.5rem;
+      inline-size: 100%;
+      max-inline-size: 100%;
+      min-block-size: 1.5rem;
       flex-shrink: 0;
       line-height: 1.5rem;
       overflow-wrap: anywhere;
@@ -268,9 +268,9 @@ const NETWORK_DELETE = new PolymorpheusComponent(NetworkDeleteDialog)
     }
 
     td:last-child:not(.empty-state) {
-      width: 3.5rem;
+      inline-size: 3.5rem;
       white-space: nowrap;
-      text-align: right;
+      text-align: end;
     }
 
     .actions {
@@ -292,8 +292,8 @@ const NETWORK_DELETE = new PolymorpheusComponent(NetworkDeleteDialog)
 
       tr {
         grid-template-columns: minmax(0, 1fr) auto auto;
-        width: 100%;
-        min-width: 0;
+        inline-size: 100%;
+        min-inline-size: 0;
         white-space: normal;
       }
 
@@ -302,15 +302,15 @@ const NETWORK_DELETE = new PolymorpheusComponent(NetworkDeleteDialog)
       }
 
       td {
-        min-width: 0;
+        min-inline-size: 0;
         grid-column: span 2;
         overflow-wrap: anywhere;
 
         &:first-child:not(:only-child) {
-          width: auto;
+          inline-size: auto;
           grid-area: 2 / 1 / 3 / -1;
           justify-self: start;
-          margin-top: 0.25rem;
+          margin-block-start: 0.25rem;
         }
 
         &:last-child {
@@ -321,14 +321,14 @@ const NETWORK_DELETE = new PolymorpheusComponent(NetworkDeleteDialog)
       }
 
       td.name {
-        width: auto;
+        inline-size: auto;
         color: var(--tui-text-primary);
         font: var(--tui-typography-body-m);
         grid-area: 1 / 1;
         justify-self: stretch;
-        max-width: 100%;
+        max-inline-size: 100%;
         overflow-wrap: normal;
-        text-align: left;
+        text-align: start;
         word-break: normal;
       }
 
@@ -350,9 +350,9 @@ const NETWORK_DELETE = new PolymorpheusComponent(NetworkDeleteDialog)
         align-items: baseline;
         column-gap: 0.5rem;
         row-gap: 0;
-        width: 100%;
-        min-width: 0;
-        max-width: 100%;
+        inline-size: 100%;
+        min-inline-size: 0;
+        max-inline-size: 100%;
         box-sizing: border-box;
         overflow-wrap: normal;
         white-space: normal;
@@ -367,8 +367,8 @@ const NETWORK_DELETE = new PolymorpheusComponent(NetworkDeleteDialog)
 
       .mobile-address {
         flex: 0 0 auto;
-        min-width: min-content;
-        max-width: 100%;
+        min-inline-size: min-content;
+        max-inline-size: 100%;
         color: var(--tui-text-secondary);
         overflow-wrap: normal;
         white-space: normal;
@@ -376,7 +376,7 @@ const NETWORK_DELETE = new PolymorpheusComponent(NetworkDeleteDialog)
       }
 
       .free {
-        max-width: 100%;
+        max-inline-size: 100%;
       }
 
       .empty-row > td.empty-state {
@@ -384,7 +384,7 @@ const NETWORK_DELETE = new PolymorpheusComponent(NetworkDeleteDialog)
         grid-area: 1 / 1 / auto / -1;
         place-items: center;
         justify-self: stretch;
-        width: auto;
+        inline-size: auto;
         margin: 0;
         overflow: visible;
         white-space: normal;
@@ -416,12 +416,12 @@ export class BackupNetworkComponent {
   protected readonly type = inject(ActivatedRoute).snapshot.data['type']
   protected readonly formatCifsLocation = formatCifsLocation
 
-  readonly service = inject(BackupService)
+  protected readonly service = inject(BackupService)
   readonly networkFolders = output<MappedBackupTarget<CifsBackupTarget>>()
 
-  opens: Record<number, boolean> = {}
+  protected opens: Record<number, boolean> = {}
 
-  select(target: MappedBackupTarget<CifsBackupTarget>) {
+  protected select(target: MappedBackupTarget<CifsBackupTarget>) {
     if (!target.entry.mountable) {
       this.dialog.openAlert(ERROR, { label: 'Unable to connect' }).subscribe()
     } else if (this.type === 'restore' && !target.hasAnyBackup) {
@@ -433,7 +433,7 @@ export class BackupNetworkComponent {
     }
   }
 
-  async add() {
+  protected async add() {
     this.formDialog.open(FormComponent, {
       label: 'New Network Folder',
       data: {
@@ -448,7 +448,7 @@ export class BackupNetworkComponent {
     })
   }
 
-  async edit(target: MappedBackupTarget<CifsBackupTarget>) {
+  protected async edit(target: MappedBackupTarget<CifsBackupTarget>) {
     this.formDialog.open(FormComponent, {
       label: 'Update Network Folder',
       data: {
@@ -473,7 +473,10 @@ export class BackupNetworkComponent {
     })
   }
 
-  forget(target: MappedBackupTarget<CifsBackupTarget>, index: number) {
+  protected forget(
+    target: MappedBackupTarget<CifsBackupTarget>,
+    index: number,
+  ) {
     this.dialog
       .openComponent<boolean>(NETWORK_DELETE, {
         label: 'Delete network folder?',
@@ -531,7 +534,7 @@ export class BackupNetworkComponent {
     }, 'Testing connectivity to shared folder')
   }
 
-  cifsSpec() {
+  protected cifsSpec() {
     return ISB.InputSpec.of({
       hostname: ISB.Value.text({
         name: this.i18n.transform('Hostname')!,

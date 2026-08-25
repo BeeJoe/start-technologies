@@ -82,41 +82,41 @@ import { BackupStatusComponent } from './status.component'
     }
 
     :host {
-      width: 100%;
-      min-width: 0;
+      inline-size: 100%;
+      min-inline-size: 0;
     }
 
     table {
-      width: 100%;
+      inline-size: 100%;
       table-layout: fixed;
     }
 
     td:first-child:not(.empty-state) {
-      width: 15rem;
+      inline-size: 15rem;
     }
 
     td:last-child:not(.empty-state),
     .actions {
-      width: 3.5rem;
+      inline-size: 3.5rem;
       white-space: nowrap;
-      text-align: right;
+      text-align: end;
     }
 
     .name,
     .location {
       justify-self: start;
-      text-align: left;
+      text-align: start;
     }
 
     .empty-state {
       display: table-cell;
-      height: 7rem;
+      block-size: 7rem;
       vertical-align: middle;
       text-align: center;
     }
 
     .empty-state app-placeholder {
-      width: min(100%, 16rem);
+      inline-size: min(100%, 16rem);
       margin-inline: auto;
       box-sizing: border-box;
     }
@@ -128,21 +128,21 @@ import { BackupStatusComponent } from './status.component'
 
       tr {
         grid-template-columns: minmax(0, 1fr) minmax(7rem, 45%);
-        width: 100%;
-        min-width: 0;
+        inline-size: 100%;
+        min-inline-size: 0;
         white-space: normal;
       }
 
       td {
-        min-width: 0;
+        min-inline-size: 0;
         grid-column: span 2;
         overflow-wrap: anywhere;
 
         &:first-child:not(.empty-state) {
-          width: auto;
+          inline-size: auto;
           grid-area: 3 / 1 / 4 / -1;
           justify-self: start;
-          margin-top: 0.25rem;
+          margin-block-start: 0.25rem;
         }
 
         &:nth-child(3) {
@@ -159,7 +159,7 @@ import { BackupStatusComponent } from './status.component'
 
         &:last-child:not(.empty-state) {
           grid-column: 1 / -1;
-          width: auto;
+          inline-size: auto;
         }
       }
 
@@ -169,18 +169,18 @@ import { BackupStatusComponent } from './status.component'
         font-weight: bold;
         grid-area: 1 / 1;
         justify-self: start;
-        max-width: 100%;
-        text-align: left;
+        max-inline-size: 100%;
+        text-align: start;
       }
 
       .empty-state {
         display: grid;
         grid-column: 1 / -1;
-        height: auto;
-        min-height: 7rem;
+        block-size: auto;
+        min-block-size: 7rem;
         place-items: center;
         justify-self: center;
-        width: 100%;
+        inline-size: 100%;
         white-space: normal;
         text-align: center;
       }
@@ -204,17 +204,17 @@ export class BackupPhysicalComponent {
 
   private readonly i18n = inject(i18nPipe)
 
-  readonly service = inject(BackupService)
+  protected readonly service = inject(BackupService)
   readonly physicalFolders = output<MappedBackupTarget<DiskBackupTarget>>()
 
-  driveName(entry: DiskBackupTarget): string {
+  protected driveName(entry: DiskBackupTarget): string {
     return (
       [entry.vendor, entry.model].filter(Boolean).join(' ') ||
       this.i18n.transform('Unknown Drive')
     )
   }
 
-  select(target: MappedBackupTarget<DiskBackupTarget>) {
+  protected select(target: MappedBackupTarget<DiskBackupTarget>) {
     if (this.type === 'restore' && !target.hasAnyBackup) {
       this.dialog
         .openAlert('Drive partition does not contain a valid backup')

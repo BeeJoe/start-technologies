@@ -27,8 +27,8 @@ import { TuiIcon } from '@taiga-ui/core'
       display: flex;
       align-items: center;
       gap: 0.25rem;
-      min-height: 2rem;
-      height: auto;
+      min-block-size: 2rem;
+      block-size: auto;
       padding-block: 0.25rem;
       line-height: 1.25;
       overflow-wrap: anywhere;
@@ -37,14 +37,14 @@ import { TuiIcon } from '@taiga-ui/core'
 
     tui-icon {
       font-size: 1rem;
-      min-width: 1.25rem;
+      min-inline-size: 1.25rem;
       text-align: center;
     }
   `,
   imports: [TuiIcon, i18nPipe],
 })
 export class BackupStatusComponent {
-  readonly type = inject(ActivatedRoute).snapshot.data['type']
+  protected readonly type = inject(ActivatedRoute).snapshot.data['type']
   readonly backupStatus = input(false)
   readonly physical = input(false)
 }

@@ -79,7 +79,7 @@ import { RECOVER } from './recover.component'
   `,
   styles: `
     td:last-child {
-      text-align: right;
+      text-align: end;
     }
 
     .unlock-flow {
@@ -122,18 +122,18 @@ export class BackupRestoreComponent {
   private readonly context = injectContext<BackupContext>()
   private readonly i18n = inject(i18nPipe)
 
-  readonly target = this.context.data
-  readonly servers = Object.entries(this.target.entry.startOs)
-  serverId = this.servers.length === 1 ? this.servers[0]![0] : ''
-  password = ''
-  passwordMasked = true
+  protected readonly target = this.context.data
+  protected readonly servers = Object.entries(this.target.entry.startOs)
+  protected serverId = this.servers.length === 1 ? this.servers[0]![0] : ''
+  protected password = ''
+  protected passwordMasked = true
 
-  selectedServerName(): string {
+  protected selectedServerName(): string {
     const server = this.target.entry.startOs[this.serverId]
     return server ? `${server.hostname}.local` : this.serverId
   }
 
-  async decrypt() {
+  protected async decrypt() {
     if (!this.serverId || !this.password) return
     await this.tasks.run(async () => {
       const params = {

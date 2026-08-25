@@ -135,6 +135,10 @@ import { SYSTEM_PACKAGE_ID } from './scheduled-utils'
     }
   `,
   styles: `
+    :host {
+      container-type: inline-size;
+    }
+
     .bulk-controls {
       display: flex;
       align-items: end;
@@ -149,17 +153,17 @@ import { SYSTEM_PACKAGE_ID } from './scheduled-utils'
     }
 
     .bulk-controls tui-textfield {
-      min-width: 16rem;
+      min-inline-size: 16rem;
     }
 
     [tuiGroup] {
-      width: 100%;
+      inline-size: 100%;
       margin: 1.5rem 0 0;
     }
 
     .checkpoint {
-      width: 100%;
-      margin-top: 0.5rem;
+      inline-size: 100%;
+      margin-block-start: 0.5rem;
     }
 
     .bulk-controls .toggle-all,
@@ -174,12 +178,11 @@ import { SYSTEM_PACKAGE_ID } from './scheduled-utils'
     }
 
     [tuiTitle] {
-      min-width: 0;
+      min-inline-size: 0;
       overflow-wrap: anywhere;
     }
 
-    /* Restore controls need a second collapse below the app-wide mobile layout. */
-    @media (max-width: 30rem) {
+    @container (max-inline-size: 30rem) {
       .bulk-controls {
         align-items: stretch;
         flex-direction: column;
@@ -187,8 +190,8 @@ import { SYSTEM_PACKAGE_ID } from './scheduled-utils'
 
       .bulk-controls label,
       .bulk-controls tui-textfield {
-        width: 100%;
-        min-width: 0;
+        inline-size: 100%;
+        min-inline-size: 0;
       }
 
       .bulk-controls > .toggle-all {
@@ -221,7 +224,7 @@ export class BackupsRecoverComponent {
   private readonly context =
     injectContext<TuiDialogContext<void, RecoverData>>()
 
-  readonly packageData = toSignal(
+  protected readonly packageData = toSignal(
     inject<PatchDB<DataModel>>(PatchDB)
       .watch$('packageData')
       .pipe(
@@ -292,9 +295,9 @@ export class BackupsRecoverComponent {
       ),
   )
 
-  bulkSelection = 'latest'
+  protected bulkSelection = 'latest'
 
-  stringifyBulkSelection(options: RecoverOption[]) {
+  protected stringifyBulkSelection(options: RecoverOption[]) {
     return (selection: string) => {
       if (selection === 'latest') {
         return this.i18n.transform('Latest available')
@@ -314,14 +317,14 @@ export class BackupsRecoverComponent {
     }
   }
 
-  stringifyCheckpoint(option: RecoverOption) {
+  protected stringifyCheckpoint(option: RecoverOption) {
     return (key: string) =>
       this.checkpointLabel(
         option.checkpoints.find(checkpoint => checkpoint.key === key),
       )
   }
 
-  checkpointLabel(checkpoint: RecoverCheckpoint | undefined): string {
+  protected checkpointLabel(checkpoint: RecoverCheckpoint | undefined): string {
     if (!checkpoint) return ''
     const parts = [
       this.i18n.transform(
@@ -335,7 +338,7 @@ export class BackupsRecoverComponent {
     return parts.filter(Boolean).join(' — ')
   }
 
-  readonly toMessage = ({
+  protected readonly toMessage = ({
     newerOs,
     installed,
     title,
@@ -360,29 +363,29 @@ export class BackupsRecoverComponent {
     }
   }
 
-  isDisabled(options: RecoverOption[]): boolean {
+  protected isDisabled(options: RecoverOption[]): boolean {
     return options.every(o => !o.checked)
   }
 
-  selected(options: RecoverOption[]): RecoverOption[] {
+  protected selected(options: RecoverOption[]): RecoverOption[] {
     return options.filter(option => option.checked)
   }
 
-  allEligibleSelected(options: RecoverOption[]): boolean {
+  protected allEligibleSelected(options: RecoverOption[]): boolean {
     const eligible = options.filter(
       option => !option.installed && !option.newerOs,
     )
     return !!eligible.length && eligible.every(option => option.checked)
   }
 
-  setAll(options: RecoverOption[], checked: boolean) {
+  protected setAll(options: RecoverOption[], checked: boolean) {
     options
       .filter(option => !option.installed && !option.newerOs)
       .forEach(option => (option.checked = checked))
     this.selectionChanged(options)
   }
 
-  selectionChanged(options: RecoverOption[]) {
+  protected selectionChanged(options: RecoverOption[]) {
     const runId = this.bulkSelection.startsWith('run:')
       ? this.bulkSelection.slice(4)
       : null
@@ -397,7 +400,7 @@ export class BackupsRecoverComponent {
     this.applyBulk(options, this.bulkSelection)
   }
 
-  bulkAvailable(
+  protected bulkAvailable(
     options: RecoverOption[],
     source: 'manual' | 'automatic',
   ): boolean {
@@ -414,7 +417,9 @@ export class BackupsRecoverComponent {
     )
   }
 
-  sharedRuns(options: RecoverOption[]): { id: string; timestamp: string }[] {
+  protected sharedRuns(
+    options: RecoverOption[],
+  ): { id: string; timestamp: string }[] {
     const selected = this.selected(options)
     if (!selected.length) return []
     const common = selected
@@ -442,7 +447,7 @@ export class BackupsRecoverComponent {
       .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
   }
 
-  applyBulk(options: RecoverOption[], selection: string) {
+  protected applyBulk(options: RecoverOption[], selection: string) {
     this.bulkSelection = selection
     const runId = selection.startsWith('run:') ? selection.slice(4) : null
     for (const option of this.selected(options)) {
@@ -458,7 +463,7 @@ export class BackupsRecoverComponent {
     }
   }
 
-  async restore(options: RecoverOption[]): Promise<void> {
+  protected async restore(options: RecoverOption[]): Promise<void> {
     const selected = options.filter(({ checked }) => !!checked)
     const ids = selected
       .filter(option => option.selectedKey === 'manual')

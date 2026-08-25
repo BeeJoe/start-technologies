@@ -50,15 +50,15 @@ import { BackupService } from '../system/routes/backups/backup.service'
     :host {
       display: grid;
       gap: 1rem;
-      width: 100%;
-      min-width: 0;
-      max-width: none;
+      inline-size: 100%;
+      min-inline-size: 0;
+      max-inline-size: none;
       margin-inline: auto;
     }
 
     section {
-      width: 100%;
-      min-width: 0;
+      inline-size: 100%;
+      min-inline-size: 0;
     }
 
     h2 {
@@ -67,7 +67,7 @@ import { BackupService } from '../system/routes/backups/backup.service'
 
     [tuiSubtitle] {
       display: block;
-      margin-top: 0.25rem;
+      margin-block-start: 0.25rem;
     }
   `,
   host: { class: 'backup-page' },

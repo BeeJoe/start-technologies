@@ -105,9 +105,9 @@ import { BACKUP_RESTORE } from './restore.component'
     :host {
       display: grid;
       gap: 1rem;
-      width: 100%;
-      min-width: 0;
-      max-width: 64rem;
+      inline-size: 100%;
+      min-inline-size: 0;
+      max-inline-size: 64rem;
       margin-inline: auto;
     }
 
@@ -135,13 +135,13 @@ export default class SystemBackupComponent implements OnInit {
   readonly embedded = input(false)
   readonly operationActive = input<boolean>()
   readonly manageLocations = output<void>()
-  readonly dialog = inject(DialogService)
+  protected readonly dialog = inject(DialogService)
   private readonly route = inject(ActivatedRoute)
-  readonly type = computed(
+  protected readonly type = computed(
     () =>
       this.mode() || (this.route.snapshot.data['type'] as 'create' | 'restore'),
   )
-  readonly service = inject(BackupService)
+  protected readonly service = inject(BackupService)
   private readonly os = inject(OSService)
   private readonly progressActive = toSignal(this.os.backingUp$, {
     initialValue: false,
@@ -153,7 +153,7 @@ export default class SystemBackupComponent implements OnInit {
     this.service.getBackupTargets()
   }
 
-  async onTarget(
+  protected async onTarget(
     target: MappedBackupTarget<CifsBackupTarget | DiskBackupTarget>,
   ) {
     if (this.type() === 'create') {

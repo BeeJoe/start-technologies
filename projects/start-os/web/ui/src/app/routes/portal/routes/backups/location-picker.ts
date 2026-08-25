@@ -73,17 +73,22 @@ type Location = MappedBackupTarget<CifsBackupTarget | DiskBackupTarget>
 
     :host {
       align-items: center;
-      width: 100%;
-      max-width: 48rem;
+      inline-size: 100%;
+      max-inline-size: 48rem;
       margin-inline: auto;
       box-sizing: border-box;
+      container-type: inline-size;
     }
 
     .locations {
-      width: 100%;
-      max-width: none;
+      inline-size: 100%;
+      max-inline-size: none;
       margin-inline: 0;
       box-sizing: border-box;
+    }
+
+    .locations > [tuiCell] {
+      margin-block: 0;
     }
 
     .manage-location {
@@ -91,20 +96,25 @@ type Location = MappedBackupTarget<CifsBackupTarget | DiskBackupTarget>
     }
 
     [tuiCell] {
-      width: 100%;
-      min-width: 0;
-      max-width: 100%;
+      inline-size: 100%;
+      min-inline-size: 0;
+      max-inline-size: 100%;
       align-items: center;
       gap: 0.75rem;
       overflow: hidden;
-      text-align: left;
+      text-align: start;
+      block-size: auto;
+      min-block-size: 4rem;
+      padding-block: 0.75rem;
+      white-space: normal;
       box-sizing: border-box;
     }
 
     .location-option,
     .manage-location {
-      width: 100%;
-      max-width: 40rem;
+      inline-size: 100%;
+      max-inline-size: 40rem;
+      margin-block: 0;
       margin-inline: 0;
       justify-self: center;
       box-sizing: border-box;
@@ -112,13 +122,13 @@ type Location = MappedBackupTarget<CifsBackupTarget | DiskBackupTarget>
 
     [tuiTitle] {
       flex: 1;
-      min-width: 0;
+      min-inline-size: 0;
       overflow-wrap: anywhere;
     }
 
     [tuiSubtitle] {
       display: block;
-      margin-top: 0.25rem;
+      margin-block-start: 0.25rem;
     }
 
     .selected {
@@ -134,11 +144,11 @@ type Location = MappedBackupTarget<CifsBackupTarget | DiskBackupTarget>
       grid-template-columns: minmax(0, 1fr) minmax(8rem, 45%);
       align-items: center;
       gap: 0.75rem;
-      width: 100%;
+      inline-size: 100%;
     }
 
     .manual-or-restore.location-option {
-      width: 100%;
+      inline-size: 100%;
       box-sizing: border-box;
     }
 
@@ -148,14 +158,13 @@ type Location = MappedBackupTarget<CifsBackupTarget | DiskBackupTarget>
 
     .manual-or-restore > [tuiTitle] [tuiSubtitle] {
       grid-column: 2;
-      min-width: 0;
+      min-inline-size: 0;
       margin-block-start: 0;
       overflow-wrap: anywhere;
-      text-align: right;
+      text-align: end;
     }
 
-    /* Location metadata wraps poorly at the narrower embedded-card width. */
-    @media (max-width: 30rem) {
+    @container (max-inline-size: 30rem) {
       [tuiCell] {
         padding-inline: 0.75rem;
       }
@@ -171,14 +180,14 @@ type Location = MappedBackupTarget<CifsBackupTarget | DiskBackupTarget>
         flex-wrap: wrap;
         column-gap: 0.5rem;
         row-gap: 0;
-        min-width: 0;
+        min-inline-size: 0;
       }
 
       .location-option > [tuiTitle] > b {
         display: block;
         flex: 1 1 auto;
-        min-width: 0;
-        max-width: 100%;
+        min-inline-size: 0;
+        max-inline-size: 100%;
         overflow-wrap: normal;
         white-space: normal;
         word-break: normal;
@@ -189,8 +198,8 @@ type Location = MappedBackupTarget<CifsBackupTarget | DiskBackupTarget>
         flex: 0 1 auto;
         flex-wrap: wrap;
         justify-content: flex-end;
-        min-width: 0;
-        max-width: 100%;
+        min-inline-size: 0;
+        max-inline-size: 100%;
         margin-inline-start: auto;
         overflow-wrap: normal;
         white-space: normal;

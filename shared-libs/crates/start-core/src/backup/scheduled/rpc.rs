@@ -850,9 +850,11 @@ pub async fn delete_archived_snapshots_bulk(
             .iter()
             .map(|history| history.target_instance_id.clone()),
     )?;
+    let server_id = db.as_public().as_server_info().as_id().de()?;
     let (mut guard, credential) = mount_scheduled_target(
         &db,
         &target_id,
+        &server_id,
         &expected_target_instance_id,
         password.as_deref(),
     )
@@ -882,9 +884,10 @@ pub async fn delete_archived_snapshots_bulk(
     Ok(histories)
 }
 
-async fn mount_scheduled_target(
+pub(crate) async fn mount_scheduled_target(
     db: &DatabaseModel,
     target_id: &BackupTargetId,
+    server_id: &str,
     expected_target_instance_id: &str,
     password: Option<&str>,
 ) -> Result<
@@ -896,7 +899,6 @@ async fn mount_scheduled_target(
 > {
     let target = target_id.clone().load(db)?;
     let device_key = db.as_private().as_scheduled_backup_device_key().de()?;
-    let server_id = db.as_public().as_server_info().as_id().de()?;
     let credential = db
         .as_private()
         .as_scheduled_backup_credentials()
@@ -909,7 +911,7 @@ async fn mount_scheduled_target(
             if let Ok(encryption_key) = credential.open(&device_key) {
                 let guard = ScheduledBackupMountGuard::mount_with_key(
                     TmpMountGuard::mount(&target, ReadWrite).await?,
-                    &server_id,
+                    server_id,
                     expected_target_instance_id,
                     &encryption_key,
                 )
@@ -927,7 +929,7 @@ async fn mount_scheduled_target(
     })?;
     let (guard, encryption_key) = ScheduledBackupMountGuard::mount_with_password(
         TmpMountGuard::mount(&target, ReadWrite).await?,
-        &server_id,
+        server_id,
         expected_target_instance_id,
         password,
     )

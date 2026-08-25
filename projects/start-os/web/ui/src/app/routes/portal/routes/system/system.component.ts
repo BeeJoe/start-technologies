@@ -138,10 +138,17 @@ import { SYSTEM_MENU } from './system.const'
   ],
 })
 export class SystemComponent {
-  readonly menu = SYSTEM_MENU
-  readonly generalBadge = toSignal(inject(BadgeService).getCount('general'))
-  readonly backupsBadge = toSignal(inject(BadgeService).getCount('backups'))
-  readonly backupProgressActive = toSignal(inject(OSService).backingUp$, {
-    initialValue: false,
-  })
+  protected readonly menu = SYSTEM_MENU
+  protected readonly generalBadge = toSignal(
+    inject(BadgeService).getCount('general'),
+  )
+  protected readonly backupsBadge = toSignal(
+    inject(BadgeService).getCount('backups'),
+  )
+  protected readonly backupProgressActive = toSignal(
+    inject(OSService).backingUp$,
+    {
+      initialValue: false,
+    },
+  )
 }

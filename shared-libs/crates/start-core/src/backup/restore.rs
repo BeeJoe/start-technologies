@@ -12,8 +12,8 @@ use ts_rs::TS;
 
 use super::PackageBackupReport;
 use super::scheduled::{
-    BackupActivityKind, BackupRunState, ScheduledBackupCredential, ScheduledBackupMountGuard,
-    ServiceSnapshotId, complete_activity, insert_activity, running_activity,
+    BackupActivityKind, BackupRunState, ScheduledBackupMountGuard, ServiceSnapshotId,
+    complete_activity, history_key, insert_activity, mount_scheduled_target, running_activity,
 };
 use super::target::BackupTargetId;
 use crate::PackageId;
@@ -197,8 +197,9 @@ pub async fn restore_selection_rpc(
         Some(server_id) => server_id,
         None => db.as_public().as_server_info().as_id().de()?,
     };
-    let target = target_id.clone().load(&db)?;
     let mut tasks = BTreeMap::new();
+    let mut refreshed_credential = None;
+    let mut scheduled_guard = None;
 
     if !manual_ids.is_empty() {
         let password = password.as_deref().ok_or_else(|| {
@@ -207,6 +208,7 @@ pub async fn restore_selection_rpc(
                 ErrorKind::InvalidRequest,
             )
         })?;
+        let target = target_id.clone().load(&db)?;
         let guard = BackupMountGuard::mount(
             TmpMountGuard::mount(&target, ReadWrite).await?,
             &server_id,
@@ -217,40 +219,66 @@ pub async fn restore_selection_rpc(
     }
 
     if !snapshots.is_empty() {
-        let credential: Option<ScheduledBackupCredential> = db
-            .as_private()
-            .as_scheduled_backup_credentials()
-            .as_idx(&target_id.to_string())
-            .map(|credential| credential.de())
-            .transpose()?;
-        let guard = if let Some(credential) = credential {
-            let encryption_key =
-                credential.open(&db.as_private().as_scheduled_backup_device_key().de()?)?;
-            ScheduledBackupMountGuard::mount_with_key(
-                TmpMountGuard::mount(&target, ReadWrite).await?,
-                &server_id,
-                &credential.target_instance_id,
-                &encryption_key,
-            )
-            .await?
-        } else {
-            let password = password.as_deref().ok_or_else(|| {
-                Error::new(
-                    eyre!("{}", t!("backup.scheduled.reauth-required")),
-                    ErrorKind::InvalidRequest,
-                )
-            })?;
-            ScheduledBackupMountGuard::discover_with_password(
-                TmpMountGuard::mount(&target, ReadWrite).await?,
-                &server_id,
-                password,
-            )
-            .await?
-            .0
-        };
-        tasks.extend(restore_scheduled_packages(&ctx, guard, snapshots).await?);
+        let target_instance_ids = snapshots
+            .iter()
+            .map(|(package_id, snapshot_id)| {
+                let key = history_key(&target_id, package_id);
+                let history: super::scheduled::ServiceTargetHistory = db
+                    .as_public()
+                    .as_scheduled_backups()
+                    .as_histories()
+                    .as_idx(&key)
+                    .or_not_found(&key)?
+                    .de()?;
+                if !history
+                    .snapshots
+                    .iter()
+                    .any(|snapshot| &snapshot.id == snapshot_id)
+                {
+                    return Err(Error::new(
+                        eyre!("{}", t!("backup.scheduled.snapshot-not-found")),
+                        ErrorKind::NotFound,
+                    ));
+                }
+                Ok(history.target_instance_id)
+            })
+            .collect::<Result<std::collections::BTreeSet<_>, Error>>()?;
+        if target_instance_ids.len() != 1 {
+            return Err(Error::new(
+                eyre!("{}", t!("backup.scheduled.target-identity-mismatch")),
+                ErrorKind::InvalidRequest,
+            ));
+        }
+        let target_instance_id = target_instance_ids
+            .first()
+            .expect("one target instance ID exists");
+        let (guard, credential) = mount_scheduled_target(
+            &db,
+            &target_id,
+            &server_id,
+            target_instance_id,
+            password.as_deref(),
+        )
+        .await?;
+        refreshed_credential = Some(credential);
+        scheduled_guard = Some(guard);
     }
     drop(db);
+
+    if let Some(credential) = refreshed_credential {
+        ctx.db
+            .mutate(|db| {
+                db.as_private_mut()
+                    .as_scheduled_backup_credentials_mut()
+                    .insert(&target_id.to_string(), &credential)?;
+                Ok(())
+            })
+            .await
+            .result?;
+    }
+    if let Some(guard) = scheduled_guard {
+        tasks.extend(restore_scheduled_packages(&ctx, guard, snapshots).await?);
+    }
 
     let intended_services = tasks.keys().cloned().collect();
     let activity = running_activity(

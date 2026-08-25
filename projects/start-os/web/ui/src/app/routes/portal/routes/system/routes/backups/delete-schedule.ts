@@ -62,7 +62,7 @@ export interface DeleteScheduleDecision {
     :host {
       display: grid;
       gap: 1.25rem;
-      min-width: 0;
+      min-inline-size: 0;
     }
 
     p {
@@ -74,18 +74,18 @@ export interface DeleteScheduleDecision {
       display: flex;
       align-items: flex-start;
       gap: 0.75rem;
-      min-width: 0;
+      min-inline-size: 0;
       cursor: pointer;
     }
 
     [tuiTitle] {
-      min-width: 0;
+      min-inline-size: 0;
       overflow-wrap: anywhere;
     }
 
     [tuiSubtitle] {
       display: block;
-      margin-top: 0.25rem;
+      margin-block-start: 0.25rem;
     }
 
     .actions {
@@ -134,18 +134,18 @@ export interface DeleteScheduleDecision {
   imports: [FormsModule, TuiButton, TuiCheckbox, TuiTitle, i18nPipe],
 })
 export class DeleteScheduleDialog {
-  readonly context =
+  protected readonly context =
     injectContext<
       TuiDialogContext<DeleteScheduleDecision | null, DeleteScheduleDialogData>
     >()
 
   protected deleteCheckpoints = false
 
-  cancel() {
+  protected cancel() {
     this.context.completeWith(null)
   }
 
-  confirm(deleteOption: HTMLLabelElement) {
+  protected confirm(deleteOption: HTMLLabelElement) {
     this.context.completeWith({
       deleteCheckpoints: deleteOption.querySelector('input')?.checked ?? false,
     })

@@ -105,7 +105,7 @@ import { TARGET, TARGET_CREATE } from './target.component'
     }
 
     .button[data-size] {
-      width: unset;
+      inline-size: unset;
       padding: 1rem;
       text-indent: 0;
       justify-content: space-between;
@@ -127,18 +127,18 @@ export class BackupsEditModal {
   private readonly context =
     injectContext<TuiDialogContext<BackupJob, BackupJobBuilder>>()
 
-  readonly target = toSignal(
+  protected readonly target = toSignal(
     from(this.api.getBackupTargets({})).pipe(map(({ saved }) => saved)),
   )
 
-  readonly targetId = signal(this.job.targetId)
-  readonly packageIds = signal(this.job.packageIds)
+  protected readonly targetId = signal(this.job.targetId)
+  protected readonly packageIds = signal(this.job.packageIds)
 
-  get job() {
+  protected get job() {
     return this.context.data
   }
 
-  async save() {
+  protected async save() {
     this.tasks.run(async () => {
       const job = this.job.job.id
         ? await this.api.updateBackupJob(this.job.buildUpdate(this.job.job.id))
@@ -148,7 +148,7 @@ export class BackupsEditModal {
     }, 'Saving Job')
   }
 
-  selectTarget() {
+  protected selectTarget() {
     this.dialogs
       .open<T.BackupTarget & { id: string }>(TARGET, TARGET_CREATE)
       .subscribe(({ id }) => {
@@ -157,7 +157,7 @@ export class BackupsEditModal {
       })
   }
 
-  selectPackages() {
+  protected selectPackages() {
     this.dialogs.open<string[]>(BACKUP, BACKUP_OPTIONS).subscribe(id => {
       this.job.packageIds = id
       this.packageIds.set(id)
