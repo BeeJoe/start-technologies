@@ -366,13 +366,13 @@ const NETWORK_DELETE = new PolymorpheusComponent(NetworkDeleteDialog)
       }
 
       .mobile-address {
-        flex: 0 0 auto;
-        min-inline-size: min-content;
+        flex: 1 1 100%;
+        min-inline-size: 0;
         max-inline-size: 100%;
         color: var(--tui-text-secondary);
-        overflow-wrap: normal;
+        overflow-wrap: anywhere;
         white-space: normal;
-        word-break: normal;
+        word-break: break-word;
       }
 
       .free {

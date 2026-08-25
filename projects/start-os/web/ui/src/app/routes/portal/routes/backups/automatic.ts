@@ -50,7 +50,10 @@ import {
   BACKUP_MINUTES,
   BACKUP_MONTH_DAYS,
   BackupRetentionInterval,
+  BackupRetentionTierEditor,
   BackupScheduleFrequency,
+  BackupScheduleFormValue,
+  BackupServiceSelection,
   formatBackupTime,
   hasDuplicateRetentionRules,
   isValidBackupSchedule,
@@ -72,17 +75,9 @@ interface ServiceChoice {
   system: boolean
 }
 
-interface AutomaticEditor {
-  frequency: BackupScheduleFrequency
-  minute: number
-  hour: number
-  weekday: number
-  dayOfMonth: number
-  timezone: string
+interface AutomaticEditor
+  extends BackupScheduleFormValue, Omit<BackupServiceSelection, 'packageIds'> {
   services: ServiceChoice[]
-  includeFuture: boolean
-  preservedSelectedPackageIds: string[]
-  preservedExcludedPackageIds: string[]
   keepAdditional: boolean
   interval: BackupRetentionInterval
   duration: number
@@ -92,9 +87,11 @@ interface AutomaticEditor {
   capacityConfirmed: boolean
 }
 
-interface AutomaticRetentionRule {
+interface AutomaticRetentionRule extends Pick<
+  BackupRetentionTierEditor,
+  'duration'
+> {
   interval: BackupRetentionInterval
-  duration: number
 }
 
 @Component({
@@ -968,6 +965,17 @@ interface AutomaticRetentionRule {
     }
 
     @container (max-inline-size: 30rem) {
+      .include-future {
+        flex-direction: column;
+        gap: 0.5rem;
+        padding-inline: 0.75rem;
+      }
+
+      .include-future [tuiTitle] {
+        inline-size: 100%;
+        min-inline-size: 0;
+      }
+
       .panel > header,
       .setting-row:not(.vertical),
       .advanced-link {
@@ -1153,7 +1161,7 @@ export default class AutomaticBackups {
       id: target.id,
       name: target.entry.path.split('/').pop() || target.entry.path,
       detail: formatCifsLocation(target.entry),
-      icon: '@tui.folder-network',
+      icon: '@tui.network',
       available: target.entry.mountable,
       capacity: null as number | null,
       used: null as number | null,
@@ -1554,7 +1562,7 @@ export default class AutomaticBackups {
       if (!this.embedded()) {
         await this.router.navigate(['/system/backups'])
       }
-    }, 'Creating Backup Schedule')
+    }, 'Creating backup schedule')
   }
 
   protected async toggleAllJobs(enabled: boolean) {
@@ -1566,7 +1574,7 @@ export default class AutomaticBackups {
         })
         await this.scheduled()?.reload()
       },
-      enabled ? 'Enabling Backup Schedules' : 'Pausing Backup Schedules',
+      enabled ? 'Enabling backup schedules' : 'Pausing backup schedules',
     )
   }
 
