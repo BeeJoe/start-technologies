@@ -37,18 +37,20 @@ installed service to one or more schedules; the recommendation can be dismissed.
 
 Only one backup or restore operation runs at a time. Scheduled backups wait for
 an active operation to finish. A second manual backup, restore, or explicit
-automatic run is rejected rather than queued silently. A requested first run
-for a newly created schedule waits and starts when the backup system becomes
-free. If StartOS restarts during an operation, the interrupted activity is
-recorded as failed and stale progress is cleared.
+automatic run is rejected rather than queued silently. Creating or changing a
+schedule also requires the backup system to be free because StartOS verifies
+the location's encrypted metadata before saving the schedule. If StartOS
+restarts during an operation, the interrupted activity is recorded as failed
+and stale progress is cleared.
 
 ## Version History and Storage
 
 By default, StartOS keeps only the latest automatic checkpoint for each item.
 Version-history rules can additionally retain one checkpoint per hour, day,
-week, or month for a chosen duration. A schedule must run at least as often as
-the most frequent rule it supplies; for example, hourly history requires an
-hourly schedule.
+week, or month for a chosen duration. A month in version history is a rolling
+30-day interval. Enabled schedules that feed the same shared history must
+collectively run at least as often as its most frequent rule; for example,
+hourly history requires at least one run in every hourly interval.
 
 Each retained checkpoint is a full copy on the backup location, not an
 incremental delta. A run also needs temporary staging space. Keeping more
