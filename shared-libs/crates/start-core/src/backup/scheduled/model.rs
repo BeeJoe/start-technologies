@@ -105,7 +105,7 @@ impl BackupServiceScope {
     }
 }
 
-/// Explains why an enabled backup job is not currently runnable.
+/// Explains why an enabled backup job cannot run.
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize, TS)]
 #[serde(rename_all = "camelCase", tag = "reason")]
 #[ts(export)]

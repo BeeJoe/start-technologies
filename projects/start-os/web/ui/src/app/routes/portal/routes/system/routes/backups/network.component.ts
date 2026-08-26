@@ -112,15 +112,7 @@ const NETWORK_DELETE = new PolymorpheusComponent(NetworkDeleteDialog)
             }
           </td>
           <td class="name">
-            <span class="desktop-name">
-              {{ target.entry.path.split('/').pop() }}
-            </span>
-            <span class="mobile-location-line">
-              <b>{{ target.entry.path.split('/').pop() }}</b>
-              <span class="mobile-address">
-                {{ formatCifsLocation(target.entry) }}
-              </span>
-            </span>
+            <b>{{ target.entry.path.split('/').pop() }}</b>
           </td>
           <td class="hostname">{{ target.entry.hostname }}</td>
           <td class="location">{{ target.entry.path }}</td>
@@ -198,6 +190,7 @@ const NETWORK_DELETE = new PolymorpheusComponent(NetworkDeleteDialog)
     }
 
     :host {
+      container-type: inline-size;
       inline-size: 100%;
       min-inline-size: 0;
     }
@@ -226,10 +219,6 @@ const NETWORK_DELETE = new PolymorpheusComponent(NetworkDeleteDialog)
     .hostname,
     .location {
       overflow-wrap: anywhere;
-    }
-
-    .mobile-location-line {
-      display: none;
     }
 
     .free {
@@ -285,15 +274,26 @@ const NETWORK_DELETE = new PolymorpheusComponent(NetworkDeleteDialog)
       gap: 0.25rem;
     }
 
-    :host-context(tui-root._mobile) {
+    @container (max-width: 48rem) {
       table {
+        --app-table-header-display: none;
+
+        min-inline-size: 0;
+        border: none;
+        border-radius: 0;
+        box-shadow: none;
         table-layout: auto;
+        color: var(--tui-text-secondary);
       }
 
       tr {
+        position: relative;
+        display: grid;
         grid-template-columns: minmax(0, 1fr) auto auto;
         inline-size: 100%;
         min-inline-size: 0;
+        padding-block: 0.75rem;
+        box-shadow: inset 0 -1px var(--tui-background-neutral-1);
         white-space: normal;
       }
 
@@ -301,14 +301,21 @@ const NETWORK_DELETE = new PolymorpheusComponent(NetworkDeleteDialog)
         grid-template-columns: minmax(0, 1fr);
       }
 
+      tr:last-child {
+        box-shadow: none;
+      }
+
       td {
+        position: static;
         min-inline-size: 0;
+        padding: 0;
+        border: none;
         grid-column: span 2;
         overflow-wrap: anywhere;
 
         &:first-child:not(:only-child) {
           inline-size: auto;
-          grid-area: 2 / 1 / 3 / -1;
+          grid-area: 4 / 1 / 5 / -1;
           justify-self: start;
           margin-block-start: 0.25rem;
         }
@@ -332,71 +339,27 @@ const NETWORK_DELETE = new PolymorpheusComponent(NetworkDeleteDialog)
         word-break: normal;
       }
 
+      td.name b {
+        font-weight: bold;
+      }
+
       td.free {
         grid-area: 1 / 2;
         align-self: center;
         justify-self: end;
       }
 
-      .desktop-name,
-      .hostname,
-      .location {
-        display: none;
+      td.hostname {
+        grid-area: 2 / 1 / 3 / -1;
+        margin-block-start: 0.25rem;
       }
 
-      .mobile-location-line {
-        display: flex;
-        flex-wrap: wrap;
-        align-items: baseline;
-        column-gap: 0.5rem;
-        row-gap: 0;
-        inline-size: 100%;
-        min-inline-size: 0;
-        max-inline-size: 100%;
-        box-sizing: border-box;
-        overflow-wrap: normal;
-        white-space: normal;
-        word-break: normal;
-      }
-
-      .mobile-location-line b {
-        font-weight: bold;
-        overflow-wrap: normal;
-        word-break: normal;
-      }
-
-      .mobile-address {
-        flex: 1 1 100%;
-        min-inline-size: 0;
-        max-inline-size: 100%;
-        color: var(--tui-text-secondary);
-        overflow-wrap: anywhere;
-        white-space: normal;
-        word-break: break-word;
+      td.location {
+        grid-area: 3 / 1 / 4 / -1;
       }
 
       .free {
         max-inline-size: 100%;
-      }
-
-      @media (max-width: 22.5rem) {
-        tr {
-          grid-template-columns: minmax(0, 1fr) auto;
-        }
-
-        td:last-child {
-          grid-area: 1 / 2;
-        }
-
-        td.free {
-          grid-area: 2 / 1;
-          justify-self: start;
-          margin-block-start: 0.25rem;
-        }
-
-        td:first-child:not(:only-child) {
-          grid-area: 3 / 1 / 4 / -1;
-        }
       }
 
       .empty-row > td.empty-state {
@@ -434,7 +397,6 @@ export class BackupNetworkComponent {
   private readonly i18n = inject(i18nPipe)
 
   protected readonly type = inject(ActivatedRoute).snapshot.data['type']
-  protected readonly formatCifsLocation = formatCifsLocation
 
   protected readonly service = inject(BackupService)
   readonly networkFolders = output<MappedBackupTarget<CifsBackupTarget>>()

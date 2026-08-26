@@ -1,11 +1,4 @@
-import {
-  Component,
-  computed,
-  inject,
-  input,
-  OnInit,
-  output,
-} from '@angular/core'
+import { Component, computed, inject, input, output } from '@angular/core'
 import { toSignal } from '@angular/core/rxjs-interop'
 import { ActivatedRoute, RouterLink } from '@angular/router'
 import { DialogService, DocsLinkDirective, i18nPipe } from '@start9labs/shared'
@@ -130,7 +123,7 @@ import { BACKUP_RESTORE } from './restore.component'
     DocsLinkDirective,
   ],
 })
-export default class SystemBackupComponent implements OnInit {
+export default class SystemBackupComponent {
   readonly mode = input<'create' | 'restore'>()
   readonly embedded = input(false)
   readonly operationActive = input<boolean>()
@@ -149,7 +142,7 @@ export default class SystemBackupComponent implements OnInit {
   protected readonly busy = computed(
     () => this.operationActive() ?? this.progressActive(),
   )
-  ngOnInit() {
+  constructor() {
     this.service.getBackupTargets()
   }
 
