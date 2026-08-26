@@ -82,6 +82,7 @@ import { BackupStatusComponent } from './status.component'
     }
 
     :host {
+      container-type: inline-size;
       inline-size: 100%;
       min-inline-size: 0;
     }
@@ -121,20 +122,38 @@ import { BackupStatusComponent } from './status.component'
       box-sizing: border-box;
     }
 
-    :host-context(tui-root._mobile) {
+    @container (max-width: 48rem) {
       table {
+        --app-table-header-display: none;
+
+        min-inline-size: 0;
+        border: none;
+        border-radius: 0;
+        box-shadow: none;
         table-layout: auto;
+        color: var(--tui-text-secondary);
       }
 
       tr {
+        position: relative;
+        display: grid;
         grid-template-columns: minmax(0, 1fr) minmax(7rem, 45%);
         inline-size: 100%;
         min-inline-size: 0;
+        padding-block: 0.75rem;
+        box-shadow: inset 0 -1px var(--tui-background-neutral-1);
         white-space: normal;
       }
 
+      tr:last-child {
+        box-shadow: none;
+      }
+
       td {
+        position: static;
         min-inline-size: 0;
+        padding: 0;
+        border: none;
         grid-column: span 2;
         overflow-wrap: anywhere;
 

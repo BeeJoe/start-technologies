@@ -13,9 +13,66 @@ export const SYSTEM_PACKAGE_ID = 'x_system'
 export const BACKUP_HOURS = Array.from({ length: 24 }, (_, hour) => hour)
 export const BACKUP_MINUTES = Array.from({ length: 60 }, (_, minute) => minute)
 export const BACKUP_MONTH_DAYS = Array.from({ length: 31 }, (_, day) => day + 1)
+export const BACKUP_FREQUENCIES: readonly BackupScheduleFrequency[] = [
+  'hourly',
+  'daily',
+  'weekly',
+  'monthly',
+]
+export const BACKUP_RETENTION_INTERVALS: readonly BackupRetentionInterval[] = [
+  'hour',
+  'day',
+  'week',
+  'month',
+]
+export const BACKUP_WEEKDAYS = [
+  { value: 0, label: 'Sunday' as const },
+  { value: 1, label: 'Monday' as const },
+  { value: 2, label: 'Tuesday' as const },
+  { value: 3, label: 'Wednesday' as const },
+  { value: 4, label: 'Thursday' as const },
+  { value: 5, label: 'Friday' as const },
+  { value: 6, label: 'Saturday' as const },
+] as const
 
 export function formatBackupTime(value: number): string {
   return String(value).padStart(2, '0')
+}
+
+export function backupFrequencyLabel(frequency: BackupScheduleFrequency) {
+  if (frequency === 'hourly') return 'Hourly' as const
+  if (frequency === 'weekly') return 'Weekly' as const
+  if (frequency === 'monthly') return 'Monthly' as const
+  return 'Daily' as const
+}
+
+export function backupWeekdayLabel(weekday: number) {
+  return BACKUP_WEEKDAYS[weekday]?.label || ('Sunday' as const)
+}
+
+export function backupRetentionIntervalLabel(
+  interval: BackupRetentionTierEditor['interval'],
+) {
+  if (interval === 'hour') return 'Hour' as const
+  if (interval === 'day') return 'Day' as const
+  if (interval === 'week') return 'Week' as const
+  if (interval === 'month') return 'Month' as const
+  return 'Custom' as const
+}
+
+export function removeBackupRetentionRule<T>(
+  primary: T,
+  additional: readonly T[],
+  index: number,
+  replacement: T,
+): { primary: T; additional: T[]; keepAdditional: boolean } {
+  const rules = [primary, ...additional]
+  rules.splice(index, 1)
+  return {
+    primary: rules[0] || replacement,
+    additional: rules.slice(1),
+    keepAdditional: !!rules.length,
+  }
 }
 
 export interface BackupScheduleFormValue {

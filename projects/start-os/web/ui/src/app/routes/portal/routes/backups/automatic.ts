@@ -46,12 +46,17 @@ import {
   formatCifsLocation,
 } from '../system/routes/backups/backup.service'
 import {
+  backupFrequencyLabel,
+  backupRetentionIntervalLabel,
+  backupWeekdayLabel,
+  BACKUP_FREQUENCIES,
   BACKUP_HOURS,
   BACKUP_MINUTES,
   BACKUP_MONTH_DAYS,
+  BACKUP_RETENTION_INTERVALS,
+  BACKUP_WEEKDAYS,
   BackupRetentionInterval,
   BackupRetentionTierEditor,
-  BackupScheduleFrequency,
   BackupScheduleFormValue,
   BackupServiceSelection,
   formatBackupTime,
@@ -59,6 +64,7 @@ import {
   isValidBackupSchedule,
   retentionIntervalSeconds,
   retentionPeriodLabel,
+  removeBackupRetentionRule,
   scheduleNeedsMoreFrequentRuns,
   serializeBackupServiceSelection,
   serializeBackupSchedule,
@@ -1083,57 +1089,21 @@ export default class AutomaticBackups {
     { number: 3, label: 'Review' as const },
   ]
 
-  protected readonly weekdays = [
-    { value: 0, label: 'Sunday' as const },
-    { value: 1, label: 'Monday' as const },
-    { value: 2, label: 'Tuesday' as const },
-    { value: 3, label: 'Wednesday' as const },
-    { value: 4, label: 'Thursday' as const },
-    { value: 5, label: 'Friday' as const },
-    { value: 6, label: 'Saturday' as const },
-  ]
-  protected readonly frequencies: BackupScheduleFrequency[] = [
-    'hourly',
-    'daily',
-    'weekly',
-    'monthly',
-  ]
-  protected readonly retentionIntervals: BackupRetentionInterval[] = [
-    'hour',
-    'day',
-    'week',
-    'month',
-  ]
+  protected readonly weekdays = BACKUP_WEEKDAYS
+  protected readonly frequencies = BACKUP_FREQUENCIES
+  protected readonly retentionIntervals = BACKUP_RETENTION_INTERVALS
   protected readonly hours = BACKUP_HOURS
   protected readonly minutes = BACKUP_MINUTES
   protected readonly monthDays = BACKUP_MONTH_DAYS
   protected readonly stringifyTime = formatBackupTime
   protected readonly stringifyFrequency = (
-    frequency: BackupScheduleFrequency,
-  ) =>
-    this.i18n.transform(
-      frequency === 'hourly'
-        ? 'Hourly'
-        : frequency === 'weekly'
-          ? 'Weekly'
-          : frequency === 'monthly'
-            ? 'Monthly'
-            : 'Daily',
-    )
+    frequency: AutomaticEditor['frequency'],
+  ) => this.i18n.transform(backupFrequencyLabel(frequency))
   protected readonly stringifyWeekday = (weekday: number) =>
-    this.i18n.transform(this.weekdays[weekday]?.label || 'Sunday')
+    this.i18n.transform(backupWeekdayLabel(weekday))
   protected readonly stringifyRetentionInterval = (
     interval: BackupRetentionInterval,
-  ) =>
-    this.i18n.transform(
-      interval === 'hour'
-        ? 'Hour'
-        : interval === 'day'
-          ? 'Day'
-          : interval === 'week'
-            ? 'Week'
-            : 'Month',
-    )
+  ) => this.i18n.transform(backupRetentionIntervalLabel(interval))
 
   protected readonly jobs = computed(() =>
     Object.values(this.state()?.jobs || {}).sort((a, b) =>
@@ -1373,16 +1343,15 @@ export default class AutomaticBackups {
   }
 
   protected removeRetentionRule(index: number) {
-    if (index === 0 && this.editor.additionalRules.length) {
-      const next = this.editor.additionalRules.shift()!
-      this.editor.interval = next.interval
-      this.editor.duration = next.duration
-    } else if (index > 0) {
-      this.editor.additionalRules.splice(index - 1, 1)
-    } else {
-      this.editor.keepAdditional = false
-      Object.assign(this.editor, this.newRetentionRule())
-    }
+    const result = removeBackupRetentionRule(
+      { interval: this.editor.interval, duration: this.editor.duration },
+      this.editor.additionalRules,
+      index,
+      this.newRetentionRule(),
+    )
+    Object.assign(this.editor, result.primary)
+    this.editor.additionalRules = result.additional
+    this.editor.keepAdditional = result.keepAdditional
     this.editor.capacityConfirmed = false
   }
 
