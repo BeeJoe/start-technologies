@@ -52,11 +52,16 @@ import { ApiService } from 'src/app/services/api/embassy-api.service'
 import { DataModel } from 'src/app/services/patch-db/data-model'
 import { BackupService, formatCifsLocation } from './backup.service'
 import {
+  backupFrequencyLabel,
+  backupRetentionIntervalLabel,
+  backupWeekdayLabel,
+  BACKUP_FREQUENCIES,
   BACKUP_HOURS,
   BACKUP_MINUTES,
   BACKUP_MONTH_DAYS,
+  BACKUP_RETENTION_INTERVALS,
+  BACKUP_WEEKDAYS,
   BackupRetentionTierEditor,
-  BackupScheduleFrequency,
   BackupScheduleFormValue,
   BackupServiceSelection,
   formatBackupTime,
@@ -68,6 +73,7 @@ import {
   retentionIntervalFromSeconds,
   retentionIntervalSeconds,
   retentionPeriodLabel,
+  removeBackupRetentionRule,
   serializeBackupRetentionTier,
   serializeBackupServiceSelection,
   serializeBackupSchedule,
@@ -1686,61 +1692,24 @@ export class ScheduledBackups {
     this.jobs().find(job => job.id === this.selectedJobId()),
   )
 
-  protected readonly frequencies: BackupScheduleFrequency[] = [
-    'hourly',
-    'daily',
-    'weekly',
-    'monthly',
-  ]
-  protected readonly retentionIntervals: Exclude<
-    BackupRetentionTierEditor['interval'],
-    'custom'
-  >[] = ['hour', 'day', 'week', 'month']
-  protected readonly weekdays = [
-    { value: 0, label: 'Sunday' as const },
-    { value: 1, label: 'Monday' as const },
-    { value: 2, label: 'Tuesday' as const },
-    { value: 3, label: 'Wednesday' as const },
-    { value: 4, label: 'Thursday' as const },
-    { value: 5, label: 'Friday' as const },
-    { value: 6, label: 'Saturday' as const },
-  ]
+  protected readonly frequencies = BACKUP_FREQUENCIES
+  protected readonly retentionIntervals = BACKUP_RETENTION_INTERVALS
+  protected readonly weekdays = BACKUP_WEEKDAYS
   protected readonly hours = BACKUP_HOURS
   protected readonly minutes = BACKUP_MINUTES
   protected readonly monthDays = BACKUP_MONTH_DAYS
   protected readonly stringifyTime = formatBackupTime
-  protected readonly stringifyFrequency = (
-    frequency: BackupScheduleFrequency,
-  ) =>
-    this.i18n.transform(
-      frequency === 'hourly'
-        ? 'Hourly'
-        : frequency === 'weekly'
-          ? 'Weekly'
-          : frequency === 'monthly'
-            ? 'Monthly'
-            : 'Daily',
-    )
+  protected readonly stringifyFrequency = (frequency: JobEditor['frequency']) =>
+    this.i18n.transform(backupFrequencyLabel(frequency))
 
   isEditorOpen(): boolean {
     return this.editor() !== null
   }
   protected readonly stringifyWeekday = (weekday: number) =>
-    this.i18n.transform(this.weekdays[weekday]?.label || 'Sunday')
+    this.i18n.transform(backupWeekdayLabel(weekday))
   protected readonly stringifyRetentionInterval = (
     interval: BackupRetentionTierEditor['interval'],
-  ) =>
-    this.i18n.transform(
-      interval === 'hour'
-        ? 'Hour'
-        : interval === 'day'
-          ? 'Day'
-          : interval === 'week'
-            ? 'Week'
-            : interval === 'month'
-              ? 'Month'
-              : 'Custom',
-    )
+  ) => this.i18n.transform(backupRetentionIntervalLabel(interval))
 
   private async initialize() {
     await this.backupService.getBackupTargets()
@@ -1939,15 +1908,15 @@ export class ScheduledBackups {
   }
 
   protected removeRetentionRule(form: JobEditor, index: number) {
-    if (index === 0 && form.additionalTiers.length) {
-      const next = form.additionalTiers.shift()!
-      Object.assign(form, next)
-    } else if (index > 0) {
-      form.additionalTiers.splice(index - 1, 1)
-    } else {
-      form.keepAdditional = false
-      Object.assign(form, this.newRetentionRule())
-    }
+    const result = removeBackupRetentionRule<EditableRetentionRule>(
+      form,
+      form.additionalTiers,
+      index,
+      this.newRetentionRule(),
+    )
+    Object.assign(form, result.primary)
+    form.additionalTiers = result.additional
+    form.keepAdditional = result.keepAdditional
     form.capacityConfirmed = false
   }
 
