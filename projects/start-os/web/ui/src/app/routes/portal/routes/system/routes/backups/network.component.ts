@@ -379,6 +379,26 @@ const NETWORK_DELETE = new PolymorpheusComponent(NetworkDeleteDialog)
         max-inline-size: 100%;
       }
 
+      @media (max-width: 22.5rem) {
+        tr {
+          grid-template-columns: minmax(0, 1fr) auto;
+        }
+
+        td:last-child {
+          grid-area: 1 / 2;
+        }
+
+        td.free {
+          grid-area: 2 / 1;
+          justify-self: start;
+          margin-block-start: 0.25rem;
+        }
+
+        td:first-child:not(:only-child) {
+          grid-area: 3 / 1 / 4 / -1;
+        }
+      }
+
       .empty-row > td.empty-state {
         display: grid;
         grid-area: 1 / 1 / auto / -1;
