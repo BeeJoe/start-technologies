@@ -13,31 +13,6 @@ export default [
     canDeactivate: [confirmBackupExit],
   },
   {
-    path: 'setup',
-    redirectTo: '',
-    pathMatch: 'full',
-  },
-  {
-    path: 'manage',
-    redirectTo: '',
-    pathMatch: 'full',
-  },
-  {
-    path: 'manual',
-    redirectTo: '',
-    pathMatch: 'full',
-  },
-  {
-    path: 'restore',
-    redirectTo: '',
-    pathMatch: 'full',
-  },
-  {
-    path: 'locations',
-    redirectTo: '',
-    pathMatch: 'full',
-  },
-  {
     path: '**',
     redirectTo: '',
   },

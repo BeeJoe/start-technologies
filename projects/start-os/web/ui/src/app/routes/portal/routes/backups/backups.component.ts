@@ -100,7 +100,7 @@ const WEEKDAYS = [
           tuiCell
           (click)="goToServices()"
         >
-          <tui-icon icon="@tui.loader-circle" />
+          <tui-icon class="g-primary" icon="@tui.loader-circle" />
           <span tuiTitle>
             <b>{{ operationTitle(activity) | i18n }}</b>
             <span tuiSubtitle>
@@ -549,7 +549,6 @@ const WEEKDAYS = [
     }
 
     .operation > tui-icon {
-      color: var(--tui-text-action);
       animation: backup-progress-spin 1.5s linear infinite;
     }
 
@@ -693,7 +692,7 @@ const WEEKDAYS = [
       }
     }
   `,
-  host: { class: 'backup-page' },
+  host: { class: 'g-wrap-content' },
   imports: [
     FormsModule,
     TuiAppearance,

@@ -32,18 +32,14 @@ async fn run_backup_procedure<T>(
         Ok(result) => (result, false),
         Err(error) => (Err(error).with_kind(ErrorKind::Timeout), true),
     };
-    // A modern package hook runs inside the persistent JavaScript runtime and
-    // cannot be cancelled by dropping its Promise. Stop that runtime before
-    // removing the bind so timed-out package code cannot keep writing.
+    // Timed-out hooks stop before their backup bind is removed.
     let stop_result = if timed_out {
         Some(stop_runtime.await)
     } else {
         None
     };
     let unmount_result = unmount.await;
-    // Only restore the runtime after both cancellation and unmount completed.
-    // Otherwise leave it stopped rather than let package code regain a target
-    // whose cleanup failed.
+    // Failed cancellation or unmount leaves the runtime stopped.
     let restart_result =
         if timed_out && stop_result.as_ref().is_some_and(Result::is_ok) && unmount_result.is_ok() {
             Some(restart_runtime.await)
@@ -103,9 +99,7 @@ impl ServiceActorSeed {
         Transition {
             kind: TransitionKind::BackingUp,
             future: async {
-                // The backup future clears BackingUp itself when it finishes, so
-                // here we just drive it to completion. If there's nothing to
-                // resume, recover the state so it can't get stuck, then report.
+                // The actor drives the stored backup future.
                 if let Some(backup) = self.backup.replace(None) {
                     backup.await;
                     Ok(())
@@ -140,11 +134,7 @@ impl Handler<Backup> for ServiceActor {
         let seed = self.0.clone();
         seed.backup_phase.replace(Some(progress));
 
-        // Split the backup into a driver (`remote`, stored for the actor to run
-        // once the service has stopped) and a handle (returned to the caller).
-        // Awaiting the handle only reads the result — it never drives the work —
-        // so the backup can't start before the actor runs it, and the handle
-        // doesn't resolve until the service has left the backing-up state.
+        // The caller's handle only observes the backup result.
         let (remote, handle) = async move {
             let res = async {
                 let backup_guard = seed
