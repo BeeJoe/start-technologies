@@ -164,9 +164,7 @@ impl RetentionPolicy {
     }
 }
 
-/// Checks that the union of enabled jobs feeding a shared history has at least
-/// one attempt in every bucket of the finest version-history rule. A full leap-year
-/// cycle covers weekdays, month lengths, and both DST transitions.
+/// Requires an enabled run in every finest-retention bucket.
 pub fn validate_combined_schedule_coverage(
     schedules: &[Schedule],
     policy: &RetentionPolicy,
@@ -202,11 +200,9 @@ pub fn validate_combined_schedule_coverage(
         }
     }
 
-    // Walk real UTC instants when checking required local buckets. This omits
-    // spring-forward buckets that never exist and naturally coalesces the
-    // repeated local bucket during a fall-back transition. Sampling no more
-    // coarsely than the bucket width guarantees every existing bucket is
-    // visited; invalid sub-hour policies normally fail on the first sample.
+    // UTC sampling omits nonexistent buckets.
+    // UTC sampling coalesces repeated buckets.
+    // Samples never skip an existing bucket.
     let sample_seconds = interval.min(15 * 60).max(1);
     let mut cursor = start;
     while cursor < end {
