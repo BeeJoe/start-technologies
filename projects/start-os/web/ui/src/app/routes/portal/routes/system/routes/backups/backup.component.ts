@@ -104,7 +104,7 @@ interface Package {
       padding: 1.5rem 1rem 0.75rem;
     }
   `,
-  host: { class: 'backup-settings' },
+  host: { class: 'g-wrap-content' },
   imports: [
     FormsModule,
     TuiButton,

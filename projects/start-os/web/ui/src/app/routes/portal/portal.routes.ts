@@ -22,18 +22,13 @@ const ROUTES: Routes = [
       },
       {
         path: 'backups',
-        children: [
-          {
-            path: '',
-            redirectTo: '/system/backups',
-            pathMatch: 'full',
-          },
-          {
-            path: ':section',
-            redirectTo: '/system/backups/:section',
-            pathMatch: 'full',
-          },
-        ],
+        redirectTo: '/system/backups',
+        pathMatch: 'full',
+      },
+      {
+        path: 'backups/:section',
+        redirectTo: '/system/backups/:section',
+        pathMatch: 'full',
       },
       {
         title: titleResolver,

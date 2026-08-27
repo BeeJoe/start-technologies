@@ -148,7 +148,7 @@ const STATUS_FILTERS: StatusFilter[] = [
                 <section class="service-report">
                   <b>{{ packageName(report.packageId) }}</b>
                   @if (report.value.error) {
-                    <p class="error">
+                    <p class="g-negative">
                       {{ 'This service did not complete successfully.' | i18n }}
                     </p>
                   } @else {
@@ -295,10 +295,6 @@ const STATUS_FILTERS: StatusFilter[] = [
       margin-inline: 0;
     }
 
-    .error {
-      color: var(--tui-status-negative);
-    }
-
     .technical-details {
       margin-block-start: 0.75rem;
     }
@@ -363,7 +359,7 @@ const STATUS_FILTERS: StatusFilter[] = [
       }
     }
   `,
-  host: { class: 'backup-settings' },
+  host: { class: 'g-wrap-content' },
   imports: [
     DatePipe,
     DecimalPipe,

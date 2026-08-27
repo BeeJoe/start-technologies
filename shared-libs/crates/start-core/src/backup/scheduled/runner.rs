@@ -858,8 +858,7 @@ fn complete_run_required_capacity(
             .and_then(|bytes| bytes.checked_add(99))
             .map(|bytes| bytes / 100)
             .ok_or_else(capacity_overflow)?;
-        // Staging becomes the retained-growth copy on promotion, so only its
-        // excess over that growth is temporary additional capacity.
+        // Promotion reuses the staging copy as retained growth.
         temporary_headroom = temporary_headroom.max(staging.saturating_sub(growth));
     }
     PREFLIGHT_METADATA_BYTES
@@ -1009,8 +1008,7 @@ async fn mark_target_connected(ctx: &RpcContext, target_id: &BackupTargetId) -> 
                 return Ok(());
             };
             let mut state: BackupTargetFailureState = existing.de()?;
-            // Crossing the threshold requires an explicit user retry before
-            // jobs are resumed. Sub-threshold successful connections reset it.
+            // Paused jobs require an explicit retry.
             if state.jobs_paused.is_empty() {
                 state.reset();
                 failures.insert(&key, &state)?;

@@ -1,8 +1,4 @@
-//! Scheduled backup domain models and policy engines.
-//!
-//! Scheduled storage deliberately lives beside, rather than inside, the manual
-//! backup set. The execution layer uses these types to keep the two histories
-//! independent while presenting one restore history to clients.
+//! Scheduled backup policies and execution.
 
 mod activity;
 mod credential;

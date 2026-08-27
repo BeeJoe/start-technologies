@@ -60,6 +60,8 @@ import {
   BackupScheduleFormValue,
   BackupServiceSelection,
   formatBackupTime,
+  formatBackupScheduleSummary,
+  formatBackupServiceSummary,
   hasDuplicateRetentionRules,
   isValidBackupSchedule,
   retentionIntervalSeconds,
@@ -301,7 +303,7 @@ interface AutomaticRetentionRule extends Pick<
             </div>
           }
 
-          <tui-accordion class="services-accordion">
+          <tui-accordion class="g-wrap-accordion">
             <button
               [tuiAccordion]="showServices()"
               (tuiAccordionChange)="showServices.set(!!$event)"
@@ -971,6 +973,10 @@ interface AutomaticRetentionRule extends Pick<
     }
 
     @container (max-inline-size: 30rem) {
+      [tuiBlock] img {
+        display: none;
+      }
+
       .include-future {
         flex-direction: column;
         gap: 0.5rem;
@@ -1028,7 +1034,7 @@ interface AutomaticRetentionRule extends Pick<
       }
     }
   `,
-  host: { class: 'backup-page' },
+  host: { class: 'g-wrap-content' },
   imports: [
     FormsModule,
     RouterLink,
@@ -1303,19 +1309,9 @@ export default class AutomaticBackups {
   }
 
   protected scheduleSummary(): string {
-    const minute = String(this.editor.minute).padStart(2, '0')
-    const time = `${String(this.editor.hour).padStart(2, '0')}:${minute}`
-    if (this.editor.frequency === 'hourly') {
-      return `${this.i18n.transform('Hourly')} · ${this.i18n.transform('Minute')} ${minute}`
-    }
-    if (this.editor.frequency === 'weekly') {
-      const day = this.weekdays[this.editor.weekday]?.label || 'Sunday'
-      return `${this.i18n.transform(day)} · ${time}`
-    }
-    if (this.editor.frequency === 'monthly') {
-      return `${this.i18n.transform('Monthly')} · ${this.i18n.transform('Day of month')} ${this.editor.dayOfMonth} · ${time}`
-    }
-    return `${this.i18n.transform('Daily')} · ${time}`
+    return formatBackupScheduleSummary(this.editor, label =>
+      this.i18n.transform(label),
+    )
   }
 
   protected retentionSummary(): string {
@@ -1380,20 +1376,13 @@ export default class AutomaticBackups {
 
   protected selectedServiceSummary(): string {
     const services = this.editor.services.filter(service => !service.system)
-    const selected = services.filter(service => service.checked)
-    const total = services.length
-    const count = `${selected.length} / ${total} ${this.i18n.transform(total === 1 ? 'Service' : 'Services')}`
-    const future = this.i18n.transform(
-      this.editor.includeFuture
-        ? 'Future services included'
-        : 'Future services not included',
+    return formatBackupServiceSummary(
+      services.filter(service => service.checked).length,
+      services.length,
+      this.editor.includeFuture,
+      this.editor.services.some(service => service.system && service.checked),
+      label => this.i18n.transform(label),
     )
-    const system = this.editor.services.some(
-      service => service.system && service.checked,
-    )
-      ? ''
-      : ` · ${this.i18n.transform('No System data')}`
-    return `${count} · ${future}${system}`
   }
 
   protected selectedTargetName(): string {

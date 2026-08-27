@@ -108,7 +108,7 @@ import { BACKUP_RESTORE } from './restore.component'
       display: none;
     }
   `,
-  host: { class: 'backup-page' },
+  host: { class: 'g-wrap-content' },
   imports: [
     RouterLink,
     TuiButton,

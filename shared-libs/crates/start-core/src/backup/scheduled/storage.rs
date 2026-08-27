@@ -342,8 +342,7 @@ impl<G: GenericMountGuard> ScheduledBackupMountGuard<G> {
         history.policy = policy;
         history.snapshots.push(snapshot.clone());
 
-        // Persist the replacement before pruning. A pruning failure therefore
-        // leaves extra valid snapshots instead of losing the last checkpoint.
+        // Pruning failures retain extra valid snapshots.
         self.save().await?;
         self.prune(&snapshot.package_id).await?;
         self.remove_unreferenced_runs().await?;

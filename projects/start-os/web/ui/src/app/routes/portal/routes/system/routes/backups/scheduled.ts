@@ -65,6 +65,8 @@ import {
   BackupScheduleFormValue,
   BackupServiceSelection,
   formatBackupTime,
+  formatBackupScheduleSummary,
+  formatBackupServiceSummary,
   hasDuplicateRetentionRules,
   isValidBackupSchedule,
   parseBackupRetentionTier,
@@ -584,7 +586,7 @@ interface JobEditor
           </div>
 
           <div class="setting-row vertical services-setting">
-            <tui-accordion class="services-accordion">
+            <tui-accordion class="g-wrap-accordion">
               <button
                 [tuiAccordion]="showServices()"
                 (tuiAccordionChange)="showServices.set(!!$event)"
@@ -756,7 +758,9 @@ interface JobEditor
                         }
                       </span>
                     </span>
-                    <span class="more-info">{{ 'More info' | i18n }}</span>
+                    <span class="g-primary more-info">
+                      {{ 'More info' | i18n }}
+                    </span>
                   </button>
                   <tui-expand>
                     @if (capacityEstimate(pkg.id); as estimate) {
@@ -1031,10 +1035,6 @@ interface JobEditor
       justify-content: flex-end;
       flex-wrap: wrap;
       gap: 0.5rem;
-    }
-
-    .more-info {
-      color: var(--tui-text-action);
     }
 
     .services-options {
@@ -1430,6 +1430,11 @@ interface JobEditor
     }
 
     @container (max-inline-size: 30rem) {
+      [tuiBlock] img,
+      [tuiBlock] > tui-icon {
+        display: none;
+      }
+
       .include-future {
         flex-direction: column;
         gap: 0.5rem;
@@ -1560,7 +1565,7 @@ interface JobEditor
     }
   `,
   host: {
-    class: 'backup-settings',
+    class: 'g-wrap-content',
     '(window:beforeunload)': 'confirmBrowserExit($event)',
   },
   imports: [
@@ -2443,19 +2448,9 @@ export class ScheduledBackups {
   }
 
   protected scheduleSummary(form: JobEditor): string {
-    const minute = String(form.minute).padStart(2, '0')
-    const time = `${String(form.hour).padStart(2, '0')}:${minute}`
-    if (form.frequency === 'hourly') {
-      return `${this.i18n.transform('Hourly')} · ${this.i18n.transform('Minute')} ${minute}`
-    }
-    if (form.frequency === 'weekly') {
-      const day = this.weekdays[form.weekday]?.label || 'Sunday'
-      return `${this.i18n.transform(day)} · ${time}`
-    }
-    if (form.frequency === 'monthly') {
-      return `${this.i18n.transform('Monthly')} · ${this.i18n.transform('Day of month')} ${form.dayOfMonth} · ${time}`
-    }
-    return `${this.i18n.transform('Daily')} · ${time}`
+    return formatBackupScheduleSummary(form, label =>
+      this.i18n.transform(label),
+    )
   }
 
   protected jobSelectionSummary(job: T.BackupJob): {
@@ -2487,16 +2482,13 @@ export class ScheduledBackups {
     const selected = form.packageIds.filter(
       id => id !== SYSTEM_PACKAGE_ID,
     ).length
-    const count = `${selected} / ${total} ${this.serviceCountLabel(total)}`
-    const future = this.i18n.transform(
-      form.includeFuture
-        ? 'Future services included'
-        : 'Future services not included',
+    return formatBackupServiceSummary(
+      selected,
+      total,
+      form.includeFuture,
+      form.packageIds.includes(SYSTEM_PACKAGE_ID),
+      label => this.i18n.transform(label),
     )
-    const system = form.packageIds.includes(SYSTEM_PACKAGE_ID)
-      ? ''
-      : ` · ${this.i18n.transform('No System data')}`
-    return `${count} · ${future}${system}`
   }
 
   protected retentionSummary(form: JobEditor): string {
