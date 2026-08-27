@@ -70,7 +70,7 @@ import { BackupService } from '../system/routes/backups/backup.service'
       margin-block-start: 0.25rem;
     }
   `,
-  host: { class: 'backup-page' },
+  host: { class: 'g-wrap-content' },
   imports: [
     RouterLink,
     TuiButton,

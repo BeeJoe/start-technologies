@@ -84,13 +84,60 @@ export interface BackupScheduleFormValue {
   timezone: string
 }
 
+type BackupSummaryLabel =
+  | 'Hourly'
+  | 'Minute'
+  | 'Monthly'
+  | 'Day of month'
+  | 'Daily'
+  | 'Service'
+  | 'Services'
+  | 'Future services included'
+  | 'Future services not included'
+  | 'No System data'
+  | (typeof BACKUP_WEEKDAYS)[number]['label']
+
+type BackupSummaryTranslator = (label: BackupSummaryLabel) => string
+
+export function formatBackupScheduleSummary(
+  form: BackupScheduleFormValue,
+  translate: BackupSummaryTranslator,
+): string {
+  const minute = formatBackupTime(form.minute)
+  const time = `${formatBackupTime(form.hour)}:${minute}`
+  if (form.frequency === 'hourly') {
+    return `${translate('Hourly')} · ${translate('Minute')} ${minute}`
+  }
+  if (form.frequency === 'weekly') {
+    return `${translate(backupWeekdayLabel(form.weekday))} · ${time}`
+  }
+  if (form.frequency === 'monthly') {
+    return `${translate('Monthly')} · ${translate('Day of month')} ${form.dayOfMonth} · ${time}`
+  }
+  return `${translate('Daily')} · ${time}`
+}
+
+export function formatBackupServiceSummary(
+  selected: number,
+  total: number,
+  includeFuture: boolean,
+  includesSystem: boolean,
+  translate: BackupSummaryTranslator,
+): string {
+  const serviceLabel = translate(total === 1 ? 'Service' : 'Services')
+  const futureLabel = translate(
+    includeFuture ? 'Future services included' : 'Future services not included',
+  )
+  const systemLabel = includesSystem ? '' : ` · ${translate('No System data')}`
+  return `${selected} / ${total} ${serviceLabel} · ${futureLabel}${systemLabel}`
+}
+
 export interface BackupJobAttentionState {
   enabled: boolean
   pause: { reason: string } | null
   status: { lastResult: string | null }
 }
 
-/** Returns whether an enabled job should surface the automatic-backup warning. */
 export function backupJobNeedsAttention(job: BackupJobAttentionState): boolean {
   return (
     job.enabled &&
@@ -100,7 +147,7 @@ export function backupJobNeedsAttention(job: BackupJobAttentionState): boolean {
   )
 }
 
-/** Editable service scope plus IDs that are not represented by the current package list. */
+/** Preserves package IDs absent from the installed-service list. */
 export interface BackupServiceSelection {
   packageIds: string[]
   includeFuture: boolean
@@ -108,7 +155,7 @@ export interface BackupServiceSelection {
   preservedExcludedPackageIds: string[]
 }
 
-/** Primary retention controls, including an exact custom rule for advanced jobs. */
+/** Preserves exact custom retention tiers. */
 export interface BackupRetentionTierEditor {
   interval: BackupRetentionInterval | 'custom'
   duration: number
@@ -116,7 +163,6 @@ export interface BackupRetentionTierEditor {
   customCoverageHours: number
 }
 
-/** Returns whether two editor rows describe the same retained checkpoint tier. */
 export function hasDuplicateRetentionRules(
   rules: readonly (Pick<BackupRetentionTierEditor, 'interval' | 'duration'> &
     Partial<
@@ -191,7 +237,7 @@ export function parseBackupSchedule(
   }
 }
 
-/** Projects a stored service scope into the installed-service editor without dropping hidden IDs. */
+/** Preserves package IDs absent from the installed-service list. */
 export function parseBackupServiceSelection(
   services: T.BackupServiceScope,
   installedPackageIds: string[],
@@ -234,7 +280,7 @@ export function parseBackupServiceSelection(
   }
 }
 
-/** Rebuilds a service scope while retaining IDs hidden from the installed-service editor. */
+/** Preserves package IDs absent from the installed-service list. */
 export function serializeBackupServiceSelection(
   selection: BackupServiceSelection,
   installedPackageIds: string[],
@@ -267,7 +313,6 @@ export function serializeBackupServiceSelection(
   }
 }
 
-/** Maps a stored tier to standard controls when lossless and custom controls otherwise. */
 export function parseBackupRetentionTier(
   tier?: T.RetentionTier,
 ): BackupRetentionTierEditor {
@@ -294,7 +339,7 @@ export function parseBackupRetentionTier(
   }
 }
 
-/** Serializes the primary version-history controls without normalizing custom rules. */
+/** Preserves exact custom retention tiers. */
 export function serializeBackupRetentionTier(
   editor: BackupRetentionTierEditor,
 ): T.RetentionTier {
@@ -342,7 +387,6 @@ export function retentionIntervalFromSeconds(
   return 'month'
 }
 
-/** Catches a single schedule that cannot fill its own finest retention interval. */
 export function scheduleNeedsMoreFrequentRuns(
   frequency: BackupScheduleFrequency,
   policies: T.RetentionPolicy[],

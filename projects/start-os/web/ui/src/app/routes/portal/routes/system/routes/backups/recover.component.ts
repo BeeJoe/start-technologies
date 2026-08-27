@@ -199,7 +199,7 @@ import { SYSTEM_PACKAGE_ID } from './scheduled-utils'
       }
     }
   `,
-  host: { class: 'backup-settings' },
+  host: { class: 'g-wrap-content' },
   imports: [
     CommonModule,
     FormsModule,
