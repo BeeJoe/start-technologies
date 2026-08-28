@@ -465,7 +465,7 @@ interface AutomaticRetentionRule extends Pick<
             <input
               tuiInput
               [type]="passwordMasked ? 'password' : 'text'"
-              autocomplete="off"
+              autocomplete="new-password"
               [(ngModel)]="editor.password"
               (keyup.enter)="createAutomaticBackup()"
             />

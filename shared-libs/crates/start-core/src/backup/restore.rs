@@ -200,23 +200,7 @@ pub async fn restore_selection_rpc(
     let mut tasks = BTreeMap::new();
     let mut refreshed_credential = None;
     let mut scheduled_guard = None;
-
-    if !manual_ids.is_empty() {
-        let password = password.as_deref().ok_or_else(|| {
-            Error::new(
-                eyre!("{}", t!("backup.scheduled.reauth-required")),
-                ErrorKind::InvalidRequest,
-            )
-        })?;
-        let target = target_id.clone().load(&db)?;
-        let guard = BackupMountGuard::mount(
-            TmpMountGuard::mount(&target, ReadWrite).await?,
-            &server_id,
-            password,
-        )
-        .await?;
-        tasks.extend(restore_packages(&ctx, guard, manual_ids).await?);
-    }
+    let mut manual_guard = None;
 
     if !snapshots.is_empty() {
         let target_instance_ids = snapshots
@@ -260,8 +244,26 @@ pub async fn restore_selection_rpc(
             password.as_deref(),
         )
         .await?;
+        validate_scheduled_snapshots(&guard, &snapshots).await?;
         refreshed_credential = Some(credential);
         scheduled_guard = Some(guard);
+    }
+
+    if !manual_ids.is_empty() {
+        let password = password.as_deref().ok_or_else(|| {
+            Error::new(
+                eyre!("{}", t!("backup.scheduled.reauth-required")),
+                ErrorKind::InvalidRequest,
+            )
+        })?;
+        let target = target_id.clone().load(&db)?;
+        let guard = BackupMountGuard::mount(
+            TmpMountGuard::mount(&target, ReadWrite).await?,
+            &server_id,
+            password,
+        )
+        .await?;
+        manual_guard = Some(guard);
     }
     drop(db);
 
@@ -278,6 +280,9 @@ pub async fn restore_selection_rpc(
     }
     if let Some(guard) = scheduled_guard {
         tasks.extend(restore_scheduled_packages(&ctx, guard, snapshots).await?);
+    }
+    if let Some(guard) = manual_guard {
+        tasks.extend(restore_packages(&ctx, guard, manual_ids).await?);
     }
 
     let intended_services = tasks.keys().cloned().collect();
@@ -342,12 +347,6 @@ async fn restore_scheduled_packages(
     let mut tasks = BTreeMap::new();
     for (package_id, snapshot_id) in snapshots {
         let snapshot = guard.snapshot(&package_id, &snapshot_id);
-        if tokio::fs::metadata(snapshot.path()).await.is_err() {
-            return Err(Error::new(
-                eyre!("{}", t!("backup.scheduled.snapshot-not-found")),
-                ErrorKind::NotFound,
-            ));
-        }
         let s9pk_path = snapshot.path().join(&package_id).with_extension("s9pk");
         let task = ctx
             .services
@@ -363,6 +362,24 @@ async fn restore_scheduled_packages(
     }
 
     Ok(tasks)
+}
+
+async fn validate_scheduled_snapshots(
+    guard: &ScheduledBackupMountGuard<TmpMountGuard>,
+    snapshots: &BTreeMap<PackageId, ServiceSnapshotId>,
+) -> Result<(), Error> {
+    for (package_id, snapshot_id) in snapshots {
+        if tokio::fs::metadata(guard.snapshot_path(package_id, snapshot_id))
+            .await
+            .is_err()
+        {
+            return Err(Error::new(
+                eyre!("{}", t!("backup.scheduled.snapshot-not-found")),
+                ErrorKind::NotFound,
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn spawn_restore_activity(

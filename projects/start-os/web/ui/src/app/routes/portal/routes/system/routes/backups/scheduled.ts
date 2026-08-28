@@ -47,6 +47,7 @@ import {
   TuiSelect,
   TuiSwitch,
 } from '@taiga-ui/kit'
+import { TuiCardLarge, TuiForm, TuiHeader } from '@taiga-ui/layout'
 import { PatchDB } from 'patch-db-client'
 import { filter, firstValueFrom, map, take } from 'rxjs'
 import { ApiService } from 'src/app/services/api/embassy-api.service'
@@ -273,8 +274,13 @@ interface JobEditor
       }
 
       @if (editor(); as form) {
-        <form class="editor panel" (ngSubmit)="save(form)">
-          <header class="editor-heading">
+        <form
+          tuiCardLarge
+          tuiForm="m"
+          appearance="floating"
+          (submit.prevent)="save(form)"
+        >
+          <header tuiHeader class="editor-heading">
             <span tuiTitle>
               @if (isDefaultJob(form)) {
                 <b>{{ 'Edit automatic schedule' | i18n }}</b>
@@ -655,7 +661,7 @@ interface JobEditor
                 [type]="passwordMasked ? 'password' : 'text'"
                 name="password"
                 required
-                autocomplete="off"
+                autocomplete="new-password"
                 [(ngModel)]="form.password"
               />
               <button
@@ -712,9 +718,16 @@ interface JobEditor
       }
 
       @if (reassigning(); as job) {
-        <form class="editor" (ngSubmit)="reassign(job)">
-          <div class="heading">
-            <h3>{{ 'Change backup location' | i18n }} — {{ job.name }}</h3>
+        <form
+          tuiCardLarge
+          tuiForm="m"
+          appearance="floating"
+          (submit.prevent)="reassign(job)"
+        >
+          <header tuiHeader class="heading">
+            <h3 tuiTitle>
+              <b>{{ 'Change backup location' | i18n }} — {{ job.name }}</b>
+            </h3>
             <button
               tuiButton
               type="button"
@@ -724,7 +737,7 @@ interface JobEditor
             >
               {{ 'Cancel' | i18n }}
             </button>
-          </div>
+          </header>
           <div class="grid">
             <tui-textfield
               tuiChevron
@@ -753,7 +766,7 @@ interface JobEditor
                 name="reassignPassword"
                 [type]="reassignPasswordMasked ? 'password' : 'text'"
                 required
-                autocomplete="off"
+                autocomplete="new-password"
                 [(ngModel)]="reassignPassword"
               />
               <button
@@ -891,17 +904,6 @@ interface JobEditor
       flex: 1 1 16rem;
     }
 
-    .editor {
-      display: grid;
-      gap: 1rem;
-      margin-block-start: 1rem;
-      padding: 1rem;
-      border: 1px solid var(--tui-border-normal);
-      border-radius: 0.75rem;
-      min-inline-size: 0;
-      overflow: hidden;
-    }
-
     .review {
       display: grid;
       gap: 1rem;
@@ -942,12 +944,6 @@ interface JobEditor
 
     .review-job [tuiTitle] {
       text-align: start;
-    }
-
-    .editor.panel {
-      inline-size: 100%;
-      padding: 1.25rem;
-      box-sizing: border-box;
     }
 
     .setting-row.vertical {
@@ -1231,7 +1227,6 @@ interface JobEditor
         grid-template-columns: 1fr;
       }
 
-      .editor.panel,
       .selected-job {
         padding: 0.75rem;
       }
@@ -1294,12 +1289,15 @@ interface JobEditor
     TuiBadge,
     TuiBlock,
     TuiButton,
+    TuiCardLarge,
     TuiCell,
     TuiCheckbox,
     TuiChevron,
     TuiDataList,
     TuiDropdown,
+    TuiForm,
     TuiGroup,
+    TuiHeader,
     TuiIcon,
     TuiInput,
     TuiLabel,
@@ -1348,10 +1346,6 @@ export class ScheduledBackups {
   protected readonly selectedJobId = signal('')
   protected readonly showServices = signal(false)
   protected readonly reassigning = signal<T.BackupJob | null>(null)
-  protected readonly policyHistory = signal<T.ServiceTargetHistory | null>(null)
-  protected readonly policyTiers = signal<EditableRetentionRule[]>([])
-  protected readonly policyPreview =
-    signal<T.RetentionPolicyChangePreview | null>(null)
   protected readonly estimates = signal<T.BackupServiceCapacityEstimate[]>([])
   protected readonly capacityDetailsOpen = signal<ReadonlySet<string>>(
     new Set(),
@@ -1362,7 +1356,6 @@ export class ScheduledBackups {
   protected passwordMasked = true
   protected reassignPasswordMasked = true
   protected waitForSchedule = false
-  protected confirmPrune = false
   private editorBaseline: string | null = null
   private pendingReview: T.NewServiceBackupReview | null = null
 
@@ -2020,115 +2013,6 @@ export class ScheduledBackups {
     )
   }
 
-  protected editPolicy(history: T.ServiceTargetHistory) {
-    this.policyHistory.set(history)
-    this.policyTiers.set(this.toTierEditors(history.policy))
-    this.policyPreview.set(null)
-    this.confirmPrune = false
-  }
-
-  protected async previewPolicy(history: T.ServiceTargetHistory) {
-    await this.tasks.run(async () => {
-      this.policyPreview.set(
-        await this.api.previewScheduledRetention({
-          targetId: history.targetId,
-          packageId: history.packageId,
-          policy: this.policy(this.policyTiers()),
-        }),
-      )
-      this.confirmPrune = false
-    }, 'Loading')
-  }
-
-  protected async applyPolicy(history: T.ServiceTargetHistory) {
-    const preview = this.policyPreview()
-    if (!preview) return
-    await this.perform(() =>
-      this.api.updateScheduledRetention({
-        targetId: history.targetId,
-        packageId: history.packageId,
-        policy: this.policy(this.policyTiers()),
-        confirmedRemovals: preview.removed.map(snapshot => snapshot.id),
-      }),
-    )
-    this.policyHistory.set(null)
-  }
-
-  protected async deleteArchive(history: T.ServiceTargetHistory) {
-    const confirmed = await firstValueFrom(
-      this.dialogs
-        .openConfirm({
-          label: 'Delete archived checkpoints?',
-          size: 's',
-          data: {
-            content:
-              'This permanently deletes every checkpoint in this archive.',
-            yes: 'Delete',
-            no: 'Cancel',
-          },
-        })
-        .pipe(filter(Boolean)),
-      { defaultValue: false },
-    )
-    if (!confirmed) return
-    const password = await firstValueFrom(
-      this.dialogs.openPrompt<string>({
-        label: 'Enter password',
-        data: {
-          message: 'Enter your current master password',
-          label: 'Password',
-          placeholder: 'Password',
-          buttonText: 'Delete',
-          useMask: true,
-        },
-      }),
-      { defaultValue: '' },
-    )
-    if (!password) return
-    await this.perform(() =>
-      this.api.deleteArchivedBackupSnapshots({
-        targetId: history.targetId,
-        packageId: history.packageId,
-        snapshotIds: this.archivedSnapshots(history).map(
-          snapshot => snapshot.id,
-        ),
-        password,
-      }),
-    )
-  }
-
-  protected restoreLatest(history: T.ServiceTargetHistory) {
-    const latest = this.newestFirst(history.snapshots)[0]
-    if (latest) this.restoreSnapshot(history, latest)
-  }
-
-  protected async restoreSnapshot(
-    history: T.ServiceTargetHistory,
-    snapshot: T.ServiceSnapshot,
-  ) {
-    const confirmed = await firstValueFrom(
-      this.dialogs
-        .openConfirm({
-          label: 'Restore scheduled checkpoint?',
-          size: 's',
-          data: {
-            content: 'The selected scheduled checkpoint will be restored.',
-            yes: 'Restore',
-            no: 'Cancel',
-          },
-        })
-        .pipe(filter(Boolean)),
-      { defaultValue: false },
-    )
-    if (!confirmed) return
-    await this.perform(() =>
-      this.api.restoreScheduledBackup({
-        targetId: history.targetId,
-        snapshots: { [history.packageId]: snapshot.id },
-      }),
-    )
-  }
-
   protected jobName(id: string): string {
     return this.jobs().find(job => job.id === id)?.name || id
   }
@@ -2136,10 +2020,6 @@ export class ScheduledBackups {
   protected packageName(id: string): string {
     if (id === SYSTEM_PACKAGE_ID) return this.i18n.transform('System')
     return this.packages().find(pkg => pkg.id === id)?.name || id
-  }
-
-  protected affectedJobNames(history: T.ServiceTargetHistory): string[] {
-    return history.feedingJobs.map(id => this.jobName(id))
   }
 
   protected targetName(id: string): string {
@@ -2318,33 +2198,8 @@ export class ScheduledBackups {
     )
   }
 
-  protected stagingBytes(history: T.ServiceTargetHistory): number | null {
-    const latest = this.newestFirst(
-      history.snapshots.filter(snapshot => !snapshot.archived),
-    )[0]
-    return latest
-      ? Math.ceil((latest.physicalSize ?? latest.logicalSize) * 1.1)
-      : null
-  }
-
-  protected lastChanged(history: T.ServiceTargetHistory): number | null {
-    return this.newestFirst(history.snapshots)[0]?.changedBytes ?? null
-  }
-
   protected bytes(value: number | null): string {
     return value === null ? '—' : convertBytes(value)
-  }
-
-  protected newestFirst(snapshots: T.ServiceSnapshot[]): T.ServiceSnapshot[] {
-    return [...snapshots].sort((a, b) =>
-      b.completedAt.localeCompare(a.completedAt),
-    )
-  }
-
-  protected archivedSnapshots(
-    history: T.ServiceTargetHistory,
-  ): T.ServiceSnapshot[] {
-    return history.snapshots.filter(snapshot => snapshot.archived)
   }
 
   private defaultPolicy(form: JobEditor): T.RetentionPolicy {
