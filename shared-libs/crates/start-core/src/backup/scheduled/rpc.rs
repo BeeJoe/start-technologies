@@ -2654,12 +2654,10 @@ pub(crate) fn validate_new_job_coverage(
                 .unwrap_or(default_retention)
                 .clone()
         };
-        let policy = match &existing {
-            Some(history) if !candidate_controls_history(history, replacing) => {
-                history.policy.clone()
-            }
-            _ => candidate_policy(),
-        };
+        let policy = existing
+            .as_ref()
+            .map(|history| history.policy.clone())
+            .unwrap_or_else(candidate_policy);
         let timezone: chrono_tz::Tz = existing
             .as_ref()
             .map(|history| history.timezone.as_str())
@@ -2778,9 +2776,7 @@ pub(crate) fn associate_histories(
             .clone();
         if let Some(history) = histories.as_idx(&key) {
             let mut history: ServiceTargetHistory = history.de()?;
-            if candidate_controls_history(&history, Some(&job.id)) {
-                history.policy = policy;
-            }
+            // Retention changes require exact removal confirmation in update_policy.
             history.feeding_jobs.insert(job.id.clone());
             if job_is_active {
                 history.archived = false;
@@ -2803,14 +2799,6 @@ pub(crate) fn associate_histories(
         }
     }
     Ok(())
-}
-
-fn candidate_controls_history(
-    history: &ServiceTargetHistory,
-    replacing: Option<&BackupJobId>,
-) -> bool {
-    history.feeding_jobs.is_empty()
-        || replacing.is_some_and(|job_id| history.feeding_jobs.contains(job_id))
 }
 
 pub(crate) fn disassociate_histories(
@@ -2964,32 +2952,6 @@ mod cli_tests {
             created_at: now,
             updated_at: now,
         }
-    }
-
-    #[test]
-    fn retention_changes_control_existing_or_reactivated_histories() {
-        let controlling_job = BackupJobId::new();
-        let other_job = BackupJobId::new();
-        let history = |feeding_jobs| ServiceTargetHistory {
-            target_id: "cifs-0".parse().unwrap(),
-            target_instance_id: "instance".to_owned(),
-            package_id: "hello-world".parse().unwrap(),
-            timezone: "UTC".to_owned(),
-            policy: RetentionPolicy::latest_only(),
-            feeding_jobs,
-            snapshots: Vec::new(),
-            archived: false,
-        };
-
-        assert!(candidate_controls_history(&history(BTreeSet::new()), None));
-        assert!(candidate_controls_history(
-            &history(BTreeSet::from([controlling_job.clone()])),
-            Some(&controlling_job)
-        ));
-        assert!(!candidate_controls_history(
-            &history(BTreeSet::from([other_job])),
-            Some(&controlling_job)
-        ));
     }
 
     #[test]

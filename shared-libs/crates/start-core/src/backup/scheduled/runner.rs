@@ -124,11 +124,22 @@ async fn run_job_inner(
         return Err(error);
     }
     drop(db);
-    ctx.db
+    if let Err(error) = ctx
+        .db
         .mutate(|db| super::rpc::associate_histories(db, &job, &package_ids))
         .await
-        .result?;
-    let system_logical_bytes = crate::backup::os::system_logical_size(ctx).await?;
+        .result
+    {
+        record_failed_run(ctx, &job, &package_ids, trigger, error.to_string()).await?;
+        return Err(error);
+    }
+    let system_logical_bytes = match crate::backup::os::system_logical_size(ctx).await {
+        Ok(size) => size,
+        Err(error) => {
+            record_failed_run(ctx, &job, &package_ids, trigger, error.to_string()).await?;
+            return Err(error);
+        }
+    };
     let db = ctx.db.peek().await;
     tracing::info!(
         job_id = %job.id,
