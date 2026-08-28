@@ -34,6 +34,7 @@ import {
   TuiIcon,
   TuiInput,
   TuiLabel,
+  TuiLoader,
   TuiNotification,
   TuiTitle,
 } from '@taiga-ui/core'
@@ -51,20 +52,14 @@ import { filter, firstValueFrom, map, take } from 'rxjs'
 import { ApiService } from 'src/app/services/api/embassy-api.service'
 import { DataModel } from 'src/app/services/patch-db/data-model'
 import { BackupService, formatCifsLocation } from './backup.service'
+import { BackupScheduleBrowser } from './schedule-browser'
+import { BackupScheduleControls } from './schedule-controls'
 import {
-  backupFrequencyLabel,
   backupRetentionIntervalLabel,
-  backupWeekdayLabel,
-  BACKUP_FREQUENCIES,
-  BACKUP_HOURS,
-  BACKUP_MINUTES,
-  BACKUP_MONTH_DAYS,
   BACKUP_RETENTION_INTERVALS,
-  BACKUP_WEEKDAYS,
   BackupRetentionTierEditor,
   BackupScheduleFormValue,
   BackupServiceSelection,
-  formatBackupTime,
   formatBackupScheduleSummary,
   formatBackupServiceSummary,
   hasDuplicateRetentionRules,
@@ -248,7 +243,7 @@ interface JobEditor
 
     @if (mode() === 'manage') {
       @if (loading()) {
-        <p>{{ 'Loading' | i18n }}…</p>
+        <tui-loader [textContent]="'Loading' | i18n" />
       }
 
       @if (jobs().length > 1 && editor()) {
@@ -265,101 +260,16 @@ interface JobEditor
           <tui-icon icon="@tui.chevron-left" />
         </button>
       } @else if (jobs().length && !editor()) {
-        <section class="schedule-browser">
-          <div class="schedule-list">
-            @for (job of jobs(); track job.id) {
-              <div tuiCell class="schedule-job">
-                @let selection = jobSelectionSummary(job);
-                <tui-icon icon="@tui.calendar-clock" />
-                <span tuiTitle>
-                  <b>{{ job.name }}</b>
-                  <span tuiSubtitle>
-                    {{ targetName(job.targetId) }} ·
-                    {{ selection.serviceCount }}
-                    {{ serviceCountLabel(selection.serviceCount) }}
-                    @if (!selection.includeFuture) {
-                      · {{ 'Future services not included' | i18n }}
-                    }
-                    @if (!selection.includesSystem) {
-                      · {{ 'No System data' | i18n }}
-                    }
-                    ·
-                    {{ 'Next run' | i18n }}:
-                    {{
-                      job.status.nextRunAt
-                        ? (job.status.nextRunAt | date: 'medium')
-                        : ('None' | i18n)
-                    }}
-                  </span>
-                </span>
-                @if (job.pause; as pause) {
-                  <span tuiBadge appearance="warning">
-                    {{ pauseLabel(pause) | i18n }}
-                  </span>
-                } @else if (!job.enabled) {
-                  <span tuiBadge>{{ 'Paused' | i18n }}</span>
-                }
-                <div class="job-list-actions">
-                  <label class="inline-switch job-switch">
-                    <input
-                      tuiSwitch
-                      type="checkbox"
-                      [showIcons]="false"
-                      [attr.aria-label]="job.name"
-                      [ngModelOptions]="{ standalone: true }"
-                      [ngModel]="job.enabled && !job.pause"
-                      [disabled]="!!job.pause && job.pause.reason !== 'user'"
-                      (ngModelChange)="setJobEnabled(job, $event)"
-                    />
-                  </label>
-                  <button
-                    tuiIconButton
-                    tuiDropdown
-                    tuiDropdownAuto
-                    type="button"
-                    size="s"
-                    appearance="flat-grayscale"
-                    iconStart="@tui.ellipsis-vertical"
-                  >
-                    {{ 'More' | i18n }}
-                    <tui-data-list *tuiDropdown="let close" (click)="close()">
-                      <button
-                        tuiOption
-                        tuiAppearance="flat"
-                        [disabled]="!!job.pause || !job.enabled"
-                        (click)="runNow(job)"
-                      >
-                        {{ 'Run now' | i18n }}
-                      </button>
-                      <button tuiOption (click)="edit(job)">
-                        {{ 'View/Edit' | i18n }}
-                      </button>
-                      <button
-                        tuiOption
-                        tuiAppearance="flat-destructive"
-                        (click)="deleteJob(job)"
-                      >
-                        {{ 'Delete schedule' | i18n }}
-                      </button>
-                    </tui-data-list>
-                  </button>
-                </div>
-              </div>
-            }
-          </div>
-        </section>
-        <div class="jobs-toolbar">
-          <button
-            tuiButton
-            type="button"
-            size="s"
-            appearance="primary"
-            iconStart="@tui.plus"
-            (click)="create()"
-          >
-            {{ 'Add schedule' | i18n }}
-          </button>
-        </div>
+        <backup-schedule-browser
+          [jobs]="jobs()"
+          [packageIds]="packageIds()"
+          [targets]="targets()"
+          (enabledChange)="setJobEnabled($event.job, $event.enabled)"
+          (runRequested)="runNow($event)"
+          (editRequested)="edit($event)"
+          (deleteRequested)="deleteJob($event)"
+          (createRequested)="create()"
+        />
       }
 
       @if (editor(); as form) {
@@ -486,103 +396,7 @@ interface JobEditor
               <b>{{ 'Schedule' | i18n }}</b>
               <span tuiSubtitle>{{ scheduleSummary(form) }}</span>
             </span>
-            <div class="schedule-controls">
-              <tui-textfield
-                tuiChevron
-                [stringify]="stringifyFrequency"
-                [tuiTextfieldCleaner]="false"
-              >
-                <label tuiLabel>{{ 'Frequency' | i18n }}</label>
-                <input
-                  tuiSelect
-                  name="frequency"
-                  required
-                  [(ngModel)]="form.frequency"
-                />
-                <tui-data-list *tuiDropdown>
-                  @for (frequency of frequencies; track frequency) {
-                    <button tuiOption [value]="frequency">
-                      {{ stringifyFrequency(frequency) }}
-                    </button>
-                  }
-                </tui-data-list>
-              </tui-textfield>
-
-              @if (form.frequency === 'weekly') {
-                <tui-textfield tuiChevron [stringify]="stringifyWeekday">
-                  <label tuiLabel>{{ 'Day of week' | i18n }}</label>
-                  <input tuiSelect name="weekday" [(ngModel)]="form.weekday" />
-                  <tui-data-list *tuiDropdown>
-                    @for (day of weekdays; track day.value) {
-                      <button tuiOption [value]="day.value">
-                        {{ day.label | i18n }}
-                      </button>
-                    }
-                  </tui-data-list>
-                </tui-textfield>
-              }
-
-              @if (form.frequency === 'monthly') {
-                <tui-textfield tuiChevron [tuiTextfieldCleaner]="false">
-                  <label tuiLabel>{{ 'Day of month' | i18n }}</label>
-                  <input
-                    tuiSelect
-                    name="dayOfMonth"
-                    required
-                    [(ngModel)]="form.dayOfMonth"
-                  />
-                  <tui-data-list *tuiDropdown>
-                    @for (day of monthDays; track day) {
-                      <button tuiOption [value]="day">{{ day }}</button>
-                    }
-                  </tui-data-list>
-                </tui-textfield>
-              }
-
-              @if (form.frequency !== 'hourly') {
-                <tui-textfield
-                  tuiChevron
-                  [stringify]="stringifyTime"
-                  [tuiTextfieldCleaner]="false"
-                >
-                  <label tuiLabel>{{ 'Hour' | i18n }}</label>
-                  <input
-                    tuiSelect
-                    name="hour"
-                    required
-                    [(ngModel)]="form.hour"
-                  />
-                  <tui-data-list *tuiDropdown>
-                    @for (hour of hours; track hour) {
-                      <button tuiOption [value]="hour">
-                        {{ stringifyTime(hour) }}
-                      </button>
-                    }
-                  </tui-data-list>
-                </tui-textfield>
-              }
-
-              <tui-textfield
-                tuiChevron
-                [stringify]="stringifyTime"
-                [tuiTextfieldCleaner]="false"
-              >
-                <label tuiLabel>{{ 'Minute' | i18n }}</label>
-                <input
-                  tuiSelect
-                  name="minute"
-                  required
-                  [(ngModel)]="form.minute"
-                />
-                <tui-data-list *tuiDropdown>
-                  @for (minute of minutes; track minute) {
-                    <button tuiOption [value]="minute">
-                      {{ stringifyTime(minute) }}
-                    </button>
-                  }
-                </tui-data-list>
-              </tui-textfield>
-            </div>
+            <backup-schedule-controls [schedule]="form" />
           </div>
 
           <div class="setting-row vertical services-setting">
@@ -996,9 +810,7 @@ interface JobEditor
       container-type: inline-size;
     }
 
-    [tuiTitle],
-    .schedule-controls > *,
-    .schedule-list > * {
+    [tuiTitle] {
       min-inline-size: 0;
       overflow-wrap: anywhere;
     }
@@ -1027,14 +839,6 @@ interface JobEditor
       align-items: center;
       flex-wrap: wrap;
       gap: 0.35rem;
-    }
-
-    .job-list-actions {
-      display: flex;
-      align-items: center;
-      justify-content: flex-end;
-      flex-wrap: wrap;
-      gap: 0.5rem;
     }
 
     .services-options {
@@ -1074,11 +878,6 @@ interface JobEditor
       inline-size: 100%;
       min-inline-size: 0;
       box-sizing: border-box;
-    }
-
-    .inline-switch.job-switch {
-      inline-size: fit-content;
-      justify-content: flex-start;
     }
 
     .selected-job {
@@ -1156,16 +955,6 @@ interface JobEditor
       flex-direction: column;
     }
 
-    .schedule-controls {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
-      gap: 0.75rem;
-      align-items: end;
-      inline-size: 100%;
-      min-inline-size: 0;
-    }
-
-    .schedule-controls tui-textfield,
     [tuiGroup] {
       inline-size: 100%;
     }
@@ -1321,7 +1110,6 @@ interface JobEditor
       margin-block-start: 2rem;
     }
 
-    .schedule-job,
     .view-all-jobs {
       inline-size: 100%;
       min-inline-size: 0;
@@ -1329,28 +1117,8 @@ interface JobEditor
       box-sizing: border-box;
     }
 
-    .schedule-job {
-      display: flex;
-      align-items: center;
-      gap: 0.75rem;
-      padding: 0.75rem 0;
-      border-block-end: 1px solid var(--tui-border-normal);
-    }
-
-    .schedule-job:last-child {
-      border-block-end: 0;
-    }
-
-    .schedule-job [tuiTitle],
     .view-all-jobs [tuiTitle] {
       flex: 1;
-    }
-
-    .schedule-browser,
-    .schedule-list {
-      display: grid;
-      gap: 0.75rem;
-      min-inline-size: 0;
     }
 
     .estimate-heading {
@@ -1459,7 +1227,6 @@ interface JobEditor
         align-self: flex-start;
       }
 
-      .schedule-controls,
       .retention-rule {
         grid-template-columns: 1fr;
       }
@@ -1475,56 +1242,6 @@ interface JobEditor
 
       .selected-job > [tuiTitle] {
         flex: 0 1 auto;
-      }
-
-      .schedule-job {
-        display: grid;
-        grid-template-columns: auto minmax(0, 1fr) auto;
-        align-items: center;
-        padding-inline: 0.75rem;
-        box-sizing: border-box;
-      }
-
-      .schedule-job > tui-icon:first-child {
-        grid-column: 1;
-        grid-row: 1;
-      }
-
-      .schedule-job > [tuiTitle] {
-        display: contents;
-      }
-
-      .schedule-job > [tuiTitle] > b {
-        grid-column: 2;
-        grid-row: 1;
-        min-inline-size: 0;
-        overflow-wrap: anywhere;
-      }
-
-      .schedule-job > [tuiTitle] > [tuiSubtitle] {
-        grid-column: 1 / -1;
-        grid-row: 2;
-        min-inline-size: 0;
-        white-space: normal;
-        overflow-wrap: anywhere;
-      }
-
-      .schedule-job > [tuiBadge] {
-        grid-column: 1 / -1;
-        grid-row: 3;
-        justify-self: start;
-      }
-
-      .job-list-actions {
-        grid-column: 3;
-        grid-row: 1;
-        align-self: start;
-        justify-self: end;
-        flex-wrap: nowrap;
-      }
-
-      .job-switch {
-        inline-size: fit-content;
       }
 
       .retention-heading {
@@ -1587,10 +1304,13 @@ interface JobEditor
     TuiInput,
     TuiLabel,
     TuiInputNumber,
+    TuiLoader,
     TuiNotification,
     TuiSelect,
     TuiSwitch,
     TuiTitle,
+    BackupScheduleBrowser,
+    BackupScheduleControls,
     i18nPipe,
   ],
 })
@@ -1693,25 +1413,17 @@ export class ScheduledBackups {
       return manifest ? [{ id, name: manifest.title, icon: entry.icon }] : []
     }),
   ])
+  protected readonly packageIds = computed(() =>
+    this.packages().map(pkg => pkg.id),
+  )
   protected readonly selectedJob = computed(() =>
     this.jobs().find(job => job.id === this.selectedJobId()),
   )
 
-  protected readonly frequencies = BACKUP_FREQUENCIES
   protected readonly retentionIntervals = BACKUP_RETENTION_INTERVALS
-  protected readonly weekdays = BACKUP_WEEKDAYS
-  protected readonly hours = BACKUP_HOURS
-  protected readonly minutes = BACKUP_MINUTES
-  protected readonly monthDays = BACKUP_MONTH_DAYS
-  protected readonly stringifyTime = formatBackupTime
-  protected readonly stringifyFrequency = (frequency: JobEditor['frequency']) =>
-    this.i18n.transform(backupFrequencyLabel(frequency))
-
   isEditorOpen(): boolean {
     return this.editor() !== null
   }
-  protected readonly stringifyWeekday = (weekday: number) =>
-    this.i18n.transform(backupWeekdayLabel(weekday))
   protected readonly stringifyRetentionInterval = (
     interval: BackupRetentionTierEditor['interval'],
   ) => this.i18n.transform(backupRetentionIntervalLabel(interval))
@@ -2451,28 +2163,6 @@ export class ScheduledBackups {
     return formatBackupScheduleSummary(form, label =>
       this.i18n.transform(label),
     )
-  }
-
-  protected jobSelectionSummary(job: T.BackupJob): {
-    serviceCount: number
-    includeFuture: boolean
-    includesSystem: boolean
-  } {
-    const selection = parseBackupServiceSelection(
-      job.services,
-      this.packages().map(pkg => pkg.id),
-    )
-    const packageIds = new Set(selection.packageIds)
-    const includesSystem = packageIds.delete(SYSTEM_PACKAGE_ID)
-    return {
-      serviceCount: packageIds.size,
-      includeFuture: selection.includeFuture,
-      includesSystem,
-    }
-  }
-
-  protected serviceCountLabel(count: number): string {
-    return this.i18n.transform(count === 1 ? 'Service' : 'Services')
   }
 
   protected selectedServiceSummary(form: JobEditor): string {
