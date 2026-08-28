@@ -24,6 +24,7 @@ import {
   TuiGroup,
   TuiIcon,
   TuiInput,
+  TuiLoader,
   TuiNotification,
   TuiTitle,
 } from '@taiga-ui/core'
@@ -46,20 +47,12 @@ import {
   formatCifsLocation,
 } from '../system/routes/backups/backup.service'
 import {
-  backupFrequencyLabel,
   backupRetentionIntervalLabel,
-  backupWeekdayLabel,
-  BACKUP_FREQUENCIES,
-  BACKUP_HOURS,
-  BACKUP_MINUTES,
-  BACKUP_MONTH_DAYS,
   BACKUP_RETENTION_INTERVALS,
-  BACKUP_WEEKDAYS,
   BackupRetentionInterval,
   BackupRetentionTierEditor,
   BackupScheduleFormValue,
   BackupServiceSelection,
-  formatBackupTime,
   formatBackupScheduleSummary,
   formatBackupServiceSummary,
   hasDuplicateRetentionRules,
@@ -72,6 +65,7 @@ import {
   serializeBackupSchedule,
   SYSTEM_PACKAGE_ID,
 } from '../system/routes/backups/scheduled-utils'
+import { BackupScheduleControls } from '../system/routes/backups/schedule-controls'
 import { ScheduledBackups } from '../system/routes/backups/scheduled'
 import { BackupLocationPicker } from './location-picker'
 
@@ -146,7 +140,7 @@ interface AutomaticRetentionRule extends Pick<
     }
 
     @if (loading()) {
-      <div class="loading">{{ 'Loading' | i18n }}…</div>
+      <tui-loader [textContent]="'Loading' | i18n" />
     } @else if (setupMode() && jobs().length) {
       <div tuiNotification appearance="info">
         {{ 'Automatic backups are already set up.' | i18n }}
@@ -214,93 +208,7 @@ interface AutomaticRetentionRule extends Pick<
           </button>
 
           @if (showSchedule()) {
-            <div class="schedule-controls">
-              <tui-textfield
-                tuiChevron
-                [stringify]="stringifyFrequency"
-                [tuiTextfieldCleaner]="false"
-              >
-                <label tuiLabel>{{ 'Frequency' | i18n }}</label>
-                <input
-                  tuiSelect
-                  name="frequency"
-                  required
-                  [(ngModel)]="editor.frequency"
-                />
-                <tui-data-list *tuiDropdown>
-                  @for (frequency of frequencies; track frequency) {
-                    <button tuiOption [value]="frequency">
-                      {{ stringifyFrequency(frequency) }}
-                    </button>
-                  }
-                </tui-data-list>
-              </tui-textfield>
-              @if (editor.frequency === 'weekly') {
-                <tui-textfield
-                  tuiChevron
-                  [stringify]="stringifyWeekday"
-                  [tuiTextfieldCleaner]="false"
-                >
-                  <label tuiLabel>{{ 'Day of week' | i18n }}</label>
-                  <input tuiSelect [(ngModel)]="editor.weekday" />
-                  <tui-data-list *tuiDropdown>
-                    @for (day of weekdays; track day.value) {
-                      <button tuiOption [value]="day.value">
-                        {{ stringifyWeekday(day.value) }}
-                      </button>
-                    }
-                  </tui-data-list>
-                </tui-textfield>
-              }
-              @if (editor.frequency === 'monthly') {
-                <tui-textfield tuiChevron [tuiTextfieldCleaner]="false">
-                  <label tuiLabel>{{ 'Day of month' | i18n }}</label>
-                  <input
-                    tuiSelect
-                    name="dayOfMonth"
-                    required
-                    [(ngModel)]="editor.dayOfMonth"
-                  />
-                  <tui-data-list *tuiDropdown>
-                    @for (day of monthDays; track day) {
-                      <button tuiOption [value]="day">{{ day }}</button>
-                    }
-                  </tui-data-list>
-                </tui-textfield>
-              }
-              @if (editor.frequency !== 'hourly') {
-                <tui-textfield
-                  tuiChevron
-                  [stringify]="stringifyTime"
-                  [tuiTextfieldCleaner]="false"
-                >
-                  <label tuiLabel>{{ 'Hour' | i18n }}</label>
-                  <input tuiSelect [(ngModel)]="editor.hour" />
-                  <tui-data-list *tuiDropdown>
-                    @for (hour of hours; track hour) {
-                      <button tuiOption [value]="hour">
-                        {{ stringifyTime(hour) }}
-                      </button>
-                    }
-                  </tui-data-list>
-                </tui-textfield>
-              }
-              <tui-textfield
-                tuiChevron
-                [stringify]="stringifyTime"
-                [tuiTextfieldCleaner]="false"
-              >
-                <label tuiLabel>{{ 'Minute' | i18n }}</label>
-                <input tuiSelect [(ngModel)]="editor.minute" />
-                <tui-data-list *tuiDropdown>
-                  @for (minute of minutes; track minute) {
-                    <button tuiOption [value]="minute">
-                      {{ stringifyTime(minute) }}
-                    </button>
-                  }
-                </tui-data-list>
-              </tui-textfield>
-            </div>
+            <backup-schedule-controls [schedule]="editor" />
           }
 
           <tui-accordion class="g-wrap-accordion">
@@ -680,8 +588,7 @@ interface AutomaticRetentionRule extends Pick<
       margin-block-start: 0.25rem;
     }
 
-    [tuiTitle],
-    .schedule-controls > * {
+    [tuiTitle] {
       min-inline-size: 0;
       overflow-wrap: anywhere;
     }
@@ -761,20 +668,6 @@ interface AutomaticRetentionRule extends Pick<
     .services-options {
       display: grid;
       gap: 1rem;
-    }
-
-    .schedule-controls {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
-      gap: 0.75rem;
-      align-items: end;
-      inline-size: 100%;
-      min-inline-size: 0;
-    }
-
-    .schedule-controls select,
-    .schedule-controls tui-textfield {
-      inline-size: 100%;
     }
 
     label > span:first-child,
@@ -958,10 +851,6 @@ interface AutomaticRetentionRule extends Pick<
         font-size: initial;
       }
 
-      .schedule-controls {
-        grid-template-columns: 1fr 1fr;
-      }
-
       .retention-rule {
         grid-template-columns: 1fr;
       }
@@ -1025,10 +914,6 @@ interface AutomaticRetentionRule extends Pick<
         display: none;
       }
 
-      .schedule-controls {
-        grid-template-columns: 1fr;
-      }
-
       .wizard-actions {
         flex-wrap: wrap;
       }
@@ -1049,12 +934,14 @@ interface AutomaticRetentionRule extends Pick<
     TuiIcon,
     TuiInput,
     TuiInputNumber,
+    TuiLoader,
     TuiNotification,
     TuiSelect,
     TuiSwitch,
     TuiTitle,
     TitleDirective,
     ScheduledBackups,
+    BackupScheduleControls,
     BackupLocationPicker,
     i18nPipe,
   ],
@@ -1095,18 +982,7 @@ export default class AutomaticBackups {
     { number: 3, label: 'Review' as const },
   ]
 
-  protected readonly weekdays = BACKUP_WEEKDAYS
-  protected readonly frequencies = BACKUP_FREQUENCIES
   protected readonly retentionIntervals = BACKUP_RETENTION_INTERVALS
-  protected readonly hours = BACKUP_HOURS
-  protected readonly minutes = BACKUP_MINUTES
-  protected readonly monthDays = BACKUP_MONTH_DAYS
-  protected readonly stringifyTime = formatBackupTime
-  protected readonly stringifyFrequency = (
-    frequency: AutomaticEditor['frequency'],
-  ) => this.i18n.transform(backupFrequencyLabel(frequency))
-  protected readonly stringifyWeekday = (weekday: number) =>
-    this.i18n.transform(backupWeekdayLabel(weekday))
   protected readonly stringifyRetentionInterval = (
     interval: BackupRetentionInterval,
   ) => this.i18n.transform(backupRetentionIntervalLabel(interval))
