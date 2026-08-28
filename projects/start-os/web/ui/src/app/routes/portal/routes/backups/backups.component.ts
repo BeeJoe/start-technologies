@@ -37,6 +37,7 @@ import { DeleteScheduleService } from '../system/routes/backups/delete-schedule'
 import { BackupProgressComponent } from '../system/routes/backups/progress.component'
 import {
   backupJobNeedsAttention,
+  formatBackupScheduleSummary,
   parseBackupSchedule,
 } from '../system/routes/backups/scheduled-utils'
 import AutomaticBackups from './automatic'
@@ -44,16 +45,6 @@ import { BackupHistory } from './history'
 import BackupLocations from './locations'
 
 type BackupPanel = 'automatic' | 'manual' | 'restore' | 'locations' | 'history'
-
-const WEEKDAYS = [
-  'Sunday',
-  'Monday',
-  'Tuesday',
-  'Wednesday',
-  'Thursday',
-  'Friday',
-  'Saturday',
-]
 
 @Component({
   template: `
@@ -143,9 +134,11 @@ const WEEKDAYS = [
               }}
             </b>
             <span tuiSubtitle>
-              {{
-                (needsAttention() ? healthDetail() : automaticSummary()) | i18n
-              }}
+              @if (needsAttention()) {
+                {{ healthDetail() | i18n }}
+              } @else {
+                {{ automaticSummary() }}
+              }
             </span>
           </span>
         </button>
@@ -215,16 +208,25 @@ const WEEKDAYS = [
         }
         @if (jobs().length !== 1) {
           <button
+            tuiIconButton
             type="button"
+            size="s"
+            appearance="flat-grayscale"
             class="expand-toggle"
-            [attr.aria-label]="'Automatic backups' | i18n"
+            [iconStart]="
+              expanded() === 'automatic'
+                ? '@tui.chevron-up'
+                : '@tui.chevron-down'
+            "
             [attr.aria-expanded]="expanded() === 'automatic'"
             (click)="togglePanel('automatic')"
           >
-            <tui-icon
-              icon="@tui.chevron-down"
-              [class.rotated]="expanded() === 'automatic'"
-            />
+            {{
+              (expanded() === 'automatic'
+                ? 'Collapse automatic backups'
+                : 'Expand automatic backups'
+              ) | i18n
+            }}
           </button>
         }
       </header>
@@ -506,15 +508,8 @@ const WEEKDAYS = [
     }
 
     .expand-toggle {
-      display: grid;
-      place-items: center;
-      align-self: stretch;
-      inline-size: 3.5rem;
-      padding: 0;
-      color: inherit;
-      background: transparent;
-      border: 0;
-      cursor: pointer;
+      align-self: center;
+      margin-inline-end: 0.75rem;
     }
 
     .card-body {
@@ -726,6 +721,7 @@ export default class BackupsComponent {
   private readonly tasks = inject(TaskService)
   private readonly backupService = inject(BackupService)
   private readonly deleteScheduleService = inject(DeleteScheduleService)
+  private readonly i18n = inject(i18nPipe)
   private readonly os = inject(OSService)
   private readonly router = inject(Router)
   private readonly route = inject(ActivatedRoute)
@@ -860,26 +856,23 @@ export default class BackupsComponent {
 
   protected automaticSummary(): string {
     const jobs = this.jobs()
-    if (!jobs.length) return 'Automatic backups are not set up yet.'
+    if (!jobs.length) {
+      return this.i18n.transform('Automatic backups are not set up yet.')
+    }
     if (jobs.length > 1) {
-      const summary = `${jobs.length} schedules`
-      return this.automaticOn() ? summary : `Off · ${summary}`
+      const summary = `${jobs.length} · ${this.i18n.transform('Automatic schedules')}`
+      return this.automaticOn()
+        ? summary
+        : `${this.i18n.transform('Off')} · ${summary}`
     }
     const primary = jobs[0]!
     const schedule = parseBackupSchedule(primary.schedule)
-    const time = `${String(schedule.hour).padStart(2, '0')}:${String(
-      schedule.minute,
-    ).padStart(2, '0')}`
-    const timing =
-      schedule.frequency === 'hourly'
-        ? `Hourly at minute ${String(schedule.minute).padStart(2, '0')}`
-        : schedule.frequency === 'weekly'
-          ? `${WEEKDAYS[schedule.weekday] || 'Sunday'} at ${time}`
-          : schedule.frequency === 'monthly'
-            ? `Monthly on day ${schedule.dayOfMonth} at ${time}`
-            : `Daily at ${time}`
-    const state = this.automaticOn() ? timing : `Off · ${timing}`
-    return state
+    const timing = formatBackupScheduleSummary(schedule, label =>
+      this.i18n.transform(label),
+    )
+    return this.automaticOn()
+      ? timing
+      : `${this.i18n.transform('Off')} · ${timing}`
   }
 
   protected healthDetail(): string {

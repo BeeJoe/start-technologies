@@ -44,12 +44,11 @@ import { SYSTEM_PACKAGE_ID } from './scheduled-utils'
           [stringify]="stringifyBulkSelection(options)"
           [tuiTextfieldCleaner]="false"
         >
-          <label tuiLabel>
-            {{ 'Checkpoint for selected services' | i18n }}
-          </label>
+          <label tuiLabel>{{ 'Checkpoints' | i18n }}</label>
           <input
             tuiSelect
             [disabled]="!selected(options).length"
+            [attr.aria-label]="'Checkpoint for selected services' | i18n"
             [ngModel]="bulkSelection"
             (ngModelChange)="applyBulk(options, $event)"
           />
@@ -72,7 +71,11 @@ import { SYSTEM_PACKAGE_ID } from './scheduled-utils'
               {{ 'Latest automatic' | i18n }}
             </button>
             @for (run of sharedRuns(options); track run.id) {
-              <button tuiOption [value]="'run:' + run.id">
+              <button
+                tuiOption
+                class="checkpoint-option"
+                [value]="'run:' + run.id"
+              >
                 {{ 'Automatic' | i18n }} — {{ run.timestamp | date: 'medium' }}
               </button>
             }
@@ -91,34 +94,36 @@ import { SYSTEM_PACKAGE_ID } from './scheduled-utils'
             />
             <span tuiTitle>
               <strong>{{ option.title }}</strong>
-              <tui-textfield
-                tuiChevron
-                class="checkpoint"
-                [stringify]="stringifyCheckpoint(option)"
-                [tuiTextfieldCleaner]="false"
-              >
-                <input
-                  tuiSelect
-                  [disabled]="option.installed || option.newerOs"
-                  [(ngModel)]="option.selectedKey"
-                />
-                <tui-data-list *tuiDropdown>
-                  @for (
-                    checkpoint of option.checkpoints;
-                    track checkpoint.key
-                  ) {
-                    <button tuiOption [value]="checkpoint.key">
-                      {{ checkpointLabel(checkpoint) }}
-                    </button>
-                  }
-                </tui-data-list>
-              </tui-textfield>
               @if (option | tuiMapper: toMessage; as message) {
                 <span [style.color]="message.color">
                   {{ message.text | i18n }}
                 </span>
               }
             </span>
+            <tui-textfield
+              tuiChevron
+              class="checkpoint"
+              [stringify]="stringifyCheckpoint(option)"
+              [tuiTextfieldCleaner]="false"
+            >
+              <label tuiLabel>{{ 'Checkpoints' | i18n }}</label>
+              <input
+                tuiSelect
+                [disabled]="option.installed || option.newerOs"
+                [(ngModel)]="option.selectedKey"
+              />
+              <tui-data-list *tuiDropdown>
+                @for (checkpoint of option.checkpoints; track checkpoint.key) {
+                  <button
+                    tuiOption
+                    class="checkpoint-option"
+                    [value]="checkpoint.key"
+                  >
+                    {{ checkpointLabel(checkpoint) }}
+                  </button>
+                }
+              </tui-data-list>
+            </tui-textfield>
           </label>
         }
       </div>
@@ -162,15 +167,33 @@ import { SYSTEM_PACKAGE_ID } from './scheduled-utils'
     }
 
     .checkpoint {
+      grid-column: 2;
       inline-size: 100%;
-      margin-block-start: 0.5rem;
     }
 
-    .bulk-controls .toggle-all,
-    .service-choice {
+    .bulk-controls .toggle-all {
       display: flex;
       align-items: flex-start;
       gap: 0.65rem;
+    }
+
+    .service-choice {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr);
+      align-items: start;
+      gap: 0.65rem;
+    }
+
+    .service-choice > [tuiTitle] {
+      display: grid;
+      gap: 0.25rem;
+    }
+
+    .checkpoint-option {
+      block-size: auto;
+      min-block-size: 2.75rem;
+      padding-block: 0.5rem;
+      white-space: normal;
     }
 
     .toggle-all {
@@ -196,6 +219,14 @@ import { SYSTEM_PACKAGE_ID } from './scheduled-utils'
 
       .bulk-controls > .toggle-all {
         align-self: flex-start;
+      }
+
+      .checkpoint {
+        grid-column: 1 / -1;
+      }
+
+      .checkpoint input {
+        font-size: 0.875rem;
       }
     }
   `,
@@ -312,16 +343,26 @@ export class BackupsRecoverComponent {
         item => `run:${item.id}` === selection,
       )
       return run
-        ? `${this.i18n.transform('Automatic')} — ${new Date(run.timestamp).toLocaleString()}`
+        ? `${this.i18n.transform('Automatic')} ${this.compactDate(run.timestamp)}`
         : selection
     }
   }
 
   protected stringifyCheckpoint(option: RecoverOption) {
-    return (key: string) =>
-      this.checkpointLabel(
-        option.checkpoints.find(checkpoint => checkpoint.key === key),
-      )
+    return (key: string) => {
+      const checkpoint = option.checkpoints.find(item => item.key === key)
+      if (!checkpoint) return ''
+      return `${this.i18n.transform(
+        checkpoint.source === 'manual' ? 'Manual' : 'Automatic',
+      )} ${this.compactDate(checkpoint.timestamp)}`
+    }
+  }
+
+  private compactDate(timestamp: string): string {
+    return new Intl.DateTimeFormat(undefined, {
+      month: 'numeric',
+      day: 'numeric',
+    }).format(new Date(timestamp))
   }
 
   protected checkpointLabel(checkpoint: RecoverCheckpoint | undefined): string {
