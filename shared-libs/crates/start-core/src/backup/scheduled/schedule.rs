@@ -16,10 +16,9 @@ const SEARCH_LIMIT_MINUTES: i64 = 60 * 24 * 366 * 5;
 #[ts(export)]
 /// A validated five-field cron schedule tied to an IANA timezone.
 pub struct Schedule {
-    /// Validated five-field cron expression: minute, hour, day of month, month,
-    /// and day of week.
+    /// Validated five-field cron expression.
     pub cron: String,
-    /// IANA timezone captured from the browser when the schedule is created.
+    /// Selected IANA timezone.
     pub timezone: String,
 }
 
@@ -94,8 +93,7 @@ impl Schedule {
         self.next_after(after, last_local)
     }
 
-    /// Returns at most one missed occurrence. Callers advance their cursor to
-    /// `now` after dispatch so downtime never replays an occurrence backlog.
+    /// Returns at most one missed occurrence.
     pub fn catch_up_after(
         &self,
         cursor: DateTime<Utc>,
