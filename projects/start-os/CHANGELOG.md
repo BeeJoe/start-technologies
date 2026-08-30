@@ -56,9 +56,10 @@ file tracks notable changes since the move to the monorepo.
   searchable, filterable, and paginated, and retains the newest 1,000 completed
   entries, with a notification for every failed run, clear failure summaries,
   and expandable technical details.
-  Authentication, network, and validation errors
-  identify the action users can take; password controls are keyboard accessible;
-  and backup management remains usable on narrow displays. Restore can mix
+  Authentication, network, and validation errors — including schedules too
+  infrequent for history already on the location — identify the action users can
+  take; password controls are keyboard accessible; and backup management remains
+  usable on narrow displays. Restore can mix
   manual and automatic checkpoints by service and keeps backup progress and
   history in view. The same schedules, history, retention, repair, and restore
   operations are available for command-line administration. A stalled service

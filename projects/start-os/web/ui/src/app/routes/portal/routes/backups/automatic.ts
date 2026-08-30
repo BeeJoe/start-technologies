@@ -9,6 +9,7 @@ import {
 } from '@angular/core'
 import { toSignal } from '@angular/core/rxjs-interop'
 import {
+  FormControl,
   NonNullableFormBuilder,
   ReactiveFormsModule,
   Validators,
@@ -71,7 +72,7 @@ interface ServiceChoice {
   id: string
   title: string
   icon: string
-  checked: boolean
+  selected: FormControl<boolean>
   system: boolean
 }
 
@@ -159,7 +160,11 @@ class AutomaticEditor
       weekday: this.weekday,
       dayOfMonth: this.dayOfMonth,
       timezone: this.timezone,
-      services: this.services,
+      services: this.services.map(service => ({
+        id: service.id,
+        selected: service.selected.value,
+        system: service.system,
+      })),
       preservedSelectedPackageIds: this.preservedSelectedPackageIds,
       preservedExcludedPackageIds: this.preservedExcludedPackageIds,
       interval: this.interval,
@@ -323,8 +328,8 @@ class AutomaticEditor
                   <input
                     tuiCheckbox
                     type="checkbox"
-                    [checked]="allServicesSelected()"
-                    (change)="setAllServices($any($event.target).checked)"
+                    [formControl]="allServicesControl"
+                    (change)="setAllServices(allServicesControl.value)"
                   />
                   <span tuiTitle>
                     <b>{{ 'Toggle all services' | i18n }}</b>
@@ -336,13 +341,8 @@ class AutomaticEditor
                       <input
                         tuiCheckbox
                         type="checkbox"
-                        [checked]="service.checked"
-                        (change)="
-                          setServiceSelected(
-                            service,
-                            $any($event.target).checked
-                          )
-                        "
+                        [formControl]="service.selected"
+                        (change)="syncAllServicesControl()"
                       />
                       @if (service.system) {
                         <tui-icon icon="@tui.settings" />
@@ -1027,6 +1027,7 @@ export default class AutomaticBackups {
   ])
 
   protected editor: AutomaticEditor = this.defaultEditor()
+  protected readonly allServicesControl = this.formBuilder.control(true)
   protected passwordMasked = true
   private setupBaseline = ''
   protected readonly estimates = signal<T.BackupServiceCapacityEstimate[]>([])
@@ -1084,7 +1085,7 @@ export default class AutomaticBackups {
         id: SYSTEM_PACKAGE_ID,
         title: this.i18n.transform('System'),
         icon: '',
-        checked: true,
+        selected: this.formBuilder.control(true),
         system: true,
       },
       ...Object.entries(this.packageData() || {})
@@ -1100,7 +1101,9 @@ export default class AutomaticBackups {
                   id,
                   title: manifest.title,
                   icon: entry.icon,
-                  checked: selected ? selected.has(id) : true,
+                  selected: this.formBuilder.control(
+                    selected ? selected.has(id) : true,
+                  ),
                   system: false,
                 },
               ]
@@ -1113,6 +1116,7 @@ export default class AutomaticBackups {
   private ensureServices() {
     if (!this.editor.services.length) {
       this.editor.services = this.serviceChoices()
+      this.syncAllServicesControl()
     }
   }
 
@@ -1123,7 +1127,7 @@ export default class AutomaticBackups {
       return (
         isValidBackupSchedule(this.editor) &&
         this.validRetention() &&
-        this.editor.services.some(service => service.checked)
+        this.editor.services.some(service => service.selected.value)
       )
     }
     return true
@@ -1136,14 +1140,17 @@ export default class AutomaticBackups {
       this.validRetention() &&
       !this.capacityBlocked() &&
       (!this.editor.keepAdditional || this.editor.capacityConfirmed) &&
-      this.editor.services.some(service => service.checked)
+      this.editor.services.some(service => service.selected.value)
     )
   }
 
   protected async next() {
     if (!this.canContinue()) return
     if (this.step() === 1) this.ensureServices()
-    if (this.step() === 2) await this.refreshCapacity()
+    if (this.step() === 2) {
+      if (!(await this.validateSetup())) return
+      await this.refreshCapacity()
+    }
     this.step.update(step => Math.min(3, step + 1))
   }
 
@@ -1152,21 +1159,20 @@ export default class AutomaticBackups {
     this.step.update(step => Math.max(1, step - 1))
   }
 
-  protected allServicesSelected(): boolean {
-    this.ensureServices()
-    const services = this.editor.services.filter(service => !service.system)
-    return services.length > 0 && services.every(service => service.checked)
-  }
-
   protected setAllServices(checked: boolean) {
     this.ensureServices()
     this.editor.services
       .filter(service => !service.system)
-      .forEach(service => (service.checked = checked))
+      .forEach(service => service.selected.setValue(checked))
+    this.allServicesControl.setValue(checked, { emitEvent: false })
   }
 
-  protected setServiceSelected(service: ServiceChoice, checked: boolean) {
-    service.checked = checked
+  protected syncAllServicesControl() {
+    const services = this.editor.services.filter(service => !service.system)
+    this.allServicesControl.setValue(
+      services.length > 0 && services.every(service => service.selected.value),
+      { emitEvent: false },
+    )
   }
 
   protected scheduleSummary(): string {
@@ -1250,10 +1256,12 @@ export default class AutomaticBackups {
   protected selectedServiceSummary(): string {
     const services = this.editor.services.filter(service => !service.system)
     return formatBackupServiceSummary(
-      services.filter(service => service.checked).length,
+      services.filter(service => service.selected.value).length,
       services.length,
       this.editor.includeFuture,
-      this.editor.services.some(service => service.system && service.checked),
+      this.editor.services.some(
+        service => service.system && service.selected.value,
+      ),
       label => this.i18n.transform(label),
     )
   }
@@ -1268,7 +1276,7 @@ export default class AutomaticBackups {
     return serializeBackupServiceSelection(
       {
         packageIds: this.editor.services
-          .filter(service => service.checked)
+          .filter(service => service.selected.value)
           .map(service => service.id),
         includeFuture: this.editor.includeFuture,
         preservedSelectedPackageIds: this.editor.preservedSelectedPackageIds,
@@ -1334,30 +1342,14 @@ export default class AutomaticBackups {
 
   protected async createAutomaticBackup() {
     if (!this.canSaveSetup()) return
-    const services = this.serviceScope()
-    const schedule = serializeBackupSchedule(this.editor)
-    const defaultRetention = this.policy()
-    const valid = await this.tasks.run(
-      () =>
-        this.api.validateScheduledBackupJob({
-          id: null,
-          targetId: this.targetId(),
-          services,
-          schedule,
-          defaultRetention,
-          retentionOverrides: {},
-          enabled: true,
-        }),
-      'Validating',
-    )
-    if (!valid) return
+    if (!(await this.validateSetup())) return
     await this.tasks.run(async () => {
       const created = await this.api.createScheduledBackupJob({
         name: 'Default',
         targetId: this.targetId(),
-        services,
-        schedule,
-        defaultRetention,
+        services: this.serviceScope(),
+        schedule: serializeBackupSchedule(this.editor),
+        defaultRetention: this.policy(),
         retentionOverrides: {},
         password: this.editor.password,
         enabled: true,
@@ -1386,6 +1378,22 @@ export default class AutomaticBackups {
         await this.router.navigate(['/system/backups'])
       }
     }, 'Creating backup schedule')
+  }
+
+  private async validateSetup(): Promise<boolean> {
+    return this.tasks.run(
+      () =>
+        this.api.validateScheduledBackupJob({
+          id: null,
+          targetId: this.targetId(),
+          services: this.serviceScope(),
+          schedule: serializeBackupSchedule(this.editor),
+          defaultRetention: this.policy(),
+          retentionOverrides: {},
+          enabled: true,
+        }),
+      'Validating',
+    )
   }
 
   protected async toggleAllJobs(enabled: boolean) {

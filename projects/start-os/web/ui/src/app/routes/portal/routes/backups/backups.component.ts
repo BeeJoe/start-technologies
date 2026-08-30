@@ -210,7 +210,7 @@ type BackupPanel = 'automatic' | 'manual' | 'restore' | 'locations' | 'history'
           <button
             tuiIconButton
             type="button"
-            size="s"
+            size="m"
             appearance="flat-grayscale"
             class="expand-toggle"
             [iconStart]="

@@ -51,6 +51,9 @@ week, or month for a chosen duration. A month in version history is a rolling
 30-day interval. Enabled schedules that feed the same shared history must
 collectively run at least as often as its most frequent rule; for example,
 hourly history requires at least one run in every hourly interval.
+When a selected service already has automatic history on the chosen location,
+its saved policy also participates in this check. The setup wizard checks the
+combined timing before opening Review.
 
 Each retained checkpoint is a full copy on the backup location, not an
 incremental delta. A run also needs temporary staging space. Keeping more
