@@ -121,6 +121,7 @@ async fn run_job_inner(
             .await
             .result?;
         record_failed_run(ctx, &job, &package_ids, trigger, error.to_string()).await?;
+        notify_no_services(ctx, &job).await?;
         return Err(error);
     }
     drop(db);
@@ -130,13 +131,14 @@ async fn run_job_inner(
         .await
         .result
     {
-        record_failed_run(ctx, &job, &package_ids, trigger, error.to_string()).await?;
+        record_failed_run_and_notify(ctx, &job, &package_ids, trigger, error.to_string()).await?;
         return Err(error);
     }
     let system_logical_bytes = match crate::backup::os::system_logical_size(ctx).await {
         Ok(size) => size,
         Err(error) => {
-            record_failed_run(ctx, &job, &package_ids, trigger, error.to_string()).await?;
+            record_failed_run_and_notify(ctx, &job, &package_ids, trigger, error.to_string())
+                .await?;
             return Err(error);
         }
     };
@@ -185,8 +187,12 @@ async fn run_job_inner(
         Ok(target) => target,
         Err(error) => {
             let message = error.to_string();
-            record_connectivity_failure(ctx, &job).await?;
-            record_failed_run(ctx, &job, &package_ids, trigger, message).await?;
+            let intervention_notified = record_connectivity_failure(ctx, &job).await?;
+            if intervention_notified {
+                record_failed_run(ctx, &job, &package_ids, trigger, message).await?;
+            } else {
+                record_failed_run_and_notify(ctx, &job, &package_ids, trigger, message).await?;
+            }
             return Err(error);
         }
     };
@@ -194,8 +200,12 @@ async fn run_job_inner(
         Ok(guard) => guard,
         Err(error) => {
             let message = error.to_string();
-            record_connectivity_failure(ctx, &job).await?;
-            record_failed_run(ctx, &job, &package_ids, trigger, message).await?;
+            let intervention_notified = record_connectivity_failure(ctx, &job).await?;
+            if intervention_notified {
+                record_failed_run(ctx, &job, &package_ids, trigger, message).await?;
+            } else {
+                record_failed_run_and_notify(ctx, &job, &package_ids, trigger, message).await?;
+            }
             return Err(error);
         }
     };
@@ -234,8 +244,12 @@ async fn run_job_inner(
             Ok(available) => available,
             Err(error) => {
                 let message = error.to_string();
-                record_connectivity_failure(ctx, &job).await?;
-                record_failed_run(ctx, &job, &package_ids, trigger, message).await?;
+                let intervention_notified = record_connectivity_failure(ctx, &job).await?;
+                if intervention_notified {
+                    record_failed_run(ctx, &job, &package_ids, trigger, message).await?;
+                } else {
+                    record_failed_run_and_notify(ctx, &job, &package_ids, trigger, message).await?;
+                }
                 return Err(error);
             }
         };
@@ -290,8 +304,7 @@ async fn run_job_inner(
 
     if let Err(error) = scheduled_guard.save_run(&run).await {
         let message = error.to_string();
-        record_failed_run(ctx, &job, &package_ids, trigger, message).await?;
-        notify_run_failure(ctx, &job, &package_ids).await?;
+        record_failed_run_and_notify(ctx, &job, &package_ids, trigger, message).await?;
         return Err(error);
     }
 
@@ -732,6 +745,26 @@ async fn notify_run_failure(
         .result
 }
 
+async fn notify_no_services(ctx: &RpcContext, job: &BackupJob) -> Result<(), Error> {
+    ctx.db
+        .mutate(|db| {
+            notify(
+                db,
+                None,
+                NotificationLevel::Warning,
+                t!("backup.scheduled.no-installed-services-title").to_string(),
+                t!(
+                    "backup.scheduled.no-installed-services-message",
+                    job = job.name
+                )
+                .to_string(),
+                (),
+            )
+        })
+        .await
+        .result
+}
+
 fn selected_services(
     db: &crate::db::model::DatabaseModel,
     scope: &BackupServiceScope,
@@ -946,9 +979,22 @@ async fn record_failed_run(
     Ok(run)
 }
 
-async fn record_connectivity_failure(ctx: &RpcContext, job: &BackupJob) -> Result<(), Error> {
+async fn record_failed_run_and_notify(
+    ctx: &RpcContext,
+    job: &BackupJob,
+    package_ids: &BTreeSet<PackageId>,
+    trigger: BackupRunTrigger,
+    error: String,
+) -> Result<BackupRun, Error> {
+    let run = record_failed_run(ctx, job, package_ids, trigger, error).await?;
+    notify_run_failure(ctx, job, package_ids).await?;
+    Ok(run)
+}
+
+async fn record_connectivity_failure(ctx: &RpcContext, job: &BackupJob) -> Result<bool, Error> {
     let target_key = job.target_id.to_string();
-    ctx.db
+    let notified = ctx
+        .db
         .mutate(|db| {
             let target_name = job.target_id.user_facing_name(db);
             let state = db.as_public_mut().as_scheduled_backups_mut();
@@ -1001,10 +1047,11 @@ async fn record_connectivity_failure(ctx: &RpcContext, job: &BackupJob) -> Resul
                     (),
                 )?;
             }
-            Ok(())
+            Ok(notify_user)
         })
         .await
-        .result
+        .result?;
+    Ok(notified)
 }
 
 async fn mark_target_connected(ctx: &RpcContext, target_id: &BackupTargetId) -> Result<(), Error> {

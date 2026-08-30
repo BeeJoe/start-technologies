@@ -1011,4 +1011,5 @@ export default {
   1213: 'Dadurch werden die in der Vorschau aufgeführten Prüfpunkte dauerhaft gelöscht.',
   1214: 'Anwenden',
   1215: 'Sicherungen suchen',
+  1216: 'Zeitzone',
 } satisfies i18n

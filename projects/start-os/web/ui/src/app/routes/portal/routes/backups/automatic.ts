@@ -8,7 +8,11 @@ import {
   viewChild,
 } from '@angular/core'
 import { toSignal } from '@angular/core/rxjs-interop'
-import { FormsModule } from '@angular/forms'
+import {
+  NonNullableFormBuilder,
+  ReactiveFormsModule,
+  Validators,
+} from '@angular/forms'
 import { ActivatedRoute, Router, RouterLink } from '@angular/router'
 import {
   convertBytes,
@@ -20,7 +24,6 @@ import { T } from '@start9labs/start-core'
 import {
   TuiButton,
   TuiCheckbox,
-  TuiDataList,
   TuiGroup,
   TuiIcon,
   TuiInput,
@@ -28,14 +31,7 @@ import {
   TuiNotification,
   TuiTitle,
 } from '@taiga-ui/core'
-import {
-  TuiAccordion,
-  TuiBlock,
-  TuiChevron,
-  TuiInputNumber,
-  TuiSelect,
-  TuiSwitch,
-} from '@taiga-ui/kit'
+import { TuiAccordion, TuiBlock, TuiSwitch } from '@taiga-ui/kit'
 import { TuiCardLarge } from '@taiga-ui/layout'
 import { PatchDB } from 'patch-db-client'
 import { firstValueFrom } from 'rxjs'
@@ -47,25 +43,27 @@ import {
   formatCifsLocation,
 } from '../system/routes/backups/backup.service'
 import {
-  backupRetentionIntervalLabel,
-  BACKUP_RETENTION_INTERVALS,
   BackupRetentionInterval,
+  BackupRetentionRuleValue,
   BackupRetentionTierEditor,
   BackupScheduleFormValue,
+  BackupScheduleFrequency,
   BackupServiceSelection,
   formatBackupScheduleSummary,
   formatBackupServiceSummary,
   hasDuplicateRetentionRules,
   isValidBackupSchedule,
-  retentionIntervalSeconds,
+  isValidBackupRetentionRules,
   retentionPeriodLabel,
   removeBackupRetentionRule,
   scheduleNeedsMoreFrequentRuns,
   serializeBackupServiceSelection,
+  serializeBackupRetentionPolicy,
   serializeBackupSchedule,
   SYSTEM_PACKAGE_ID,
 } from '../system/routes/backups/scheduled-utils'
 import { BackupScheduleControls } from '../system/routes/backups/schedule-controls'
+import { BackupRetentionRules } from '../system/routes/backups/retention-rules'
 import { ScheduledBackups } from '../system/routes/backups/scheduled'
 import { BackupLocationPicker } from './location-picker'
 
@@ -77,23 +75,99 @@ interface ServiceChoice {
   system: boolean
 }
 
-interface AutomaticEditor
-  extends BackupScheduleFormValue, Omit<BackupServiceSelection, 'packageIds'> {
-  services: ServiceChoice[]
-  keepAdditional: boolean
-  interval: BackupRetentionInterval
-  duration: number
-  additionalRules: AutomaticRetentionRule[]
-  password: string
-  firstBackupNow: boolean
-  capacityConfirmed: boolean
-}
-
 interface AutomaticRetentionRule extends Pick<
   BackupRetentionTierEditor,
   'duration'
 > {
   interval: BackupRetentionInterval
+}
+
+class AutomaticEditor
+  implements BackupScheduleFormValue, Omit<BackupServiceSelection, 'packageIds'>
+{
+  frequency: BackupScheduleFrequency = 'daily'
+  minute = 0
+  hour = 3
+  weekday = 0
+  dayOfMonth: number
+  timezone: string
+  services: ServiceChoice[] = []
+  preservedSelectedPackageIds: string[] = []
+  preservedExcludedPackageIds: string[] = []
+  interval: BackupRetentionInterval = 'day'
+  duration = 7
+  additionalRules: AutomaticRetentionRule[] = []
+
+  readonly form
+
+  constructor(
+    formBuilder: NonNullableFormBuilder,
+    dayOfMonth: number,
+    timezone: string,
+  ) {
+    this.dayOfMonth = dayOfMonth
+    this.timezone = timezone
+    this.form = formBuilder.group({
+      includeFuture: [true],
+      keepAdditional: [false],
+      password: ['', Validators.required],
+      firstBackupNow: [true],
+      capacityConfirmed: [false],
+    })
+  }
+
+  get includeFuture() {
+    return this.form.controls.includeFuture.value
+  }
+  set includeFuture(value: boolean) {
+    this.form.controls.includeFuture.setValue(value)
+  }
+
+  get keepAdditional() {
+    return this.form.controls.keepAdditional.value
+  }
+  set keepAdditional(value: boolean) {
+    this.form.controls.keepAdditional.setValue(value)
+  }
+
+  get password() {
+    return this.form.controls.password.value
+  }
+  set password(value: string) {
+    this.form.controls.password.setValue(value)
+  }
+
+  get firstBackupNow() {
+    return this.form.controls.firstBackupNow.value
+  }
+  set firstBackupNow(value: boolean) {
+    this.form.controls.firstBackupNow.setValue(value)
+  }
+
+  get capacityConfirmed() {
+    return this.form.controls.capacityConfirmed.value
+  }
+  set capacityConfirmed(value: boolean) {
+    this.form.controls.capacityConfirmed.setValue(value)
+  }
+
+  toJSON() {
+    return {
+      frequency: this.frequency,
+      minute: this.minute,
+      hour: this.hour,
+      weekday: this.weekday,
+      dayOfMonth: this.dayOfMonth,
+      timezone: this.timezone,
+      services: this.services,
+      preservedSelectedPackageIds: this.preservedSelectedPackageIds,
+      preservedExcludedPackageIds: this.preservedExcludedPackageIds,
+      interval: this.interval,
+      duration: this.duration,
+      additionalRules: this.additionalRules,
+      ...this.form.getRawValue(),
+    }
+  }
 }
 
 @Component({
@@ -187,6 +261,7 @@ interface AutomaticRetentionRule extends Pick<
           tuiCardLarge="compact"
           class="panel"
           [class.embedded-panel]="embedded()"
+          [formGroup]="editor.form"
         >
           <header>
             <span tuiTitle>
@@ -208,7 +283,10 @@ interface AutomaticRetentionRule extends Pick<
           </button>
 
           @if (showSchedule()) {
-            <backup-schedule-controls [schedule]="editor" />
+            <backup-schedule-controls
+              [schedule]="editor"
+              (scheduleChange)="updateSchedule($event)"
+            />
           }
 
           <tui-accordion class="g-wrap-accordion">
@@ -229,7 +307,7 @@ interface AutomaticRetentionRule extends Pick<
                   <input
                     tuiCheckbox
                     type="checkbox"
-                    [(ngModel)]="editor.includeFuture"
+                    formControlName="includeFuture"
                   />
                   <span tuiTitle>
                     <b>{{ 'Automatically include future services' | i18n }}</b>
@@ -245,8 +323,8 @@ interface AutomaticRetentionRule extends Pick<
                   <input
                     tuiCheckbox
                     type="checkbox"
-                    [ngModel]="allServicesSelected()"
-                    (ngModelChange)="setAllServices($event)"
+                    [checked]="allServicesSelected()"
+                    (change)="setAllServices($any($event.target).checked)"
                   />
                   <span tuiTitle>
                     <b>{{ 'Toggle all services' | i18n }}</b>
@@ -258,7 +336,13 @@ interface AutomaticRetentionRule extends Pick<
                       <input
                         tuiCheckbox
                         type="checkbox"
-                        [(ngModel)]="service.checked"
+                        [checked]="service.checked"
+                        (change)="
+                          setServiceSelected(
+                            service,
+                            $any($event.target).checked
+                          )
+                        "
                       />
                       @if (service.system) {
                         <tui-icon icon="@tui.settings" />
@@ -296,70 +380,18 @@ interface AutomaticRetentionRule extends Pick<
                 type="checkbox"
                 [showIcons]="false"
                 [attr.aria-label]="'Keep additional versions' | i18n"
-                [(ngModel)]="editor.keepAdditional"
+                formControlName="keepAdditional"
               />
             </label>
           </div>
 
           @if (editor.keepAdditional) {
-            <div class="retention-rules">
-              @for (rule of retentionRules(); track rule) {
-                <div class="retention-rule">
-                  <span>{{ 'Keep one backup every' | i18n }}</span>
-                  <tui-textfield
-                    tuiChevron
-                    [stringify]="stringifyRetentionInterval"
-                    [tuiTextfieldCleaner]="false"
-                  >
-                    <input
-                      tuiSelect
-                      [name]="'retention-frequency-' + $index"
-                      required
-                      [(ngModel)]="rule.interval"
-                    />
-                    <tui-data-list *tuiDropdown>
-                      @for (interval of retentionIntervals; track interval) {
-                        <button tuiOption [value]="interval">
-                          {{ stringifyRetentionInterval(interval) }}
-                        </button>
-                      }
-                    </tui-data-list>
-                  </tui-textfield>
-                  <span>{{ 'for' | i18n }}</span>
-                  <tui-textfield class="duration-field">
-                    <label tuiLabel>{{ 'Duration' | i18n }}</label>
-                    <input
-                      tuiInputNumber
-                      [min]="1"
-                      [max]="365"
-                      [(ngModel)]="rule.duration"
-                    />
-                  </tui-textfield>
-                  <span>{{ retentionPeriod(rule) | i18n }}</span>
-                  <button
-                    tuiButton
-                    type="button"
-                    size="xs"
-                    appearance="flat-destructive"
-                    (click)="removeRetentionRule($index)"
-                  >
-                    {{ 'Remove' | i18n }}
-                  </button>
-                </div>
-              }
-              <button
-                tuiIconButton
-                type="button"
-                class="add-retention-rule"
-                size="s"
-                appearance="primary"
-                iconStart="@tui.plus"
-                [attr.aria-label]="'Add' | i18n"
-                (click)="editor.additionalRules.push(newRetentionRule())"
-              >
-                {{ 'Add' | i18n }}
-              </button>
-            </div>
+            <backup-retention-rules
+              [rules]="retentionRules()"
+              (ruleChange)="updateRetentionRule($event.index, $event.value)"
+              (addRequested)="addRetentionRule()"
+              (removeRequested)="removeRetentionRule($event)"
+            />
             @if (retentionHasDuplicates()) {
               <div tuiNotification appearance="negative">
                 {{ 'Each version-history rule must be unique.' | i18n }}
@@ -382,6 +414,7 @@ interface AutomaticRetentionRule extends Pick<
           tuiCardLarge="compact"
           class="panel review-panel"
           [class.embedded-panel]="embedded()"
+          [formGroup]="editor.form"
         >
           <header>
             <span tuiTitle>
@@ -439,7 +472,7 @@ interface AutomaticRetentionRule extends Pick<
                 <input
                   tuiCheckbox
                   type="checkbox"
-                  [(ngModel)]="editor.capacityConfirmed"
+                  formControlName="capacityConfirmed"
                 />
                 {{ 'I understand the full-copy storage impact' | i18n }}
               </label>
@@ -450,7 +483,7 @@ interface AutomaticRetentionRule extends Pick<
             <input
               tuiCheckbox
               type="checkbox"
-              [(ngModel)]="editor.firstBackupNow"
+              formControlName="firstBackupNow"
             />
             <span tuiTitle>
               <b>{{ 'Create the first backup now' | i18n }}</b>
@@ -466,7 +499,7 @@ interface AutomaticRetentionRule extends Pick<
               tuiInput
               [type]="passwordMasked ? 'password' : 'text'"
               autocomplete="new-password"
-              [(ngModel)]="editor.password"
+              formControlName="password"
               (keyup.enter)="createAutomaticBackup()"
             />
             <button
@@ -526,8 +559,8 @@ interface AutomaticRetentionRule extends Pick<
                   type="checkbox"
                   [showIcons]="false"
                   [attr.aria-label]="'Automatic backups' | i18n"
-                  [ngModel]="job.enabled && !job.pause"
-                  (ngModelChange)="toggleMain($event)"
+                  [checked]="job.enabled && !job.pause"
+                  (change)="toggleAllJobs($any($event.target).checked)"
                 />
               </label>
             </header>
@@ -694,33 +727,6 @@ interface AutomaticRetentionRule extends Pick<
       text-align: start;
     }
 
-    .retention-rule {
-      display: grid;
-      grid-template-columns:
-        auto minmax(9rem, 1fr) auto minmax(10rem, 0.75fr)
-        auto auto;
-      gap: 0.5rem;
-      align-items: center;
-      inline-size: 100%;
-      min-inline-size: 0;
-    }
-
-    .retention-rules {
-      display: grid;
-      justify-items: stretch;
-      gap: 0.75rem;
-      inline-size: 100%;
-      min-inline-size: 0;
-    }
-
-    .add-retention-rule {
-      justify-self: end;
-    }
-
-    .duration-field {
-      min-inline-size: 10rem;
-    }
-
     .inline-switch {
       justify-content: flex-end;
     }
@@ -851,10 +857,6 @@ interface AutomaticRetentionRule extends Pick<
         font-size: initial;
       }
 
-      .retention-rule {
-        grid-template-columns: 1fr;
-      }
-
       dl div {
         grid-template-columns: 1fr;
         gap: 0.2rem;
@@ -921,32 +923,30 @@ interface AutomaticRetentionRule extends Pick<
   `,
   host: { class: 'g-wrap-content' },
   imports: [
-    FormsModule,
+    ReactiveFormsModule,
     RouterLink,
     TuiAccordion,
     TuiBlock,
     TuiButton,
     TuiCardLarge,
     TuiCheckbox,
-    TuiChevron,
-    TuiDataList,
     TuiGroup,
     TuiIcon,
     TuiInput,
-    TuiInputNumber,
     TuiLoader,
     TuiNotification,
-    TuiSelect,
     TuiSwitch,
     TuiTitle,
     TitleDirective,
     ScheduledBackups,
+    BackupRetentionRules,
     BackupScheduleControls,
     BackupLocationPicker,
     i18nPipe,
   ],
 })
 export default class AutomaticBackups {
+  private readonly formBuilder = inject(NonNullableFormBuilder)
   private readonly api = inject(ApiService)
   private readonly backupService = inject(BackupService)
   private readonly tasks = inject(TaskService)
@@ -981,11 +981,6 @@ export default class AutomaticBackups {
     { number: 2, label: 'Schedule and services' as const },
     { number: 3, label: 'Review' as const },
   ]
-
-  protected readonly retentionIntervals = BACKUP_RETENTION_INTERVALS
-  protected readonly stringifyRetentionInterval = (
-    interval: BackupRetentionInterval,
-  ) => this.i18n.transform(backupRetentionIntervalLabel(interval))
 
   protected readonly jobs = computed(() =>
     Object.values(this.state()?.jobs || {}).sort((a, b) =>
@@ -1076,25 +1071,11 @@ export default class AutomaticBackups {
 
   private defaultEditor(): AutomaticEditor {
     const now = new Date()
-    return {
-      frequency: 'daily',
-      minute: 0,
-      hour: 3,
-      weekday: 0,
-      dayOfMonth: now.getDate(),
-      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
-      services: [],
-      includeFuture: true,
-      preservedSelectedPackageIds: [],
-      preservedExcludedPackageIds: [],
-      keepAdditional: false,
-      interval: 'day',
-      duration: 7,
-      additionalRules: [],
-      password: '',
-      firstBackupNow: true,
-      capacityConfirmed: false,
-    }
+    return new AutomaticEditor(
+      this.formBuilder,
+      now.getDate(),
+      Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+    )
   }
 
   private serviceChoices(selected?: Set<string>): ServiceChoice[] {
@@ -1184,10 +1165,18 @@ export default class AutomaticBackups {
       .forEach(service => (service.checked = checked))
   }
 
+  protected setServiceSelected(service: ServiceChoice, checked: boolean) {
+    service.checked = checked
+  }
+
   protected scheduleSummary(): string {
     return formatBackupScheduleSummary(this.editor, label =>
       this.i18n.transform(label),
     )
+  }
+
+  protected updateSchedule(schedule: BackupScheduleFormValue) {
+    Object.assign(this.editor, schedule)
   }
 
   protected retentionSummary(): string {
@@ -1214,6 +1203,21 @@ export default class AutomaticBackups {
     return { interval: 'day', duration: 7 }
   }
 
+  protected updateRetentionRule(
+    index: number,
+    value: BackupRetentionRuleValue,
+  ) {
+    const rule = this.retentionRules()[index]
+    if (!rule) return
+    Object.assign(rule, value)
+    this.editor.capacityConfirmed = false
+  }
+
+  protected addRetentionRule() {
+    this.editor.additionalRules.push(this.newRetentionRule())
+    this.editor.capacityConfirmed = false
+  }
+
   protected removeRetentionRule(index: number) {
     const result = removeBackupRetentionRule(
       { interval: this.editor.interval, duration: this.editor.duration },
@@ -1230,14 +1234,7 @@ export default class AutomaticBackups {
   private validRetention(): boolean {
     if (!this.editor.keepAdditional) return true
     return (
-      this.retentionRules().every(
-        rule =>
-          ['hour', 'day', 'week', 'month'].includes(rule.interval) &&
-          Number.isInteger(rule.duration) &&
-          rule.duration >= 1 &&
-          rule.duration <= 365,
-      ) &&
-      !hasDuplicateRetentionRules(this.retentionRules()) &&
+      isValidBackupRetentionRules(this.retentionRules()) &&
       !this.retentionNeedsMoreFrequentRuns()
     )
   }
@@ -1283,15 +1280,7 @@ export default class AutomaticBackups {
 
   private policy(): T.RetentionPolicy {
     if (!this.editor.keepAdditional) return { tiers: [] }
-    return {
-      tiers: this.retentionRules().map(rule => {
-        const intervalSeconds = retentionIntervalSeconds(rule.interval)
-        return {
-          intervalSeconds,
-          coverageSeconds: intervalSeconds * Math.max(1, rule.duration),
-        }
-      }),
-    }
+    return serializeBackupRetentionPolicy(this.retentionRules())
   }
 
   protected async refreshCapacity() {
@@ -1427,9 +1416,5 @@ export default class AutomaticBackups {
       { defaultValue: false },
     )
     if (confirmed) await this.toggleAllJobs(false)
-  }
-
-  protected async toggleMain(enabled: boolean) {
-    await this.toggleAllJobs(enabled)
   }
 }

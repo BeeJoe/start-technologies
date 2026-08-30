@@ -1011,4 +1011,5 @@ export default {
   1213: 'Spowoduje to trwałe usunięcie punktów kontrolnych wymienionych w podglądzie.',
   1214: 'Zastosuj',
   1215: 'Szukaj kopii',
+  1216: 'Strefa czasowa',
 } satisfies i18n

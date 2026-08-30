@@ -1011,4 +1011,5 @@ export const ENGLISH: Record<string, number> = {
   'This permanently deletes the checkpoints listed in the preview.': 1213,
   'Apply': 1214,
   'Search backups': 1215,
+  'Timezone': 1216,
 }
