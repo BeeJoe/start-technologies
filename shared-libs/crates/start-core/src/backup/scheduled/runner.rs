@@ -121,7 +121,6 @@ async fn run_job_inner(
             .await
             .result?;
         record_failed_run(ctx, &job, &package_ids, trigger, error.to_string()).await?;
-        notify_no_services(ctx, &job).await?;
         return Err(error);
     }
     drop(db);
@@ -736,26 +735,6 @@ async fn notify_run_failure(
                     job = job.name,
                     target = target_name.as_str(),
                     services = services
-                )
-                .to_string(),
-                (),
-            )
-        })
-        .await
-        .result
-}
-
-async fn notify_no_services(ctx: &RpcContext, job: &BackupJob) -> Result<(), Error> {
-    ctx.db
-        .mutate(|db| {
-            notify(
-                db,
-                None,
-                NotificationLevel::Warning,
-                t!("backup.scheduled.no-installed-services-title").to_string(),
-                t!(
-                    "backup.scheduled.no-installed-services-message",
-                    job = job.name
                 )
                 .to_string(),
                 (),
