@@ -273,8 +273,7 @@ pub struct ServiceSnapshot {
 pub struct ServiceTargetRetentionPolicy {
     pub target_id: BackupTargetId,
     pub package_id: PackageId,
-    /// Local timezone used to form retention buckets. It is initialized by the
-    /// first job that creates this shared service-target history.
+    /// Local timezone forming retention buckets.
     pub timezone: String,
     pub policy: RetentionPolicy,
     pub feeding_jobs: BTreeSet<BackupJobId>,
@@ -371,8 +370,7 @@ pub struct BackupTargetFailureState {
 }
 
 impl BackupTargetFailureState {
-    /// Records one failed target connection. Returns true exactly once when
-    /// the failure threshold is crossed and user intervention is required.
+    /// Returns true when this failure first requires intervention.
     pub fn record_failure(&mut self, affected_jobs: impl IntoIterator<Item = BackupJobId>) -> bool {
         self.consecutive_connectivity_failures =
             self.consecutive_connectivity_failures.saturating_add(1);

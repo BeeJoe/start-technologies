@@ -87,10 +87,6 @@ export default class BackupLocations {
   private readonly service = inject(BackupService)
 
   constructor() {
-    void this.initialize()
-  }
-
-  private initialize() {
     void this.service.getBackupTargets()
   }
 }

@@ -25,10 +25,10 @@ not store it. Changing the server password does not re-encrypt existing backups.
 
 ## Schedules
 
-Schedules can run hourly, daily, weekly, or monthly at a chosen local time.
-StartOS stores the timezone with the schedule so daylight-saving changes are
-handled correctly. A monthly schedule set for a date that does not occur in a
-given month runs on that month's final day.
+Schedules can run hourly, daily, weekly, or monthly at a chosen local time and
+timezone. StartOS stores the selected timezone with the schedule so
+daylight-saving changes are handled correctly. A monthly schedule set for a
+date that does not occur in a given month runs on that month's final day.
 
 Multiple schedules can protect different services, use different locations, or
 run at different times. Pausing a schedule keeps its settings and checkpoints.
@@ -79,11 +79,12 @@ selects the newest available checkpoint for each service by default, but any
 retained or archived manual or automatic checkpoint can be chosen instead. See
 [Restoring Backups](./backup-restore.md).
 
-StartOS pauses affected schedules after three consecutive failures to connect to
-a backup location. It also refuses to write when credentials are no longer
-valid, the location's identity has changed, or its metadata is invalid. Repair
-the original location, provide current credentials, or explicitly move the
-schedule to another location before resuming it.
+StartOS sends a notification whenever an automatic run fails. It pauses affected
+schedules after three consecutive failures to connect to a backup location. It
+also refuses to write when credentials are no longer valid, the location's
+identity has changed, or its metadata is invalid. Repair the original location,
+provide current credentials, or explicitly move the schedule to another
+location before resuming it.
 
 The command-line backup interface can list and manage schedules, inspect
 activity and checkpoints, preview retention changes, repair targets, and start

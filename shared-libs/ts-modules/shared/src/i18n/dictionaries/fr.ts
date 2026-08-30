@@ -1010,4 +1010,5 @@ export default {
   1213: 'Cette action supprime définitivement les points de contrôle indiqués dans l’aperçu.',
   1214: 'Appliquer',
   1215: 'Rechercher',
+  1216: 'Fuseau horaire',
 } satisfies i18n

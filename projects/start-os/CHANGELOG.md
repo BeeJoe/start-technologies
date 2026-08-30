@@ -46,14 +46,16 @@ file tracks notable changes since the move to the monorepo.
   retain their current value.
 
 - **Automatic backups.** StartOS can protect optional System data and selected
-  current or future services on hourly, daily, weekly, or monthly schedules,
+  current or future services on hourly, daily, weekly, or monthly schedules
+  with selectable timezones,
   with capacity estimates and configurable version history. Multiple schedules
   can be created, edited, paused, resumed, run immediately, repaired, reassigned,
   or deleted while unreferenced checkpoints remain available as archives.
   Reconnected locations can authenticate again to manage those archives.
   New-service reviews keep selective schedules current. Backup history is
   searchable, filterable, and paginated, and retains the newest 1,000 completed
-  entries, with clear failure summaries and expandable technical details.
+  entries, with a notification for every failed run, clear failure summaries,
+  and expandable technical details.
   Authentication, network, and validation errors
   identify the action users can take; password controls are keyboard accessible;
   and backup management remains usable on narrow displays. Restore can mix

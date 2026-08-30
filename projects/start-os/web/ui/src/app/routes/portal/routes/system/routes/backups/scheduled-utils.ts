@@ -35,6 +35,11 @@ export const BACKUP_WEEKDAYS = [
   { value: 6, label: 'Saturday' as const },
 ] as const
 
+export function backupTimezones(current: string): string[] {
+  const supported = Intl.supportedValuesOf?.('timeZone') || []
+  return [...new Set([current, 'UTC', ...supported].filter(Boolean))].sort()
+}
+
 export function formatBackupTime(value: number): string {
   return String(value).padStart(2, '0')
 }
@@ -106,15 +111,15 @@ export function formatBackupScheduleSummary(
   const minute = formatBackupTime(form.minute)
   const time = `${formatBackupTime(form.hour)}:${minute}`
   if (form.frequency === 'hourly') {
-    return `${translate('Hourly')} · ${translate('Minute')} ${minute}`
+    return `${translate('Hourly')} · ${translate('Minute')} ${minute} · ${form.timezone}`
   }
   if (form.frequency === 'weekly') {
-    return `${translate(backupWeekdayLabel(form.weekday))} · ${time}`
+    return `${translate(backupWeekdayLabel(form.weekday))} · ${time} · ${form.timezone}`
   }
   if (form.frequency === 'monthly') {
-    return `${translate('Monthly')} · ${translate('Day of month')} ${form.dayOfMonth} · ${time}`
+    return `${translate('Monthly')} · ${translate('Day of month')} ${form.dayOfMonth} · ${time} · ${form.timezone}`
   }
-  return `${translate('Daily')} · ${time}`
+  return `${translate('Daily')} · ${time} · ${form.timezone}`
 }
 
 export function formatBackupServiceSummary(
@@ -163,14 +168,19 @@ export interface BackupRetentionTierEditor {
   customCoverageHours: number
 }
 
+export type BackupRetentionRuleValue = Pick<
+  BackupRetentionTierEditor,
+  'interval' | 'duration'
+> &
+  Partial<
+    Pick<
+      BackupRetentionTierEditor,
+      'customIntervalHours' | 'customCoverageHours'
+    >
+  >
+
 export function hasDuplicateRetentionRules(
-  rules: readonly (Pick<BackupRetentionTierEditor, 'interval' | 'duration'> &
-    Partial<
-      Pick<
-        BackupRetentionTierEditor,
-        'customIntervalHours' | 'customCoverageHours'
-      >
-    >)[],
+  rules: readonly BackupRetentionRuleValue[],
 ): boolean {
   const keys = rules.map(rule => {
     if (rule.interval === 'custom') {
@@ -180,6 +190,28 @@ export function hasDuplicateRetentionRules(
   })
 
   return new Set(keys).size !== keys.length
+}
+
+export function isValidBackupRetentionRules(
+  rules: readonly BackupRetentionRuleValue[],
+): boolean {
+  return (
+    !hasDuplicateRetentionRules(rules) &&
+    rules.every(rule => {
+      if (rule.interval === 'custom') {
+        return (
+          Number(rule.customIntervalHours) > 0 &&
+          Number(rule.customCoverageHours) >= Number(rule.customIntervalHours)
+        )
+      }
+      return (
+        BACKUP_RETENTION_INTERVALS.includes(rule.interval) &&
+        Number.isInteger(rule.duration) &&
+        rule.duration >= 1 &&
+        rule.duration <= 365
+      )
+    })
+  )
 }
 
 export function serializeBackupSchedule(
@@ -211,7 +243,8 @@ export function isValidBackupSchedule(form: BackupScheduleFormValue): boolean {
     (form.frequency !== 'monthly' ||
       (Number.isInteger(form.dayOfMonth) &&
         form.dayOfMonth >= 1 &&
-        form.dayOfMonth <= 31))
+        form.dayOfMonth <= 31)) &&
+    form.timezone.trim()
   )
 }
 
@@ -341,7 +374,7 @@ export function parseBackupRetentionTier(
 
 /** Preserves exact custom retention tiers. */
 export function serializeBackupRetentionTier(
-  editor: BackupRetentionTierEditor,
+  editor: BackupRetentionRuleValue,
 ): T.RetentionTier {
   if (editor.interval === 'custom') {
     const minimumHours = 1 / 3600
@@ -366,6 +399,12 @@ export function serializeBackupRetentionTier(
     coverageSeconds:
       intervalSeconds * Math.max(1, Number(editor.duration) || 1),
   }
+}
+
+export function serializeBackupRetentionPolicy(
+  rules: readonly BackupRetentionRuleValue[],
+): T.RetentionPolicy {
+  return { tiers: rules.map(serializeBackupRetentionTier) }
 }
 
 export function retentionIntervalSeconds(

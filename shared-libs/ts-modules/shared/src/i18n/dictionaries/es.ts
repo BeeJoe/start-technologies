@@ -1010,4 +1010,5 @@ export default {
   1213: 'Esto elimina permanentemente los puntos de control mostrados en la vista previa.',
   1214: 'Aplicar',
   1215: 'Buscar copias',
+  1216: 'Zona horaria',
 } satisfies i18n

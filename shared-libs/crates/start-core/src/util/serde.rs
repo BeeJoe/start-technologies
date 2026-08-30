@@ -406,9 +406,7 @@ impl IoFormat {
     }
 }
 
-/// Reads and deserializes a JSON file without allowing its byte length to
-/// control an unbounded allocation. The stream cap remains authoritative even
-/// if a remote or concurrently modified file grows after it is opened.
+/// Rejects JSON files exceeding the stream cap.
 pub async fn read_json_file_bounded<T: DeserializeOwned>(
     path: &Path,
     max_bytes: u64,

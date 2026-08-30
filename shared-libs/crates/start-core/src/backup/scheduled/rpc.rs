@@ -1541,8 +1541,7 @@ pub struct ValidateBackupJobParams {
     pub enabled: bool,
 }
 
-/// CLI-friendly automatic backup creation. Omitting both service filters means
-/// every current and future service. Omitting version-history rules means latest-only.
+/// Omitting service filters includes every current and future service.
 #[derive(Deserialize, Serialize, Parser)]
 #[group(skip)]
 #[serde(rename_all = "camelCase")]
