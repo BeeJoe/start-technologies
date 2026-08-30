@@ -62,8 +62,7 @@ pub async fn list(ctx: RpcContext) -> Result<Vec<NewServiceBackupReview>, Error>
 /// Complete inclusion decisions for one newly installed service.
 pub struct ResolveNewServiceBackupReviewParams {
     pub package_id: PackageId,
-    /// Every current job must be present. `true` includes the service; `false`
-    /// excludes it from that job.
+    /// Every current job requires an inclusion decision.
     pub decisions: BTreeMap<BackupJobId, bool>,
 }
 
