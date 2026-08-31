@@ -111,7 +111,7 @@ pub async fn resolve(
                 affected_targets.insert(job.target_id.clone());
                 if !add {
                     job.retention_overrides.remove(&package_id);
-                    super::rpc::disassociate_histories(db, &job, &package_ids)?;
+                    super::disassociate_histories(db, &job, &package_ids)?;
                 }
                 job.updated_at = Utc::now();
                 db.as_public_mut()
@@ -119,9 +119,9 @@ pub async fn resolve(
                     .as_jobs_mut()
                     .insert(&job_id, &job)?;
                 if add {
-                    super::rpc::associate_histories(db, &job, &package_ids)?;
+                    super::associate_histories(db, &job, &package_ids)?;
                 }
-                super::rpc::refresh_archive_state(db, &job.target_id)?;
+                super::refresh_archive_state(db, &job.target_id)?;
             }
             db.as_public_mut()
                 .as_scheduled_backups_mut()
@@ -232,10 +232,10 @@ pub(crate) fn create_review_for_new_service(
         .cloned()
         .collect();
     for job in &configured_jobs {
-        super::rpc::associate_histories(db, job, &package_ids)?;
+        super::associate_histories(db, job, &package_ids)?;
     }
     for job in &configured_jobs {
-        super::rpc::refresh_archive_state(db, &job.target_id)?;
+        super::refresh_archive_state(db, &job.target_id)?;
     }
     if included_by_future_policy {
         return Ok(());
@@ -354,7 +354,7 @@ fn pause_jobs_where(
     }
 
     for target_id in affected_targets {
-        super::rpc::refresh_archive_state(db, &target_id)?;
+        super::refresh_archive_state(db, &target_id)?;
     }
     Ok(())
 }

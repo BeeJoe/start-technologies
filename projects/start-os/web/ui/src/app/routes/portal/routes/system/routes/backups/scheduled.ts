@@ -59,8 +59,10 @@ import { BackupService, formatCifsLocation } from './backup.service'
 import { BackupScheduleBrowser } from './schedule-browser'
 import { BackupScheduleControls } from './schedule-controls'
 import {
-  BackupRetentionTierEditor,
+  backupPauseLabel,
+  backupTargetName,
   BackupRetentionRuleValue,
+  BackupRetentionTierEditor,
   BackupScheduleFormValue,
   BackupServiceSelection,
   formatBackupScheduleSummary,
@@ -2044,22 +2046,9 @@ export class ScheduledBackups {
     return this.packages().find(pkg => pkg.id === id)?.name || id
   }
 
-  protected targetName(id: string): string {
-    return this.targets().find(target => target.id === id)?.name || id
-  }
-
-  protected pauseLabel(pause: T.BackupJobPause) {
-    switch (pause.reason) {
-      case 'targetUnavailable':
-        return 'Backup location unavailable' as const
-      case 'targetIdentityMismatch':
-        return 'Backup location changed' as const
-      case 'reauthenticationRequired':
-        return 'Authentication required' as const
-      default:
-        return 'Paused' as const
-    }
-  }
+  protected readonly pauseLabel = backupPauseLabel
+  protected readonly targetName = (id: string) =>
+    backupTargetName(this.targets(), id)
 
   protected scheduleSummary(form: JobEditor): string {
     return formatBackupScheduleSummary(form, label =>

@@ -10,8 +10,9 @@ use ts_rs::TS;
 use super::{
     BackupJob, BackupJobId, BackupJobPause, BackupJobStatus, BackupRun, BackupRunTrigger,
     BackupServiceScope, RetentionPolicy, RetentionPolicyChangePreview, RetentionTier, Schedule,
-    ScheduledBackupCredential, ScheduledBackupMountGuard, ServiceSnapshot, ServiceSnapshotId,
-    ServiceTargetHistory, run_job,
+    ScheduledBackupCredential, ScheduledBackupMountGuard, ServiceSnapshotId, ServiceTargetHistory,
+    associate_histories, associated_service_ids, disassociate_histories, history_key,
+    refresh_archive_state, run_job,
 };
 use crate::auth::{LoginContext, PasswordType};
 use crate::backup::target::BackupTargetId;
@@ -1201,13 +1202,14 @@ pub async fn reassign_target(
     ctx.db
         .mutate(|db| {
             validate_unique_job_name(db, &job.name, Some(&id))?;
+            let old_package_ids = associated_service_ids(db, &old_job)?;
             let device_key = db.as_private().as_scheduled_backup_device_key().de()?;
             let credential =
                 ScheduledBackupCredential::seal(target_instance_id, &encryption_key, &device_key)?;
             db.as_private_mut()
                 .as_scheduled_backup_credentials_mut()
                 .insert(&target_id.to_string(), &credential)?;
-            disassociate_histories(db, &old_job, &package_ids)?;
+            disassociate_histories(db, &old_job, &old_package_ids)?;
             associate_histories(db, &job, &package_ids)?;
             db.as_public_mut()
                 .as_scheduled_backups_mut()
@@ -2188,9 +2190,12 @@ pub async fn update(
         .as_idx(&id)
         .or_not_found(&id)?
         .de()?;
-    let old_services = selected_installed_services(&snapshot, &job.services)?;
+    let old_services = associated_service_ids(&snapshot, &job)?;
     let new_services = selected_installed_services(&snapshot, &services)?;
-    let removed_services = old_services.difference(&new_services).cloned().collect();
+    let removed_services = old_services
+        .into_iter()
+        .filter(|package_id| !services.includes(package_id))
+        .collect();
     job.name = name;
     job.services = services;
     job.schedule = schedule;
@@ -2454,7 +2459,7 @@ pub async fn delete(
                 .as_idx(&id)
                 .or_not_found(&id)?
                 .de()?;
-            let package_ids = selected_installed_services(db, &job.services)?;
+            let package_ids = associated_service_ids(db, &job)?;
             disassociate_histories(db, &job, &package_ids)?;
             db.as_public_mut()
                 .as_scheduled_backups_mut()
@@ -2522,23 +2527,6 @@ fn job_name_conflicts(jobs: &[BackupJob], name: &str, replacing: Option<&BackupJ
         .any(|job| Some(&job.id) != replacing && job_names_match(&job.name, name))
 }
 
-fn history_owns_retention_settings(history: &ServiceTargetHistory) -> bool {
-    !history.snapshots.is_empty() || !history.feeding_jobs.is_empty()
-}
-
-fn adopt_new_job_settings(
-    history: &mut ServiceTargetHistory,
-    job: &BackupJob,
-    policy: &RetentionPolicy,
-) {
-    if history_owns_retention_settings(history) {
-        return;
-    }
-    history.target_instance_id = job.target_instance_id.clone();
-    history.timezone = job.schedule.timezone.clone();
-    history.policy = policy.clone();
-}
-
 fn selected_installed_services(
     db: &DatabaseModel,
     scope: &BackupServiceScope,
@@ -2552,117 +2540,6 @@ fn selected_installed_services(
         .map(|(id, _)| id)
         .collect();
     Ok(scope.configured_services(installed))
-}
-
-pub(crate) fn associate_histories(
-    db: &mut DatabaseModel,
-    job: &BackupJob,
-    package_ids: &BTreeSet<PackageId>,
-) -> Result<(), Error> {
-    let job_is_active = job.enabled && job.pause.is_none();
-    let histories = db
-        .as_public_mut()
-        .as_scheduled_backups_mut()
-        .as_histories_mut();
-    for package_id in package_ids {
-        let key = history_key(&job.target_id, package_id);
-        let policy = job
-            .retention_overrides
-            .get(package_id)
-            .unwrap_or(&job.default_retention)
-            .clone();
-        if let Some(history) = histories.as_idx(&key) {
-            let mut history: ServiceTargetHistory = history.de()?;
-            adopt_new_job_settings(&mut history, job, &policy);
-            // Retention changes require exact removal confirmation in update_policy.
-            history.feeding_jobs.insert(job.id.clone());
-            if job_is_active {
-                history.archived = false;
-            }
-            histories.insert(&key, &history)?;
-        } else {
-            histories.insert(
-                &key,
-                &ServiceTargetHistory {
-                    target_id: job.target_id.clone(),
-                    target_instance_id: job.target_instance_id.clone(),
-                    package_id: package_id.clone(),
-                    timezone: job.schedule.timezone.clone(),
-                    policy,
-                    feeding_jobs: BTreeSet::from([job.id.clone()]),
-                    snapshots: Vec::new(),
-                    archived: !job_is_active,
-                },
-            )?;
-        }
-    }
-    Ok(())
-}
-
-pub(crate) fn disassociate_histories(
-    db: &mut DatabaseModel,
-    job: &BackupJob,
-    package_ids: &BTreeSet<PackageId>,
-) -> Result<(), Error> {
-    let histories = db
-        .as_public_mut()
-        .as_scheduled_backups_mut()
-        .as_histories_mut();
-    for package_id in package_ids {
-        if let Some(history) = histories.as_idx_mut(&history_key(&job.target_id, package_id)) {
-            history
-                .as_feeding_jobs_mut()
-                .mutate(|jobs| Ok(jobs.remove(&job.id)))?;
-            if history.as_feeding_jobs().de()?.is_empty() {
-                history.as_archived_mut().ser(&true)?;
-            }
-        }
-    }
-    Ok(())
-}
-
-pub(crate) fn refresh_archive_state(
-    db: &mut DatabaseModel,
-    target_id: &BackupTargetId,
-) -> Result<(), Error> {
-    let jobs: Vec<BackupJob> = db
-        .as_public()
-        .as_scheduled_backups()
-        .as_jobs()
-        .as_entries()?
-        .into_iter()
-        .map(|(_, job)| job.de())
-        .collect::<Result<_, _>>()?;
-    let histories = db
-        .as_public_mut()
-        .as_scheduled_backups_mut()
-        .as_histories_mut();
-    for key in histories.keys()? {
-        let history = histories.as_idx_mut(&key).expect("history key exists");
-        if history.as_target_id().de()? != *target_id {
-            continue;
-        }
-        let feeding_jobs: BTreeSet<BackupJobId> = history.as_feeding_jobs().de()?;
-        let active = feeding_jobs.iter().any(|job_id| {
-            jobs.iter()
-                .any(|job| &job.id == job_id && job.enabled && job.pause.is_none())
-        });
-        let archived = !active;
-        history.as_archived_mut().ser(&archived)?;
-        if archived {
-            let mut snapshots: Vec<ServiceSnapshot> = history.as_snapshots().de()?;
-            for snapshot in &mut snapshots {
-                snapshot.archived = true;
-            }
-            history.as_snapshots_mut().ser(&snapshots)?;
-        }
-    }
-    Ok(())
-}
-
-/// Builds the database key for one target and service history.
-pub fn history_key(target_id: &BackupTargetId, package_id: &PackageId) -> String {
-    format!("{target_id}::{package_id}")
 }
 
 pub(crate) async fn sync_archive_states(
@@ -2750,68 +2627,6 @@ mod cli_tests {
             created_at: now,
             updated_at: now,
         }
-    }
-
-    fn retention_policy(interval_hours: u64, coverage_hours: u64) -> RetentionPolicy {
-        RetentionPolicy {
-            tiers: vec![RetentionTier {
-                interval_seconds: interval_hours * 60 * 60,
-                coverage_seconds: coverage_hours * 60 * 60,
-            }],
-        }
-    }
-
-    fn service_history(
-        policy: RetentionPolicy,
-        feeding_jobs: BTreeSet<BackupJobId>,
-    ) -> ServiceTargetHistory {
-        ServiceTargetHistory {
-            target_id: "cifs-0".parse().unwrap(),
-            target_instance_id: "instance".to_owned(),
-            package_id: "docuseal".parse().unwrap(),
-            timezone: "America/New_York".to_owned(),
-            policy,
-            feeding_jobs,
-            snapshots: Vec::new(),
-            archived: true,
-        }
-    }
-
-    #[test]
-    fn orphaned_empty_history_adopts_new_retention_settings() {
-        let new_policy = retention_policy(24, 7 * 24);
-        let mut history = service_history(retention_policy(1, 7), BTreeSet::new());
-        let job = backup_job(
-            BackupJobId::new(),
-            "Daily",
-            "cifs-0",
-            "new-instance",
-            "docuseal",
-        );
-
-        adopt_new_job_settings(&mut history, &job, &new_policy);
-        assert_eq!(history.target_instance_id, "new-instance");
-        assert_eq!(history.timezone, "UTC");
-        assert_eq!(history.policy, new_policy);
-    }
-
-    #[test]
-    fn associated_history_preserves_retention_settings() {
-        let old_policy = retention_policy(1, 7);
-        let new_policy = retention_policy(24, 7 * 24);
-        let mut history = service_history(old_policy.clone(), BTreeSet::from([BackupJobId::new()]));
-        let job = backup_job(
-            BackupJobId::new(),
-            "Daily",
-            "cifs-0",
-            "new-instance",
-            "docuseal",
-        );
-
-        adopt_new_job_settings(&mut history, &job, &new_policy);
-        assert_eq!(history.target_instance_id, "instance");
-        assert_eq!(history.timezone, "America/New_York");
-        assert_eq!(history.policy, old_policy);
     }
 
     #[test]

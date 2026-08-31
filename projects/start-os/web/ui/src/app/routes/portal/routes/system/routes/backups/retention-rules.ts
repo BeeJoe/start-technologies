@@ -1,4 +1,13 @@
-import { Component, effect, inject, input, output, signal } from '@angular/core'
+import {
+  Component,
+  DestroyRef,
+  effect,
+  inject,
+  input,
+  output,
+  signal,
+} from '@angular/core'
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import {
   NonNullableFormBuilder,
   ReactiveFormsModule,
@@ -101,10 +110,8 @@ import {
       justify-self: end;
     }
 
-    @media (max-width: 40rem) {
-      .retention-rule {
-        grid-template-columns: 1fr;
-      }
+    :host-context(tui-root._mobile) .retention-rule {
+      grid-template-columns: 1fr;
     }
   `,
   imports: [
@@ -119,6 +126,7 @@ import {
   ],
 })
 export class BackupRetentionRules {
+  private readonly destroyRef = inject(DestroyRef)
   private readonly formBuilder = inject(NonNullableFormBuilder)
   private readonly i18n = inject(i18nPipe)
 
@@ -170,13 +178,15 @@ export class BackupRetentionRules {
         [Validators.required, Validators.min(1), Validators.max(365)],
       ],
     })
-    form.valueChanges.subscribe(() => {
-      const value = form.getRawValue()
-      this.ruleChange.emit({
-        index,
-        value: { ...this.sourceRules[index], ...value },
+    form.valueChanges
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(() => {
+        const value = form.getRawValue()
+        this.ruleChange.emit({
+          index,
+          value: { ...this.sourceRules[index], ...value },
+        })
       })
-    })
     return form
   }
 }
