@@ -979,7 +979,7 @@ export const ENGLISH: Record<string, number> = {
   'See more': 1181,
   'Schedule name already in use': 1182,
   'Every backup schedule needs a unique name. Choose a different name.': 1183,
-  'This version history needs more frequent backups. Run backups more often or keep versions less often.': 1184,
+  'This schedule runs less often than the version-history interval, so some intervals may have no checkpoint.': 1184,
   'active': 1185,
   'paused': 1186,
   'Pause all': 1187,

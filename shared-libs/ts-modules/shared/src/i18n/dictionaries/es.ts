@@ -979,7 +979,7 @@ export default {
   1181: 'Ver más',
   1182: 'El nombre de la programación ya está en uso',
   1183: 'Cada programación de copias de seguridad necesita un nombre único. Elija otro nombre.',
-  1184: 'Este historial de versiones necesita copias más frecuentes. Ejecute copias con más frecuencia o conserve versiones menos frecuentemente.',
+  1184: 'Este programa se ejecuta con menos frecuencia que el intervalo del historial de versiones, por lo que algunos intervalos pueden no tener ningún punto de control.',
   1185: 'en ejecución',
   1186: 'en pausa',
   1187: 'Pausar todas',

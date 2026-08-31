@@ -979,7 +979,7 @@ export default {
   1181: 'Voir plus',
   1182: 'Nom du planning déjà utilisé',
   1183: 'Chaque planning de sauvegarde doit avoir un nom unique. Choisissez un autre nom.',
-  1184: 'Cet historique des versions nécessite des sauvegardes plus fréquentes. Exécutez les sauvegardes plus souvent ou conservez les versions moins fréquemment.',
+  1184: 'Cette planification s’exécute moins souvent que l’intervalle de l’historique des versions ; certains intervalles peuvent donc ne contenir aucun point de contrôle.',
   1185: 'en cours',
   1186: 'en pause',
   1187: 'Tout mettre en pause',

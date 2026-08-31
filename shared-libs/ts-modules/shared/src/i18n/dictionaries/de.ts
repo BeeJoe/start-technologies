@@ -979,7 +979,7 @@ export default {
   1181: 'Mehr anzeigen',
   1182: 'Name des Sicherungszeitplans bereits verwendet',
   1183: 'Jeder Sicherungszeitplan benötigt einen eindeutigen Namen. Wählen Sie einen anderen Namen.',
-  1184: 'Dieser Versionsverlauf benötigt häufigere Sicherungen. Führen Sie Sicherungen häufiger aus oder bewahren Sie Versionen weniger häufig auf.',
+  1184: 'Dieser Zeitplan wird seltener als das Versionsverlaufsintervall ausgeführt, daher enthalten einige Intervalle möglicherweise keinen Prüfpunkt.',
   1185: 'aktiv',
   1186: 'pausiert',
   1187: 'Alle pausieren',

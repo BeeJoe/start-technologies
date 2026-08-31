@@ -56,10 +56,13 @@ file tracks notable changes since the move to the monorepo.
   searchable, filterable, and paginated, and retains the newest 1,000 completed
   entries, with a notification for every failed run, clear failure summaries,
   and expandable technical details.
-  Authentication, network, and validation errors — including schedules too
-  infrequent for history already on the location — identify the action users can
-  take; password controls are keyboard accessible; and backup management remains
-  usable on narrow displays. Restore can mix
+  Authentication, network, and validation errors identify the action users can
+  take. Schedules can run less often than their version-history intervals;
+  StartOS warns that some intervals may be empty while retaining every available
+  checkpoint instead of blocking the schedule. Existing history never restricts
+  new schedule timing, and empty histories detached from every schedule adopt
+  the new policy and timezone. Password controls are keyboard accessible, and
+  backup management remains usable on narrow displays. Restore can mix
   manual and automatic checkpoints by service and keeps backup progress and
   history in view. The same schedules, history, retention, repair, and restore
   operations are available for command-line administration. A stalled service
