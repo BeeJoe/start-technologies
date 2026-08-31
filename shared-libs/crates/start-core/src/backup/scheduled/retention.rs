@@ -1,12 +1,12 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use chrono::{DateTime, Duration, Utc};
+use chrono::Duration;
 use chrono_tz::Tz;
 use color_eyre::eyre::eyre;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-use super::{Schedule, ServiceSnapshot, ServiceSnapshotId};
+use super::{ServiceSnapshot, ServiceSnapshotId};
 use crate::prelude::*;
 
 const MAX_RETENTION_SECONDS: u64 = 10 * 366 * 24 * 60 * 60;
@@ -164,57 +164,6 @@ impl RetentionPolicy {
     }
 }
 
-/// Requires an enabled run in every finest-retention bucket.
-pub fn validate_combined_schedule_coverage(
-    schedules: &[Schedule],
-    policy: &RetentionPolicy,
-    bucket_timezone: Tz,
-    anchor: DateTime<Utc>,
-) -> Result<(), Error> {
-    policy.validate()?;
-    let Some(finest) = policy.tiers.first() else {
-        return Ok(());
-    };
-    if schedules.is_empty() {
-        return Err(insufficient_schedule_coverage());
-    }
-
-    let interval = i64::try_from(finest.interval_seconds).map_err(|_| retention_overflow())?;
-    let start = anchor;
-    let end = start + Duration::days(367);
-    let first_bucket = local_bucket(start, bucket_timezone, interval) + 1;
-    let last_bucket = local_bucket(end, bucket_timezone, interval) - 1;
-    let mut covered = BTreeSet::new();
-
-    for schedule in schedules {
-        let mut cursor = start;
-        let mut last_local = None;
-        loop {
-            let occurrence = schedule.next_after(cursor, last_local)?;
-            if occurrence.utc >= end {
-                break;
-            }
-            covered.insert(local_bucket(occurrence.utc, bucket_timezone, interval));
-            cursor = occurrence.utc;
-            last_local = Some(occurrence.local);
-        }
-    }
-
-    // UTC sampling omits nonexistent buckets.
-    // UTC sampling coalesces repeated buckets.
-    // Samples never skip an existing bucket.
-    let sample_seconds = interval.min(15 * 60).max(1);
-    let mut cursor = start;
-    while cursor < end {
-        let bucket = local_bucket(cursor, bucket_timezone, interval);
-        if bucket >= first_bucket && bucket <= last_bucket && !covered.contains(&bucket) {
-            return Err(insufficient_schedule_coverage());
-        }
-        cursor += Duration::seconds(sample_seconds);
-    }
-    Ok(())
-}
-
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
@@ -290,22 +239,6 @@ fn with_margin(value: u64, percent: u8) -> Result<u64, Error> {
         .and_then(|value| value.checked_add(99))
         .map(|value| value / 100)
         .ok_or_else(retention_overflow)
-}
-
-fn local_bucket(timestamp: DateTime<Utc>, timezone: Tz, interval: i64) -> i64 {
-    timestamp
-        .with_timezone(&timezone)
-        .naive_local()
-        .and_utc()
-        .timestamp()
-        .div_euclid(interval)
-}
-
-fn insufficient_schedule_coverage() -> Error {
-    Error::new(
-        eyre!("{}", t!("backup.scheduled.insufficient-schedule-coverage")),
-        ErrorKind::InvalidRequest,
-    )
 }
 
 fn retention_overflow() -> Error {
@@ -437,31 +370,21 @@ mod tests {
     }
 
     #[test]
-    fn combined_schedules_must_cover_finest_tier() {
+    fn sparse_history_keeps_every_available_retention_bucket() {
         let hourly = RetentionPolicy {
             tiers: vec![RetentionTier {
                 interval_seconds: 60 * 60,
                 coverage_seconds: 24 * 60 * 60,
             }],
         };
-        let anchor = Utc.with_ymd_and_hms(2025, 1, 1, 0, 30, 0).unwrap();
-        assert!(
-            validate_combined_schedule_coverage(
-                &[Schedule::new("0 * * * *", "America/New_York").unwrap()],
-                &hourly,
-                chrono_tz::America::New_York,
-                anchor,
-            )
-            .is_ok()
-        );
-        assert!(
-            validate_combined_schedule_coverage(
-                &[Schedule::new("0 2 * * *", "America/New_York").unwrap()],
-                &hourly,
-                chrono_tz::America::New_York,
-                anchor,
-            )
-            .is_err()
+        let snapshots = vec![snapshot(0, 10), snapshot(12, 20), snapshot(23, 30)];
+
+        assert_eq!(
+            hourly
+                .retained_snapshot_ids(&snapshots, chrono_tz::UTC)
+                .unwrap()
+                .len(),
+            snapshots.len(),
         );
     }
 }

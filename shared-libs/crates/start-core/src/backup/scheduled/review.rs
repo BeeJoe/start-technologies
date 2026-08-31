@@ -107,25 +107,6 @@ pub async fn resolve(
                     continue;
                 }
                 let package_ids = BTreeSet::from([package_id.clone()]);
-                if add {
-                    super::rpc::validate_new_job_coverage(
-                        db,
-                        &job.target_id,
-                        &package_ids,
-                        &job.schedule,
-                        &job.default_retention,
-                        &job.retention_overrides,
-                        Some(&job.id),
-                        job.enabled && job.pause.is_none(),
-                    )?;
-                } else {
-                    super::rpc::validate_remaining_coverage(
-                        db,
-                        &job.target_id,
-                        &package_ids,
-                        &job.id,
-                    )?;
-                }
                 set_review_membership(&mut job.services, &package_id, add);
                 affected_targets.insert(job.target_id.clone());
                 if !add {
@@ -254,16 +235,6 @@ pub(crate) fn create_review_for_new_service(
         super::rpc::associate_histories(db, job, &package_ids)?;
     }
     for job in &configured_jobs {
-        super::rpc::validate_new_job_coverage(
-            db,
-            &job.target_id,
-            &package_ids,
-            &job.schedule,
-            &job.default_retention,
-            &job.retention_overrides,
-            Some(&job.id),
-            job.enabled && job.pause.is_none(),
-        )?;
         super::rpc::refresh_archive_state(db, &job.target_id)?;
     }
     if included_by_future_policy {

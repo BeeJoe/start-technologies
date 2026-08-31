@@ -11,7 +11,7 @@ use super::{
     BackupJob, BackupJobId, BackupJobPause, BackupJobStatus, BackupRun, BackupRunTrigger,
     BackupServiceScope, RetentionPolicy, RetentionPolicyChangePreview, RetentionTier, Schedule,
     ScheduledBackupCredential, ScheduledBackupMountGuard, ServiceSnapshot, ServiceSnapshotId,
-    ServiceTargetHistory, run_job, validate_combined_schedule_coverage,
+    ServiceTargetHistory, run_job,
 };
 use crate::auth::{LoginContext, PasswordType};
 use crate::backup::target::BackupTargetId;
@@ -1177,17 +1177,6 @@ pub async fn reassign_target(
         .de()?;
     validate_unique_job_name(&db, &job.name, Some(&id))?;
     let package_ids = selected_installed_services(&db, &job.services)?;
-    validate_new_job_coverage(
-        &db,
-        &target_id,
-        &package_ids,
-        &job.schedule,
-        &job.default_retention,
-        &job.retention_overrides,
-        None,
-        true,
-    )?;
-    validate_remaining_coverage(&db, &job.target_id, &package_ids, &job.id)?;
     let server_id = db.as_public().as_server_info().as_id().de()?;
     let hostname = ctx
         .account
@@ -1437,7 +1426,6 @@ pub async fn update_policy(
         .as_idx(&key)
         .or_not_found(&key)?
         .de()?;
-    validate_history_policy_coverage(&db, &history, &policy, None)?;
     let credential: ScheduledBackupCredential = db
         .as_private()
         .as_scheduled_backup_credentials()
@@ -2041,12 +2029,11 @@ pub async fn validate(
     ctx: RpcContext,
     ValidateBackupJobParams {
         id,
-        mut target_id,
         services,
         schedule,
         default_retention,
         retention_overrides,
-        enabled,
+        ..
     }: ValidateBackupJobParams,
 ) -> Result<(), Error> {
     schedule.next_after(Utc::now(), None)?;
@@ -2056,30 +2043,17 @@ pub async fn validate(
     }
 
     let db = ctx.db.peek().await;
-    let new_services = selected_installed_services(&db, &services)?;
+    selected_installed_services(&db, &services)?;
     if let Some(id) = &id {
-        let job: BackupJob = db
+        let _: BackupJob = db
             .as_public()
             .as_scheduled_backups()
             .as_jobs()
             .as_idx(id)
             .or_not_found(id)?
             .de()?;
-        target_id = job.target_id.clone();
-        let old_services = selected_installed_services(&db, &job.services)?;
-        let removed_services = old_services.difference(&new_services).cloned().collect();
-        validate_remaining_coverage(&db, &job.target_id, &removed_services, id)?;
     }
-    validate_new_job_coverage(
-        &db,
-        &target_id,
-        &new_services,
-        &schedule,
-        &default_retention,
-        &retention_overrides,
-        id.as_ref(),
-        enabled,
-    )
+    Ok(())
 }
 
 /// Creates and optionally queues an automatic backup job.
@@ -2104,16 +2078,6 @@ pub async fn create(
     RpcContext::check_password(&db, &password)?;
     validate_unique_job_name(&db, &name, None)?;
     let package_ids = selected_installed_services(&db, &services)?;
-    validate_new_job_coverage(
-        &db,
-        &target_id,
-        &package_ids,
-        &schedule,
-        &default_retention,
-        &retention_overrides,
-        None,
-        enabled,
-    )?;
     let server_id = db.as_public().as_server_info().as_id().de()?;
     let hostname = ctx
         .account
@@ -2227,17 +2191,6 @@ pub async fn update(
     let old_services = selected_installed_services(&snapshot, &job.services)?;
     let new_services = selected_installed_services(&snapshot, &services)?;
     let removed_services = old_services.difference(&new_services).cloned().collect();
-    validate_remaining_coverage(&snapshot, &job.target_id, &removed_services, &id)?;
-    validate_new_job_coverage(
-        &snapshot,
-        &job.target_id,
-        &new_services,
-        &schedule,
-        &default_retention,
-        &retention_overrides,
-        Some(&id),
-        job.enabled && job.pause.is_none(),
-    )?;
     job.name = name;
     job.services = services;
     job.schedule = schedule;
@@ -2288,43 +2241,6 @@ pub struct SetBackupJobsEnabledParams {
     pub enabled: bool,
 }
 
-fn validate_projected_enabled_jobs(
-    db: &DatabaseModel,
-    enabled_overrides: &BTreeMap<BackupJobId, bool>,
-) -> Result<(), Error> {
-    let state = db.as_public().as_scheduled_backups();
-    let jobs = state.as_jobs();
-    for (_, history) in state.as_histories().as_entries()? {
-        let history: ServiceTargetHistory = history.de()?;
-        let schedules = history
-            .feeding_jobs
-            .iter()
-            .filter_map(|job_id| jobs.as_idx(job_id).map(|job| (job_id, job)))
-            .map(|(job_id, job)| job.de().map(|job: BackupJob| (job_id, job)))
-            .collect::<Result<Vec<_>, Error>>()?
-            .into_iter()
-            .filter(|(job_id, job)| {
-                enabled_overrides
-                    .get(*job_id)
-                    .copied()
-                    .unwrap_or(job.enabled && job.pause.is_none())
-            })
-            .map(|(_, job)| job.schedule)
-            .collect::<Vec<_>>();
-        if schedules.is_empty() {
-            continue;
-        }
-        let timezone = history.timezone.parse().map_err(|_| {
-            Error::new(
-                eyre!("{}", t!("backup.scheduled.invalid-retention-timezone")),
-                ErrorKind::InvalidRequest,
-            )
-        })?;
-        validate_combined_schedule_coverage(&schedules, &history.policy, timezone, Utc::now())?;
-    }
-    Ok(())
-}
-
 /// Enables or disables one automatic backup job.
 pub async fn set_enabled(
     ctx: RpcContext,
@@ -2355,21 +2271,6 @@ pub async fn set_enabled(
                     eyre!("{}", t!("backup.scheduled.retry-before-resume")),
                     ErrorKind::InvalidRequest,
                 ));
-            }
-            let package_ids = selected_installed_services(db, &job.services)?;
-            if enabled {
-                validate_new_job_coverage(
-                    db,
-                    &job.target_id,
-                    &package_ids,
-                    &job.schedule,
-                    &job.default_retention,
-                    &job.retention_overrides,
-                    Some(&job.id),
-                    true,
-                )?;
-            } else {
-                validate_remaining_coverage(db, &job.target_id, &package_ids, &job.id)?;
             }
             job.enabled = enabled;
             job.pause = match (&job.pause, enabled) {
@@ -2440,13 +2341,6 @@ pub async fn set_enabled_bulk(
                     ErrorKind::InvalidRequest,
                 ));
             }
-            let enabled_overrides = ids
-                .iter()
-                .cloned()
-                .map(|id| (id, enabled))
-                .collect::<BTreeMap<_, _>>();
-            validate_projected_enabled_jobs(db, &enabled_overrides)?;
-
             let now = Utc::now();
             let mut targets = BTreeSet::new();
             for job in &mut jobs {
@@ -2561,7 +2455,6 @@ pub async fn delete(
                 .or_not_found(&id)?
                 .de()?;
             let package_ids = selected_installed_services(db, &job.services)?;
-            validate_remaining_coverage(db, &job.target_id, &package_ids, &job.id)?;
             disassociate_histories(db, &job, &package_ids)?;
             db.as_public_mut()
                 .as_scheduled_backups_mut()
@@ -2629,116 +2522,21 @@ fn job_name_conflicts(jobs: &[BackupJob], name: &str, replacing: Option<&BackupJ
         .any(|job| Some(&job.id) != replacing && job_names_match(&job.name, name))
 }
 
-pub(crate) fn validate_new_job_coverage(
-    db: &DatabaseModel,
-    target_id: &BackupTargetId,
-    package_ids: &BTreeSet<PackageId>,
-    schedule: &Schedule,
-    default_retention: &RetentionPolicy,
-    overrides: &BTreeMap<PackageId, RetentionPolicy>,
-    replacing: Option<&BackupJobId>,
-    candidate_active: bool,
-) -> Result<(), Error> {
-    let state = db.as_public().as_scheduled_backups();
-    for package_id in package_ids {
-        let key = history_key(target_id, package_id);
-        let existing: Option<ServiceTargetHistory> = state
-            .as_histories()
-            .as_idx(&key)
-            .map(|history| history.de())
-            .transpose()?;
-        let candidate_policy = || {
-            overrides
-                .get(package_id)
-                .unwrap_or(default_retention)
-                .clone()
-        };
-        let policy = existing
-            .as_ref()
-            .map(|history| history.policy.clone())
-            .unwrap_or_else(candidate_policy);
-        let timezone: chrono_tz::Tz = existing
-            .as_ref()
-            .map(|history| history.timezone.as_str())
-            .unwrap_or(&schedule.timezone)
-            .parse()
-            .map_err(|_| {
-                Error::new(
-                    eyre!("{}", t!("backup.scheduled.invalid-retention-timezone")),
-                    ErrorKind::InvalidRequest,
-                )
-            })?;
-        let mut schedules = Vec::new();
-        if let Some(history) = &existing {
-            for job_id in &history.feeding_jobs {
-                if replacing == Some(job_id) {
-                    continue;
-                }
-                let other: BackupJob = state.as_jobs().as_idx(job_id).or_not_found(job_id)?.de()?;
-                if other.enabled && other.pause.is_none() {
-                    schedules.push(other.schedule);
-                }
-            }
-        }
-        if candidate_active {
-            schedules.push(schedule.clone());
-        }
-        if !schedules.is_empty() {
-            validate_combined_schedule_coverage(&schedules, &policy, timezone, Utc::now())?;
-        }
-    }
-    Ok(())
+fn history_owns_retention_settings(history: &ServiceTargetHistory) -> bool {
+    !history.snapshots.is_empty() || !history.feeding_jobs.is_empty()
 }
 
-pub(crate) fn validate_remaining_coverage(
-    db: &DatabaseModel,
-    target_id: &BackupTargetId,
-    package_ids: &BTreeSet<PackageId>,
-    excluding: &BackupJobId,
-) -> Result<(), Error> {
-    for package_id in package_ids {
-        let Some(history) = db
-            .as_public()
-            .as_scheduled_backups()
-            .as_histories()
-            .as_idx(&history_key(target_id, package_id))
-        else {
-            continue;
-        };
-        let history: ServiceTargetHistory = history.de()?;
-        validate_history_policy_coverage(db, &history, &history.policy, Some(excluding))?;
-    }
-    Ok(())
-}
-
-fn validate_history_policy_coverage(
-    db: &DatabaseModel,
-    history: &ServiceTargetHistory,
+fn adopt_new_job_settings(
+    history: &mut ServiceTargetHistory,
+    job: &BackupJob,
     policy: &RetentionPolicy,
-    excluding: Option<&BackupJobId>,
-) -> Result<(), Error> {
-    let state = db.as_public().as_scheduled_backups();
-    let schedules = history
-        .feeding_jobs
-        .iter()
-        .filter(|job_id| excluding != Some(*job_id))
-        .filter_map(|job_id| state.as_jobs().as_idx(job_id))
-        .map(|job| job.de())
-        .collect::<Result<Vec<BackupJob>, Error>>()?
-        .into_iter()
-        .filter(|job| job.enabled && job.pause.is_none())
-        .map(|job| job.schedule)
-        .collect::<Vec<_>>();
-    if schedules.is_empty() {
-        return Ok(());
+) {
+    if history_owns_retention_settings(history) {
+        return;
     }
-    let timezone = history.timezone.parse().map_err(|_| {
-        Error::new(
-            eyre!("{}", t!("backup.scheduled.invalid-retention-timezone")),
-            ErrorKind::InvalidRequest,
-        )
-    })?;
-    validate_combined_schedule_coverage(&schedules, policy, timezone, Utc::now())
+    history.target_instance_id = job.target_instance_id.clone();
+    history.timezone = job.schedule.timezone.clone();
+    history.policy = policy.clone();
 }
 
 fn selected_installed_services(
@@ -2775,6 +2573,7 @@ pub(crate) fn associate_histories(
             .clone();
         if let Some(history) = histories.as_idx(&key) {
             let mut history: ServiceTargetHistory = history.de()?;
+            adopt_new_job_settings(&mut history, job, &policy);
             // Retention changes require exact removal confirmation in update_policy.
             history.feeding_jobs.insert(job.id.clone());
             if job_is_active {
@@ -2951,6 +2750,68 @@ mod cli_tests {
             created_at: now,
             updated_at: now,
         }
+    }
+
+    fn retention_policy(interval_hours: u64, coverage_hours: u64) -> RetentionPolicy {
+        RetentionPolicy {
+            tiers: vec![RetentionTier {
+                interval_seconds: interval_hours * 60 * 60,
+                coverage_seconds: coverage_hours * 60 * 60,
+            }],
+        }
+    }
+
+    fn service_history(
+        policy: RetentionPolicy,
+        feeding_jobs: BTreeSet<BackupJobId>,
+    ) -> ServiceTargetHistory {
+        ServiceTargetHistory {
+            target_id: "cifs-0".parse().unwrap(),
+            target_instance_id: "instance".to_owned(),
+            package_id: "docuseal".parse().unwrap(),
+            timezone: "America/New_York".to_owned(),
+            policy,
+            feeding_jobs,
+            snapshots: Vec::new(),
+            archived: true,
+        }
+    }
+
+    #[test]
+    fn orphaned_empty_history_adopts_new_retention_settings() {
+        let new_policy = retention_policy(24, 7 * 24);
+        let mut history = service_history(retention_policy(1, 7), BTreeSet::new());
+        let job = backup_job(
+            BackupJobId::new(),
+            "Daily",
+            "cifs-0",
+            "new-instance",
+            "docuseal",
+        );
+
+        adopt_new_job_settings(&mut history, &job, &new_policy);
+        assert_eq!(history.target_instance_id, "new-instance");
+        assert_eq!(history.timezone, "UTC");
+        assert_eq!(history.policy, new_policy);
+    }
+
+    #[test]
+    fn associated_history_preserves_retention_settings() {
+        let old_policy = retention_policy(1, 7);
+        let new_policy = retention_policy(24, 7 * 24);
+        let mut history = service_history(old_policy.clone(), BTreeSet::from([BackupJobId::new()]));
+        let job = backup_job(
+            BackupJobId::new(),
+            "Daily",
+            "cifs-0",
+            "new-instance",
+            "docuseal",
+        );
+
+        adopt_new_job_settings(&mut history, &job, &new_policy);
+        assert_eq!(history.target_instance_id, "instance");
+        assert_eq!(history.timezone, "America/New_York");
+        assert_eq!(history.policy, old_policy);
     }
 
     #[test]
