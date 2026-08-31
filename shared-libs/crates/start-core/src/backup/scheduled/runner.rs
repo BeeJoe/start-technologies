@@ -15,7 +15,7 @@ use super::{
     insert_activity, prune_completed_history,
 };
 use crate::backup::PackageBackupReport;
-use crate::backup::scheduled::rpc::history_key;
+use crate::backup::scheduled::history_key;
 use crate::backup::target::{BackupTargetFS, BackupTargetId};
 use crate::context::RpcContext;
 use crate::disk::mount::filesystem::ReadWrite;
@@ -126,7 +126,7 @@ async fn run_job_inner(
     drop(db);
     if let Err(error) = ctx
         .db
-        .mutate(|db| super::rpc::associate_histories(db, &job, &package_ids))
+        .mutate(|db| super::associate_histories(db, &job, &package_ids))
         .await
         .result
     {

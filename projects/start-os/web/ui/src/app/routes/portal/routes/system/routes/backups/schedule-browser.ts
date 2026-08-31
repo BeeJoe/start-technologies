@@ -14,14 +14,12 @@ import {
 } from '@taiga-ui/core'
 import { TuiBadge, TuiSwitch } from '@taiga-ui/kit'
 import {
+  backupPauseLabel,
+  backupTargetName,
+  BackupTargetName,
   parseBackupServiceSelection,
   SYSTEM_PACKAGE_ID,
 } from './scheduled-utils'
-
-interface BackupTargetName {
-  id: string
-  name: string
-}
 
 @Component({
   selector: 'backup-schedule-browser',
@@ -252,22 +250,9 @@ export class BackupScheduleBrowser {
   readonly deleteRequested = output<T.BackupJob>()
   readonly createRequested = output<void>()
 
-  protected targetName(id: string): string {
-    return this.targets().find(target => target.id === id)?.name || id
-  }
-
-  protected pauseLabel(pause: T.BackupJobPause) {
-    switch (pause.reason) {
-      case 'targetUnavailable':
-        return 'Backup location unavailable' as const
-      case 'targetIdentityMismatch':
-        return 'Backup location changed' as const
-      case 'reauthenticationRequired':
-        return 'Authentication required' as const
-      default:
-        return 'Paused' as const
-    }
-  }
+  protected readonly pauseLabel = backupPauseLabel
+  protected readonly targetName = (id: string) =>
+    backupTargetName(this.targets(), id)
 
   protected jobSelectionSummary(job: T.BackupJob): {
     serviceCount: number

@@ -35,6 +35,31 @@ export const BACKUP_WEEKDAYS = [
   { value: 6, label: 'Saturday' as const },
 ] as const
 
+export interface BackupTargetName {
+  id: string
+  name: string
+}
+
+export function backupTargetName(
+  targets: readonly BackupTargetName[],
+  id: string,
+): string {
+  return targets.find(target => target.id === id)?.name || id
+}
+
+export function backupPauseLabel(pause: T.BackupJobPause) {
+  switch (pause.reason) {
+    case 'targetUnavailable':
+      return 'Backup location unavailable' as const
+    case 'targetIdentityMismatch':
+      return 'Backup location changed' as const
+    case 'reauthenticationRequired':
+      return 'Authentication required' as const
+    default:
+      return 'Paused' as const
+  }
+}
+
 export function backupTimezones(current: string): string[] {
   const supported = Intl.supportedValuesOf?.('timeZone') || []
   return [...new Set([current, 'UTC', ...supported].filter(Boolean))].sort()

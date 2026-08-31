@@ -321,8 +321,8 @@
   the health checks that require it ran, while nothing was listening
 
 - **Backup reports now include rsync transfer size when it can be measured.**
-  StartOS uses it to estimate space for later automatic backups and treats an
-  unavailable measurement as unknown.
+  StartOS records it as recent transfer metadata alongside automatic-backup
+  capacity estimates and treats an unavailable measurement as unknown.
 
 ### Security
 
