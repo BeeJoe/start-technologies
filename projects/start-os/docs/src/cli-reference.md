@@ -433,16 +433,20 @@ want the first backup immediately.
 
 Update only the supplied schedule settings. Timing flags, service-selection
 flags, and repeated `--keep-rule` values use the same forms as `job add`.
+Version-history flags change the schedule defaults used for histories created
+later. Existing service histories keep their policies because several schedules
+can share one history. Use `backup policy preview-change` and `backup policy
+apply` to change an existing history.
 
 - `--name <NAME>` — Change the display name
 - `--all-services` — Include every current and future service
 - `--system-data <include|exclude>` — Change System-data inclusion without
   changing the current/future service-selection mode
-- `--latest-only` — Replace version-history rules with the newest checkpoint only
+- `--latest-only` — Set the schedule default to the newest checkpoint only
 - `--service-keep-rule <PACKAGE_ID=INTERVAL:COVERAGE>` — Add or replace a
-  service-specific retention policy; repeat for multiple rules
+  service-specific schedule default; repeat for multiple rules
 - `--service-latest-only <PACKAGE_ID>` — Set comma-separated services to
-  latest-checkpoint-only retention
+  latest-checkpoint-only by default
 - `--use-default-retention <PACKAGE_ID>` — Remove service-specific overrides
   from comma-separated services so they inherit the schedule default
 

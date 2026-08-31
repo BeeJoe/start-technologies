@@ -50,7 +50,7 @@ Even with proper backups the risk of data corruption is always non-zero. Therefo
 ## Automatic Backups
 
 Automatic backups protect selected services on hourly, daily, weekly, or
-multiple schedules. They support future-service selection, version history,
+monthly schedules. They support future-service selection, version history,
 capacity estimates, archived checkpoints, target recovery, and per-service
 restore choices while keeping the latest manual checkpoint separate.
 
