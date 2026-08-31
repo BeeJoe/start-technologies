@@ -979,7 +979,7 @@ export default {
   1181: 'Zobacz więcej',
   1182: 'Nazwa harmonogramu jest już używana',
   1183: 'Każdy harmonogram kopii zapasowych musi mieć unikalną nazwę. Wybierz inną nazwę.',
-  1184: 'Ta historia wersji wymaga częstszych kopii zapasowych. Uruchamiaj kopie częściej lub zachowuj wersje rzadziej.',
+  1184: 'Ten harmonogram jest uruchamiany rzadziej niż interwał historii wersji, dlatego niektóre interwały mogą nie zawierać punktu kontrolnego.',
   1185: 'aktywne',
   1186: 'wstrzymane',
   1187: 'Wstrzymaj wszystkie',

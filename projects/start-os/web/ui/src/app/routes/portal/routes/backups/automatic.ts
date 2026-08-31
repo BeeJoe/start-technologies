@@ -398,9 +398,9 @@ class AutomaticEditor
               </div>
             }
             @if (retentionNeedsMoreFrequentRuns()) {
-              <div tuiNotification appearance="negative">
+              <div tuiNotification appearance="warning">
                 {{
-                  'This version history needs more frequent backups. Run backups more often or keep versions less often.'
+                  'This schedule runs less often than the version-history interval, so some intervals may have no checkpoint.'
                     | i18n
                 }}
               </div>
@@ -1239,10 +1239,7 @@ export default class AutomaticBackups {
 
   private validRetention(): boolean {
     if (!this.editor.keepAdditional) return true
-    return (
-      isValidBackupRetentionRules(this.retentionRules()) &&
-      !this.retentionNeedsMoreFrequentRuns()
-    )
+    return isValidBackupRetentionRules(this.retentionRules())
   }
 
   protected retentionHasDuplicates(): boolean {

@@ -1756,13 +1756,6 @@ backup.scheduled.insufficient-capacity:
   fr_FR: "La sauvegarde planifiée nécessite %{required} octets, mais la cible ne dispose que de %{available} octets"
   pl_PL: "Zaplanowana kopia wymaga %{required} bajtów, a cel ma dostępne %{available} bajtów"
 
-backup.scheduled.insufficient-schedule-coverage:
-  en_US: "Backup timing cannot satisfy version history already stored for selected services. Run backups more often or keep versions less often"
-  de_DE: "Der Sicherungszeitplan kann den bereits für ausgewählte Dienste gespeicherten Versionsverlauf nicht erfüllen. Führen Sie Sicherungen häufiger aus oder bewahren Sie Versionen seltener auf"
-  es_ES: "La frecuencia de las copias no puede cumplir el historial de versiones ya almacenado para los servicios seleccionados. Ejecute copias con más frecuencia o conserve versiones con menos frecuencia"
-  fr_FR: "La fréquence des sauvegardes ne peut pas satisfaire l'historique des versions déjà stocké pour les services sélectionnés. Exécutez les sauvegardes plus souvent ou conservez des versions moins souvent"
-  pl_PL: "Częstotliwość kopii zapasowych nie może spełnić zasad historii wersji zapisanej dla wybranych usług. Uruchamiaj kopie częściej lub zachowuj wersje rzadziej"
-
 backup.scheduled.invalid-checkpoint-selection:
   en_US: "Checkpoint selection must use PACKAGE_ID=SNAPSHOT_ID"
   de_DE: "Die Prüfpunkt-Auswahl muss PACKAGE_ID=SNAPSHOT_ID verwenden"
