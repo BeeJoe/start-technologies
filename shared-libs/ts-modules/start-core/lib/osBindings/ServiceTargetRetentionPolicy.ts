@@ -11,8 +11,7 @@ export type ServiceTargetRetentionPolicy = {
   targetId: BackupTargetId
   packageId: PackageId
   /**
-   * Local timezone used to form retention buckets. It is initialized by the
-   * first job that creates this shared service-target history.
+   * Local timezone forming retention buckets.
    */
   timezone: string
   policy: RetentionPolicy

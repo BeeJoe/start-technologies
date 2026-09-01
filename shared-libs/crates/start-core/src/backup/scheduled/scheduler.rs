@@ -1,12 +1,14 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::time::Duration;
 
 use chrono::Utc;
 
 use super::{
-    BackupJob, BackupJobId, BackupRunState, BackupRunTrigger, ScheduledBackupState,
-    activity_from_run,
+    BackupActivityKind, BackupJob, BackupJobId, BackupRunState, BackupRunTrigger,
+    ScheduledBackupState, activity_from_run,
 };
+use crate::PackageId;
+use crate::backup::target::BackupTargetId;
 use crate::context::RpcContext;
 use crate::prelude::*;
 
@@ -58,20 +60,31 @@ pub(crate) async fn reconcile_interrupted_backup_state(ctx: &RpcContext) -> Resu
     let repaired = ctx
         .db
         .mutate(|db| {
-            let scheduled = db.as_public_mut().as_scheduled_backups_mut();
-            let mut state: ScheduledBackupState = scheduled.de()?;
-            let repaired =
-                reconcile_interrupted_activities(&mut state, Utc::now(), &interrupted_error);
-            let pruned = state.prune_completed_history();
-            if repaired > 0 || pruned > 0 {
-                scheduled.ser(&state)?;
+            let reconciliation = {
+                let scheduled = db.as_public_mut().as_scheduled_backups_mut();
+                let mut state: ScheduledBackupState = scheduled.de()?;
+                let reconciliation =
+                    reconcile_interrupted_activities(&mut state, Utc::now(), &interrupted_error);
+                let pruned = state.prune_completed_history();
+                if reconciliation.repaired > 0 || pruned > 0 {
+                    scheduled.ser(&state)?;
+                }
+                reconciliation
+            };
+            for failure in &reconciliation.failed_runs {
+                super::runner::notify_run_failure(
+                    db,
+                    &failure.job_name,
+                    &failure.target_id,
+                    &failure.package_ids,
+                )?;
             }
             db.as_public_mut()
                 .as_server_info_mut()
                 .as_status_info_mut()
                 .as_backup_progress_mut()
                 .ser(&None)?;
-            Ok(repaired)
+            Ok(reconciliation.repaired)
         })
         .await
         .result?;
@@ -89,18 +102,30 @@ async fn reconcile_if_idle(ctx: &RpcContext) -> Result<(), Error> {
     Ok(())
 }
 
+#[derive(Default)]
+struct InterruptedBackupReconciliation {
+    repaired: usize,
+    failed_runs: Vec<InterruptedRunFailure>,
+}
+
+struct InterruptedRunFailure {
+    job_name: String,
+    target_id: BackupTargetId,
+    package_ids: BTreeSet<PackageId>,
+}
+
 fn reconcile_interrupted_activities(
     state: &mut ScheduledBackupState,
     now: chrono::DateTime<Utc>,
     interrupted_error: &str,
-) -> usize {
+) -> InterruptedBackupReconciliation {
     let ScheduledBackupState {
         activities,
         runs,
         jobs,
         ..
     } = state;
-    let mut repaired = 0;
+    let mut reconciliation = InterruptedBackupReconciliation::default();
 
     let mut interrupted = activities
         .iter()
@@ -119,7 +144,7 @@ fn reconcile_interrupted_activities(
             .filter(|run| run.state != BackupRunState::Running)
         {
             *activity = activity_from_run(run);
-            repaired += 1;
+            reconciliation.repaired += 1;
             continue;
         }
 
@@ -127,7 +152,17 @@ fn reconcile_interrupted_activities(
         activity.state = BackupRunState::Failed;
         activity.completed_at = Some(completed_at);
         activity.error = Some(interrupted_error.to_owned());
-        repaired += 1;
+        reconciliation.repaired += 1;
+
+        if activity.kind == BackupActivityKind::Automatic {
+            if let Some(job_name) = activity.job_name.clone() {
+                reconciliation.failed_runs.push(InterruptedRunFailure {
+                    job_name,
+                    target_id: activity.target_id.clone(),
+                    package_ids: activity.intended_services.clone(),
+                });
+            }
+        }
 
         if let Some(run) = runs.get_mut(&activity.id) {
             run.state = BackupRunState::Failed;
@@ -148,7 +183,7 @@ fn reconcile_interrupted_activities(
         }
     }
 
-    repaired
+    reconciliation
 }
 
 pub(super) async fn dispatch_due_jobs(ctx: &RpcContext) -> Result<(), Error> {
@@ -469,10 +504,9 @@ mod tests {
         .unwrap();
         let now = Utc.with_ymd_and_hms(2026, 7, 2, 12, 0, 0).unwrap();
 
-        assert_eq!(
-            reconcile_interrupted_activities(&mut state, now, "interrupted"),
-            1
-        );
+        let reconciliation = reconcile_interrupted_activities(&mut state, now, "interrupted");
+        assert_eq!(reconciliation.repaired, 1);
+        assert_eq!(reconciliation.failed_runs.len(), 1);
         let activity = state.activities.values().next().unwrap();
         let run = state.runs.values().next().unwrap();
         assert_eq!(activity.state, BackupRunState::Failed);
@@ -513,10 +547,9 @@ mod tests {
         .unwrap();
         let now = Utc.with_ymd_and_hms(2026, 7, 10, 3, 30, 0).unwrap();
 
-        assert_eq!(
-            reconcile_interrupted_activities(&mut state, now, "interrupted"),
-            1
-        );
+        let reconciliation = reconcile_interrupted_activities(&mut state, now, "interrupted");
+        assert_eq!(reconciliation.repaired, 1);
+        assert!(reconciliation.failed_runs.is_empty());
         assert_eq!(
             state.activities.values().next().unwrap().state,
             BackupRunState::Failed
@@ -628,10 +661,9 @@ mod tests {
         let mut multiple_interrupted = state.clone();
         let now = Utc.with_ymd_and_hms(2026, 7, 10, 3, 30, 0).unwrap();
 
-        assert_eq!(
-            reconcile_interrupted_activities(&mut state, now, "interrupted"),
-            1
-        );
+        let reconciliation = reconcile_interrupted_activities(&mut state, now, "interrupted");
+        assert_eq!(reconciliation.repaired, 1);
+        assert_eq!(reconciliation.failed_runs.len(), 1);
         let activity = state
             .activities
             .values()
@@ -678,10 +710,10 @@ mod tests {
         job.status.consecutive_failures = 0;
         job.status.last_result = None;
 
-        assert_eq!(
-            reconcile_interrupted_activities(&mut multiple_interrupted, now, "interrupted"),
-            2
-        );
+        let reconciliation =
+            reconcile_interrupted_activities(&mut multiple_interrupted, now, "interrupted");
+        assert_eq!(reconciliation.repaired, 2);
+        assert_eq!(reconciliation.failed_runs.len(), 2);
         let job = multiple_interrupted.jobs.values().next().unwrap();
         assert_eq!(job.status.last_attempted_at, Some(second_started));
         assert_eq!(job.status.consecutive_failures, 2);

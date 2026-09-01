@@ -8,5 +8,5 @@ import type { BackupTargetId } from './BackupTargetId'
 export type DeleteArchivedSnapshotsBulkParams = {
   targetId: BackupTargetId
   snapshots: Array<ArchivedSnapshotSelection>
-  password?: string
+  password: string
 }
