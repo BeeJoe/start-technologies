@@ -10,5 +10,5 @@ export type DeleteArchivedSnapshotsParams = {
   targetId: BackupTargetId
   packageId: PackageId
   snapshotIds: Array<Guid>
-  password?: string
+  password: string
 }

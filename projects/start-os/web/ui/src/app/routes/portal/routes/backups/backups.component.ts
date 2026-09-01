@@ -25,7 +25,7 @@ import {
   TuiTitle,
 } from '@taiga-ui/core'
 import { TuiBadge, TuiSwitch } from '@taiga-ui/kit'
-import { TuiCardLarge } from '@taiga-ui/layout'
+import { TuiCardLarge, TuiHeader } from '@taiga-ui/layout'
 import { PatchDB } from 'patch-db-client'
 import { ApiService } from 'src/app/services/api/embassy-api.service'
 import { OSService } from 'src/app/services/os.service'
@@ -110,10 +110,12 @@ type BackupPanel = 'automatic' | 'manual' | 'restore' | 'locations' | 'history'
       [class.expanded]="expanded() === 'automatic'"
     >
       <header
+        tuiHeader
         class="card-heading automatic-heading"
         [class.single-job]="jobs().length === 1"
       >
         <button
+          tuiCell
           type="button"
           class="card-toggle"
           [attr.aria-expanded]="expanded() === 'automatic'"
@@ -143,19 +145,14 @@ type BackupPanel = 'automatic' | 'manual' | 'restore' | 'locations' | 'history'
           </span>
         </button>
 
-        @if (needsAttention()) {
-          <button
-            tuiLink
-            type="button"
-            class="attention-link"
-            (click)="openHistory()"
-          >
-            {{ 'See more' | i18n }}
-          </button>
-        }
+        <span tuiAccessories class="card-accessories">
+          @if (needsAttention()) {
+            <button tuiLink type="button" (click)="openHistory()">
+              {{ 'See more' | i18n }}
+            </button>
+          }
 
-        @if (jobs().length === 1) {
-          <div class="card-actions">
+          @if (jobs().length === 1) {
             @if (!primary()?.enabled) {
               <span tuiBadge>{{ 'Paused' | i18n }}</span>
             }
@@ -204,31 +201,29 @@ type BackupPanel = 'automatic' | 'manual' | 'restore' | 'locations' | 'history'
                 </button>
               </tui-data-list>
             </button>
-          </div>
-        }
-        @if (jobs().length !== 1) {
-          <button
-            tuiIconButton
-            type="button"
-            size="m"
-            appearance="flat-grayscale"
-            class="expand-toggle"
-            [iconStart]="
-              expanded() === 'automatic'
-                ? '@tui.chevron-up'
-                : '@tui.chevron-down'
-            "
-            [attr.aria-expanded]="expanded() === 'automatic'"
-            (click)="togglePanel('automatic')"
-          >
-            {{
-              (expanded() === 'automatic'
-                ? 'Collapse automatic backups'
-                : 'Expand automatic backups'
-              ) | i18n
-            }}
-          </button>
-        }
+          } @else {
+            <button
+              tuiIconButton
+              type="button"
+              size="m"
+              appearance="flat-grayscale"
+              [iconStart]="
+                expanded() === 'automatic'
+                  ? '@tui.chevron-up'
+                  : '@tui.chevron-down'
+              "
+              [attr.aria-expanded]="expanded() === 'automatic'"
+              (click)="togglePanel('automatic')"
+            >
+              {{
+                (expanded() === 'automatic'
+                  ? 'Collapse automatic backups'
+                  : 'Expand automatic backups'
+                ) | i18n
+              }}
+            </button>
+          }
+        </span>
       </header>
 
       @if (expanded() === 'automatic') {
@@ -252,8 +247,9 @@ type BackupPanel = 'automatic' | 'manual' | 'restore' | 'locations' | 'history'
       class="backup-card"
       [class.expanded]="expanded() === 'manual'"
     >
-      <header class="card-heading">
+      <header tuiHeader class="card-heading">
         <button
+          tuiCell
           type="button"
           class="card-toggle"
           [attr.aria-expanded]="expanded() === 'manual'"
@@ -288,8 +284,9 @@ type BackupPanel = 'automatic' | 'manual' | 'restore' | 'locations' | 'history'
       class="backup-card"
       [class.expanded]="expanded() === 'restore'"
     >
-      <header class="card-heading">
+      <header tuiHeader class="card-heading">
         <button
+          tuiCell
           type="button"
           class="card-toggle"
           [attr.aria-expanded]="expanded() === 'restore'"
@@ -326,8 +323,9 @@ type BackupPanel = 'automatic' | 'manual' | 'restore' | 'locations' | 'history'
       class="backup-card"
       [class.expanded]="expanded() === 'locations'"
     >
-      <header class="card-heading">
+      <header tuiHeader class="card-heading">
         <button
+          tuiCell
           type="button"
           class="card-toggle"
           [attr.aria-expanded]="expanded() === 'locations'"
@@ -360,8 +358,9 @@ type BackupPanel = 'automatic' | 'manual' | 'restore' | 'locations' | 'history'
       class="backup-card"
       [class.expanded]="expanded() === 'history'"
     >
-      <header class="card-heading">
+      <header tuiHeader class="card-heading">
         <button
+          tuiCell
           type="button"
           class="card-toggle"
           [attr.aria-expanded]="expanded() === 'history'"
@@ -417,35 +416,19 @@ type BackupPanel = 'automatic' | 'manual' | 'restore' | 'locations' | 'history'
     }
 
     [tuiCardLarge].backup-card {
-      gap: 0;
-      padding: 0;
       overflow: hidden;
       container: card / inline-size;
     }
 
     .card-heading {
-      position: static;
-      display: flex;
-      align-items: center;
-      min-block-size: 4.5rem;
-      block-size: auto;
-      padding: 0;
-      background: transparent;
+      min-inline-size: 0;
     }
 
     .card-toggle {
-      display: flex;
       flex: 1;
-      align-items: center;
-      gap: 0.75rem;
+      inline-size: 100%;
       min-inline-size: 0;
-      min-block-size: 4.5rem;
-      padding: 1rem 1.25rem;
-      color: inherit;
-      font: inherit;
       text-align: start;
-      background: transparent;
-      border: 0;
       cursor: pointer;
     }
 
@@ -468,17 +451,16 @@ type BackupPanel = 'automatic' | 'manual' | 'restore' | 'locations' | 'history'
       transform: rotate(180deg);
     }
 
-    .card-actions,
+    .card-accessories,
     .simple-switch {
       display: flex;
       align-items: center;
       gap: 0.5rem;
     }
 
-    .card-actions {
+    .card-accessories {
       flex-wrap: wrap;
       justify-content: flex-end;
-      padding: 0.75rem 1.25rem 0.75rem 0;
     }
 
     .simple-switch {
@@ -486,37 +468,11 @@ type BackupPanel = 'automatic' | 'manual' | 'restore' | 'locations' | 'history'
       white-space: normal;
     }
 
-    .automatic-heading {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) repeat(3, auto);
-    }
-
-    .automatic-heading.single-job {
-      grid-template-columns: minmax(0, 1fr) repeat(2, auto);
-    }
-
-    .attention-link {
-      align-self: center;
-      justify-self: start;
-      margin-inline-end: 0.5rem;
-      white-space: nowrap;
-    }
-
-    .single-job .card-actions {
-      flex-wrap: nowrap;
-      padding-inline-end: 1.25rem;
-    }
-
-    .expand-toggle {
-      align-self: center;
-      margin-inline-end: 0.75rem;
-    }
-
     .card-body {
       display: grid;
       gap: 1rem;
       min-inline-size: 0;
-      padding: 1.25rem;
+      padding-block-start: 1rem;
       border-block-start: 1px solid var(--tui-border-normal);
     }
 
@@ -587,36 +543,12 @@ type BackupPanel = 'automatic' | 'manual' | 'restore' | 'locations' | 'history'
         flex-direction: column;
       }
 
-      .card-actions {
+      .card-accessories {
         justify-content: flex-start;
-        padding: 0 1.25rem 1rem;
-      }
-
-      .automatic-heading {
-        display: grid;
-        grid-template-columns: minmax(0, 1fr) auto auto;
-      }
-
-      .automatic-heading .card-actions {
-        grid-column: 1 / -1;
-        grid-row: 2;
-      }
-
-      .automatic-heading.single-job .card-actions {
-        grid-column: 3;
-        grid-row: 1;
-        align-self: start;
-        justify-content: flex-end;
-        padding: 0.75rem 1.25rem 0.75rem 0;
       }
 
       .automatic-heading.single-job .card-toggle b {
         white-space: normal;
-      }
-
-      .automatic-heading .expand-toggle {
-        grid-column: 3;
-        grid-row: 1;
       }
     }
 
@@ -625,55 +557,9 @@ type BackupPanel = 'automatic' | 'manual' | 'restore' | 'locations' | 'history'
         align-items: flex-start;
       }
 
-      .automatic-heading.single-job .card-toggle {
-        gap: 0.5rem;
-        padding-inline: 0.75rem;
-      }
-
-      .automatic-heading .attention-link {
-        grid-column: 1;
-        grid-row: 2;
-        margin-block-start: -0.75rem;
-        margin-block-end: 0.75rem;
-        margin-inline: 2.75rem 0;
-      }
-
-      .card-actions {
+      .card-accessories {
         align-items: flex-start;
-        flex-direction: column;
-      }
-
-      .card-actions > button {
-        inline-size: 100%;
-      }
-
-      .single-job .card-actions {
-        display: grid;
-        grid-template-columns: auto auto;
-        align-items: center;
-        row-gap: 0.5rem;
-        padding-inline-end: 0.75rem;
-      }
-
-      .single-job .card-actions > button {
-        grid-column: 2;
-        grid-row: 1;
-        inline-size: auto;
-      }
-
-      .single-job .card-actions > [tuiBadge] {
-        grid-column: 1 / -1;
-        grid-row: 2;
-        justify-self: end;
-      }
-
-      .single-job .simple-switch {
-        grid-column: 1;
-        grid-row: 1;
-      }
-
-      .card-body {
-        padding: 1rem;
+        justify-content: flex-start;
       }
 
       .operation {
@@ -697,6 +583,7 @@ type BackupPanel = 'automatic' | 'manual' | 'restore' | 'locations' | 'history'
     TuiCell,
     TuiDataList,
     TuiDropdown,
+    TuiHeader,
     TuiIcon,
     TuiLink,
     TuiSwitch,

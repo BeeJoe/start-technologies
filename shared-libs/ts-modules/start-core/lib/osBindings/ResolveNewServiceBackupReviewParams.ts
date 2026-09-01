@@ -8,8 +8,7 @@ import type { PackageId } from './PackageId'
 export type ResolveNewServiceBackupReviewParams = {
   packageId: PackageId
   /**
-   * Every current job must be present. `true` includes the service; `false`
-   * excludes it from that job.
+   * Every current job requires an inclusion decision.
    */
   decisions: { [key: Guid]: boolean }
 }

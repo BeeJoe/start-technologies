@@ -10,7 +10,7 @@ use tokio::io::AsyncWriteExt;
 
 use crate::account::AccountInfo;
 use crate::context::RpcContext;
-use crate::hostname::{ServerHostname, ServerHostnameInfo, generate_hostname, generate_id};
+use crate::hostname::{ServerHostname, generate_hostname, generate_id};
 use crate::prelude::*;
 use crate::util::io::{AtomicFile, delete_dir, dir_copy, dir_size, rename};
 use crate::util::serde::{Base32, Base64, IoFormat, Pem};

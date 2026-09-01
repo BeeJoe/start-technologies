@@ -5,12 +5,11 @@
  */
 export type Schedule = {
   /**
-   * Validated five-field cron expression: minute, hour, day of month, month,
-   * and day of week.
+   * Validated five-field cron expression.
    */
   cron: string
   /**
-   * IANA timezone captured from the browser when the schedule is created.
+   * Selected IANA timezone.
    */
   timezone: string
 }
