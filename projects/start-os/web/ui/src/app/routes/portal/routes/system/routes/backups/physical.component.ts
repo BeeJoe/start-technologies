@@ -122,7 +122,7 @@ import { BackupStatusComponent } from './status.component'
       box-sizing: border-box;
     }
 
-    @container (max-width: 48rem) {
+    @container (max-inline-size: 48rem) {
       table {
         --app-table-header-display: none;
 

@@ -133,14 +133,21 @@ impl Schedule {
             ));
         }
 
-        Ok(ParsedSchedule {
+        let schedule = ParsedSchedule {
             minutes,
             hours: CronField::parse(fields[1], 0, 23, false)?,
             days_of_month: CronField::parse(fields[2], 1, 31, false)?,
             months: CronField::parse(fields[3], 1, 12, false)?,
             days_of_week: CronField::parse(fields[4], 0, 7, true)?,
             timezone,
-        })
+        };
+        if !schedule.has_supported_frequency() {
+            return Err(Error::new(
+                eyre!("{}", t!("backup.scheduled.schedule-unsupported")),
+                ErrorKind::InvalidRequest,
+            ));
+        }
+        Ok(schedule)
     }
 }
 
@@ -155,6 +162,27 @@ struct ParsedSchedule {
 }
 
 impl ParsedSchedule {
+    fn has_supported_frequency(&self) -> bool {
+        if !self.months.wildcard {
+            return false;
+        }
+
+        let single_hour = self.hours.values.len() == 1;
+        let single_day_of_month = self.days_of_month.values.len() == 1;
+        let single_day_of_week = self.days_of_week.values.len() == 1;
+        match (
+            self.hours.wildcard,
+            self.days_of_month.wildcard,
+            self.days_of_week.wildcard,
+        ) {
+            (true, true, true) => true,
+            (false, true, true) => single_hour,
+            (false, true, false) => single_hour && single_day_of_week,
+            (false, false, true) => single_hour && single_day_of_month,
+            _ => false,
+        }
+    }
+
     fn matches(&self, local: NaiveDateTime) -> bool {
         let last_day = last_day_of_month(local.year(), local.month());
         let dom_matches = self.days_of_month.contains(local.day())
@@ -262,11 +290,22 @@ mod tests {
     use super::*;
 
     #[test]
-    fn rejects_six_fields_and_sub_hourly_schedules() {
+    fn accepts_supported_schedule_frequencies() {
+        assert!(Schedule::new("0 * * * *", "UTC").is_ok());
+        assert!(Schedule::new("15 4 * * *", "UTC").is_ok());
+        assert!(Schedule::new("30 2 * * 0", "UTC").is_ok());
+        assert!(Schedule::new("45 1 31 * *", "UTC").is_ok());
+    }
+
+    #[test]
+    fn rejects_unsupported_schedule_frequencies() {
         assert!(Schedule::new("0 0 2 * * *", "UTC").is_err());
         assert!(Schedule::new("0,30 * * * *", "UTC").is_err());
         assert!(Schedule::new("*/15 * * * *", "UTC").is_err());
-        assert!(Schedule::new("0 * * * *", "UTC").is_ok());
+        assert!(Schedule::new("0 1,13 * * *", "UTC").is_err());
+        assert!(Schedule::new("0 1 * 1 *", "UTC").is_err());
+        assert!(Schedule::new("0 1 1 * 1", "UTC").is_err());
+        assert!(Schedule::new("0 1 * * 1,3", "UTC").is_err());
     }
 
     #[test]
@@ -309,14 +348,6 @@ mod tests {
         let now = Utc.with_ymd_and_hms(2025, 1, 1, 8, 5, 0).unwrap();
         let due = schedule.catch_up_after(cursor, now, None).unwrap().unwrap();
         assert_eq!(due.utc.hour(), 1);
-    }
-
-    #[test]
-    fn standard_day_of_month_or_day_of_week_semantics() {
-        let schedule = Schedule::new("0 9 1 * 1", "UTC").unwrap();
-        let before = Utc.with_ymd_and_hms(2025, 1, 1, 9, 1, 0).unwrap();
-        let next = schedule.next_after(before, None).unwrap();
-        assert_eq!(next.utc, Utc.with_ymd_and_hms(2025, 1, 6, 9, 0, 0).unwrap());
     }
 
     #[test]

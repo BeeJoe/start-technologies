@@ -743,7 +743,7 @@ class JobEditor
                 {{ 'Delete schedule' | i18n }}
               </button>
             }
-            <button tuiButton type="submit" [disabled]="!canSave(form)">
+            <button tuiButton type="submit">
               {{ 'Save' | i18n }}
             </button>
           </footer>
@@ -844,7 +844,7 @@ class JobEditor
             }}
           </div>
           <footer class="g-buttons">
-            <button tuiButton [disabled]="reassignForm.invalid">
+            <button tuiButton>
               {{ 'Change backup location' | i18n }}
             </button>
           </footer>
@@ -1686,6 +1686,7 @@ export class ScheduledBackups {
   }
 
   protected async save(form: JobEditor) {
+    form.form.markAllAsTouched()
     if (!this.canSave(form)) return
     if (this.hasDuplicateJobName(form)) {
       this.dialogs
@@ -1970,6 +1971,8 @@ export class ScheduledBackups {
   }
 
   protected async reassign(job: T.BackupJob) {
+    this.reassignForm.markAllAsTouched()
+    if (this.reassignForm.invalid) return
     const reassign = this.reassignForm.getRawValue()
     await this.perform(() =>
       this.api.reassignScheduledBackupTarget({

@@ -712,9 +712,10 @@ async fn promote_staging(
     Ok((Arc::new(owned), report))
 }
 
-async fn notify_run_failure(
-    ctx: &RpcContext,
-    job: &BackupJob,
+pub(super) fn notify_run_failure(
+    db: &mut crate::db::model::DatabaseModel,
+    job_name: &str,
+    target_id: &BackupTargetId,
     package_ids: &BTreeSet<PackageId>,
 ) -> Result<(), Error> {
     let services = package_ids
@@ -722,26 +723,21 @@ async fn notify_run_failure(
         .map(backup_item_name)
         .collect::<Vec<_>>()
         .join(", ");
-    ctx.db
-        .mutate(|db| {
-            let target_name = job.target_id.user_facing_name(db);
-            notify(
-                db,
-                None,
-                NotificationLevel::Warning,
-                t!("backup.scheduled.run-failed-title").to_string(),
-                t!(
-                    "backup.scheduled.run-failed-message",
-                    job = job.name,
-                    target = target_name.as_str(),
-                    services = services
-                )
-                .to_string(),
-                (),
-            )
-        })
-        .await
-        .result
+    let target_name = target_id.user_facing_name(db);
+    notify(
+        db,
+        None,
+        NotificationLevel::Warning,
+        t!("backup.scheduled.run-failed-title").to_string(),
+        t!(
+            "backup.scheduled.run-failed-message",
+            job = job_name,
+            target = target_name.as_str(),
+            services = services
+        )
+        .to_string(),
+        (),
+    )
 }
 
 fn selected_services(
@@ -966,7 +962,10 @@ async fn record_failed_run_and_notify(
     error: String,
 ) -> Result<BackupRun, Error> {
     let run = record_failed_run(ctx, job, package_ids, trigger, error).await?;
-    notify_run_failure(ctx, job, package_ids).await?;
+    ctx.db
+        .mutate(|db| notify_run_failure(db, &job.name, &job.target_id, package_ids))
+        .await
+        .result?;
     Ok(run)
 }
 
