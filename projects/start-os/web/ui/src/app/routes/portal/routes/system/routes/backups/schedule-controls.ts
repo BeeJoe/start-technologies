@@ -186,11 +186,11 @@ export class BackupScheduleControls {
     this.i18n.transform(backupWeekdayLabel(weekday))
   protected readonly timezones = () =>
     backupTimezones(this.formValue().timezone || '')
+  private readonly scheduleChangesSubscription = this.form.valueChanges
+    .pipe(takeUntilDestroyed())
+    .subscribe(() => this.scheduleChange.emit(this.form.getRawValue()))
 
   constructor() {
     effect(() => this.form.reset(this.schedule()))
-    this.form.valueChanges
-      .pipe(takeUntilDestroyed())
-      .subscribe(() => this.scheduleChange.emit(this.form.getRawValue()))
   }
 }

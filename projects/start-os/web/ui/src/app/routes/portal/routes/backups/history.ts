@@ -437,30 +437,30 @@ export class BackupHistory {
       (page + 1) * this.pageSize,
     )
   })
+  private readonly queryParamsSubscription = this.route.queryParamMap
+    .pipe(
+      takeUntilDestroyed(),
+      tap(params => {
+        const historyFilter = params.get('historyKind')
+        const statusFilter = params.get('historyStatus')
+        const page = Number(params.get('historyPage')) - 1
+        this.query.set(params.get('historySearch') || '')
+        this.historyFilter.set(
+          HISTORY_FILTERS.includes(historyFilter as HistoryFilter)
+            ? (historyFilter as HistoryFilter)
+            : 'all',
+        )
+        this.statusFilter.set(
+          STATUS_FILTERS.includes(statusFilter as StatusFilter)
+            ? (statusFilter as StatusFilter)
+            : 'all',
+        )
+        this.page.set(Number.isInteger(page) && page >= 0 ? page : 0)
+      }),
+    )
+    .subscribe()
 
   constructor() {
-    this.route.queryParamMap
-      .pipe(
-        takeUntilDestroyed(),
-        tap(params => {
-          const historyFilter = params.get('historyKind')
-          const statusFilter = params.get('historyStatus')
-          const page = Number(params.get('historyPage')) - 1
-          this.query.set(params.get('historySearch') || '')
-          this.historyFilter.set(
-            HISTORY_FILTERS.includes(historyFilter as HistoryFilter)
-              ? (historyFilter as HistoryFilter)
-              : 'all',
-          )
-          this.statusFilter.set(
-            STATUS_FILTERS.includes(statusFilter as StatusFilter)
-              ? (statusFilter as StatusFilter)
-              : 'all',
-          )
-          this.page.set(Number.isInteger(page) && page >= 0 ? page : 0)
-        }),
-      )
-      .subscribe()
     void this.backupService.getBackupTargets()
   }
 
