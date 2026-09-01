@@ -1,13 +1,5 @@
-import {
-  Component,
-  DestroyRef,
-  effect,
-  inject,
-  input,
-  output,
-  signal,
-} from '@angular/core'
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
+import { Component, effect, inject, input, output, signal } from '@angular/core'
+import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop'
 import {
   NonNullableFormBuilder,
   ReactiveFormsModule,
@@ -16,6 +8,7 @@ import {
 import { i18nPipe } from '@start9labs/shared'
 import { TuiButton, TuiDataList, TuiInput } from '@taiga-ui/core'
 import { TuiChevron, TuiInputNumber, TuiSelect } from '@taiga-ui/kit'
+import { map, merge, switchMap } from 'rxjs'
 import {
   backupRetentionIntervalLabel,
   BACKUP_RETENTION_INTERVALS,
@@ -126,7 +119,6 @@ import {
   ],
 })
 export class BackupRetentionRules {
-  private readonly destroyRef = inject(DestroyRef)
   private readonly formBuilder = inject(NonNullableFormBuilder)
   private readonly i18n = inject(i18nPipe)
 
@@ -145,6 +137,23 @@ export class BackupRetentionRules {
   protected readonly stringifyInterval = (
     interval: BackupRetentionRuleValue['interval'],
   ) => this.i18n.transform(backupRetentionIntervalLabel(interval))
+  private readonly ruleChangesSubscription = toObservable(this.ruleForms)
+    .pipe(
+      switchMap(forms =>
+        merge(
+          ...forms.map((form, index) =>
+            form.valueChanges.pipe(map(() => ({ form, index }))),
+          ),
+        ),
+      ),
+      takeUntilDestroyed(),
+    )
+    .subscribe(({ form, index }) => {
+      this.ruleChange.emit({
+        index,
+        value: { ...this.sourceRules[index], ...form.getRawValue() },
+      })
+    })
 
   private sourceRules: readonly BackupRetentionRuleValue[] = []
 
@@ -158,9 +167,7 @@ export class BackupRetentionRules {
         return
       }
       this.sourceRules = rules
-      this.ruleForms.set(
-        rules.map((rule, index) => this.createRuleForm(rule, index)),
-      )
+      this.ruleForms.set(rules.map(rule => this.createRuleForm(rule)))
     })
   }
 
@@ -170,23 +177,13 @@ export class BackupRetentionRules {
       : retentionPeriodLabel(rule.interval, rule.duration)
   }
 
-  private createRuleForm(rule: BackupRetentionRuleValue, index: number) {
-    const form = this.formBuilder.group({
+  private createRuleForm(rule: BackupRetentionRuleValue) {
+    return this.formBuilder.group({
       interval: [rule.interval],
       duration: [
         rule.duration,
         [Validators.required, Validators.min(1), Validators.max(365)],
       ],
     })
-    form.valueChanges
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe(() => {
-        const value = form.getRawValue()
-        this.ruleChange.emit({
-          index,
-          value: { ...this.sourceRules[index], ...value },
-        })
-      })
-    return form
   }
 }
