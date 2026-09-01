@@ -33,7 +33,7 @@ import {
   TuiTitle,
 } from '@taiga-ui/core'
 import { TuiAccordion, TuiBlock, TuiSwitch } from '@taiga-ui/kit'
-import { TuiCardLarge } from '@taiga-ui/layout'
+import { TuiCardLarge, TuiHeader } from '@taiga-ui/layout'
 import { PatchDB } from 'patch-db-client'
 import { firstValueFrom } from 'rxjs'
 import { ApiService } from 'src/app/services/api/embassy-api.service'
@@ -240,7 +240,7 @@ class AutomaticEditor
           class="panel"
           [class.embedded-panel]="embedded()"
         >
-          <header>
+          <header tuiHeader>
             <span tuiTitle>
               <b>{{ 'Choose a backup location' | i18n }}</b>
               <span tuiSubtitle>
@@ -268,7 +268,7 @@ class AutomaticEditor
           [class.embedded-panel]="embedded()"
           [formGroup]="editor.form"
         >
-          <header>
+          <header tuiHeader>
             <span tuiTitle>
               <b>{{ 'Schedule and services' | i18n }}</b>
               <span tuiSubtitle>
@@ -416,7 +416,7 @@ class AutomaticEditor
           [class.embedded-panel]="embedded()"
           [formGroup]="editor.form"
         >
-          <header>
+          <header tuiHeader>
             <span tuiTitle>
               <b>{{ 'Review automatic backups' | i18n }}</b>
               <span tuiSubtitle>
@@ -541,7 +541,7 @@ class AutomaticEditor
       @if (primary(); as job) {
         @if (!embedded()) {
           <section tuiCardLarge="compact" class="panel">
-            <header>
+            <header tuiHeader>
               <span tuiTitle>
                 <b>{{ 'Automatic backups' | i18n }}</b>
                 <span tuiSubtitle>
@@ -553,16 +553,18 @@ class AutomaticEditor
                   }}
                 </span>
               </span>
-              <label class="inline-switch main-switch">
-                <input
-                  tuiSwitch
-                  type="checkbox"
-                  [showIcons]="false"
-                  [attr.aria-label]="'Automatic backups' | i18n"
-                  [checked]="job.enabled && !job.pause"
-                  (change)="toggleAllJobs($any($event.target).checked)"
-                />
-              </label>
+              <span tuiAccessories>
+                <label class="inline-switch main-switch">
+                  <input
+                    tuiSwitch
+                    type="checkbox"
+                    [showIcons]="false"
+                    [attr.aria-label]="'Automatic backups' | i18n"
+                    [checked]="job.enabled && !job.pause"
+                    (change)="toggleAllJobs($any($event.target).checked)"
+                  />
+                </label>
+              </span>
             </header>
           </section>
         }
@@ -673,17 +675,6 @@ class AutomaticEditor
       box-sizing: border-box;
     }
 
-    .panel > header {
-      position: static;
-      inset: auto;
-      block-size: auto;
-      padding: 0;
-      background: transparent;
-      font: inherit;
-      font-weight: inherit;
-    }
-
-    .panel > header,
     .setting-row,
     .checkbox-row,
     .inline-switch {
@@ -879,14 +870,12 @@ class AutomaticEditor
         min-inline-size: 0;
       }
 
-      .panel > header,
       .setting-row:not(.vertical),
       .advanced-link {
         align-items: stretch;
         flex-direction: column;
       }
 
-      .panel > header > :last-child,
       .setting-row:not(.vertical) > button,
       .advanced-link > tui-icon,
       .advanced-link > [tuiBadge] {
@@ -931,6 +920,7 @@ class AutomaticEditor
     TuiCardLarge,
     TuiCheckbox,
     TuiGroup,
+    TuiHeader,
     TuiIcon,
     TuiInput,
     TuiLoader,

@@ -1959,6 +1959,13 @@ backup.scheduled.schedule-no-occurrence:
   fr_FR: "La planification ne comporte aucune occurrence dans les cinq prochaines années"
   pl_PL: "Harmonogram nie ma wystąpień w ciągu następnych pięciu lat"
 
+backup.scheduled.schedule-unsupported:
+  en_US: "Scheduled backups support hourly, daily, weekly, or monthly intervals"
+  de_DE: "Geplante Sicherungen unterstützen stündliche, tägliche, wöchentliche oder monatliche Intervalle"
+  es_ES: "Las copias programadas admiten intervalos horarios, diarios, semanales o mensuales"
+  fr_FR: "Les sauvegardes planifiées prennent en charge les intervalles horaires, quotidiens, hebdomadaires ou mensuels"
+  pl_PL: "Zaplanowane kopie obsługują interwały godzinowe, dzienne, tygodniowe lub miesięczne"
+
 backup.scheduled.service-not-ready:
   en_US: "Service is not ready for backup"
   de_DE: "Der Dienst ist nicht für eine Sicherung bereit"

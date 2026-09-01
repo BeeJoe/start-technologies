@@ -711,9 +711,7 @@ pub struct DeleteArchivedSnapshotsParams {
     pub target_id: BackupTargetId,
     pub package_id: PackageId,
     pub snapshot_ids: BTreeSet<ServiceSnapshotId>,
-    #[serde(default)]
-    #[ts(optional)]
-    pub password: Option<String>,
+    pub password: String,
 }
 
 /// Archived automatic backup snapshots selected for one service.
@@ -732,9 +730,7 @@ pub struct ArchivedSnapshotSelection {
 pub struct DeleteArchivedSnapshotsBulkParams {
     pub target_id: BackupTargetId,
     pub snapshots: Vec<ArchivedSnapshotSelection>,
-    #[serde(default)]
-    #[ts(optional)]
-    pub password: Option<String>,
+    pub password: String,
 }
 
 /// CLI inputs for deleting archived automatic backup snapshots.
@@ -752,9 +748,9 @@ pub struct DeleteArchivedSnapshotsCliParams {
     /// Automatic checkpoint IDs to delete.
     #[arg(required = true, help = "help.arg.automatic-backup-snapshot-ids")]
     pub snapshot_ids: Vec<ServiceSnapshotId>,
-    /// Current master password, required when the saved target credential is unavailable.
+    /// Current master password.
     #[arg(long, help = "help.arg.backup-password")]
-    pub password: Option<String>,
+    pub password: String,
 }
 
 /// Deletes selected archived checkpoints from the command line.
@@ -821,9 +817,7 @@ pub async fn delete_archived_snapshots_bulk(
     let _coordinator = crate::backup::try_backup_coordinator(ctx.backup_coordinator.clone())?;
 
     let db = ctx.db.peek().await;
-    if let Some(password) = &password {
-        RpcContext::check_password(&db, password)?;
-    }
+    RpcContext::check_password(&db, &password)?;
     let mut requested = BTreeMap::<PackageId, BTreeSet<ServiceSnapshotId>>::new();
     for selection in snapshots {
         requested
@@ -841,18 +835,7 @@ pub async fn delete_archived_snapshots_bulk(
             .as_idx(&key)
             .or_not_found(&key)?
             .de()?;
-        let archived_ids: BTreeSet<_> = history
-            .snapshots
-            .iter()
-            .filter(|snapshot| snapshot.archived)
-            .map(|snapshot| snapshot.id.clone())
-            .collect();
-        if !snapshot_ids.is_subset(&archived_ids) {
-            return Err(Error::new(
-                eyre!("{}", t!("backup.scheduled.delete-active-history")),
-                ErrorKind::InvalidRequest,
-            ));
-        }
+        validate_archived_snapshot_deletion(&history, snapshot_ids)?;
         histories.push(history);
     }
     let expected_target_instance_id = one_target_instance_id(
@@ -866,7 +849,7 @@ pub async fn delete_archived_snapshots_bulk(
         &target_id,
         &server_id,
         &expected_target_instance_id,
-        password.as_deref(),
+        Some(&password),
     )
     .await?;
     let mut remaining = guard.delete_archived_snapshots_bulk(&requested).await?;
@@ -892,6 +875,25 @@ pub async fn delete_archived_snapshots_bulk(
         .await
         .result?;
     Ok(histories)
+}
+
+fn validate_archived_snapshot_deletion(
+    history: &ServiceTargetHistory,
+    snapshot_ids: &BTreeSet<ServiceSnapshotId>,
+) -> Result<(), Error> {
+    let archived_ids: BTreeSet<_> = history
+        .snapshots
+        .iter()
+        .filter(|snapshot| snapshot.archived)
+        .map(|snapshot| snapshot.id.clone())
+        .collect();
+    if history.feeding_jobs.is_empty() && snapshot_ids.is_subset(&archived_ids) {
+        return Ok(());
+    }
+    Err(Error::new(
+        eyre!("{}", t!("backup.scheduled.delete-active-history")),
+        ErrorKind::InvalidRequest,
+    ))
 }
 
 pub(crate) async fn mount_scheduled_target(
@@ -1179,9 +1181,7 @@ pub async fn reassign_target(
     validate_unique_job_name(&db, &job.name, Some(&id))?;
     let package_ids = selected_installed_services(&db, &job.services)?;
     let server_id = db.as_public().as_server_info().as_id().de()?;
-    let hostname = ctx
-        .account
-        .peek(|account| account.hostname.hostname.clone());
+    let hostname = ctx.account.peek(|account| account.hostname.clone());
     let target_guard = TmpMountGuard::mount(&target_id.clone().load(&db)?, ReadWrite).await?;
     let available = crate::disk::util::get_available(target_guard.path()).await?;
     super::runner::preflight_new_target_capacity(&ctx, &package_ids, available).await?;
@@ -2081,9 +2081,7 @@ pub async fn create(
     validate_unique_job_name(&db, &name, None)?;
     let package_ids = selected_installed_services(&db, &services)?;
     let server_id = db.as_public().as_server_info().as_id().de()?;
-    let hostname = ctx
-        .account
-        .peek(|account| account.hostname.hostname.clone());
+    let hostname = ctx.account.peek(|account| account.hostname.clone());
     let target_guard = TmpMountGuard::mount(&target_id.clone().load(&db)?, ReadWrite).await?;
     let (scheduled_guard, encryption_key) =
         ScheduledBackupMountGuard::initialize(target_guard, &server_id, hostname, &password)
@@ -2627,6 +2625,35 @@ mod cli_tests {
             created_at: now,
             updated_at: now,
         }
+    }
+
+    fn empty_history(feeding_jobs: BTreeSet<BackupJobId>) -> ServiceTargetHistory {
+        ServiceTargetHistory {
+            target_id: "cifs-0".parse().unwrap(),
+            target_instance_id: "instance".to_owned(),
+            package_id: "hello-world".parse().unwrap(),
+            timezone: "UTC".to_owned(),
+            policy: RetentionPolicy::latest_only(),
+            feeding_jobs,
+            snapshots: Vec::new(),
+            archived: true,
+        }
+    }
+
+    #[test]
+    fn archived_snapshot_deletion_requires_an_unreferenced_history() {
+        let history = empty_history(BTreeSet::new());
+        assert!(validate_archived_snapshot_deletion(&history, &BTreeSet::new()).is_ok());
+        assert!(
+            validate_archived_snapshot_deletion(
+                &history,
+                &BTreeSet::from([ServiceSnapshotId::new()]),
+            )
+            .is_err()
+        );
+
+        let referenced = empty_history(BTreeSet::from([BackupJobId::new()]));
+        assert!(validate_archived_snapshot_deletion(&referenced, &BTreeSet::new()).is_err());
     }
 
     #[test]

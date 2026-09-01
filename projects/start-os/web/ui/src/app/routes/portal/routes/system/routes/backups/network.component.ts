@@ -274,7 +274,7 @@ const NETWORK_DELETE = new PolymorpheusComponent(NetworkDeleteDialog)
       gap: 0.25rem;
     }
 
-    @container (max-width: 48rem) {
+    @container (max-inline-size: 48rem) {
       table {
         --app-table-header-display: none;
 

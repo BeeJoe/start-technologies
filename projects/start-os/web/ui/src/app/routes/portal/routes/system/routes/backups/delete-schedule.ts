@@ -196,6 +196,23 @@ export class DeleteScheduleService {
     )
     if (!decision) return false
 
+    const password = decision.deleteCheckpoints
+      ? await firstValueFrom(
+          this.dialogs.openPrompt<string>({
+            label: this.i18n.transform('Master password needed'),
+            data: {
+              message: this.i18n.transform('Enter master password'),
+              label: this.i18n.transform('Password'),
+              placeholder: this.i18n.transform('Enter master password'),
+              buttonText: this.i18n.transform('Delete schedule and backups'),
+              useMask: true,
+            },
+          }),
+          { defaultValue: '' },
+        )
+      : ''
+    if (decision.deleteCheckpoints && !password) return false
+
     return this.tasks.run(
       async () => {
         if (decision.deleteCheckpoints) {
@@ -208,6 +225,7 @@ export class DeleteScheduleService {
         if (decision.deleteCheckpoints) {
           await this.api.deleteArchivedBackupSnapshotsBulk({
             targetId: job.targetId,
+            password,
             snapshots: unreferenced.map(history => ({
               packageId: history.packageId,
               snapshotIds: history.snapshots.map(snapshot => snapshot.id),
