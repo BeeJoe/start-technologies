@@ -974,8 +974,7 @@ async function runRsync(rsyncOptions: {
   return { id, wait, progress }
 }
 
-/** Parses rsync's locale-stabilized `--stats` output. `null` means the
- * structured value was not present and must be surfaced as Unknown. */
+/** Returns transferred bytes, or null when rsync stats omit the value. */
 export function parseRsyncTransferredBytes(output: string): number | null {
   const transferred =
     /^Total transferred file size:\s*([0-9,]+) bytes\s*$/m.exec(output)?.[1]

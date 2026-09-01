@@ -2188,6 +2188,16 @@ pub async fn update(
         .as_idx(&id)
         .or_not_found(&id)?
         .de()?;
+    let server_id = snapshot.as_public().as_server_info().as_id().de()?;
+    let (target_guard, _) = mount_scheduled_target(
+        &snapshot,
+        &job.target_id,
+        &server_id,
+        &job.target_instance_id,
+        None,
+    )
+    .await?;
+    target_guard.save_and_unmount().await?;
     let old_services = associated_service_ids(&snapshot, &job)?;
     let new_services = selected_installed_services(&snapshot, &services)?;
     let removed_services = old_services
