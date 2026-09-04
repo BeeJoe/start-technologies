@@ -3,8 +3,8 @@ import {
   afterNextRender,
   Component,
   computed,
-  ElementRef,
   effect,
+  ElementRef,
   inject,
   Injector,
   input,
@@ -53,18 +53,21 @@ import {
 import { TuiCardLarge, TuiForm, TuiHeader } from '@taiga-ui/layout'
 import { PatchDB } from 'patch-db-client'
 import { filter, firstValueFrom, map, take } from 'rxjs'
+
 import { ApiService } from 'src/app/services/api/embassy-api.service'
 import { DataModel } from 'src/app/services/patch-db/data-model'
 import { BackupService, formatCifsLocation } from './backup.service'
+import { DeleteScheduleService } from './delete-schedule'
+import { BackupRetentionRules } from './retention-rules'
 import { BackupScheduleBrowser } from './schedule-browser'
 import { BackupScheduleControls } from './schedule-controls'
 import {
   backupPauseLabel,
-  backupTargetName,
   BackupRetentionRuleValue,
   BackupRetentionTierEditor,
   BackupScheduleFormValue,
   BackupServiceSelection,
+  backupTargetName,
   formatBackupScheduleSummary,
   formatBackupServiceSummary,
   hasDuplicateRetentionRules,
@@ -73,17 +76,15 @@ import {
   parseBackupRetentionTier,
   parseBackupSchedule,
   parseBackupServiceSelection,
+  removeBackupRetentionRule,
   retentionIntervalFromSeconds,
   retentionIntervalSeconds,
   retentionPeriodLabel,
-  removeBackupRetentionRule,
   serializeBackupRetentionTier,
-  serializeBackupServiceSelection,
   serializeBackupSchedule,
+  serializeBackupServiceSelection,
   SYSTEM_PACKAGE_ID,
 } from './scheduled-utils'
-import { DeleteScheduleService } from './delete-schedule'
-import { BackupRetentionRules } from './retention-rules'
 
 interface EditableRetentionRule extends BackupRetentionTierEditor {
   preserved: {
@@ -718,6 +719,9 @@ class JobEditor
                 size="xs"
                 appearance="icon"
                 [iconStart]="passwordMasked ? '@tui.eye' : '@tui.eye-off'"
+                [attr.aria-label]="
+                  (passwordMasked ? 'Show password' : 'Hide password') | i18n
+                "
                 (click)="passwordMasked = !passwordMasked"
               >
                 {{
@@ -818,6 +822,10 @@ class JobEditor
                 appearance="icon"
                 [iconStart]="
                   reassignPasswordMasked ? '@tui.eye' : '@tui.eye-off'
+                "
+                [attr.aria-label]="
+                  (reassignPasswordMasked ? 'Show password' : 'Hide password')
+                    | i18n
                 "
                 (click)="reassignPasswordMasked = !reassignPasswordMasked"
               >
@@ -1903,12 +1911,14 @@ export class ScheduledBackups {
   }
 
   protected async runNow(job: T.BackupJob) {
-    await this.perform(() => this.api.runScheduledBackupJob({ id: job.id }))
+    await this.performAndReload(() =>
+      this.api.runScheduledBackupJob({ id: job.id }),
+    )
   }
 
   protected async setJobEnabled(job: T.BackupJob, enabled: boolean) {
     if (enabled === job.enabled && !job.pause) return
-    await this.perform(() =>
+    await this.performAndReload(() =>
       this.api.setScheduledBackupJobEnabled({
         id: job.id,
         enabled,
@@ -1943,7 +1953,7 @@ export class ScheduledBackups {
       { defaultValue: '' },
     )
     if (!password) return
-    await this.perform(() =>
+    await this.performAndReload(() =>
       this.api.retryScheduledBackupTarget({
         targetId: job.targetId,
         password,
@@ -1974,7 +1984,7 @@ export class ScheduledBackups {
     this.reassignForm.markAllAsTouched()
     if (this.reassignForm.invalid) return
     const reassign = this.reassignForm.getRawValue()
-    await this.perform(() =>
+    await this.performAndReload(() =>
       this.api.reassignScheduledBackupTarget({
         id: job.id,
         targetId: reassign.targetId,
@@ -2022,7 +2032,7 @@ export class ScheduledBackups {
     const decisions = Object.fromEntries(
       this.jobs().map(job => [job.id, selected[job.id] === true]),
     )
-    await this.perform(() =>
+    await this.performAndReload(() =>
       this.api.resolveNewServiceBackupReview({
         packageId: review.packageId,
         decisions,
@@ -2268,7 +2278,7 @@ export class ScheduledBackups {
     return serializeBackupRetentionTier(rule)
   }
 
-  private async perform<T>(action: () => Promise<T>) {
+  private async performAndReload<T>(action: () => Promise<T>) {
     await this.tasks.run(async () => {
       await action()
       await this.reload()

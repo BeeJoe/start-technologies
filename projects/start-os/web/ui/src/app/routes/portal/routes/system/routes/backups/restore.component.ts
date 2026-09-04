@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms'
 import { DialogService, i18nPipe, TaskService } from '@start9labs/shared'
 import { TuiButton, TuiInput, TuiTitle } from '@taiga-ui/core'
 import { injectContext, PolymorpheusComponent } from '@taiga-ui/polymorpheus'
+
 import { TableComponent } from 'src/app/routes/portal/components/table.component'
 import { ApiService } from 'src/app/services/api/embassy-api.service'
 import { BackupContext } from './backup.types'
@@ -54,6 +55,9 @@ import { RECOVER } from './recover.component'
             size="xs"
             appearance="icon"
             [iconStart]="passwordMasked ? '@tui.eye' : '@tui.eye-off'"
+            [attr.aria-label]="
+              (passwordMasked ? 'Show password' : 'Hide password') | i18n
+            "
             (click)="passwordMasked = !passwordMasked"
           >
             {{ (passwordMasked ? 'Show password' : 'Hide password') | i18n }}

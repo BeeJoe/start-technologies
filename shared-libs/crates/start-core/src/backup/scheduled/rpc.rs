@@ -580,7 +580,7 @@ async fn refresh_histories(
     }
     drop(db);
     let histories: Vec<_> = merged.into_values().collect();
-    persist_histories(&ctx, &histories).await?;
+    persist_histories(&ctx, &histories, None).await?;
     Ok(histories)
 }
 
@@ -620,14 +620,28 @@ pub async fn discover_histories(
         .into_iter()
         .map(|(_, job)| job.de())
         .collect::<Result<Vec<BackupJob>, Error>>()?;
-    let guard = ScheduledBackupMountGuard::discover_with_password(
-        TmpMountGuard::mount(&target_id.clone().load(&db)?, ReadWrite).await?,
+    let current_server_id = db.as_public().as_server_info().as_id().de()?;
+    let device_key = (server_id == current_server_id)
+        .then(|| db.as_private().as_scheduled_backup_device_key().de())
+        .transpose()?;
+    let target = target_id.clone().load(&db)?;
+    drop(db);
+    let (guard, encryption_key) = ScheduledBackupMountGuard::discover_with_password(
+        TmpMountGuard::mount(&target, ReadWrite).await?,
         &server_id,
         &password,
     )
-    .await?
-    .0;
+    .await?;
     let target_instance_id = guard.recovery.target_instance_id.clone();
+    let credential = device_key
+        .map(|device_key| {
+            ScheduledBackupCredential::seal(
+                target_instance_id.clone(),
+                &encryption_key,
+                &device_key,
+            )
+        })
+        .transpose()?;
     let histories: Vec<_> = guard
         .metadata
         .services
@@ -645,16 +659,29 @@ pub async fn discover_histories(
         })
         .collect();
     guard.unmount().await?;
-    persist_histories(&ctx, &histories).await?;
+    persist_histories(
+        &ctx,
+        &histories,
+        credential
+            .as_ref()
+            .map(|credential| (&target_id, credential)),
+    )
+    .await?;
     Ok(histories)
 }
 
 async fn persist_histories(
     ctx: &RpcContext,
     histories: &[ServiceTargetHistory],
+    credential: Option<(&BackupTargetId, &ScheduledBackupCredential)>,
 ) -> Result<(), Error> {
     ctx.db
         .mutate(|db| {
+            if let Some((target_id, credential)) = credential {
+                db.as_private_mut()
+                    .as_scheduled_backup_credentials_mut()
+                    .insert(&target_id.to_string(), credential)?;
+            }
             let state = db.as_public_mut().as_scheduled_backups_mut();
             for history in histories {
                 state.as_histories_mut().insert(

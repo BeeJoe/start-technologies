@@ -2016,8 +2016,6 @@ fn large_directory_spills_and_stays_consistent() {
     );
 }
 
-/// Directory offsets are opaque cookies that callers may revisit. Reusing a
-/// cookie must resume after the same entry instead of restarting the listing.
 #[test_log::test]
 fn directory_offsets_survive_seekdir_retries() {
     let data = TempDir::new("backupfs_data").unwrap();

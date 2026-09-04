@@ -2,10 +2,11 @@ import { Component, inject, input } from '@angular/core'
 import { RouterLink } from '@angular/router'
 import { i18nPipe } from '@start9labs/shared'
 import { TuiButton, TuiNotification, TuiTitle } from '@taiga-ui/core'
+
 import { TitleDirective } from 'src/app/services/title.service'
+import { BackupService } from '../system/routes/backups/backup.service'
 import { BackupNetworkComponent } from '../system/routes/backups/network.component'
 import { BackupPhysicalComponent } from '../system/routes/backups/physical.component'
-import { BackupService } from '../system/routes/backups/backup.service'
 
 @Component({
   selector: 'backup-locations',
