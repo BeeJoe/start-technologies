@@ -529,11 +529,7 @@ impl PersistentContainer {
             .and_then(from_value)
     }
 
-    /// Executes a package backup while the caller owns the host-controlled
-    /// deadline. The deadline is still forwarded for legacy procedure
-    /// containers, but this request deliberately has no second competing host
-    /// timer: the backup transition must win the deadline race so it can stop
-    /// the in-process JavaScript runtime before unmounting the backup bind.
+    /// Leaves deadline enforcement to the backup transition.
     #[instrument(skip_all)]
     pub(in crate::service) async fn execute_backup<O>(
         &self,

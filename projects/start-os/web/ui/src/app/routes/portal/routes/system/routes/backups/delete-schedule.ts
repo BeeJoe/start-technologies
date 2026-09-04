@@ -1,6 +1,11 @@
 import { Component, inject, Service } from '@angular/core'
 import { FormsModule } from '@angular/forms'
-import { DialogService, i18nPipe, TaskService } from '@start9labs/shared'
+import {
+  convertBytes,
+  DialogService,
+  i18nPipe,
+  TaskService,
+} from '@start9labs/shared'
 import { T } from '@start9labs/start-core'
 import {
   TuiButton,
@@ -10,6 +15,7 @@ import {
 } from '@taiga-ui/core'
 import { injectContext, PolymorpheusComponent } from '@taiga-ui/polymorpheus'
 import { firstValueFrom } from 'rxjs'
+
 import { ApiService } from 'src/app/services/api/embassy-api.service'
 
 export interface DeleteScheduleDialogData {
@@ -188,7 +194,7 @@ export class DeleteScheduleService {
           size: 's',
           data: {
             checkpointCount,
-            reclaimable: this.bytes(reclaimable),
+            reclaimable: convertBytes(reclaimable),
           },
         },
       ),
@@ -256,16 +262,5 @@ export class DeleteScheduleService {
       (sum, snapshot) => sum + (snapshot.physicalSize ?? snapshot.logicalSize),
       0,
     )
-  }
-
-  private bytes(value: number): string {
-    const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB']
-    let amount = value
-    let unit = 0
-    while (amount >= 1024 && unit < units.length - 1) {
-      amount /= 1024
-      unit++
-    }
-    return `${amount.toFixed(unit ? 1 : 0)} ${units[unit]}`
   }
 }

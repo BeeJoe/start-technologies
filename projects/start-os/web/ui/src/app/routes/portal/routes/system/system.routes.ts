@@ -6,6 +6,7 @@ import {
   RouterStateSnapshot,
   Routes,
 } from '@angular/router'
+
 import { titleResolver } from 'src/app/utils/title-resolver'
 import { SystemComponent } from './system.component'
 

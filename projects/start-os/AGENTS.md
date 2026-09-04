@@ -175,7 +175,7 @@ User-facing changes (UI, CLI, install/setup flow) must update the end-user docs 
 
 The OS product is a thin wrapper over the shared `start-core` crate (`shared-libs/crates/start-core`), the shared TypeScript modules (`shared-libs/ts-modules`), and the SDK (`projects/start-sdk`). Build commands run from the **repo root** unless noted; the product dir is `projects/start-os`.
 
-If you're only working on the admin UI or setup-wizard, you don't need the OS-image toolchain below — the web apps build and run standalone against mock data. See [`shared-libs/ts-modules/CONTRIBUTING.md`](../../shared-libs/ts-modules/CONTRIBUTING.md).
+If you're only working on the admin UI or setup-wizard, you don't need the OS-image toolchain below — the web apps build and run standalone against mock data. See [`shared-libs/ts-modules/AGENTS.md`](../../shared-libs/ts-modules/AGENTS.md).
 
 Beyond the shared toolchain in the [root CONTRIBUTING](../../CONTRIBUTING.md#environment-setup), **building the OS image needs multi-arch emulation and image-packaging tools** (Debian/Ubuntu):
 
@@ -215,7 +215,7 @@ OS builds use the repo-wide build variables (`PLATFORM`, `ENVIRONMENT`, `PROFILE
 
 ### Building
 
-The web UIs are embedded into `startbox` at compile time (`include_dir!`), so the web build must precede the Rust build — always go through the `Makefile`, which encodes the ordering. For faster web iteration use `npm run start:ui` (see [`shared-libs/ts-modules/CONTRIBUTING.md`](../../shared-libs/ts-modules/CONTRIBUTING.md)).
+The web UIs are embedded into `startbox` at compile time (`include_dir!`), so the web build must precede the Rust build — always go through the `Makefile`, which encodes the ordering. For faster web iteration use `npm run start:ui` (see [`shared-libs/ts-modules/AGENTS.md`](../../shared-libs/ts-modules/AGENTS.md)).
 
 ```sh
 cargo check -p start-os        # verify the OS bins compile (startbox, start-container)

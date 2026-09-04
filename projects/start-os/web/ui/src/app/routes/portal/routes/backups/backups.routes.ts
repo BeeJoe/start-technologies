@@ -1,4 +1,5 @@
 import { CanDeactivateFn, Routes } from '@angular/router'
+
 import { titleResolver } from 'src/app/utils/title-resolver'
 import type BackupsComponent from './backups.component'
 

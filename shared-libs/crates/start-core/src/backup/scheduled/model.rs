@@ -417,9 +417,7 @@ pub struct RetentionPolicyChangePreview {
     pub affected_jobs: Vec<String>,
 }
 
-/// Credential material is private database state and must never be exported to
-/// PatchDB clients. `sealed_key` contains only the target encryption key, not a
-/// user password.
+/// Device-sealed target encryption key.
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ScheduledBackupCredential {

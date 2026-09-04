@@ -1,4 +1,5 @@
 import { Routes } from '@angular/router'
+
 import { SYSTEM_UTILITIES } from 'src/app/utils/system-utilities'
 import { titleResolver } from 'src/app/utils/title-resolver'
 import { toRouterLink } from 'src/app/utils/to-router-link'
