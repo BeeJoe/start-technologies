@@ -1,5 +1,6 @@
 import { ErrorHandler, inject, Service } from '@angular/core'
 import { TuiNotificationService } from '@taiga-ui/core'
+
 import { HttpError } from '../classes/http-error'
 
 @Service()

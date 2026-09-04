@@ -1,4 +1,4 @@
-import { Component, effect, inject, input, output, signal } from '@angular/core'
+import { Component, inject, input, linkedSignal, output } from '@angular/core'
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop'
 import {
   NonNullableFormBuilder,
@@ -9,10 +9,11 @@ import { i18nPipe } from '@start9labs/shared'
 import { TuiButton, TuiDataList, TuiInput } from '@taiga-ui/core'
 import { TuiChevron, TuiInputNumber, TuiSelect } from '@taiga-ui/kit'
 import { map, merge, switchMap } from 'rxjs'
+
 import {
-  backupRetentionIntervalLabel,
   BACKUP_RETENTION_INTERVALS,
   BackupRetentionInterval,
+  backupRetentionIntervalLabel,
   BackupRetentionRuleValue,
   retentionPeriodLabel,
 } from './scheduled-utils'
@@ -131,9 +132,18 @@ export class BackupRetentionRules {
   readonly removeRequested = output<number>()
 
   protected readonly intervals = BACKUP_RETENTION_INTERVALS
-  protected readonly ruleForms = signal<
+  protected readonly ruleForms = linkedSignal<
+    readonly BackupRetentionRuleValue[],
     ReturnType<BackupRetentionRules['createRuleForm']>[]
-  >([])
+  >({
+    source: this.rules,
+    computation: (rules, previous) =>
+      previous &&
+      rules.length === previous.source.length &&
+      rules.every((rule, index) => rule === previous.source[index])
+        ? previous.value
+        : rules.map(rule => this.createRuleForm(rule)),
+  })
   protected readonly stringifyInterval = (
     interval: BackupRetentionRuleValue['interval'],
   ) => this.i18n.transform(backupRetentionIntervalLabel(interval))
@@ -151,25 +161,9 @@ export class BackupRetentionRules {
     .subscribe(({ form, index }) => {
       this.ruleChange.emit({
         index,
-        value: { ...this.sourceRules[index], ...form.getRawValue() },
+        value: { ...this.rules()[index], ...form.getRawValue() },
       })
     })
-
-  private sourceRules: readonly BackupRetentionRuleValue[] = []
-
-  constructor() {
-    effect(() => {
-      const rules = this.rules()
-      if (
-        rules.length === this.sourceRules.length &&
-        rules.every((rule, index) => rule === this.sourceRules[index])
-      ) {
-        return
-      }
-      this.sourceRules = rules
-      this.ruleForms.set(rules.map(rule => this.createRuleForm(rule)))
-    })
-  }
 
   protected period(rule: BackupRetentionRuleValue) {
     return rule.interval === 'custom'

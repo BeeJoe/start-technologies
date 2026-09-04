@@ -7,6 +7,7 @@ import {
   TuiIcon,
   TuiTitle,
 } from '@taiga-ui/core'
+
 import {
   CifsBackupTarget,
   DiskBackupTarget,
@@ -30,8 +31,8 @@ type Location = MappedBackupTarget<CifsBackupTarget | DiskBackupTarget>
           class="location-option"
           type="button"
           [disabled]="!target.available"
-          [class.selected]="selectedId() === target.location.id"
-          [class.manual-or-restore]="mode() !== 'automatic'"
+          [class._selected]="selectedId() === target.location.id"
+          [class._manual-or-restore]="mode() !== 'automatic'"
           (click)="selected.emit(target.location)"
         >
           <tui-icon [icon]="target.icon" />
@@ -131,7 +132,7 @@ type Location = MappedBackupTarget<CifsBackupTarget | DiskBackupTarget>
       margin-block-start: 0.25rem;
     }
 
-    .selected {
+    ._selected {
       box-shadow: inset 0 0 0 2px var(--tui-border-focus);
     }
 
@@ -139,7 +140,7 @@ type Location = MappedBackupTarget<CifsBackupTarget | DiskBackupTarget>
       color: var(--tui-text-secondary);
     }
 
-    .manual-or-restore > [tuiTitle] {
+    ._manual-or-restore > [tuiTitle] {
       display: grid;
       grid-template-columns: minmax(0, 1fr) minmax(8rem, 45%);
       align-items: center;
@@ -147,16 +148,16 @@ type Location = MappedBackupTarget<CifsBackupTarget | DiskBackupTarget>
       inline-size: 100%;
     }
 
-    .manual-or-restore.location-option {
+    ._manual-or-restore.location-option {
       inline-size: 100%;
       box-sizing: border-box;
     }
 
-    .manual-or-restore > [tuiTitle] > b {
+    ._manual-or-restore > [tuiTitle] > b {
       grid-column: 1;
     }
 
-    .manual-or-restore > [tuiTitle] [tuiSubtitle] {
+    ._manual-or-restore > [tuiTitle] [tuiSubtitle] {
       grid-column: 2;
       min-inline-size: 0;
       margin-block-start: 0;
@@ -174,7 +175,7 @@ type Location = MappedBackupTarget<CifsBackupTarget | DiskBackupTarget>
         justify-self: center;
       }
 
-      .manual-or-restore > [tuiTitle] {
+      ._manual-or-restore > [tuiTitle] {
         display: flex;
         flex-direction: row;
         flex-wrap: wrap;
@@ -193,7 +194,7 @@ type Location = MappedBackupTarget<CifsBackupTarget | DiskBackupTarget>
         word-break: normal;
       }
 
-      .manual-or-restore > [tuiTitle] [tuiSubtitle] {
+      ._manual-or-restore > [tuiTitle] [tuiSubtitle] {
         display: flex;
         flex: 1 1 100%;
         flex-wrap: wrap;
@@ -207,7 +208,7 @@ type Location = MappedBackupTarget<CifsBackupTarget | DiskBackupTarget>
         word-break: break-word;
       }
 
-      .manual-or-restore > [tuiTitle] .target-detail {
+      ._manual-or-restore > [tuiTitle] .target-detail {
         min-inline-size: 0;
         max-inline-size: 100%;
         overflow-wrap: anywhere;
@@ -215,7 +216,7 @@ type Location = MappedBackupTarget<CifsBackupTarget | DiskBackupTarget>
         word-break: break-word;
       }
 
-      .manual-or-restore > [tuiTitle] .target-reason {
+      ._manual-or-restore > [tuiTitle] .target-reason {
         overflow-wrap: normal;
         white-space: normal;
         word-break: normal;

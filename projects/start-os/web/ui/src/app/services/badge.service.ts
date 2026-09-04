@@ -1,6 +1,7 @@
 import { inject, Injectable } from '@angular/core'
 import { PatchDB } from 'patch-db-client'
 import { combineLatest, EMPTY, map, Observable, shareReplay } from 'rxjs'
+
 import { HiddenUpdatesService } from 'src/app/services/hidden-updates.service'
 import { LocalPackagesService } from 'src/app/services/local-packages.service'
 import { NotificationService } from 'src/app/services/notification.service'
