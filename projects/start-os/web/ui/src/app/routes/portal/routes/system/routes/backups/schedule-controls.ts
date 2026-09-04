@@ -8,17 +8,18 @@ import {
 import { i18nPipe } from '@start9labs/shared'
 import { TuiDataList } from '@taiga-ui/core'
 import { TuiChevron, TuiSelect } from '@taiga-ui/kit'
+
 import {
-  backupFrequencyLabel,
-  backupTimezones,
-  backupWeekdayLabel,
   BACKUP_FREQUENCIES,
   BACKUP_HOURS,
   BACKUP_MINUTES,
   BACKUP_MONTH_DAYS,
   BACKUP_WEEKDAYS,
+  backupFrequencyLabel,
   BackupScheduleFormValue,
   BackupScheduleFrequency,
+  backupTimezones,
+  backupWeekdayLabel,
   formatBackupTime,
 } from './scheduled-utils'
 

@@ -118,7 +118,6 @@ export class BackupService {
     )
   }
 
-  /** Announces an immediate first backup only when the scheduler left it queued. */
   showQueuedNotification(job: T.BackupJob): void {
     if (!job.status.runRequested) return
 

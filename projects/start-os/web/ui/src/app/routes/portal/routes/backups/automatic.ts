@@ -36,6 +36,7 @@ import { TuiAccordion, TuiBlock, TuiSwitch } from '@taiga-ui/kit'
 import { TuiCardLarge, TuiHeader } from '@taiga-ui/layout'
 import { PatchDB } from 'patch-db-client'
 import { firstValueFrom } from 'rxjs'
+
 import { ApiService } from 'src/app/services/api/embassy-api.service'
 import { DataModel } from 'src/app/services/patch-db/data-model'
 import { TitleDirective } from 'src/app/services/title.service'
@@ -44,6 +45,7 @@ import {
   formatCifsLocation,
 } from '../system/routes/backups/backup.service'
 import {
+  BACKUP_RETENTION_INTERVALS,
   BackupRetentionInterval,
   BackupRetentionRuleValue,
   BackupRetentionTierEditor,
@@ -53,18 +55,18 @@ import {
   formatBackupScheduleSummary,
   formatBackupServiceSummary,
   hasDuplicateRetentionRules,
-  isValidBackupSchedule,
   isValidBackupRetentionRules,
-  retentionPeriodLabel,
+  isValidBackupSchedule,
   removeBackupRetentionRule,
+  retentionPeriodLabel,
   scheduleNeedsMoreFrequentRuns,
-  serializeBackupServiceSelection,
   serializeBackupRetentionPolicy,
   serializeBackupSchedule,
+  serializeBackupServiceSelection,
   SYSTEM_PACKAGE_ID,
 } from '../system/routes/backups/scheduled-utils'
-import { BackupScheduleControls } from '../system/routes/backups/schedule-controls'
 import { BackupRetentionRules } from '../system/routes/backups/retention-rules'
+import { BackupScheduleControls } from '../system/routes/backups/schedule-controls'
 import { ScheduledBackups } from '../system/routes/backups/scheduled'
 import { BackupLocationPicker } from './location-picker'
 
@@ -227,7 +229,7 @@ class AutomaticEditor
     } @else if (setupMode()) {
       <nav class="steps" [attr.aria-label]="'Setup progress' | i18n">
         @for (item of setupSteps; track item.number) {
-          <span [class.active]="step() === item.number">
+          <span [class._active]="step() === item.number">
             <b>{{ item.number }}</b>
             {{ item.label | i18n }}
           </span>
@@ -238,7 +240,7 @@ class AutomaticEditor
         <section
           tuiCardLarge="compact"
           class="panel"
-          [class.embedded-panel]="embedded()"
+          [class._embedded-panel]="embedded()"
         >
           <header tuiHeader>
             <span tuiTitle>
@@ -265,7 +267,7 @@ class AutomaticEditor
         <section
           tuiCardLarge="compact"
           class="panel"
-          [class.embedded-panel]="embedded()"
+          [class._embedded-panel]="embedded()"
           [formGroup]="editor.form"
         >
           <header tuiHeader>
@@ -413,7 +415,7 @@ class AutomaticEditor
         <section
           tuiCardLarge="compact"
           class="panel review-panel"
-          [class.embedded-panel]="embedded()"
+          [class._embedded-panel]="embedded()"
           [formGroup]="editor.form"
         >
           <header tuiHeader>
@@ -508,6 +510,9 @@ class AutomaticEditor
               size="xs"
               appearance="icon"
               [iconStart]="passwordMasked ? '@tui.eye' : '@tui.eye-off'"
+              [attr.aria-label]="
+                (passwordMasked ? 'Show password' : 'Hide password') | i18n
+              "
               (click)="passwordMasked = !passwordMasked"
             >
               {{ (passwordMasked ? 'Show password' : 'Hide password') | i18n }}
@@ -657,11 +662,11 @@ class AutomaticEditor
       background: var(--tui-background-neutral-1);
     }
 
-    .steps .active {
+    .steps ._active {
       color: var(--tui-text-primary);
     }
 
-    .steps .active b {
+    .steps ._active b {
       background: var(--tui-background-accent-1);
       color: var(--tui-text-primary-on-accent-1);
     }
@@ -807,7 +812,7 @@ class AutomaticEditor
       flex: 1;
     }
 
-    .embedded-panel {
+    ._embedded-panel {
       padding: 0;
       border: 0;
       border-radius: 0;

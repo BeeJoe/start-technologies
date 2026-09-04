@@ -27,6 +27,7 @@ import {
 import { TuiBadge, TuiSwitch } from '@taiga-ui/kit'
 import { TuiCardLarge, TuiHeader } from '@taiga-ui/layout'
 import { PatchDB } from 'patch-db-client'
+
 import { ApiService } from 'src/app/services/api/embassy-api.service'
 import { OSService } from 'src/app/services/os.service'
 import { DataModel } from 'src/app/services/patch-db/data-model'
@@ -107,12 +108,11 @@ type BackupPanel = 'automatic' | 'manual' | 'restore' | 'locations' | 'history'
       tuiCardLarge="compact"
       appearance="secondary-grayscale"
       class="backup-card"
-      [class.expanded]="expanded() === 'automatic'"
     >
       <header
         tuiHeader
         class="card-heading automatic-heading"
-        [class.single-job]="jobs().length === 1"
+        [class._single-job]="jobs().length === 1"
       >
         <button
           tuiCell
@@ -245,7 +245,6 @@ type BackupPanel = 'automatic' | 'manual' | 'restore' | 'locations' | 'history'
       tuiCardLarge="compact"
       appearance="secondary-grayscale"
       class="backup-card"
-      [class.expanded]="expanded() === 'manual'"
     >
       <header tuiHeader class="card-heading">
         <button
@@ -262,7 +261,7 @@ type BackupPanel = 'automatic' | 'manual' | 'restore' | 'locations' | 'history'
           </span>
           <tui-icon
             icon="@tui.chevron-down"
-            [class.rotated]="expanded() === 'manual'"
+            [class._rotated]="expanded() === 'manual'"
           />
         </button>
       </header>
@@ -282,7 +281,6 @@ type BackupPanel = 'automatic' | 'manual' | 'restore' | 'locations' | 'history'
       tuiCardLarge="compact"
       appearance="secondary-grayscale"
       class="backup-card"
-      [class.expanded]="expanded() === 'restore'"
     >
       <header tuiHeader class="card-heading">
         <button
@@ -301,7 +299,7 @@ type BackupPanel = 'automatic' | 'manual' | 'restore' | 'locations' | 'history'
           </span>
           <tui-icon
             icon="@tui.chevron-down"
-            [class.rotated]="expanded() === 'restore'"
+            [class._rotated]="expanded() === 'restore'"
           />
         </button>
       </header>
@@ -321,7 +319,6 @@ type BackupPanel = 'automatic' | 'manual' | 'restore' | 'locations' | 'history'
       tuiCardLarge="compact"
       appearance="secondary-grayscale"
       class="backup-card"
-      [class.expanded]="expanded() === 'locations'"
     >
       <header tuiHeader class="card-heading">
         <button
@@ -340,7 +337,7 @@ type BackupPanel = 'automatic' | 'manual' | 'restore' | 'locations' | 'history'
           </span>
           <tui-icon
             icon="@tui.chevron-down"
-            [class.rotated]="expanded() === 'locations'"
+            [class._rotated]="expanded() === 'locations'"
           />
         </button>
       </header>
@@ -356,7 +353,6 @@ type BackupPanel = 'automatic' | 'manual' | 'restore' | 'locations' | 'history'
       tuiCardLarge="compact"
       appearance="secondary-grayscale"
       class="backup-card"
-      [class.expanded]="expanded() === 'history'"
     >
       <header tuiHeader class="card-heading">
         <button
@@ -375,7 +371,7 @@ type BackupPanel = 'automatic' | 'manual' | 'restore' | 'locations' | 'history'
           </span>
           <tui-icon
             icon="@tui.chevron-down"
-            [class.rotated]="expanded() === 'history'"
+            [class._rotated]="expanded() === 'history'"
           />
         </button>
       </header>
@@ -447,7 +443,7 @@ type BackupPanel = 'automatic' | 'manual' | 'restore' | 'locations' | 'history'
       transition: transform var(--tui-duration, 0.2s);
     }
 
-    .rotated {
+    ._rotated {
       transform: rotate(180deg);
     }
 
@@ -547,7 +543,7 @@ type BackupPanel = 'automatic' | 'manual' | 'restore' | 'locations' | 'history'
         justify-content: flex-start;
       }
 
-      .automatic-heading.single-job .card-toggle b {
+      .automatic-heading._single-job .card-toggle b {
         white-space: normal;
       }
     }

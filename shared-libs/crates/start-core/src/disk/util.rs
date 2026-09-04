@@ -336,8 +336,7 @@ async fn recovery_info_with_limit(
                     let scheduled: crate::backup::scheduled::ScheduledBackupRecoveryInfo =
                         read_json_file_bounded(&metadata_path, MAX_BACKUP_RECOVERY_METADATA_BYTES)
                             .await?;
-                    // Make a scheduled-only backup set discoverable, but let
-                    // legacy/manual recovery metadata win when both exist.
+                    // Legacy recovery metadata takes precedence over scheduled metadata.
                     res.entry(base_server_id).or_insert(StartOsRecoveryInfo {
                         hostname: scheduled.hostname,
                         version: scheduled.version,

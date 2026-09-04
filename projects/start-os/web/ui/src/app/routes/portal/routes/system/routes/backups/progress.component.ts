@@ -1,10 +1,11 @@
 import { Component, inject } from '@angular/core'
 import { toSignal } from '@angular/core/rxjs-interop'
 import { i18nPipe, LeafProgressPipe } from '@start9labs/shared'
-import { TuiIcon, TuiLoader, TuiTitle, TuiCell } from '@taiga-ui/core'
+import { TuiCell, TuiIcon, TuiLoader, TuiTitle } from '@taiga-ui/core'
 import { TuiAvatar, TuiFade } from '@taiga-ui/kit'
 import { PatchDB } from 'patch-db-client'
 import { take } from 'rxjs'
+
 import { ToManifestPipe } from 'src/app/routes/portal/pipes/to-manifest'
 import { InstallingProgressPipe } from 'src/app/routes/portal/routes/services/pipes/install-progress.pipe'
 import { DataModel } from 'src/app/services/patch-db/data-model'
