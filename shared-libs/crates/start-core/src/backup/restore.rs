@@ -16,8 +16,8 @@ use super::scheduled::{
     complete_activity, history_key, insert_activity, mount_scheduled_target, running_activity,
 };
 use super::target::BackupTargetId;
-use crate::PackageId;
 use crate::backup::os::OsBackup;
+use crate::context::rpc::InitRpcContextPhases;
 use crate::context::setup::SetupResult;
 use crate::context::{RpcContext, SetupContext};
 use crate::db::model::Database;
@@ -25,14 +25,15 @@ use crate::disk::mount::backup::BackupMountGuard;
 use crate::disk::mount::filesystem::ReadWrite;
 use crate::disk::mount::guard::{GenericMountGuard, TmpMountGuard};
 use crate::hostname::{ServerHostname, repair_hostname};
-use crate::init::init;
+use crate::init::{InitPhases, init};
 use crate::prelude::*;
-use crate::progress::ProgressUnits;
+use crate::progress::{PhaseProgressTrackerHandle, ProgressUnits};
 use crate::s9pk::S9pk;
 use crate::service::service_map::DownloadInstallFuture;
 use crate::setup::SetupExecuteProgress;
 use crate::system::{save_language, sync_kiosk};
 use crate::util::serde::{IoFormat, Pem};
+use crate::{PackageId, SYSTEM_PACKAGE_ID};
 
 #[derive(Deserialize, Serialize, Parser, TS)]
 #[group(skip)]
@@ -461,17 +462,173 @@ pub async fn recover_full_server(
         rpc_ctx_phases,
     }: SetupExecuteProgress,
 ) -> Result<(SetupResult, RpcContext), Error> {
-    let mut restore_phase = restore_phase.or_not_found("restore progress")?;
-
     let backup_guard =
         BackupMountGuard::mount(recovery_source, server_id, recovery_password).await?;
-
     let os_backup_path = backup_guard.path().join("os-backup.json");
-    let mut os_backup: OsBackup = IoFormat::Json.from_slice(
-        &tokio::fs::read(&os_backup_path)
+    let os_backup = read_os_backup(&os_backup_path).await?;
+    let ids = backup_guard
+        .metadata
+        .package_backups
+        .keys()
+        .cloned()
+        .collect();
+    let (result, rpc_ctx, restore_phase) = initialize_recovered_server(
+        ctx,
+        disk_guid,
+        password,
+        os_backup,
+        kiosk,
+        hostname,
+        init_phases,
+        restore_phase,
+        rpc_ctx_phases,
+    )
+    .await?;
+    let tasks = restore_packages(&rpc_ctx, backup_guard, ids).await?;
+    restore_setup_services(tasks, restore_phase).await;
+    Ok((result, rpc_ctx))
+}
+
+#[instrument(skip_all)]
+pub async fn recover_full_server_from_scheduled(
+    ctx: &SetupContext,
+    disk_guid: InternedString,
+    password: Option<String>,
+    recovery_source: TmpMountGuard,
+    server_id: &str,
+    recovery_password: &str,
+    kiosk: bool,
+    hostname: Option<ServerHostname>,
+    SetupExecuteProgress {
+        init_phases,
+        restore_phase,
+        rpc_ctx_phases,
+    }: SetupExecuteProgress,
+) -> Result<(SetupResult, RpcContext), Error> {
+    let (backup_guard, _) = ScheduledBackupMountGuard::discover_with_password(
+        recovery_source,
+        server_id,
+        recovery_password,
+    )
+    .await?;
+    let mut snapshots = latest_scheduled_snapshots(&backup_guard.metadata);
+    let system_snapshot = snapshots.remove(&*SYSTEM_PACKAGE_ID).ok_or_else(|| {
+        Error::new(
+            eyre!("{}", t!("backup.scheduled.system-snapshot-not-found")),
+            ErrorKind::NotFound,
+        )
+    })?;
+    let os_backup_path = backup_guard
+        .snapshot_path(&*SYSTEM_PACKAGE_ID, &system_snapshot)
+        .join("os-backup.json");
+    let os_backup = read_os_backup(&os_backup_path).await?;
+    let (result, rpc_ctx, restore_phase) = initialize_recovered_server(
+        ctx,
+        disk_guid,
+        password,
+        os_backup,
+        kiosk,
+        hostname,
+        init_phases,
+        restore_phase,
+        rpc_ctx_phases,
+    )
+    .await?;
+    let tasks = restore_scheduled_packages(&rpc_ctx, backup_guard, snapshots).await?;
+    restore_setup_services(tasks, restore_phase).await;
+    Ok((result, rpc_ctx))
+}
+
+fn latest_scheduled_snapshots(
+    metadata: &super::scheduled::ScheduledBackupOnTargetMetadata,
+) -> BTreeMap<PackageId, ServiceSnapshotId> {
+    metadata
+        .services
+        .iter()
+        .filter_map(|(package_id, history)| {
+            history
+                .snapshots
+                .iter()
+                .max_by_key(|snapshot| snapshot.completed_at)
+                .map(|snapshot| (package_id.clone(), snapshot.id.clone()))
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod scheduled_recovery_tests {
+    use chrono::{DateTime, Utc};
+
+    use super::*;
+    use crate::backup::scheduled::{
+        BackupJobId, BackupRunId, BackupSource, OnTargetServiceHistory, RetentionPolicy,
+        ScheduledBackupOnTargetMetadata, ServiceSnapshot,
+    };
+
+    fn snapshot(package_id: &PackageId, completed_at: i64) -> ServiceSnapshot {
+        let completed_at = DateTime::<Utc>::from_timestamp(completed_at, 0).unwrap();
+        ServiceSnapshot {
+            id: ServiceSnapshotId::new(),
+            package_id: package_id.clone(),
+            package_version: "1.0.0".to_owned(),
+            source: BackupSource::Scheduled,
+            job_id: BackupJobId::new(),
+            job_name: "Daily".to_owned(),
+            run_id: BackupRunId::new(),
+            completed_at,
+            logical_size: 1,
+            physical_size: Some(1),
+            changed_bytes: Some(1),
+            measured_at: completed_at,
+            archived: false,
+        }
+    }
+
+    #[test]
+    fn full_recovery_selects_the_newest_checkpoint_for_each_package() {
+        let package_id: PackageId = "bitcoind".parse().unwrap();
+        let older = snapshot(&package_id, 1);
+        let newer = snapshot(&package_id, 2);
+        let metadata = ScheduledBackupOnTargetMetadata {
+            target_instance_id: "target".to_owned(),
+            services: BTreeMap::from([(
+                package_id.clone(),
+                OnTargetServiceHistory {
+                    timezone: "UTC".to_owned(),
+                    policy: RetentionPolicy::latest_only(),
+                    archived: false,
+                    snapshots: vec![newer.clone(), older],
+                },
+            )]),
+        };
+
+        assert_eq!(
+            latest_scheduled_snapshots(&metadata).get(&package_id),
+            Some(&newer.id)
+        );
+    }
+}
+
+async fn read_os_backup(path: &std::path::Path) -> Result<OsBackup, Error> {
+    IoFormat::Json.from_slice(
+        &tokio::fs::read(path)
             .await
-            .with_ctx(|_| (ErrorKind::Filesystem, os_backup_path.display().to_string()))?,
-    )?;
+            .with_ctx(|_| (ErrorKind::Filesystem, path.display().to_string()))?,
+    )
+}
+
+async fn initialize_recovered_server(
+    ctx: &SetupContext,
+    disk_guid: InternedString,
+    password: Option<String>,
+    mut os_backup: OsBackup,
+    kiosk: bool,
+    hostname: Option<ServerHostname>,
+    init_phases: InitPhases,
+    restore_phase: Option<PhaseProgressTrackerHandle>,
+    rpc_ctx_phases: InitRpcContextPhases,
+) -> Result<(SetupResult, RpcContext, PhaseProgressTrackerHandle), Error> {
+    let restore_phase = restore_phase.or_not_found("restore progress")?;
 
     if let Some(password) = password {
         os_backup.account.password = argon2::hash_encoded(
@@ -518,14 +675,19 @@ pub async fn recover_full_server(
     )
     .await?;
 
+    let result = SetupResult {
+        hostname: os_backup.account.hostname,
+        root_ca: Pem(os_backup.account.root_ca_cert),
+        needs_restart: ctx.install_rootfs.peek(|a| a.is_some()),
+    };
+    Ok((result, rpc_ctx, restore_phase))
+}
+
+async fn restore_setup_services(
+    tasks: BTreeMap<PackageId, DownloadInstallFuture>,
+    mut restore_phase: PhaseProgressTrackerHandle,
+) {
     restore_phase.start();
-    let ids: Vec<_> = backup_guard
-        .metadata
-        .package_backups
-        .keys()
-        .cloned()
-        .collect();
-    let tasks = restore_packages(&rpc_ctx, backup_guard, ids).await?;
     restore_phase.set_total(tasks.len() as u64);
     restore_phase.set_units(Some(ProgressUnits::Steps));
     let restore_phase = Arc::new(Mutex::new(restore_phase));
@@ -548,15 +710,6 @@ pub async fn recover_full_server(
         })
         .await;
     restore_phase.lock().await.complete();
-
-    Ok((
-        SetupResult {
-            hostname: os_backup.account.hostname,
-            root_ca: Pem(os_backup.account.root_ca_cert),
-            needs_restart: ctx.install_rootfs.peek(|a| a.is_some()),
-        },
-        rpc_ctx,
-    ))
 }
 
 #[instrument(skip(ctx, backup_guard))]

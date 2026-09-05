@@ -33,4 +33,7 @@ backup restore-checkpoint` to select one checkpoint per service. See the
 ## Restoring an Entire Server
 
 If the StartOS data drive is lost or corrupted, follow the [recovery options
-during initial setup](./initial-setup.md#recover-options).
+during initial setup](./initial-setup.md#recover-options). StartOS can recover
+from a manual server backup or the newest automatic System checkpoint on the
+selected location. Automatic recovery also restores the newest available
+checkpoint for each service on that location.

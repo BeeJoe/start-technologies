@@ -97,6 +97,8 @@ impl From<BackupUnencryptedMetadata> for StartOsRecoveryInfo {
             hostname: meta.hostname,
             version: meta.version,
             timestamp: meta.timestamp,
+            scheduled: false,
+            server_id: None,
         }
     }
 }
@@ -112,6 +114,11 @@ pub struct StartOsRecoveryInfo {
     pub version: exver::Version,
     #[ts(type = "string")]
     pub timestamp: DateTime<Utc>,
+    #[serde(default)]
+    pub scheduled: bool,
+    #[serde(default)]
+    #[ts(optional)]
+    pub server_id: Option<String>,
 }
 
 const DISK_PATH: &str = "/dev/disk/by-path";
@@ -336,12 +343,19 @@ async fn recovery_info_with_limit(
                     let scheduled: crate::backup::scheduled::ScheduledBackupRecoveryInfo =
                         read_json_file_bounded(&metadata_path, MAX_BACKUP_RECOVERY_METADATA_BYTES)
                             .await?;
-                    // Legacy recovery metadata takes precedence over scheduled metadata.
-                    res.entry(base_server_id).or_insert(StartOsRecoveryInfo {
-                        hostname: scheduled.hostname,
-                        version: scheduled.version,
-                        timestamp: scheduled.timestamp,
-                    });
+                    if scheduled.has_system_backup == Some(false) {
+                        continue;
+                    }
+                    res.insert(
+                        server_id,
+                        StartOsRecoveryInfo {
+                            hostname: scheduled.hostname,
+                            version: scheduled.version,
+                            timestamp: scheduled.timestamp,
+                            scheduled: true,
+                            server_id: Some(base_server_id),
+                        },
+                    );
                 }
                 continue;
             }
@@ -357,7 +371,9 @@ async fn recovery_info_with_limit(
                     MAX_BACKUP_RECOVERY_METADATA_BYTES,
                 )
                 .await?;
-                res.insert(server_id, metadata.into());
+                let mut info: StartOsRecoveryInfo = metadata.into();
+                info.server_id = Some(server_id.clone());
+                res.insert(server_id, info);
             }
         }
     }
@@ -853,6 +869,60 @@ async fn recovery_info_rejects_entry_limit_plus_one() {
     let error = recovery_info_with_limit(&root, 2).await.unwrap_err();
     assert_eq!(error.kind, ErrorKind::Backup);
     assert!(error.to_string().contains("more than 2 recovery entries"));
+
+    tokio::fs::remove_dir_all(root).await.unwrap();
+}
+
+#[tokio::test]
+async fn recovery_info_marks_scheduled_backups() {
+    let root = PathBuf::from(format!(
+        "/tmp/start-core-scheduled-recovery-info-{}",
+        std::process::id()
+    ));
+    let scheduled = root.join(super::BACKUP_DIR_NAME).join("server.automatic");
+    tokio::fs::create_dir_all(&scheduled).await.unwrap();
+    tokio::fs::write(
+        scheduled.join("unencrypted-metadata.json"),
+        serde_json::to_vec(&serde_json::json!({
+            "targetInstanceId": "target",
+            "hostname": "server",
+            "version": "0.4.0",
+            "timestamp": "2026-01-01T00:00:00Z",
+            "passwordHash": "hash",
+            "wrappedKey": "key",
+            "hasSystemBackup": true
+        }))
+        .unwrap(),
+    )
+    .await
+    .unwrap();
+    let service_only = root
+        .join(super::BACKUP_DIR_NAME)
+        .join("service-only.automatic");
+    tokio::fs::create_dir_all(&service_only).await.unwrap();
+    tokio::fs::write(
+        service_only.join("unencrypted-metadata.json"),
+        serde_json::to_vec(&serde_json::json!({
+            "targetInstanceId": "target",
+            "hostname": "service-only",
+            "version": "0.4.0",
+            "timestamp": "2026-01-01T00:00:00Z",
+            "passwordHash": "hash",
+            "wrappedKey": "key",
+            "hasSystemBackup": false
+        }))
+        .unwrap(),
+    )
+    .await
+    .unwrap();
+
+    let info = recovery_info(&root).await.unwrap();
+    assert!(info["server.automatic"].scheduled);
+    assert_eq!(
+        info["server.automatic"].server_id.as_deref(),
+        Some("server")
+    );
+    assert!(!info.contains_key("service-only.automatic"));
 
     tokio::fs::remove_dir_all(root).await.unwrap();
 }

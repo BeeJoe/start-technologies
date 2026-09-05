@@ -1987,6 +1987,13 @@ backup.scheduled.snapshot-not-found:
   fr_FR: "Le point de sauvegarde planifiée n'existe pas"
   pl_PL: "Punkt zaplanowanej kopii nie istnieje"
 
+backup.scheduled.system-snapshot-not-found:
+  en_US: "Scheduled System backup does not exist"
+  de_DE: "Die geplante Systemsicherung ist nicht vorhanden"
+  es_ES: "La copia programada del sistema no existe"
+  fr_FR: "La sauvegarde système planifiée n'existe pas"
+  pl_PL: "Zaplanowana kopia systemu nie istnieje"
+
 
 backup.scheduled.stored-timezone-invalid:
   en_US: "Stored scheduled backup timezone is invalid"

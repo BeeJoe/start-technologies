@@ -8,7 +8,6 @@ use serde::{Deserialize, Serialize};
 use tokio::io::AsyncWriteExt;
 
 use super::{BackupRun, RetentionPolicy, ServiceSnapshot, ServiceSnapshotId};
-use crate::PackageId;
 use crate::auth::check_password;
 use crate::disk::BACKUP_DIR_NAME;
 use crate::disk::mount::filesystem::ReadWrite;
@@ -22,6 +21,7 @@ use crate::util::crypto::{decrypt_slice, encrypt_slice};
 use crate::util::io::{AtomicFile, delete_dir, delete_file, dir_copy, dir_size, rename};
 use crate::util::serde::{IoFormat, read_json_file_bounded};
 use crate::version::VersionT;
+use crate::{PackageId, SYSTEM_PACKAGE_ID};
 
 /// Unencrypted recovery metadata needed to unlock a scheduled backup target.
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -33,6 +33,8 @@ pub struct ScheduledBackupRecoveryInfo {
     pub timestamp: DateTime<Utc>,
     pub password_hash: String,
     pub wrapped_key: String,
+    #[serde(default)]
+    pub has_system_backup: Option<bool>,
 }
 
 /// Encrypted metadata describing all scheduled histories on a target.
@@ -117,6 +119,7 @@ impl<G: GenericMountGuard> ScheduledBackupMountGuard<G> {
                     base32::Alphabet::Rfc4648 { padding: true },
                     &encrypt_slice(&encryption_key, password),
                 ),
+                has_system_backup: Some(false),
             };
             (recovery, encryption_key)
         };
@@ -328,6 +331,9 @@ impl<G: GenericMountGuard> ScheduledBackupMountGuard<G> {
 
         self.recovery.timestamp = snapshot.completed_at;
         self.recovery.version = crate::version::Current::default().semver();
+        if snapshot.package_id == *SYSTEM_PACKAGE_ID {
+            self.recovery.has_system_backup = Some(true);
+        }
 
         let history = self
             .metadata
@@ -511,13 +517,14 @@ impl<G: GenericMountGuard> ScheduledBackupMountGuard<G> {
     }
 
     /// Atomically persists the current target metadata.
-    pub async fn save(&self) -> Result<(), Error> {
+    pub async fn save(&mut self) -> Result<(), Error> {
+        self.recovery.has_system_backup = Some(contains_system_backup(&self.metadata));
         write_json(&self.path().join("metadata.json"), &self.metadata).await?;
         write_json(&self.recovery_path, &self.recovery).await
     }
 
     /// Persists metadata and cleanly unmounts the encrypted target.
-    pub async fn save_and_unmount(self) -> Result<(), Error> {
+    pub async fn save_and_unmount(mut self) -> Result<(), Error> {
         self.save().await?;
         self.unmount().await
     }
@@ -574,6 +581,13 @@ fn set_archive_state(history: &mut OnTargetServiceHistory, archived: bool) {
             snapshot.archived = true;
         }
     }
+}
+
+fn contains_system_backup(metadata: &ScheduledBackupOnTargetMetadata) -> bool {
+    metadata
+        .services
+        .get(&*SYSTEM_PACKAGE_ID)
+        .is_some_and(|history| !history.snapshots.is_empty())
 }
 
 async fn write_json(path: &Path, value: &impl Serialize) -> Result<(), Error> {
@@ -633,5 +647,46 @@ mod tests {
         history.snapshots[0].archived = false;
         set_archive_state(&mut history, true);
         assert!(history.snapshots[0].archived);
+    }
+
+    #[test]
+    fn recovery_eligibility_tracks_system_snapshots() {
+        let package_id = SYSTEM_PACKAGE_ID.clone();
+        let now = Utc::now();
+        let mut metadata = ScheduledBackupOnTargetMetadata {
+            target_instance_id: "target".to_owned(),
+            services: BTreeMap::from([(
+                package_id.clone(),
+                OnTargetServiceHistory {
+                    timezone: "UTC".to_owned(),
+                    policy: RetentionPolicy::latest_only(),
+                    archived: true,
+                    snapshots: vec![ServiceSnapshot {
+                        id: ServiceSnapshotId::new(),
+                        package_id,
+                        package_version: "1.0.0".to_owned(),
+                        source: BackupSource::Scheduled,
+                        job_id: Guid::new(),
+                        job_name: "Nightly".to_owned(),
+                        run_id: Guid::new(),
+                        completed_at: now,
+                        logical_size: 1,
+                        physical_size: None,
+                        changed_bytes: None,
+                        measured_at: now,
+                        archived: true,
+                    }],
+                },
+            )]),
+        };
+
+        assert!(contains_system_backup(&metadata));
+        metadata
+            .services
+            .get_mut(&*SYSTEM_PACKAGE_ID)
+            .unwrap()
+            .snapshots
+            .clear();
+        assert!(!contains_system_backup(&metadata));
     }
 }

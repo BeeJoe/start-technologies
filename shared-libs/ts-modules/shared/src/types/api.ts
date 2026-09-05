@@ -24,4 +24,6 @@ export type StartOSDiskInfo = {
   hostname: string
   version: string
   timestamp: string
+  scheduled?: boolean
+  serverId?: string
 }

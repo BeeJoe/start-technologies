@@ -25,6 +25,7 @@ import { T } from '@start9labs/start-core'
 import {
   TuiButton,
   TuiCheckbox,
+  TuiError,
   TuiGroup,
   TuiIcon,
   TuiInput,
@@ -50,7 +51,6 @@ import {
   BackupRetentionRuleValue,
   BackupRetentionTierEditor,
   BackupScheduleFormValue,
-  BackupScheduleFrequency,
   BackupServiceSelection,
   formatBackupScheduleSummary,
   formatBackupServiceSummary,
@@ -67,6 +67,7 @@ import {
 } from '../system/routes/backups/scheduled-utils'
 import { BackupRetentionRules } from '../system/routes/backups/retention-rules'
 import { BackupScheduleControls } from '../system/routes/backups/schedule-controls'
+import { BackupScheduleEditor } from '../system/routes/backups/schedule-editor'
 import { ScheduledBackups } from '../system/routes/backups/scheduled'
 import { BackupLocationPicker } from './location-picker'
 
@@ -86,14 +87,9 @@ interface AutomaticRetentionRule extends Pick<
 }
 
 class AutomaticEditor
+  extends BackupScheduleEditor
   implements BackupScheduleFormValue, Omit<BackupServiceSelection, 'packageIds'>
 {
-  frequency: BackupScheduleFrequency = 'daily'
-  minute = 0
-  hour = 3
-  weekday = 0
-  dayOfMonth: number
-  timezone: string
   services: ServiceChoice[] = []
   preservedSelectedPackageIds: string[] = []
   preservedExcludedPackageIds: string[] = []
@@ -108,8 +104,14 @@ class AutomaticEditor
     dayOfMonth: number,
     timezone: string,
   ) {
-    this.dayOfMonth = dayOfMonth
-    this.timezone = timezone
+    super({
+      frequency: 'daily',
+      minute: 0,
+      hour: 3,
+      weekday: 0,
+      dayOfMonth,
+      timezone,
+    })
     this.form = formBuilder.group({
       includeFuture: [true],
       keepAdditional: [false],
@@ -156,12 +158,7 @@ class AutomaticEditor
 
   toJSON() {
     return {
-      frequency: this.frequency,
-      minute: this.minute,
-      hour: this.hour,
-      weekday: this.weekday,
-      dayOfMonth: this.dayOfMonth,
-      timezone: this.timezone,
+      ...this.scheduleValue(),
       services: this.services.map(service => ({
         id: service.id,
         selected: service.selected.value,
@@ -183,10 +180,10 @@ class AutomaticEditor
     @if (!embedded()) {
       <ng-container *title>
         <a
-          appearance="flat-grayscale"
-          routerLink="/system/backups"
           tuiIconButton
+          appearance="flat-grayscale"
           iconStart="@tui.arrow-left"
+          routerLink="/system/backups"
         >
           {{ 'Back' | i18n }}
         </a>
@@ -518,6 +515,7 @@ class AutomaticEditor
               {{ (passwordMasked ? 'Show password' : 'Hide password') | i18n }}
             </button>
           </tui-textfield>
+          <tui-error formControlName="password" />
         </section>
       }
 
@@ -529,15 +527,11 @@ class AutomaticEditor
         }
         <span></span>
         @if (step() < 3) {
-          <button tuiButton [disabled]="!canContinue()" (click)="next()">
+          <button tuiButton (click)="next()">
             {{ 'Continue' | i18n }}
           </button>
         } @else {
-          <button
-            tuiButton
-            [disabled]="!canSaveSetup()"
-            (click)="createAutomaticBackup()"
-          >
+          <button tuiButton (click)="createAutomaticBackup()">
             {{ 'Turn on automatic backups' | i18n }}
           </button>
         }
@@ -924,6 +918,7 @@ class AutomaticEditor
     TuiButton,
     TuiCardLarge,
     TuiCheckbox,
+    TuiError,
     TuiGroup,
     TuiHeader,
     TuiIcon,
@@ -1333,6 +1328,7 @@ export default class AutomaticBackups {
   }
 
   protected async createAutomaticBackup() {
+    this.editor.form.markAllAsTouched()
     if (!this.canSaveSetup()) return
     if (!(await this.validateSetup())) return
     await this.tasks.run(async () => {

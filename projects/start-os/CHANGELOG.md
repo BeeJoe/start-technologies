@@ -63,8 +63,10 @@ file tracks notable changes since the move to the monorepo.
   new schedule timing, and empty histories detached from every schedule adopt
   the new policy and timezone. Password controls are keyboard accessible, and
   backup management remains usable on narrow displays. Restore can mix
-  manual and automatic checkpoints by service and keeps backup progress and
-  history in view. The same schedules, history, retention, repair, and restore
+  manual and automatic checkpoints by service, and initial setup can recover a
+  server from its latest automatic System and service checkpoints. Pausing a
+  schedule keeps its checkpoints in active retention history. Backup progress
+  and history remain in view. The same schedules, history, retention, repair, and restore
   operations are available for command-line administration. A stalled service
   backup stops after six hours so later backups can run.
 

@@ -14,10 +14,10 @@ import { BackupPhysicalComponent } from '../system/routes/backups/physical.compo
     @if (!embedded()) {
       <ng-container *title>
         <a
-          appearance="flat-grayscale"
-          routerLink="/system/backups"
           tuiIconButton
+          appearance="flat-grayscale"
           iconStart="@tui.arrow-left"
+          routerLink="/system/backups"
         >
           {{ 'Back' | i18n }}
         </a>

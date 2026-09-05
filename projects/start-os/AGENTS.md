@@ -24,36 +24,6 @@ is wired and built.
   and `assets/` live directly in this dir; the shared build infra (root
   `build/`) and `apt/` are at the repo root.
 
-## Prerequisites and build configuration
-
-The OS product uses the shared root toolchain plus multi-arch emulation and
-image-packaging tools. Admin UI or setup-wizard work needs only the web
-prerequisites in [`shared-libs/ts-modules/AGENTS.md`](../../shared-libs/ts-modules/AGENTS.md).
-
-For a full OS image build on Debian or Ubuntu:
-
-```sh
-sudo apt install -y qemu-user-static binfmt-support squashfs-tools b3sum
-
-# One-time cross-arch setup; safe to re-run
-docker run --privileged --rm tonistiigi/binfmt --install all
-docker buildx create --name start9 --use 2>/dev/null || docker buildx use start9
-```
-
-For faster iteration, run `. ./devmode.sh` from the repo root. This sets
-`ENVIRONMENT=dev` and `GIT_BRANCH_AS_HASH=1`.
-
-OS builds accept the repo-wide `PROFILE` and `GIT_BRANCH_AS_HASH` variables
-plus these values:
-
-- `PLATFORM`: `x86_64`, `x86_64-nonfree`, `aarch64`, `aarch64-nonfree`,
-  `riscv64`, or `raspberrypi`. The selected platform is remembered between
-  builds; `-nonfree` variants include proprietary firmware and Raspberry Pi
-  includes non-free components by necessity.
-- `ENVIRONMENT`: hyphen-separated `dev` (password SSH before setup and no
-  frontend compression), `unstable` (extra assertions/debugging), and `console`
-  (tokio-console) flags.
-
 ## Build & test (run from the repo root)
 
 - Compile the OS bins: `cargo check -p start-os` (or `cargo build -p start-os
@@ -67,10 +37,6 @@ plus these values:
 - Type-check web apps: `npm run check:ui && npm run check:setup`.
 - Type-check the runtime: `cd projects/start-os/container-runtime && npm run check`.
 - Build the UI: `make start-os-ui` (or `make start-os-uis` for ui + setup-wizard).
-- Build all StartOS artifacts: `make start-os`. Build a bootable image with
-  `make start-os-$(IMAGE_TYPE)` (`start-os-iso`, or `start-os-img` on Raspberry
-  Pi), a Debian package with `make start-os-deb`, or the squashfs image with
-  `make start-os-squashfs`.
 - Tests: `make test` (Rust + SDK + container-runtime), `make start-core-test`, or
   `make backup-fs-test` for all backup-fs library tests except the mount-based
   `/dev/fuse` suite.
@@ -79,43 +45,6 @@ plus these values:
   prettier config).
 - Regenerate `start-container` man pages (committed under `man/`):
   `cargo test -p start-core export_manpage_start_container`.
-
-## Deploying to a device
-
-| Target                                        | Purpose                             |
-| --------------------------------------------- | ----------------------------------- |
-| `start-os-update-startbox REMOTE=start9@<ip>` | Deploy binary + UI only             |
-| `start-os-update-deb REMOTE=start9@<ip>`      | Deploy the full Debian package      |
-| `start-os-update REMOTE=start9@<ip>`          | Perform an OTA-style update         |
-| `start-os-emulate-reflash REMOTE=start9@<ip>` | Reflash as from a live ISO          |
-| `start-os-update-overlay REMOTE=start9@<ip>`  | Deploy to a reboot-volatile overlay |
-
-To deploy a CI build rather than a local one:
-
-| Target                                                         | Purpose                                      |
-| -------------------------------------------------------------- | -------------------------------------------- |
-| `start-os-update-from-gha REMOTE=start9@<ip>`                  | Deploy the latest successful master build    |
-| `start-os-update-from-gha REMOTE=start9@<ip> RUN_ID=<id\|url>` | Deploy a specific Actions run                |
-| `start-os-update-from-gha REMOTE=start9@<ip> BRANCH=<name>`    | Deploy that branch's latest successful build |
-
-The target reads the device platform, downloads that run's
-`<platform>.squashfs`, and uses the same checksummed upgrade as
-`start-os-update-squashfs`. It requires authenticated `gh` and `b3sum`; Actions
-artifacts expire after 14 days. See `scripts/update-from-gha.sh --help` for all
-options.
-
-For devices on a different network:
-
-| Target                       | Purpose                                      |
-| ---------------------------- | -------------------------------------------- |
-| `start-os-wormhole`          | Send the startbox binary over magic-wormhole |
-| `start-os-wormhole-deb`      | Send the Debian package over magic-wormhole  |
-| `start-os-wormhole-squashfs` | Send the squashfs image over magic-wormhole  |
-
-To create a local VM, install `virt-manager`, add the user to `libvirt`, build
-`PLATFORM=$(uname -m) ENVIRONMENT=dev make start-os-iso`, and use the screenshot
-walkthrough in [`assets/create-vm/`](assets/create-vm/) to create a generic VM
-whose storage pool points at `results/`.
 
 ## Gotchas
 
