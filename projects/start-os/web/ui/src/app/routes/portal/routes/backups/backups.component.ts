@@ -57,12 +57,12 @@ type BackupPanel = 'automatic' | 'manual' | 'restore' | 'locations' | 'history'
           {{ 'Backups' | i18n }}
           <a
             tuiIconButton
-            size="xs"
             docsLink
-            path="/start-os/"
-            fragment="#backups"
             appearance="icon"
+            fragment="#backups"
             iconStart="@tui.book-open-text"
+            path="/start-os/"
+            size="xs"
             [attr.aria-label]="'Documentation' | i18n"
           ></a>
         </h2>

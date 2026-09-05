@@ -34,6 +34,7 @@ import {
   TuiCheckbox,
   TuiDataList,
   TuiDropdown,
+  TuiError,
   TuiGroup,
   TuiIcon,
   TuiInput,
@@ -61,6 +62,7 @@ import { DeleteScheduleService } from './delete-schedule'
 import { BackupRetentionRules } from './retention-rules'
 import { BackupScheduleBrowser } from './schedule-browser'
 import { BackupScheduleControls } from './schedule-controls'
+import { BackupScheduleEditor } from './schedule-editor'
 import {
   backupPauseLabel,
   BackupRetentionRuleValue,
@@ -121,18 +123,13 @@ interface JobEditorValue
 }
 
 class JobEditor
+  extends BackupScheduleEditor
   implements
     EditableRetentionRule,
     BackupScheduleFormValue,
     BackupServiceSelection
 {
   id?: string
-  frequency: BackupScheduleFormValue['frequency']
-  minute: number
-  hour: number
-  weekday: number
-  dayOfMonth: number
-  timezone: string
   packageIds: string[]
   preservedSelectedPackageIds: string[]
   preservedExcludedPackageIds: string[]
@@ -147,13 +144,8 @@ class JobEditor
   readonly form
 
   constructor(formBuilder: NonNullableFormBuilder, value: JobEditorValue) {
+    super(value)
     this.id = value.id
-    this.frequency = value.frequency
-    this.minute = value.minute
-    this.hour = value.hour
-    this.weekday = value.weekday
-    this.dayOfMonth = value.dayOfMonth
-    this.timezone = value.timezone
     this.packageIds = value.packageIds
     this.preservedSelectedPackageIds = value.preservedSelectedPackageIds
     this.preservedExcludedPackageIds = value.preservedExcludedPackageIds
@@ -172,7 +164,7 @@ class JobEditor
       ],
       includeFuture: [value.includeFuture],
       keepAdditional: [value.keepAdditional],
-      password: [value.password],
+      password: [value.password, value.id ? [] : Validators.required],
       firstBackupNow: [value.firstBackupNow],
       capacityConfirmed: [value.capacityConfirmed],
     })
@@ -230,12 +222,7 @@ class JobEditor
   toJSON() {
     return {
       id: this.id,
-      frequency: this.frequency,
-      minute: this.minute,
-      hour: this.hour,
-      weekday: this.weekday,
-      dayOfMonth: this.dayOfMonth,
-      timezone: this.timezone,
+      ...this.scheduleValue(),
       packageIds: this.packageIds,
       preservedSelectedPackageIds: this.preservedSelectedPackageIds,
       preservedExcludedPackageIds: this.preservedExcludedPackageIds,
@@ -374,14 +361,11 @@ class JobEditor
                 <b>{{ 'Edit automatic schedule' | i18n }}</b>
               } @else {
                 <b>{{ form.name || ('Create automatic schedule' | i18n) }}</b>
-                <span tuiSubtitle>
-                  {{
-                    (form.id
-                      ? 'Edit automatic schedule'
-                      : 'Create automatic schedule'
-                    ) | i18n
-                  }}
-                </span>
+                @if (form.id) {
+                  <span tuiSubtitle>
+                    {{ 'Edit automatic schedule' | i18n }}
+                  </span>
+                }
               }
             </span>
             <button
@@ -448,6 +432,7 @@ class JobEditor
                 <label tuiLabel>{{ 'Schedule name' | i18n }}</label>
                 <input #jobNameInput tuiInput formControlName="name" />
               </tui-textfield>
+              <tui-error formControlName="name" />
             </div>
           }
 
@@ -471,6 +456,7 @@ class JobEditor
                 }
               </tui-data-list>
             </tui-textfield>
+            <tui-error formControlName="targetId" />
           </div>
 
           <div class="setting-row vertical">
@@ -729,6 +715,7 @@ class JobEditor
                 }}
               </button>
             </tui-textfield>
+            <tui-error formControlName="password" />
           }
 
           <p class="muted">
@@ -807,6 +794,7 @@ class JobEditor
                 }
               </tui-data-list>
             </tui-textfield>
+            <tui-error formControlName="targetId" />
             <tui-textfield>
               <label tuiLabel>{{ 'Master Password' | i18n }}</label>
               <input
@@ -835,6 +823,7 @@ class JobEditor
                 }}
               </button>
             </tui-textfield>
+            <tui-error formControlName="password" />
             <label class="switch-row">
               <input
                 tuiSwitch
@@ -1306,6 +1295,7 @@ class JobEditor
     TuiChevron,
     TuiDataList,
     TuiDropdown,
+    TuiError,
     TuiForm,
     TuiGroup,
     TuiHeader,

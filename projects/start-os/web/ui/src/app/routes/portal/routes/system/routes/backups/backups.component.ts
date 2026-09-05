@@ -25,10 +25,10 @@ import { BACKUP_RESTORE } from './restore.component'
       <ng-container *title>
         <div>
           <a
-            appearance="flat-grayscale"
-            routerLink=".."
             tuiIconButton
+            appearance="flat-grayscale"
             iconStart="@tui.arrow-left"
+            routerLink=".."
           >
             {{ 'Back' | i18n }}
           </a>
@@ -39,15 +39,15 @@ import { BACKUP_RESTORE } from './restore.component'
           }}
           <a
             tuiIconButton
-            size="xs"
             docsLink
+            appearance="icon"
+            iconStart="@tui.book-open-text"
+            size="xs"
             [path]="
               type() === 'create'
                 ? '/start-os/backup-create.html'
                 : '/start-os/backup-restore.html'
             "
-            appearance="icon"
-            iconStart="@tui.book-open-text"
           ></a>
         </div>
       </ng-container>

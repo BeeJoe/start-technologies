@@ -31,7 +31,8 @@ daylight-saving changes are handled correctly. A monthly schedule set for a
 date that does not occur in a given month runs on that month's final day.
 
 Multiple schedules can protect different services, use different locations, or
-run at different times. Pausing a schedule keeps its settings and checkpoints.
+run at different times. Pausing a schedule keeps its settings and checkpoints
+in its active history so resumed backups continue from the existing history.
 When no schedule includes future services, StartOS recommends adding each newly
 installed service to one or more schedules; the recommendation can be dismissed.
 
@@ -49,8 +50,8 @@ By default, StartOS keeps only the latest automatic checkpoint for each item.
 Version-history rules can additionally retain one checkpoint per hour, day,
 week, or month for a chosen duration. A month in version history is a rolling
 30-day interval. A schedule may run less often than its most frequent
-version-history rule. StartOS warns that some intervals will have no checkpoint
-but keeps every available interval without blocking the schedule.
+version-history rule. The admin UI warns that some intervals will have no
+checkpoint but keeps every available interval without blocking the schedule.
 
 When a selected service has checkpoints or another schedule on the chosen
 location, its saved policy remains unchanged. Adding a schedule does not remove
