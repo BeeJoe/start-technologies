@@ -10,6 +10,10 @@ fn history_owns_retention_settings(history: &ServiceTargetHistory) -> bool {
     !history.snapshots.is_empty() || !history.feeding_jobs.is_empty()
 }
 
+fn history_is_archived(feeding_jobs: &BTreeSet<BackupJobId>) -> bool {
+    feeding_jobs.is_empty()
+}
+
 fn adopt_new_job_settings(
     history: &mut ServiceTargetHistory,
     job: &BackupJob,
@@ -55,7 +59,6 @@ pub(crate) fn associate_histories(
     job: &BackupJob,
     package_ids: &BTreeSet<PackageId>,
 ) -> Result<(), Error> {
-    let job_is_active = job.enabled && job.pause.is_none();
     let histories = db
         .as_public_mut()
         .as_scheduled_backups_mut()
@@ -71,9 +74,7 @@ pub(crate) fn associate_histories(
             let mut history: ServiceTargetHistory = history.de()?;
             adopt_new_job_settings(&mut history, job, &policy);
             history.feeding_jobs.insert(job.id.clone());
-            if job_is_active {
-                history.archived = false;
-            }
+            history.archived = false;
             histories.insert(&key, &history)?;
         } else {
             histories.insert(
@@ -86,7 +87,7 @@ pub(crate) fn associate_histories(
                     policy,
                     feeding_jobs: BTreeSet::from([job.id.clone()]),
                     snapshots: Vec::new(),
-                    archived: !job_is_active,
+                    archived: false,
                 },
             )?;
         }
@@ -120,14 +121,6 @@ pub(crate) fn refresh_archive_state(
     db: &mut DatabaseModel,
     target_id: &BackupTargetId,
 ) -> Result<(), Error> {
-    let jobs: Vec<BackupJob> = db
-        .as_public()
-        .as_scheduled_backups()
-        .as_jobs()
-        .as_entries()?
-        .into_iter()
-        .map(|(_, job)| job.de())
-        .collect::<Result<_, _>>()?;
     let histories = db
         .as_public_mut()
         .as_scheduled_backups_mut()
@@ -138,11 +131,7 @@ pub(crate) fn refresh_archive_state(
             continue;
         }
         let feeding_jobs: BTreeSet<BackupJobId> = history.as_feeding_jobs().de()?;
-        let active = feeding_jobs.iter().any(|job_id| {
-            jobs.iter()
-                .any(|job| &job.id == job_id && job.enabled && job.pause.is_none())
-        });
-        let archived = !active;
+        let archived = history_is_archived(&feeding_jobs);
         history.as_archived_mut().ser(&archived)?;
         if archived {
             let mut snapshots: Vec<ServiceSnapshot> = history.as_snapshots().de()?;
@@ -266,5 +255,11 @@ mod tests {
         assert_eq!(history.target_instance_id, "old-instance");
         assert_eq!(history.timezone, "America/New_York");
         assert_eq!(history.policy, old_policy);
+    }
+
+    #[test]
+    fn referenced_histories_remain_active_while_jobs_are_paused() {
+        assert!(!history_is_archived(&BTreeSet::from([BackupJobId::new()])));
+        assert!(history_is_archived(&BTreeSet::new()));
     }
 }

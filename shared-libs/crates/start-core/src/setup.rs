@@ -5,6 +5,7 @@ use std::time::Duration;
 use clap::Parser;
 use color_eyre::eyre::eyre;
 use const_format::formatcp;
+use futures::future::BoxFuture;
 use itertools::Itertools;
 use josekit::jwk::Jwk;
 use patch_db::json_ptr::ROOT;
@@ -473,6 +474,8 @@ pub enum RecoverySource<Password> {
         target: BackupTargetFS,
         password: Password,
         server_id: String,
+        #[serde(default)]
+        scheduled: bool,
     },
 }
 
@@ -785,6 +788,7 @@ pub async fn execute(
             target,
             password,
             server_id,
+            scheduled,
         }) => Some(RecoverySource::Backup {
             target,
             password: password.decrypt(&ctx).ok_or_else(|| {
@@ -794,6 +798,7 @@ pub async fn execute(
                 )
             })?,
             server_id,
+            scheduled,
         }),
         Some(RecoverySource::Migrate { guid }) => Some(RecoverySource::Migrate { guid }),
         None => None,
@@ -949,6 +954,7 @@ pub async fn execute_inner(
             target,
             password: recovery_password,
             server_id,
+            scheduled,
         }) => {
             recover(
                 &ctx,
@@ -957,6 +963,7 @@ pub async fn execute_inner(
                 target,
                 server_id,
                 recovery_password,
+                scheduled,
                 kiosk,
                 hostname,
                 progress,
@@ -1056,23 +1063,38 @@ async fn recover(
     recovery_source: BackupTargetFS,
     server_id: String,
     recovery_password: String,
+    scheduled: bool,
     kiosk: bool,
     hostname: Option<ServerHostname>,
     progress: SetupExecuteProgress,
 ) -> Result<(SetupResult, RpcContext), Error> {
     let recovery_source = TmpMountGuard::mount(&recovery_source, ReadWrite).await?;
-    recover_full_server(
-        ctx,
-        guid.clone(),
-        password,
-        recovery_source,
-        &server_id,
-        &recovery_password,
-        kiosk,
-        hostname,
-        progress,
-    )
-    .await
+    let recovery: BoxFuture<'_, Result<(SetupResult, RpcContext), Error>> = if scheduled {
+        Box::pin(crate::backup::restore::recover_full_server_from_scheduled(
+            ctx,
+            guid.clone(),
+            password,
+            recovery_source,
+            &server_id,
+            &recovery_password,
+            kiosk,
+            hostname,
+            progress,
+        ))
+    } else {
+        Box::pin(recover_full_server(
+            ctx,
+            guid.clone(),
+            password,
+            recovery_source,
+            &server_id,
+            &recovery_password,
+            kiosk,
+            hostname,
+            progress,
+        ))
+    };
+    recovery.await
 }
 
 #[instrument(skip_all)]

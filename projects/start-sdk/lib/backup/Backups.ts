@@ -203,7 +203,7 @@ export type BackupHook = (
  * @typeParam M - The service manifest type
  */
 export class Backups<M extends T.SDKManifest> implements InitScript {
-  private customBackupBehavior = false
+  private changedBytesUnavailable = false
 
   private constructor(
     private options = DEFAULT_OPTIONS,
@@ -874,7 +874,7 @@ export class Backups<M extends T.SDKManifest> implements InitScript {
    * @param fn - Async function receiving backup-scoped effects and a progress tracker for this hook
    */
   setPreBackup(fn: BackupHook, weight: number = DEFAULT_HOOK_WEIGHT) {
-    this.customBackupBehavior = true
+    this.changedBytesUnavailable = true
     this.preBackup = fn
     this.preBackupWeight = weight
     return this
@@ -885,7 +885,7 @@ export class Backups<M extends T.SDKManifest> implements InitScript {
    * @param fn - Async function receiving backup-scoped effects and a progress tracker for this hook
    */
   setPostBackup(fn: BackupHook, weight: number = DEFAULT_HOOK_WEIGHT) {
-    this.customBackupBehavior = true
+    this.changedBytesUnavailable = true
     this.postBackup = fn
     this.postBackupWeight = weight
     return this
@@ -997,7 +997,7 @@ export class Backups<M extends T.SDKManifest> implements InitScript {
       try {
         const transferred = await rsyncResults.wait()
         if (transferred === null) {
-          this.customBackupBehavior = true
+          this.changedBytesUnavailable = true
         } else {
           changedBytes += transferred
         }
@@ -1022,7 +1022,7 @@ export class Backups<M extends T.SDKManifest> implements InitScript {
     await tracker.sync()
     return {
       changedBytes:
-        this.customBackupBehavior || !Number.isSafeInteger(changedBytes)
+        this.changedBytesUnavailable || !Number.isSafeInteger(changedBytes)
           ? null
           : changedBytes,
     }
@@ -1193,7 +1193,6 @@ async function runRsync(rsyncOptions: {
   return { id, wait, progress }
 }
 
-/** Returns transferred bytes, or null when rsync stats omit the value. */
 export function parseRsyncTransferredBytes(output: string): number | null {
   const transferred =
     /^Total transferred file size:\s*([0-9,]+) bytes\s*$/m.exec(output)?.[1]

@@ -20,9 +20,9 @@ import { SYSTEM_MENU } from './system.const'
         }
         @for (page of cat; track $index) {
           <a
+            #activeLink="routerLinkActive"
             tuiCell="s"
             routerLinkActive="active"
-            #activeLink="routerLinkActive"
             [routerLink]="page.link"
           >
             <tui-icon [icon]="page.icon" />
