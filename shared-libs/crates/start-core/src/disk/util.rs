@@ -99,6 +99,7 @@ impl From<BackupUnencryptedMetadata> for StartOsRecoveryInfo {
             timestamp: meta.timestamp,
             scheduled: false,
             server_id: None,
+            has_system_backup: Some(true),
         }
     }
 }
@@ -119,6 +120,9 @@ pub struct StartOsRecoveryInfo {
     #[serde(default)]
     #[ts(optional)]
     pub server_id: Option<String>,
+    #[serde(default)]
+    #[ts(optional)]
+    pub has_system_backup: Option<bool>,
 }
 
 const DISK_PATH: &str = "/dev/disk/by-path";
@@ -343,9 +347,6 @@ async fn recovery_info_with_limit(
                     let scheduled: crate::backup::scheduled::ScheduledBackupRecoveryInfo =
                         read_json_file_bounded(&metadata_path, MAX_BACKUP_RECOVERY_METADATA_BYTES)
                             .await?;
-                    if scheduled.has_system_backup == Some(false) {
-                        continue;
-                    }
                     res.insert(
                         server_id,
                         StartOsRecoveryInfo {
@@ -354,6 +355,7 @@ async fn recovery_info_with_limit(
                             timestamp: scheduled.timestamp,
                             scheduled: true,
                             server_id: Some(base_server_id),
+                            has_system_backup: scheduled.has_system_backup,
                         },
                     );
                 }
@@ -922,7 +924,12 @@ async fn recovery_info_marks_scheduled_backups() {
         info["server.automatic"].server_id.as_deref(),
         Some("server")
     );
-    assert!(!info.contains_key("service-only.automatic"));
+    assert_eq!(info["server.automatic"].has_system_backup, Some(true));
+    assert!(info["service-only.automatic"].scheduled);
+    assert_eq!(
+        info["service-only.automatic"].has_system_backup,
+        Some(false)
+    );
 
     tokio::fs::remove_dir_all(root).await.unwrap();
 }
