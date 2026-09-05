@@ -9,4 +9,6 @@ export type StartOsRecoveryInfo = {
   hostname: ServerHostname
   version: string
   timestamp: string
+  scheduled: boolean
+  serverId?: string
 }

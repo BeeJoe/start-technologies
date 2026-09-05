@@ -1,8 +1,9 @@
-import { DatePipe, KeyValuePipe } from '@angular/common'
+import { DatePipe } from '@angular/common'
 import { Component, inject } from '@angular/core'
-import { FormsModule } from '@angular/forms'
+import { FormControl, ReactiveFormsModule, Validators } from '@angular/forms'
 import { DialogService, i18nPipe, TaskService } from '@start9labs/shared'
-import { TuiButton, TuiInput, TuiTitle } from '@taiga-ui/core'
+import { T } from '@start9labs/start-core'
+import { TuiButton, TuiError, TuiInput, TuiTitle } from '@taiga-ui/core'
 import { injectContext, PolymorpheusComponent } from '@taiga-ui/polymorpheus'
 
 import { TableComponent } from 'src/app/routes/portal/components/table.component'
@@ -14,13 +15,13 @@ import { RECOVER } from './recover.component'
   template: `
     @if (!serverId) {
       <table [appTable]="['Hostname', 'StartOS Version', 'Created', null]">
-        @for (server of target.entry.startOs | keyvalue; track server.key) {
+        @for (server of servers; track server[0]) {
           <tr>
-            <td class="name">{{ server.value.hostname }}.local</td>
-            <td>{{ server.value.version }}</td>
-            <td>{{ server.value.timestamp | date: 'medium' }}</td>
+            <td class="name">{{ server[1].hostname }}.local</td>
+            <td>{{ server[1].version }}</td>
+            <td>{{ server[1].timestamp | date: 'medium' }}</td>
             <td>
-              <button tuiButton size="s" (click)="serverId = server.key">
+              <button tuiButton size="s" (click)="serverId = server[0]">
                 {{ 'Select' | i18n }}
               </button>
             </td>
@@ -46,7 +47,7 @@ import { RECOVER } from './recover.component'
             required
             autocomplete="current-password"
             [type]="passwordMasked ? 'password' : 'text'"
-            [(ngModel)]="password"
+            [formControl]="password"
             (keyup.enter)="decrypt()"
           />
           <button
@@ -63,6 +64,7 @@ import { RECOVER } from './recover.component'
             {{ (passwordMasked ? 'Show password' : 'Hide password') | i18n }}
           </button>
         </tui-textfield>
+        <tui-error [formControl]="password" />
         <footer class="g-buttons">
           @if (servers.length > 1) {
             <button
@@ -74,7 +76,7 @@ import { RECOVER } from './recover.component'
               {{ 'Back' | i18n }}
             </button>
           }
-          <button tuiButton [disabled]="!password" (click)="decrypt()">
+          <button tuiButton (click)="decrypt()">
             {{ 'Continue' | i18n }}
           </button>
         </footer>
@@ -110,9 +112,9 @@ import { RECOVER } from './recover.component'
   `,
   imports: [
     DatePipe,
-    FormsModule,
-    KeyValuePipe,
+    ReactiveFormsModule,
     TuiButton,
+    TuiError,
     TuiInput,
     TuiTitle,
     TableComponent,
@@ -127,23 +129,28 @@ export class BackupRestoreComponent {
   private readonly i18n = inject(i18nPipe)
 
   protected readonly target = this.context.data
-  protected readonly servers = Object.entries(this.target.entry.startOs)
+  protected readonly servers = this.serverEntries()
   protected serverId = this.servers.length === 1 ? this.servers[0]![0] : ''
-  protected password = ''
+  protected readonly password = new FormControl('', {
+    nonNullable: true,
+    validators: Validators.required,
+  })
   protected passwordMasked = true
 
   protected selectedServerName(): string {
-    const server = this.target.entry.startOs[this.serverId]
+    const server = this.servers.find(([id]) => id === this.serverId)?.[1]
     return server ? `${server.hostname}.local` : this.serverId
   }
 
   protected async decrypt() {
-    if (!this.serverId || !this.password) return
+    this.password.markAsTouched()
+    if (!this.serverId || this.password.invalid) return
+    const password = this.password.value
     await this.tasks.run(async () => {
       const params = {
         targetId: this.target.id,
         serverId: this.serverId,
-        password: this.password,
+        password,
       }
       const [manual, automatic] = await Promise.allSettled([
         this.api.getBackupInfo(params),
@@ -175,7 +182,7 @@ export class BackupRestoreComponent {
         serverId: this.serverId,
         backupInfo,
         scheduledHistories,
-        password: this.password,
+        password,
       }
 
       this.context.$implicit.complete()
@@ -183,6 +190,18 @@ export class BackupRestoreComponent {
         .openComponent(RECOVER, { label: 'Select services', data })
         .subscribe()
     }, 'Decrypting drive')
+  }
+
+  private serverEntries(): [string, T.StartOsRecoveryInfo][] {
+    const servers = new Map<string, T.StartOsRecoveryInfo>()
+    for (const [key, server] of Object.entries(this.target.entry.startOs)) {
+      const id = server.serverId || key
+      const current = servers.get(id)
+      if (!current || current.timestamp < server.timestamp) {
+        servers.set(id, server)
+      }
+    }
+    return [...servers]
   }
 }
 
