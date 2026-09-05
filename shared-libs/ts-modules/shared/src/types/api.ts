@@ -28,4 +28,5 @@ export type StartOSDiskInfo = {
   timestamp: string
   scheduled?: boolean
   serverId?: string
+  hasSystemBackup?: boolean
 }

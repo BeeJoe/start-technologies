@@ -168,7 +168,10 @@ pub async fn list_disks(_ctx: SetupContext) -> Result<Vec<DiskInfo>, Error> {
     )
     .await?;
 
-    // Filter out the disk containing the live medium (installer USB)
+    for partition in disks.iter_mut().flat_map(|disk| &mut disk.partitions) {
+        retain_full_server_backups(&mut partition.start_os);
+    }
+
     if let Ok(Some(live_medium_source)) =
         crate::disk::util::get_mount_source(LIVE_MEDIUM_PATH).await
     {
@@ -176,6 +179,47 @@ pub async fn list_disks(_ctx: SetupContext) -> Result<Vec<DiskInfo>, Error> {
     }
 
     Ok(disks)
+}
+
+fn retain_full_server_backups(backups: &mut BTreeMap<String, StartOsRecoveryInfo>) {
+    backups.retain(|_, info| info.has_system_backup != Some(false));
+}
+
+#[test]
+fn full_server_recovery_excludes_service_only_backups() {
+    let mut backups = BTreeMap::from([
+        ("manual".to_owned(), StartOsRecoveryInfo::default()),
+        (
+            "legacy.automatic".to_owned(),
+            StartOsRecoveryInfo {
+                scheduled: true,
+                ..Default::default()
+            },
+        ),
+        (
+            "system.automatic".to_owned(),
+            StartOsRecoveryInfo {
+                scheduled: true,
+                has_system_backup: Some(true),
+                ..Default::default()
+            },
+        ),
+        (
+            "services.automatic".to_owned(),
+            StartOsRecoveryInfo {
+                scheduled: true,
+                has_system_backup: Some(false),
+                ..Default::default()
+            },
+        ),
+    ]);
+
+    retain_full_server_backups(&mut backups);
+
+    assert_eq!(backups.len(), 3);
+    assert!(backups.contains_key("manual"));
+    assert!(backups.contains_key("legacy.automatic"));
+    assert!(backups.contains_key("system.automatic"));
 }
 
 fn setup_hostname(existing: ServerHostname, requested: Option<ServerHostname>) -> ServerHostname {
@@ -451,8 +495,9 @@ pub async fn verify_cifs(
         ReadWrite,
     )
     .await?;
-    let start_os = recovery_info(guard.path()).await?;
+    let mut start_os = recovery_info(guard.path()).await?;
     guard.unmount().await?;
+    retain_full_server_backups(&mut start_os);
     if start_os.is_empty() {
         return Err(Error::new(
             eyre!("{}", t!("setup.no-backup-found")),
