@@ -11,4 +11,5 @@ export type StartOsRecoveryInfo = {
   timestamp: string
   scheduled: boolean
   serverId?: string
+  hasSystemBackup?: boolean
 }
