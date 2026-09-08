@@ -2073,6 +2073,13 @@ backup.scheduled.system:
   fr_FR: "Système"
   pl_PL: "System"
 
+backup.scheduled.target-already-configured:
+  en_US: "This backup location is already used by %{jobs}. Select its existing location entry."
+  de_DE: "Dieser Sicherungsort wird bereits von %{jobs} verwendet. Wählen Sie den vorhandenen Eintrag aus."
+  es_ES: "Esta ubicación de copia de seguridad ya la utiliza %{jobs}. Seleccione la entrada existente de la ubicación."
+  fr_FR: "Cet emplacement de sauvegarde est déjà utilisé par %{jobs}. Sélectionnez son entrée existante."
+  pl_PL: "Ta lokalizacja kopii zapasowych jest już używana przez %{jobs}. Wybierz jej istniejący wpis."
+
 backup.scheduled.target-identity-mismatch:
   en_US: "Scheduled backup target identity does not match"
   de_DE: "Identität des Sicherungsziels stimmt nicht überein"

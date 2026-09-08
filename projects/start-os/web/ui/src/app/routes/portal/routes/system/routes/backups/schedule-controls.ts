@@ -1,4 +1,11 @@
-import { Component, effect, inject, input, output } from '@angular/core'
+import {
+  Component,
+  computed,
+  effect,
+  inject,
+  input,
+  output,
+} from '@angular/core'
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop'
 import {
   NonNullableFormBuilder,
@@ -185,8 +192,9 @@ export class BackupScheduleControls {
   ) => this.i18n.transform(backupFrequencyLabel(frequency))
   protected readonly stringifyWeekday = (weekday: number) =>
     this.i18n.transform(backupWeekdayLabel(weekday))
-  protected readonly timezones = () =>
-    backupTimezones(this.formValue().timezone || '')
+  protected readonly timezones = computed(() =>
+    backupTimezones(this.schedule().timezone),
+  )
   private readonly scheduleChangesSubscription = this.form.valueChanges
     .pipe(takeUntilDestroyed())
     .subscribe(() => this.scheduleChange.emit(this.form.getRawValue()))

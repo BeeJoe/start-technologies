@@ -9,10 +9,10 @@ use ts_rs::TS;
 
 use super::{
     BackupJob, BackupJobId, BackupJobPause, BackupJobStatus, BackupRun, BackupRunTrigger,
-    BackupServiceScope, RetentionPolicy, RetentionPolicyChangePreview, RetentionTier, Schedule,
-    ScheduledBackupCredential, ScheduledBackupMountGuard, ServiceSnapshotId, ServiceTargetHistory,
-    associate_histories, associated_service_ids, disassociate_histories, history_key,
-    refresh_archive_state, run_job,
+    BackupServiceScope, CapacityEstimate, RetentionPolicy, RetentionPolicyChangePreview,
+    RetentionTier, Schedule, ScheduledBackupCredential, ScheduledBackupMountGuard,
+    ServiceSnapshotId, ServiceTargetHistory, associate_histories, associated_service_ids,
+    disassociate_histories, history_key, refresh_archive_state, run_job,
 };
 use crate::auth::{LoginContext, PasswordType};
 use crate::backup::target::BackupTargetId;
@@ -356,75 +356,33 @@ pub async fn estimate_capacity(
                     .unwrap_or(&default_retention)
                     .clone()
             });
-        let maximum_projected_snapshot_count = policy.maximum_projected_snapshot_count()?;
-        let active = history
-            .as_ref()
-            .map(|history| {
-                history
-                    .snapshots
-                    .iter()
-                    .filter(|snapshot| !snapshot.archived)
-                    .collect::<Vec<_>>()
-            })
-            .unwrap_or_default();
-        let archived = history
-            .as_ref()
-            .map(|history| {
-                history
-                    .snapshots
-                    .iter()
-                    .filter(|snapshot| snapshot.archived)
-                    .collect::<Vec<_>>()
-            })
-            .unwrap_or_default();
-        let scheduled_retained_bytes = active
-            .iter()
-            .map(|snapshot| snapshot.physical_size.unwrap_or(snapshot.logical_size))
-            .sum::<u64>();
+        let (active, archived): (Vec<_>, Vec<_>) = history
+            .into_iter()
+            .flat_map(|history| history.snapshots)
+            .partition(|snapshot| !snapshot.archived);
         let archived_bytes = archived
             .iter()
             .map(|snapshot| snapshot.physical_size.unwrap_or(snapshot.logical_size))
             .sum::<u64>();
-        let measured_copy_bytes = active
-            .iter()
-            .max_by_key(|snapshot| snapshot.completed_at)
-            .map(|snapshot| snapshot.physical_size.unwrap_or(snapshot.logical_size))
-            .unwrap_or(live_logical_bytes)
-            .max(live_logical_bytes);
-        let staging_headroom_bytes = measured_copy_bytes
-            .checked_mul(110)
-            .and_then(|bytes| bytes.checked_add(99))
-            .map(|bytes| bytes / 100)
-            .ok_or_else(|| {
-                Error::new(
-                    eyre!("{}", t!("backup.scheduled.capacity-overflow")),
-                    ErrorKind::InvalidRequest,
-                )
-            })?;
-        let conservative_peak_excluding_manual_bytes = measured_copy_bytes
-            .checked_mul(maximum_projected_snapshot_count)
-            .and_then(|bytes| bytes.checked_add(archived_bytes))
-            .and_then(|bytes| bytes.checked_add(staging_headroom_bytes))
-            .ok_or_else(|| {
-                Error::new(
-                    eyre!("{}", t!("backup.scheduled.capacity-overflow")),
-                    ErrorKind::InvalidRequest,
-                )
-            })?;
+        let estimate = CapacityEstimate::calculate(
+            &policy,
+            &active,
+            0,
+            archived_bytes,
+            live_logical_bytes,
+            10,
+        )?;
         estimates.push(BackupServiceCapacityEstimate {
             package_id,
             live_logical_bytes,
-            retained_snapshot_count: active.len(),
-            maximum_projected_snapshot_count,
-            scheduled_retained_bytes,
+            retained_snapshot_count: estimate.retained_snapshot_count,
+            maximum_projected_snapshot_count: estimate.maximum_projected_snapshot_count,
+            scheduled_retained_bytes: estimate.scheduled_retained_bytes,
             manual_checkpoint_bytes: None,
-            archived_bytes,
-            staging_headroom_bytes,
-            last_changed_bytes: active
-                .iter()
-                .max_by_key(|snapshot| snapshot.completed_at)
-                .and_then(|snapshot| snapshot.changed_bytes),
-            conservative_peak_excluding_manual_bytes,
+            archived_bytes: estimate.archived_bytes,
+            staging_headroom_bytes: estimate.staging_headroom_bytes,
+            last_changed_bytes: estimate.last_changed_bytes,
+            conservative_peak_excluding_manual_bytes: estimate.conservative_peak_bytes,
         });
     }
     Ok(estimates)
@@ -500,6 +458,7 @@ async fn refresh_histories(
     ctx: RpcContext,
     RefreshScheduledBackupHistoriesParams { target_id }: RefreshScheduledBackupHistoriesParams,
 ) -> Result<Vec<ServiceTargetHistory>, Error> {
+    let _coordinator = crate::backup::try_backup_coordinator(ctx.backup_coordinator.clone())?;
     let db = ctx.db.peek().await;
     let credential: ScheduledBackupCredential = db
         .as_private()
@@ -507,6 +466,7 @@ async fn refresh_histories(
         .as_idx(&target_id.to_string())
         .or_not_found(target_id.to_string())?
         .de()?;
+    validate_target_alias(&db, &target_id, &credential.target_instance_id)?;
     let encryption_key =
         credential.open(&db.as_private().as_scheduled_backup_device_key().de()?)?;
     let server_id = db.as_public().as_server_info().as_id().de()?;
@@ -611,17 +571,22 @@ pub async fn discover_histories(
         password,
     }: DiscoverScheduledBackupsParams,
 ) -> Result<Vec<ServiceTargetHistory>, Error> {
+    let _coordinator = crate::backup::try_backup_coordinator(ctx.backup_coordinator.clone())?;
     let db = ctx.db.peek().await;
-    let jobs = db
-        .as_public()
-        .as_scheduled_backups()
-        .as_jobs()
-        .as_entries()?
-        .into_iter()
-        .map(|(_, job)| job.de())
-        .collect::<Result<Vec<BackupJob>, Error>>()?;
     let current_server_id = db.as_public().as_server_info().as_id().de()?;
-    let device_key = (server_id == current_server_id)
+    let local_server = server_id == current_server_id;
+    let jobs = if local_server {
+        db.as_public()
+            .as_scheduled_backups()
+            .as_jobs()
+            .as_entries()?
+            .into_iter()
+            .map(|(_, job)| job.de())
+            .collect::<Result<Vec<BackupJob>, Error>>()?
+    } else {
+        Vec::new()
+    };
+    let device_key = local_server
         .then(|| db.as_private().as_scheduled_backup_device_key().de())
         .transpose()?;
     let target = target_id.clone().load(&db)?;
@@ -633,6 +598,9 @@ pub async fn discover_histories(
     )
     .await?;
     let target_instance_id = guard.recovery.target_instance_id.clone();
+    if local_server {
+        validate_target_alias(&ctx.db.peek().await, &target_id, &target_instance_id)?;
+    }
     let credential = device_key
         .map(|device_key| {
             ScheduledBackupCredential::seal(
@@ -659,14 +627,16 @@ pub async fn discover_histories(
         })
         .collect();
     guard.unmount().await?;
-    persist_histories(
-        &ctx,
-        &histories,
-        credential
-            .as_ref()
-            .map(|credential| (&target_id, credential)),
-    )
-    .await?;
+    if local_server {
+        persist_histories(
+            &ctx,
+            &histories,
+            credential
+                .as_ref()
+                .map(|credential| (&target_id, credential)),
+        )
+        .await?;
+    }
     Ok(histories)
 }
 
@@ -728,6 +698,72 @@ fn service_target_history(
         snapshots: history.snapshots.clone(),
         archived: history.archived,
     }
+}
+
+fn validate_target_alias(
+    db: &DatabaseModel,
+    target_id: &BackupTargetId,
+    target_instance_id: &str,
+) -> Result<(), Error> {
+    let aliases = db
+        .as_public()
+        .as_scheduled_backups()
+        .as_jobs()
+        .as_entries()?
+        .into_iter()
+        .map(|(_, job)| job.de())
+        .collect::<Result<Vec<BackupJob>, Error>>()?
+        .into_iter()
+        .filter(|job| job.target_instance_id == target_instance_id && job.target_id != *target_id)
+        .map(|job| job.name)
+        .collect::<Vec<_>>();
+    if !aliases.is_empty() {
+        return Err(Error::new(
+            eyre!(
+                "{}",
+                t!(
+                    "backup.scheduled.target-already-configured",
+                    jobs = aliases.join(", ")
+                )
+            ),
+            ErrorKind::InvalidRequest,
+        ));
+    }
+    Ok(())
+}
+
+fn import_target_histories(
+    db: &mut DatabaseModel,
+    target_id: &BackupTargetId,
+    metadata: &super::ScheduledBackupOnTargetMetadata,
+) -> Result<(), Error> {
+    let histories = db
+        .as_public_mut()
+        .as_scheduled_backups_mut()
+        .as_histories_mut();
+    for (package_id, history) in &metadata.services {
+        let key = history_key(target_id, package_id);
+        let cached: Option<ServiceTargetHistory> = histories
+            .as_idx(&key)
+            .map(|history| history.de())
+            .transpose()?;
+        if cached.as_ref().is_some_and(|history| {
+            !history.snapshots.is_empty() || !history.feeding_jobs.is_empty()
+        }) {
+            continue;
+        }
+        histories.insert(
+            &key,
+            &service_target_history(
+                target_id,
+                &metadata.target_instance_id,
+                package_id,
+                history,
+                BTreeSet::new(),
+            ),
+        )?;
+    }
+    Ok(())
 }
 
 /// Inputs for deleting archived automatic backup snapshots.
@@ -936,6 +972,7 @@ pub(crate) async fn mount_scheduled_target(
     ),
     Error,
 > {
+    validate_target_alias(db, target_id, expected_target_instance_id)?;
     let target = target_id.clone().load(db)?;
     let device_key = db.as_private().as_scheduled_backup_device_key().de()?;
     let credential = db
@@ -1216,6 +1253,8 @@ pub async fn reassign_target(
         ScheduledBackupMountGuard::initialize(target_guard, &server_id, hostname, &password)
             .await?;
     let target_instance_id = guard.recovery.target_instance_id.clone();
+    validate_target_alias(&db, &target_id, &target_instance_id)?;
+    let target_metadata = guard.metadata.clone();
     guard.save_and_unmount().await?;
 
     let old_job = job.clone();
@@ -1237,6 +1276,7 @@ pub async fn reassign_target(
                 .as_scheduled_backup_credentials_mut()
                 .insert(&target_id.to_string(), &credential)?;
             disassociate_histories(db, &old_job, &old_package_ids)?;
+            import_target_histories(db, &target_id, &target_metadata)?;
             associate_histories(db, &job, &package_ids)?;
             db.as_public_mut()
                 .as_scheduled_backups_mut()
@@ -1461,6 +1501,7 @@ pub async fn update_policy(
         .as_idx(&target_id.to_string())
         .or_not_found(target_id.to_string())?
         .de()?;
+    validate_target_alias(&db, &target_id, &credential.target_instance_id)?;
     let encryption_key =
         credential.open(&db.as_private().as_scheduled_backup_device_key().de()?)?;
     let server_id = db.as_public().as_server_info().as_id().de()?;
@@ -1472,7 +1513,20 @@ pub async fn update_policy(
     )
     .await?;
     history.snapshots = guard
-        .apply_policy(&package_id, history.timezone.clone(), policy.clone())
+        .metadata
+        .services
+        .get(&package_id)
+        .or_not_found(&package_id)?
+        .snapshots
+        .clone();
+    persist_histories(&ctx, std::slice::from_ref(&history), None).await?;
+    history.snapshots = guard
+        .apply_policy(
+            &package_id,
+            history.timezone.clone(),
+            policy.clone(),
+            &confirmed_removals,
+        )
         .await?;
     guard.save_and_unmount().await?;
     history.policy = policy;
@@ -2114,6 +2168,8 @@ pub async fn create(
         ScheduledBackupMountGuard::initialize(target_guard, &server_id, hostname, &password)
             .await?;
     let target_instance_id = scheduled_guard.recovery.target_instance_id.clone();
+    validate_target_alias(&db, &target_id, &target_instance_id)?;
+    let target_metadata = scheduled_guard.metadata.clone();
     scheduled_guard.save_and_unmount().await?;
 
     let id = Guid::new();
@@ -2154,6 +2210,7 @@ pub async fn create(
                 .as_scheduled_backups_mut()
                 .as_jobs_mut()
                 .insert(&id, &job)?;
+            import_target_histories(db, &target_id, &target_metadata)?;
             associate_histories(db, &job, &package_ids)?;
             refresh_archive_state(db, &job.target_id)?;
             Ok(())
@@ -2675,6 +2732,109 @@ mod cli_tests {
             snapshots: Vec::new(),
             archived: true,
         }
+    }
+
+    fn backup_database() -> DatabaseModel {
+        DatabaseModel::from(imbl_value::json!({
+            "public": { "scheduledBackups": { "jobs": {}, "histories": {} } }
+        }))
+    }
+
+    #[test]
+    fn attaching_existing_target_preserves_uncached_retention_and_checkpoints() {
+        let job = backup_job(
+            BackupJobId::new(),
+            "Latest only",
+            "cifs-0",
+            "instance",
+            "hello-world",
+        );
+        let package_id: PackageId = "hello-world".parse().unwrap();
+        let now = Utc::now();
+        let checkpoint = super::super::ServiceSnapshot {
+            id: ServiceSnapshotId::new(),
+            package_id: package_id.clone(),
+            package_version: "1.0.0".to_owned(),
+            source: super::super::BackupSource::Scheduled,
+            job_id: BackupJobId::new(),
+            job_name: "Original schedule".to_owned(),
+            run_id: Guid::new(),
+            completed_at: now,
+            logical_size: 1,
+            physical_size: None,
+            changed_bytes: None,
+            measured_at: now,
+            archived: false,
+        };
+        let policy = RetentionPolicy {
+            tiers: vec![RetentionTier {
+                interval_seconds: 86400,
+                coverage_seconds: 7 * 86400,
+            }],
+        };
+        let metadata = super::super::ScheduledBackupOnTargetMetadata {
+            target_instance_id: "instance".to_owned(),
+            services: BTreeMap::from([(
+                package_id.clone(),
+                super::super::OnTargetServiceHistory {
+                    timezone: "America/New_York".to_owned(),
+                    policy: policy.clone(),
+                    archived: false,
+                    snapshots: vec![checkpoint.clone()],
+                },
+            )]),
+        };
+        let key = history_key(&job.target_id, &package_id);
+        for empty_cached_history in [false, true] {
+            let mut db = backup_database();
+            if empty_cached_history {
+                db.as_public_mut()
+                    .as_scheduled_backups_mut()
+                    .as_histories_mut()
+                    .insert(&key, &empty_history(BTreeSet::new()))
+                    .unwrap();
+            }
+
+            import_target_histories(&mut db, &job.target_id, &metadata).unwrap();
+            associate_histories(&mut db, &job, &BTreeSet::from([package_id.clone()])).unwrap();
+
+            let history: ServiceTargetHistory = db
+                .as_public()
+                .as_scheduled_backups()
+                .as_histories()
+                .as_idx(&key)
+                .unwrap()
+                .de()
+                .unwrap();
+            assert_eq!(history.policy, policy);
+            assert_eq!(history.timezone, "America/New_York");
+            assert_eq!(history.snapshots, vec![checkpoint.clone()]);
+            assert_eq!(history.feeding_jobs, BTreeSet::from([job.id.clone()]));
+            assert!(!history.archived);
+        }
+    }
+
+    #[test]
+    fn target_instance_has_one_location_even_when_its_job_is_paused() {
+        let mut db = backup_database();
+        let mut job = backup_job(
+            BackupJobId::new(),
+            "Existing schedule",
+            "cifs-0",
+            "instance",
+            "hello-world",
+        );
+        job.enabled = false;
+        job.pause = Some(BackupJobPause::User);
+        db.as_public_mut()
+            .as_scheduled_backups_mut()
+            .as_jobs_mut()
+            .insert(&job.id, &job)
+            .unwrap();
+
+        assert!(validate_target_alias(&db, &job.target_id, "instance").is_ok());
+        assert!(validate_target_alias(&db, &"cifs-1".parse().unwrap(), "instance").is_err());
+        assert!(validate_target_alias(&db, &"cifs-1".parse().unwrap(), "other-instance").is_ok());
     }
 
     #[test]
