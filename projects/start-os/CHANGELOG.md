@@ -47,11 +47,14 @@ for the detail behind its highlights.
 
 - **Automatic backups.** StartOS can protect optional System data and selected
   current or future services on hourly, daily, weekly, or monthly schedules
-  with selectable timezones,
-  with capacity estimates and configurable version history. Multiple schedules
-  can be created, edited, paused, resumed, run immediately, repaired, reassigned,
+  with selectable timezones, capacity estimates, and configurable version
+  history. Multiple schedules can be created, edited, paused, resumed, run
+  immediately, repaired, reassigned,
   or deleted while unreferenced checkpoints remain available as archives.
   Reconnected locations can authenticate again to manage those archives.
+  Schedules preserve existing version history when a location is reconnected.
+  Retention changes require confirmation of the checkpoints on the location,
+  and schedules stop when their backup metadata is missing or invalid.
   New-service reviews keep selective schedules current. Backup history is
   searchable, filterable, and paginated, and retains the newest 1,000 completed
   entries, with a notification for every failed run, clear failure summaries,
@@ -63,8 +66,9 @@ for the detail behind its highlights.
   new schedule timing, and empty histories detached from every schedule adopt
   the new policy and timezone. Password controls are keyboard accessible, and
   backup management remains usable on narrow displays. Restore can mix
-  manual and automatic checkpoints by service, and initial setup can recover a
-  server from its latest automatic System and service checkpoints. Pausing a
+  manual and automatic checkpoints by service, including backups from another
+  server, and initial setup can recover a server from its latest automatic System
+  and service checkpoints. Pausing a
   schedule keeps its checkpoints in active retention history. Backup progress
   and history remain in view. The same schedules, history, retention, repair, and restore
   operations are available for command-line administration. A stalled service

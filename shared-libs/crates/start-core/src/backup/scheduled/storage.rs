@@ -55,6 +55,41 @@ pub struct OnTargetServiceHistory {
     pub snapshots: Vec<ServiceSnapshot>,
 }
 
+impl OnTargetServiceHistory {
+    fn change_policy(
+        &mut self,
+        timezone: String,
+        policy: RetentionPolicy,
+        confirmed_removals: &BTreeSet<ServiceSnapshotId>,
+    ) -> Result<(), Error> {
+        let parsed_timezone = timezone.parse().map_err(|_| {
+            Error::new(
+                eyre!("{}", t!("backup.scheduled.stored-timezone-invalid")),
+                ErrorKind::Backup,
+            )
+        })?;
+        let removals = if self.archived {
+            BTreeSet::new()
+        } else {
+            policy
+                .preview(&self.snapshots, parsed_timezone)?
+                .removed
+                .into_iter()
+                .map(|snapshot| snapshot.id)
+                .collect()
+        };
+        if &removals != confirmed_removals {
+            return Err(Error::new(
+                eyre!("{}", t!("backup.scheduled.prune-confirmation-stale")),
+                ErrorKind::InvalidRequest,
+            ));
+        }
+        self.timezone = timezone;
+        self.policy = policy;
+        Ok(())
+    }
+}
+
 /// Owns the physical target mount and its encrypted scheduled-backup mount.
 #[derive(Debug)]
 pub struct ScheduledBackupMountGuard<G: GenericMountGuard> {
@@ -83,7 +118,12 @@ impl<G: GenericMountGuard> ScheduledBackupMountGuard<G> {
     ) -> Result<(Self, String), Error> {
         let root = scheduled_root(target_guard.path(), server_id);
         let recovery_path = root.join("unencrypted-metadata.json");
-        let (recovery, encryption_key) = if tokio::fs::metadata(&recovery_path).await.is_ok() {
+        let initializing = match tokio::fs::metadata(&root).await {
+            Ok(_) => false,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => true,
+            Err(error) => return Err(error.into()),
+        };
+        let (recovery, encryption_key) = if !initializing {
             let recovery: ScheduledBackupRecoveryInfo =
                 read_json_file_bounded(&recovery_path, MAX_BACKUP_RECOVERY_METADATA_BYTES).await?;
             check_password(&recovery.password_hash, password)?;
@@ -129,6 +169,7 @@ impl<G: GenericMountGuard> ScheduledBackupMountGuard<G> {
             recovery,
             recovery_path,
             &encryption_key,
+            initializing,
         )
         .await?;
         Ok((guard, encryption_key))
@@ -157,6 +198,7 @@ impl<G: GenericMountGuard> ScheduledBackupMountGuard<G> {
             recovery,
             recovery_path,
             encryption_key,
+            false,
         )
         .await
     }
@@ -207,6 +249,7 @@ impl<G: GenericMountGuard> ScheduledBackupMountGuard<G> {
             recovery,
             recovery_path,
             &encryption_key,
+            false,
         )
         .await?;
         Ok((guard, encryption_key))
@@ -218,6 +261,7 @@ impl<G: GenericMountGuard> ScheduledBackupMountGuard<G> {
         recovery: ScheduledBackupRecoveryInfo,
         recovery_path: PathBuf,
         encryption_key: &str,
+        initializing: bool,
     ) -> Result<Self, Error> {
         let crypt_path = scheduled_root(target_guard.path(), server_id).join("crypt");
         tokio::fs::create_dir_all(&crypt_path)
@@ -226,14 +270,11 @@ impl<G: GenericMountGuard> ScheduledBackupMountGuard<G> {
         let encrypted_guard =
             TmpMountGuard::mount(&BackupFS::new(&crypt_path, encryption_key), ReadWrite).await?;
         let metadata_path = encrypted_guard.path().join("metadata.json");
-        let metadata = if tokio::fs::metadata(&metadata_path).await.is_ok() {
-            read_json_file_bounded(&metadata_path, MAX_BACKUP_TARGET_METADATA_BYTES).await?
-        } else {
-            ScheduledBackupOnTargetMetadata {
-                target_instance_id: recovery.target_instance_id.clone(),
-                services: BTreeMap::new(),
-            }
-        };
+        let metadata = read_target_metadata(
+            &metadata_path,
+            initializing.then_some(recovery.target_instance_id.as_str()),
+        )
+        .await?;
         if metadata.target_instance_id != recovery.target_instance_id {
             return Err(Error::new(
                 eyre!("{}", t!("backup.scheduled.metadata-identity-mismatch")),
@@ -396,14 +437,14 @@ impl<G: GenericMountGuard> ScheduledBackupMountGuard<G> {
         package_id: &PackageId,
         timezone: String,
         policy: RetentionPolicy,
+        confirmed_removals: &BTreeSet<ServiceSnapshotId>,
     ) -> Result<Vec<ServiceSnapshot>, Error> {
         let history = self
             .metadata
             .services
             .get_mut(package_id)
             .or_not_found(package_id)?;
-        history.timezone = timezone;
-        history.policy = policy;
+        history.change_policy(timezone, policy, confirmed_removals)?;
         self.prune(package_id).await?;
         self.remove_unreferenced_runs().await?;
         self.save().await?;
@@ -590,6 +631,19 @@ fn contains_system_backup(metadata: &ScheduledBackupOnTargetMetadata) -> bool {
         .is_some_and(|history| !history.snapshots.is_empty())
 }
 
+async fn read_target_metadata(
+    path: &Path,
+    new_target_instance_id: Option<&str>,
+) -> Result<ScheduledBackupOnTargetMetadata, Error> {
+    if let Some(target_instance_id) = new_target_instance_id {
+        return Ok(ScheduledBackupOnTargetMetadata {
+            target_instance_id: target_instance_id.to_owned(),
+            services: BTreeMap::new(),
+        });
+    }
+    read_json_file_bounded(path, MAX_BACKUP_TARGET_METADATA_BYTES).await
+}
+
 async fn write_json(path: &Path, value: &impl Serialize) -> Result<(), Error> {
     if let Some(parent) = path.parent() {
         tokio::fs::create_dir_all(parent).await?;
@@ -603,6 +657,92 @@ async fn write_json(path: &Path, value: &impl Serialize) -> Result<(), Error> {
 mod tests {
     use super::*;
     use crate::backup::scheduled::BackupSource;
+
+    #[tokio::test]
+    async fn existing_target_requires_readable_metadata() {
+        let root = std::env::temp_dir().join(format!("backup-metadata-{}", Guid::new()));
+        tokio::fs::create_dir(&root).await.unwrap();
+        let path = root.join("metadata.json");
+
+        assert!(read_target_metadata(&path, None).await.is_err());
+        let fresh = read_target_metadata(&path, Some("new-instance"))
+            .await
+            .unwrap();
+        assert_eq!(fresh.target_instance_id, "new-instance");
+        assert!(fresh.services.is_empty());
+
+        tokio::fs::write(&path, b"invalid metadata").await.unwrap();
+        assert!(read_target_metadata(&path, None).await.is_err());
+        tokio::fs::write(&path, serde_json::to_vec(&fresh).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(
+            read_target_metadata(&path, None)
+                .await
+                .unwrap()
+                .target_instance_id,
+            "new-instance"
+        );
+        tokio::fs::remove_file(&path).await.unwrap();
+        tokio::fs::create_dir(&path).await.unwrap();
+        assert!(read_target_metadata(&path, None).await.is_err());
+        tokio::fs::remove_dir_all(root).await.unwrap();
+    }
+
+    #[test]
+    fn policy_change_rejects_unconfirmed_target_snapshots() {
+        let snapshot = |seconds| {
+            let completed_at = DateTime::from_timestamp(seconds, 0).unwrap();
+            ServiceSnapshot {
+                id: ServiceSnapshotId::new(),
+                package_id: "test-service".parse().unwrap(),
+                package_version: "1.0.0".into(),
+                source: BackupSource::Scheduled,
+                job_id: Guid::new(),
+                job_name: "Daily".into(),
+                run_id: Guid::new(),
+                completed_at,
+                logical_size: 1,
+                physical_size: None,
+                changed_bytes: None,
+                measured_at: completed_at,
+                archived: false,
+            }
+        };
+        let known = snapshot(1);
+        let target_only = snapshot(2);
+        let newest = snapshot(3);
+        let mut history = OnTargetServiceHistory {
+            timezone: "UTC".into(),
+            policy: RetentionPolicy {
+                tiers: vec![super::super::RetentionTier {
+                    interval_seconds: 1,
+                    coverage_seconds: 10,
+                }],
+            },
+            archived: false,
+            snapshots: vec![known.clone(), target_only.clone(), newest],
+        };
+        let original = history.policy.clone();
+        assert!(
+            history
+                .change_policy(
+                    "UTC".into(),
+                    RetentionPolicy::latest_only(),
+                    &BTreeSet::from([known.id.clone()]),
+                )
+                .is_err()
+        );
+        assert_eq!(history.policy, original);
+        history
+            .change_policy(
+                "UTC".into(),
+                RetentionPolicy::latest_only(),
+                &BTreeSet::from([known.id, target_only.id]),
+            )
+            .unwrap();
+        assert_eq!(history.policy, RetentionPolicy::latest_only());
+    }
 
     #[test]
     fn scheduled_root_is_separate_from_the_manual_backup_set() {

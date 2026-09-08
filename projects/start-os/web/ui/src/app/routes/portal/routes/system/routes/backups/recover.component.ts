@@ -22,6 +22,7 @@ import { map, take } from 'rxjs'
 import { ApiService } from 'src/app/services/api/embassy-api.service'
 import { ConfigService } from 'src/app/services/config.service'
 import { DataModel } from 'src/app/services/patch-db/data-model'
+import { getManifest } from 'src/app/utils/get-package-data'
 import { RecoverCheckpoint, RecoverData, RecoverOption } from './backup.types'
 import { SYSTEM_PACKAGE_ID } from './scheduled-utils'
 
@@ -299,13 +300,9 @@ export class BackupsRecoverComponent {
                   : []),
                 ...scheduledCheckpoints,
               ].sort((a, b) => b.timestamp.localeCompare(a.timestamp))
-              const state = packageData[id]?.stateInfo
+              const pkg = packageData[id]
               const title =
-                manual?.title ||
-                (state?.state === 'installed' || state?.state === 'removing'
-                  ? state.manifest.title
-                  : state?.installingInfo.newManifest.title) ||
-                id
+                manual?.title || (pkg && getManifest(pkg)?.title) || id
               return {
                 id,
                 title,

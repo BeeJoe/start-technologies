@@ -58,6 +58,10 @@ location, its saved policy remains unchanged. Adding a schedule does not remove
 existing checkpoints or restrict the new timing. An empty history detached from
 every schedule adopts the new schedule's policy and timezone.
 
+Schedules that share a physical drive or network folder must select the same
+backup-location entry. If StartOS reports that another schedule already uses
+the location, select that existing entry.
+
 Each retained checkpoint is a full copy on the backup location, not an
 incremental delta. A run also needs temporary staging space. Keeping more
 versions therefore increases storage use, run time, and I/O, especially on
@@ -67,6 +71,8 @@ retained checkpoints, and staging space.
 Retention applies to a service's shared automatic history on a backup location.
 If several schedules use that history, StartOS previews the checkpoints a policy
 change would remove and the schedules it would affect before applying it.
+If the location contains checkpoints missing from that preview, review the
+updated history before confirming the change again.
 
 Changing a schedule's location does not copy its existing checkpoints. They
 remain archived on the old location, and the next run begins a history on the
@@ -88,9 +94,9 @@ retained or archived manual or automatic checkpoint can be chosen instead. See
 StartOS sends a notification whenever an automatic run fails. It pauses affected
 schedules after three consecutive failures to connect to a backup location. It
 also refuses to write when credentials are no longer valid, the location's
-identity has changed, or its metadata is invalid. Repair the original location,
-provide current credentials, or explicitly move the schedule to another
-location before resuming it.
+identity has changed, or its metadata is missing or invalid. Repair the original
+location, provide current credentials, or explicitly move the schedule to
+another location before resuming it.
 
 The command-line backup interface can list and manage schedules, inspect
 activity and checkpoints, preview retention changes, repair targets, and start

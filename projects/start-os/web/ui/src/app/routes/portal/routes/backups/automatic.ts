@@ -41,6 +41,7 @@ import { firstValueFrom } from 'rxjs'
 import { ApiService } from 'src/app/services/api/embassy-api.service'
 import { DataModel } from 'src/app/services/patch-db/data-model'
 import { TitleDirective } from 'src/app/services/title.service'
+import { getManifest } from 'src/app/utils/get-package-data'
 import {
   BackupService,
   formatCifsLocation,
@@ -616,7 +617,6 @@ class AutomaticEditor
     }
 
     [tuiSubtitle],
-    .helper,
     .block-helper {
       display: block;
       margin-block-start: 0.25rem;
@@ -628,8 +628,7 @@ class AutomaticEditor
     }
 
     .steps,
-    .wizard-actions,
-    .save-row {
+    .wizard-actions {
       display: flex;
       gap: 0.5rem;
       align-items: center;
@@ -693,8 +692,7 @@ class AutomaticEditor
       gap: 1rem;
     }
 
-    label > span:first-child,
-    .helper {
+    label > span:first-child {
       color: var(--tui-text-secondary);
     }
 
@@ -764,11 +762,6 @@ class AutomaticEditor
       justify-content: flex-start;
     }
 
-    .setting-row.vertical {
-      align-items: stretch;
-      flex-direction: column;
-    }
-
     dl {
       display: grid;
       gap: 0.75rem;
@@ -791,18 +784,6 @@ class AutomaticEditor
     }
 
     .wizard-actions span {
-      flex: 1;
-    }
-
-    .advanced-link {
-      inline-size: 100%;
-      min-inline-size: 0;
-      text-align: start;
-      gap: 0.75rem;
-      box-sizing: border-box;
-    }
-
-    .advanced-link [tuiTitle] {
       flex: 1;
     }
 
@@ -832,10 +813,6 @@ class AutomaticEditor
       min-inline-size: 0;
       color: var(--tui-text-secondary);
       overflow-wrap: anywhere;
-    }
-
-    .save-row {
-      justify-content: flex-end;
     }
 
     @container (max-inline-size: 48rem) {
@@ -869,15 +846,12 @@ class AutomaticEditor
         min-inline-size: 0;
       }
 
-      .setting-row:not(.vertical),
-      .advanced-link {
+      .setting-row {
         align-items: stretch;
         flex-direction: column;
       }
 
-      .setting-row:not(.vertical) > button,
-      .advanced-link > tui-icon,
-      .advanced-link > [tuiBadge] {
+      .setting-row > button {
         align-self: flex-start;
       }
 
@@ -886,7 +860,7 @@ class AutomaticEditor
         justify-content: flex-start;
       }
 
-      .setting-row.retention-heading:not(.vertical) {
+      .setting-row.retention-heading {
         align-items: flex-start;
         flex-direction: row;
       }
@@ -1080,11 +1054,7 @@ export default class AutomaticBackups {
       },
       ...Object.entries(this.packageData() || {})
         .flatMap(([id, entry]) => {
-          const state = entry.stateInfo
-          const manifest =
-            state.state === 'installed' || state.state === 'removing'
-              ? state.manifest
-              : state.installingInfo?.newManifest
+          const manifest = getManifest(entry)
           return manifest
             ? [
                 {
