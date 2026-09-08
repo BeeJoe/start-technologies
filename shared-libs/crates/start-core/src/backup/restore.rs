@@ -51,7 +51,6 @@ pub struct RestorePackageParams {
     pub server_id: Option<String>,
 }
 
-// #[command(rename = "restore", display(display_none))]
 #[instrument(skip(ctx, password))]
 pub async fn restore_packages_rpc(
     ctx: RpcContext,
@@ -194,59 +193,75 @@ pub async fn restore_selection_rpc(
     crate::backup::scheduled::reconcile_interrupted_backup_state(&ctx).await?;
 
     let db = ctx.db.peek().await;
-    let server_id = match server_id {
-        Some(server_id) => server_id,
-        None => db.as_public().as_server_info().as_id().de()?,
-    };
+    let current_server_id = db.as_public().as_server_info().as_id().de()?;
+    let server_id = server_id.unwrap_or_else(|| current_server_id.clone());
     let mut tasks = BTreeMap::new();
     let mut refreshed_credential = None;
     let mut scheduled_guard = None;
     let mut manual_guard = None;
 
     if !snapshots.is_empty() {
-        let target_instance_ids = snapshots
-            .iter()
-            .map(|(package_id, snapshot_id)| {
-                let key = history_key(&target_id, package_id);
-                let history: super::scheduled::ServiceTargetHistory = db
-                    .as_public()
-                    .as_scheduled_backups()
-                    .as_histories()
-                    .as_idx(&key)
-                    .or_not_found(&key)?
-                    .de()?;
-                if !history
-                    .snapshots
-                    .iter()
-                    .any(|snapshot| &snapshot.id == snapshot_id)
-                {
-                    return Err(Error::new(
-                        eyre!("{}", t!("backup.scheduled.snapshot-not-found")),
-                        ErrorKind::NotFound,
-                    ));
-                }
-                Ok(history.target_instance_id)
-            })
-            .collect::<Result<std::collections::BTreeSet<_>, Error>>()?;
-        if target_instance_ids.len() != 1 {
-            return Err(Error::new(
-                eyre!("{}", t!("backup.scheduled.target-identity-mismatch")),
-                ErrorKind::InvalidRequest,
-            ));
-        }
-        let target_instance_id = target_instance_ids
-            .first()
-            .expect("one target instance ID exists");
-        let (guard, credential) = mount_scheduled_target(
-            &db,
-            &target_id,
-            &server_id,
-            target_instance_id,
-            password.as_deref(),
-        )
-        .await?;
+        let guard = if server_id == current_server_id {
+            let target_instance_ids = snapshots
+                .iter()
+                .map(|(package_id, snapshot_id)| {
+                    let key = history_key(&target_id, package_id);
+                    let history: super::scheduled::ServiceTargetHistory = db
+                        .as_public()
+                        .as_scheduled_backups()
+                        .as_histories()
+                        .as_idx(&key)
+                        .or_not_found(&key)?
+                        .de()?;
+                    if !history
+                        .snapshots
+                        .iter()
+                        .any(|snapshot| &snapshot.id == snapshot_id)
+                    {
+                        return Err(Error::new(
+                            eyre!("{}", t!("backup.scheduled.snapshot-not-found")),
+                            ErrorKind::NotFound,
+                        ));
+                    }
+                    Ok(history.target_instance_id)
+                })
+                .collect::<Result<std::collections::BTreeSet<_>, Error>>()?;
+            if target_instance_ids.len() != 1 {
+                return Err(Error::new(
+                    eyre!("{}", t!("backup.scheduled.target-identity-mismatch")),
+                    ErrorKind::InvalidRequest,
+                ));
+            }
+            let target_instance_id = target_instance_ids
+                .first()
+                .expect("one target instance ID exists");
+            let (guard, credential) = mount_scheduled_target(
+                &db,
+                &target_id,
+                &server_id,
+                target_instance_id,
+                password.as_deref(),
+            )
+            .await?;
+            refreshed_credential = Some(credential);
+            guard
+        } else {
+            let password = password.as_deref().ok_or_else(|| {
+                Error::new(
+                    eyre!("{}", t!("backup.scheduled.reauth-required")),
+                    ErrorKind::InvalidRequest,
+                )
+            })?;
+            let target = target_id.clone().load(&db)?;
+            ScheduledBackupMountGuard::discover_with_password(
+                TmpMountGuard::mount(&target, ReadWrite).await?,
+                &server_id,
+                password,
+            )
+            .await?
+            .0
+        };
         validate_scheduled_snapshots(&guard, &snapshots).await?;
-        refreshed_credential = Some(credential);
         scheduled_guard = Some(guard);
     }
 
@@ -369,11 +384,32 @@ async fn validate_scheduled_snapshots(
     guard: &ScheduledBackupMountGuard<TmpMountGuard>,
     snapshots: &BTreeMap<PackageId, ServiceSnapshotId>,
 ) -> Result<(), Error> {
+    validate_snapshot_selection(&guard.metadata, snapshots)?;
     for (package_id, snapshot_id) in snapshots {
         if tokio::fs::metadata(guard.snapshot_path(package_id, snapshot_id))
             .await
             .is_err()
         {
+            return Err(Error::new(
+                eyre!("{}", t!("backup.scheduled.snapshot-not-found")),
+                ErrorKind::NotFound,
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_snapshot_selection(
+    metadata: &super::scheduled::ScheduledBackupOnTargetMetadata,
+    snapshots: &BTreeMap<PackageId, ServiceSnapshotId>,
+) -> Result<(), Error> {
+    for (package_id, snapshot_id) in snapshots {
+        if !metadata.services.get(package_id).is_some_and(|history| {
+            history
+                .snapshots
+                .iter()
+                .any(|snapshot| &snapshot.id == snapshot_id)
+        }) {
             return Err(Error::new(
                 eyre!("{}", t!("backup.scheduled.snapshot-not-found")),
                 ErrorKind::NotFound,
@@ -582,6 +618,46 @@ mod scheduled_recovery_tests {
             measured_at: completed_at,
             archived: false,
         }
+    }
+
+    #[test]
+    fn restore_selection_requires_a_checkpoint_owned_by_the_source_service() {
+        let package_id: PackageId = "bitcoind".parse().unwrap();
+        let checkpoint = snapshot(&package_id, 1);
+        let metadata = ScheduledBackupOnTargetMetadata {
+            target_instance_id: "foreign-target".to_owned(),
+            services: BTreeMap::from([(
+                package_id.clone(),
+                OnTargetServiceHistory {
+                    timezone: "UTC".to_owned(),
+                    policy: RetentionPolicy::latest_only(),
+                    archived: false,
+                    snapshots: vec![checkpoint.clone()],
+                },
+            )]),
+        };
+
+        assert!(
+            validate_snapshot_selection(
+                &metadata,
+                &BTreeMap::from([(package_id.clone(), checkpoint.id.clone())]),
+            )
+            .is_ok()
+        );
+        assert!(
+            validate_snapshot_selection(
+                &metadata,
+                &BTreeMap::from([(package_id, ServiceSnapshotId::new())]),
+            )
+            .is_err()
+        );
+        assert!(
+            validate_snapshot_selection(
+                &metadata,
+                &BTreeMap::from([("lnd".parse().unwrap(), checkpoint.id)]),
+            )
+            .is_err()
+        );
     }
 
     #[test]

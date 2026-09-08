@@ -3,6 +3,7 @@ import {
   afterNextRender,
   Component,
   computed,
+  DestroyRef,
   effect,
   ElementRef,
   inject,
@@ -12,7 +13,7 @@ import {
   signal,
   viewChild,
 } from '@angular/core'
-import { toSignal } from '@angular/core/rxjs-interop'
+import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop'
 import {
   NonNullableFormBuilder,
   ReactiveFormsModule,
@@ -53,10 +54,11 @@ import {
 } from '@taiga-ui/kit'
 import { TuiCardLarge, TuiForm, TuiHeader } from '@taiga-ui/layout'
 import { PatchDB } from 'patch-db-client'
-import { filter, firstValueFrom, map, take } from 'rxjs'
+import { filter, firstValueFrom, from, map, race } from 'rxjs'
 
 import { ApiService } from 'src/app/services/api/embassy-api.service'
 import { DataModel } from 'src/app/services/patch-db/data-model'
+import { getManifest } from 'src/app/utils/get-package-data'
 import { BackupService, formatCifsLocation } from './backup.service'
 import { DeleteScheduleService } from './delete-schedule'
 import { BackupRetentionRules } from './retention-rules'
@@ -1328,6 +1330,7 @@ export class ScheduledBackups {
   private readonly errors = inject(ErrorService)
   private readonly i18n = inject(i18nPipe)
   private readonly injector = inject(Injector)
+  private readonly destroyRef = inject(DestroyRef)
   private readonly jobNameInput =
     viewChild<ElementRef<HTMLInputElement>>('jobNameInput')
   private readonly patch = inject<PatchDB<DataModel>>(PatchDB)
@@ -1402,11 +1405,7 @@ export class ScheduledBackups {
       icon: '',
     },
     ...Object.entries(this.packageData() || {}).flatMap(([id, entry]) => {
-      const state = entry.stateInfo
-      const manifest =
-        state.state === 'installed' || state.state === 'removing'
-          ? state.manifest
-          : state.installingInfo?.newManifest
+      const manifest = getManifest(entry)
       return manifest ? [{ id, name: manifest.title, icon: entry.icon }] : []
     }),
   ])
@@ -1879,23 +1878,22 @@ export class ScheduledBackups {
     jobId: string,
     run: Promise<T.BackupRun>,
   ): Promise<void> {
-    const visible = firstValueFrom(
-      this.patch.watch$('scheduledBackups', 'activities').pipe(
-        filter(activities =>
-          Object.values(activities).some(
-            activity =>
-              activity.jobId === jobId && activity.state === 'running',
+    const outcome = await firstValueFrom(
+      race(
+        from(run).pipe(map(() => 'completed' as const)),
+        this.patch.watch$('scheduledBackups', 'activities').pipe(
+          filter(activities =>
+            Object.values(activities).some(
+              activity =>
+                activity.jobId === jobId && activity.state === 'running',
+            ),
           ),
+          map(() => 'visible' as const),
         ),
-        map(() => 'visible' as const),
-        take(1),
-      ),
+      ).pipe(takeUntilDestroyed(this.destroyRef)),
+      { defaultValue: 'destroyed' as const },
     )
-    const outcome = await Promise.race([
-      run.then(() => 'completed' as const),
-      visible,
-    ])
-    if (outcome === 'visible') {
+    if (outcome !== 'completed') {
       void run.catch(error => this.errors.handleError(getErrorMessage(error)))
     }
   }

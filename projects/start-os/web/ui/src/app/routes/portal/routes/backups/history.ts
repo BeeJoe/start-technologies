@@ -24,6 +24,7 @@ import { PatchDB } from 'patch-db-client'
 import { tap } from 'rxjs'
 
 import { DataModel } from 'src/app/services/patch-db/data-model'
+import { getManifest } from 'src/app/utils/get-package-data'
 import {
   BackupService,
   formatCifsLocation,
@@ -417,6 +418,24 @@ export class BackupHistory {
       b.startedAt.localeCompare(a.startedAt),
     ),
   )
+  private readonly snapshotsByTarget = computed(() => {
+    const targets = new Map<
+      string,
+      Map<string, Map<string, T.ServiceSnapshot[]>>
+    >()
+    for (const history of Object.values(this.state()?.histories || {})) {
+      let packages = targets.get(history.targetId)
+      if (!packages) targets.set(history.targetId, (packages = new Map()))
+      let runs = packages.get(history.packageId)
+      if (!runs) packages.set(history.packageId, (runs = new Map()))
+      for (const snapshot of history.snapshots) {
+        const snapshots = runs.get(snapshot.runId)
+        if (snapshots) snapshots.push(snapshot)
+        else runs.set(snapshot.runId, [snapshot])
+      }
+    }
+    return targets
+  })
 
   protected readonly filteredActivities = computed(() => {
     const query = this.query().trim().toLocaleLowerCase()
@@ -580,10 +599,11 @@ export class BackupHistory {
     activity: T.BackupActivity,
     packageId: string,
   ): T.ServiceSnapshot[] {
-    return Object.values(this.state()?.histories || {}).flatMap(history =>
-      history.packageId === packageId && history.targetId === activity.targetId
-        ? history.snapshots.filter(snapshot => snapshot.runId === activity.id)
-        : [],
+    return (
+      this.snapshotsByTarget()
+        .get(activity.targetId)
+        ?.get(packageId)
+        ?.get(activity.id) || []
     )
   }
 
@@ -593,12 +613,8 @@ export class BackupHistory {
   }
 
   protected packageName(id: string): string {
-    const state = this.packageData()?.[id]?.stateInfo
-    const manifest =
-      state?.state === 'installed' || state?.state === 'removing'
-        ? state.manifest
-        : state?.installingInfo?.newManifest
-    return manifest?.title || id
+    const pkg = this.packageData()?.[id]
+    return (pkg && getManifest(pkg)?.title) || id
   }
 
   protected targetName(id: string): string {
