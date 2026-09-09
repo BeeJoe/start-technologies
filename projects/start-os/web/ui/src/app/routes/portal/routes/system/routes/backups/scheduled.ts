@@ -1337,7 +1337,14 @@ export class ScheduledBackups {
   private readonly packageData = toSignal(this.patch.watch$('packageData'))
   private readonly tasks = inject(TaskService)
 
-  protected readonly jobs = signal<T.BackupJob[]>([])
+  private readonly liveJobs = toSignal(
+    this.patch.watch$('scheduledBackups', 'jobs'),
+  )
+  protected readonly jobs = computed(() =>
+    Object.values(this.liveJobs() || {}).sort((a, b) =>
+      a.createdAt.localeCompare(b.createdAt),
+    ),
+  )
   protected readonly histories = signal<T.ServiceTargetHistory[]>([])
   protected readonly reviews = signal<T.NewServiceBackupReview[]>([])
   protected readonly visibleReviews = computed(() =>
@@ -1428,20 +1435,17 @@ export class ScheduledBackups {
   async reload() {
     this.loading.set(true)
     try {
-      const [jobs, histories, reviews] = await Promise.all([
-        this.api.getScheduledBackupJobs({}),
+      const [histories, reviews] = await Promise.all([
         this.api.getScheduledBackupHistories({}),
         this.api.getNewServiceBackupReviews({}),
       ])
-      jobs.sort((a, b) => a.createdAt.localeCompare(b.createdAt))
-      this.jobs.set(jobs)
       this.histories.set(histories)
       this.reviews.set(reviews)
       for (const review of reviews) {
         this.reviewDecisions.set(
           review.packageId,
           Object.fromEntries(
-            jobs.map(job => [
+            this.jobs().map(job => [
               job.id,
               this.jobIncludesService(job, review.packageId),
             ]),
@@ -1740,13 +1744,10 @@ export class ScheduledBackups {
     await this.tasks.run(async () => {
       if (form.id) {
         const selectedJob = this.selectedJob()
-        const updated = await this.api.updateScheduledBackupJob({
+        await this.api.updateScheduledBackupJob({
           id: form.id!,
           ...common,
         })
-        this.jobs.update(jobs =>
-          jobs.map(job => (job.id === updated.id ? updated : job)),
-        )
         for (const change of retentionChanges) {
           await this.api.updateScheduledRetention({
             targetId: change.history.targetId,
@@ -1821,6 +1822,9 @@ export class ScheduledBackups {
         return []
       }
       const policy = overrides[history.packageId] || defaultPolicy
+      const previousPolicy =
+        job.retentionOverrides[history.packageId] || job.defaultRetention
+      if (JSON.stringify(policy) === JSON.stringify(previousPolicy)) return []
       return JSON.stringify(policy) === JSON.stringify(history.policy)
         ? []
         : [{ history, policy }]
