@@ -33,6 +33,8 @@ date that does not occur in a given month runs on that month's final day.
 Multiple schedules can protect different services, use different locations, or
 run at different times. Pausing a schedule keeps its settings and checkpoints
 in its active history so resumed backups continue from the existing history.
+The schedule list updates as schedules run, pause, or change from another
+browser or the command line.
 When no schedule includes future services, StartOS recommends adding each newly
 installed service to one or more schedules; the recommendation can be dismissed.
 
@@ -57,6 +59,7 @@ When a selected service has checkpoints or another schedule on the chosen
 location, its saved policy remains unchanged. Adding a schedule does not remove
 existing checkpoints or restrict the new timing. An empty history detached from
 every schedule adopts the new schedule's policy and timezone.
+Editing a schedule's name or timing preserves the location's saved history policy.
 
 Schedules that share a physical drive or network folder must select the same
 backup-location entry. If StartOS reports that another schedule already uses

@@ -223,6 +223,21 @@ import {
         flex-wrap: nowrap;
       }
     }
+
+    @container (max-inline-size: 20rem) {
+      .schedule-job > [tuiTitle] > b {
+        grid-column: 2 / -1;
+      }
+
+      .schedule-job > [tuiBadge] {
+        grid-column: 1 / 3;
+      }
+
+      .job-list-actions {
+        grid-column: 3;
+        grid-row: 3;
+      }
+    }
   `,
   imports: [
     DatePipe,
