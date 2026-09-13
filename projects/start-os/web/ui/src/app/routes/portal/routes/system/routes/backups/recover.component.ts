@@ -317,6 +317,7 @@ export class BackupsRecoverComponent {
                   ) === 'greater',
               }
             })
+            .filter(option => option.checkpoints.length > 0)
             .sort((a, b) =>
               b.title.toLowerCase() > a.title.toLowerCase() ? -1 : 1,
             )
