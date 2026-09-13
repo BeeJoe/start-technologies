@@ -53,7 +53,7 @@ export namespace ExpectedExports {
   /** For backing up service data though the startOS UI */
   export type createBackup = (options: {
     effects: Effects
-  }) => Promise<PackageBackupOutput | undefined>
+  }) => Promise<PackageBackupOutput | void>
 
   /**
    * This is the entrypoint for the main container. Used to start up something like the service that the

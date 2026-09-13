@@ -163,7 +163,7 @@ type BackupPanel = 'automatic' | 'manual' | 'restore' | 'locations' | 'history'
                 [showIcons]="false"
                 [attr.aria-label]="'Automatic backups' | i18n"
                 [ngModel]="primary()?.enabled ?? false"
-                [disabled]="changingAutomatic"
+                [disabled]="changingAutomatic()"
                 (ngModelChange)="setAutomatic($event)"
               />
             </label>
@@ -628,7 +628,7 @@ export default class BackupsComponent {
   protected readonly manualRunning = toSignal(this.os.backingUp$, {
     initialValue: false,
   })
-  protected changingAutomatic = false
+  protected readonly changingAutomatic = signal(false)
 
   constructor() {
     void this.backupService.getBackupTargets()
@@ -802,16 +802,15 @@ export default class BackupsComponent {
 
   protected async setAutomatic(enabled: boolean) {
     if (enabled === this.jobs().every(job => job.enabled)) return
-    this.changingAutomatic = true
+    this.changingAutomatic.set(true)
     await this.tasks.run(
       () =>
-        Promise.all(
-          this.jobs().map(job =>
-            this.api.setScheduledBackupJobEnabled({ id: job.id, enabled }),
-          ),
-        ),
+        this.api.setScheduledBackupJobsEnabled({
+          ids: this.jobs().map(job => job.id),
+          enabled,
+        }),
       enabled ? 'Resume all' : 'Pause all',
     )
-    this.changingAutomatic = false
+    this.changingAutomatic.set(false)
   }
 }

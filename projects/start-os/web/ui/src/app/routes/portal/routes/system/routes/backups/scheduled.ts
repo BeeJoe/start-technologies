@@ -61,6 +61,7 @@ import { DataModel } from 'src/app/services/patch-db/data-model'
 import { getManifest } from 'src/app/utils/get-package-data'
 import { BackupService, formatCifsLocation } from './backup.service'
 import { DeleteScheduleService } from './delete-schedule'
+import { BACKUP_RETENTION_CONFIRM } from './retention-confirm'
 import { BackupRetentionRules } from './retention-rules'
 import { BackupScheduleBrowser } from './schedule-browser'
 import { BackupScheduleControls } from './schedule-controls'
@@ -1844,18 +1845,18 @@ export class ScheduledBackups {
       )
     }, 'Loading')
     if (!loaded) return null
-    const removals = changes.flatMap(change => change.preview.removed)
-    if (!removals.length) return changes
+    if (!changes.some(change => change.preview.removed.length)) return changes
     const confirmed = await firstValueFrom(
-      this.dialogs.openConfirm({
+      this.dialogs.openComponent<boolean>(BACKUP_RETENTION_CONFIRM, {
         label: 'Apply version-history change?',
-        size: 's',
-        data: {
-          content:
-            'This permanently deletes the checkpoints listed in the preview.',
-          yes: 'Apply',
-          no: 'Cancel',
-        },
+        size: 'm',
+        data: changes
+          .filter(change => change.preview.removed.length)
+          .map(change => ({
+            packageId: change.history.packageId,
+            name: this.packageName(change.history.packageId),
+            removed: change.preview.removed,
+          })),
       }),
       { defaultValue: false },
     )

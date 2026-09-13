@@ -471,14 +471,15 @@ async fn refresh_histories(
         credential.open(&db.as_private().as_scheduled_backup_device_key().de()?)?;
     let server_id = db.as_public().as_server_info().as_id().de()?;
     let target = target_id.clone().load(&db)?;
-    drop(db);
-    let guard = ScheduledBackupMountGuard::mount_with_key(
+    let mut guard = ScheduledBackupMountGuard::mount_with_key(
         TmpMountGuard::mount(&target, ReadWrite).await?,
         &server_id,
         &credential.target_instance_id,
         &encryption_key,
     )
     .await?;
+    reconcile_target_histories(&db, &target_id, &mut guard)?;
+    drop(db);
     let target_instance_id = guard.recovery.target_instance_id.clone();
     let remote: BTreeMap<PackageId, ServiceTargetHistory> = guard
         .metadata
@@ -497,7 +498,7 @@ async fn refresh_histories(
             )
         })
         .collect();
-    guard.unmount().await?;
+    guard.save_and_unmount().await?;
 
     let db = ctx.db.peek().await;
     let jobs = db
@@ -591,7 +592,7 @@ pub async fn discover_histories(
         .transpose()?;
     let target = target_id.clone().load(&db)?;
     drop(db);
-    let (guard, encryption_key) = ScheduledBackupMountGuard::discover_with_password(
+    let (mut guard, encryption_key) = ScheduledBackupMountGuard::discover_with_password(
         TmpMountGuard::mount(&target, ReadWrite).await?,
         &server_id,
         &password,
@@ -599,7 +600,9 @@ pub async fn discover_histories(
     .await?;
     let target_instance_id = guard.recovery.target_instance_id.clone();
     if local_server {
-        validate_target_alias(&ctx.db.peek().await, &target_id, &target_instance_id)?;
+        let db = ctx.db.peek().await;
+        validate_target_alias(&db, &target_id, &target_instance_id)?;
+        reconcile_target_histories(&db, &target_id, &mut guard)?;
     }
     let credential = device_key
         .map(|device_key| {
@@ -626,7 +629,11 @@ pub async fn discover_histories(
             )
         })
         .collect();
-    guard.unmount().await?;
+    if local_server {
+        guard.save_and_unmount().await?;
+    } else {
+        guard.unmount().await?;
+    }
     if local_server {
         persist_histories(
             &ctx,
@@ -985,13 +992,14 @@ pub(crate) async fn mount_scheduled_target(
     if let Some(credential) = credential {
         if credential.target_instance_id == expected_target_instance_id {
             if let Ok(encryption_key) = credential.open(&device_key) {
-                let guard = ScheduledBackupMountGuard::mount_with_key(
+                let mut guard = ScheduledBackupMountGuard::mount_with_key(
                     TmpMountGuard::mount(&target, ReadWrite).await?,
                     server_id,
                     expected_target_instance_id,
                     &encryption_key,
                 )
                 .await?;
+                reconcile_target_histories(db, target_id, &mut guard)?;
                 return Ok((guard, credential));
             }
         }
@@ -1003,7 +1011,7 @@ pub(crate) async fn mount_scheduled_target(
             ErrorKind::InvalidRequest,
         )
     })?;
-    let (guard, encryption_key) = ScheduledBackupMountGuard::mount_with_password(
+    let (mut guard, encryption_key) = ScheduledBackupMountGuard::mount_with_password(
         TmpMountGuard::mount(&target, ReadWrite).await?,
         server_id,
         expected_target_instance_id,
@@ -1015,6 +1023,7 @@ pub(crate) async fn mount_scheduled_target(
         &encryption_key,
         &device_key,
     )?;
+    reconcile_target_histories(db, target_id, &mut guard)?;
     Ok((guard, credential))
 }
 
@@ -1249,11 +1258,12 @@ pub async fn reassign_target(
     let target_guard = TmpMountGuard::mount(&target_id.clone().load(&db)?, ReadWrite).await?;
     let available = crate::disk::util::get_available(target_guard.path()).await?;
     super::runner::preflight_new_target_capacity(&ctx, &package_ids, available).await?;
-    let (guard, encryption_key) =
+    let (mut guard, encryption_key) =
         ScheduledBackupMountGuard::initialize(target_guard, &server_id, hostname, &password)
             .await?;
     let target_instance_id = guard.recovery.target_instance_id.clone();
     validate_target_alias(&db, &target_id, &target_instance_id)?;
+    reconcile_target_histories(&db, &target_id, &mut guard)?;
     let target_metadata = guard.metadata.clone();
     guard.save_and_unmount().await?;
 
@@ -1512,6 +1522,7 @@ pub async fn update_policy(
         &encryption_key,
     )
     .await?;
+    reconcile_target_histories(&db, &target_id, &mut guard)?;
     history.snapshots = guard
         .metadata
         .services
@@ -2164,11 +2175,12 @@ pub async fn create(
     let server_id = db.as_public().as_server_info().as_id().de()?;
     let hostname = ctx.account.peek(|account| account.hostname.clone());
     let target_guard = TmpMountGuard::mount(&target_id.clone().load(&db)?, ReadWrite).await?;
-    let (scheduled_guard, encryption_key) =
+    let (mut scheduled_guard, encryption_key) =
         ScheduledBackupMountGuard::initialize(target_guard, &server_id, hostname, &password)
             .await?;
     let target_instance_id = scheduled_guard.recovery.target_instance_id.clone();
     validate_target_alias(&db, &target_id, &target_instance_id)?;
+    reconcile_target_histories(&db, &target_id, &mut scheduled_guard)?;
     let target_metadata = scheduled_guard.metadata.clone();
     scheduled_guard.save_and_unmount().await?;
 
@@ -2640,29 +2652,6 @@ pub(crate) async fn sync_archive_states(
     _coordinator: &tokio::sync::OwnedMutexGuard<()>,
 ) -> Result<(), Error> {
     let db = ctx.db.peek().await;
-    let archived: BTreeMap<PackageId, (bool, BTreeSet<ServiceSnapshotId>)> = db
-        .as_public()
-        .as_scheduled_backups()
-        .as_histories()
-        .as_entries()?
-        .into_iter()
-        .map(|(_, history)| history.de())
-        .collect::<Result<Vec<ServiceTargetHistory>, Error>>()?
-        .into_iter()
-        .filter(|history| history.target_id == *target_id)
-        .map(|history| {
-            let archived_snapshots = history
-                .snapshots
-                .iter()
-                .filter(|snapshot| snapshot.archived)
-                .map(|snapshot| snapshot.id.clone())
-                .collect();
-            (history.package_id, (history.archived, archived_snapshots))
-        })
-        .collect();
-    if archived.is_empty() {
-        return Ok(());
-    }
     let Some(credential) = db
         .as_private()
         .as_scheduled_backup_credentials()
@@ -2681,8 +2670,29 @@ pub(crate) async fn sync_archive_states(
         &encryption_key,
     )
     .await?;
-    guard.sync_archive_states(&archived).await?;
+    reconcile_target_histories(&db, target_id, &mut guard)?;
     guard.save_and_unmount().await
+}
+
+pub(super) fn reconcile_target_histories(
+    db: &DatabaseModel,
+    target_id: &BackupTargetId,
+    guard: &mut ScheduledBackupMountGuard<TmpMountGuard>,
+) -> Result<(), Error> {
+    let histories = db
+        .as_public()
+        .as_scheduled_backups()
+        .as_histories()
+        .as_entries()?
+        .into_iter()
+        .map(|(_, history)| history.de())
+        .collect::<Result<Vec<ServiceTargetHistory>, Error>>()?;
+    guard.metadata.reconcile_histories(
+        histories
+            .into_iter()
+            .filter(|history| history.target_id == *target_id),
+    );
+    Ok(())
 }
 
 const fn default_true() -> bool {

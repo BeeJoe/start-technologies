@@ -219,7 +219,7 @@ make backup-fs-test                  # backup-fs library tests except the /dev/f
 make start-os-scripts-test           # shell scripts under build/lib/scripts (suite in build/tests/)
 ```
 
-The container-runtime has its own test suite — see [container-runtime/CONTRIBUTING.md](container-runtime/CONTRIBUTING.md). Note CI builds a multi-platform matrix (apple-darwin + aarch64/x86_64/riscv64 musl); local `cargo check` is linux-only, so consider platform-specific impact.
+The container-runtime has its own test suite — see [container-runtime/AGENTS.md](container-runtime/AGENTS.md). Note CI builds a multi-platform matrix (apple-darwin + aarch64/x86_64/riscv64 musl); local `cargo check` is linux-only, so consider platform-specific impact.
 
 ### Formatting
 
