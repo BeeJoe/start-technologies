@@ -203,8 +203,6 @@ export type BackupHook = (
  * @typeParam M - The service manifest type
  */
 export class Backups<M extends T.SDKManifest> implements InitScript {
-  private changedBytesUnavailable = false
-
   private constructor(
     private options = DEFAULT_OPTIONS,
     private restoreOptions: Partial<T.SyncOptions> = {},
@@ -874,7 +872,6 @@ export class Backups<M extends T.SDKManifest> implements InitScript {
    * @param fn - Async function receiving backup-scoped effects and a progress tracker for this hook
    */
   setPreBackup(fn: BackupHook, weight: number = DEFAULT_HOOK_WEIGHT) {
-    this.changedBytesUnavailable = true
     this.preBackup = fn
     this.preBackupWeight = weight
     return this
@@ -885,7 +882,6 @@ export class Backups<M extends T.SDKManifest> implements InitScript {
    * @param fn - Async function receiving backup-scoped effects and a progress tracker for this hook
    */
   setPostBackup(fn: BackupHook, weight: number = DEFAULT_HOOK_WEIGHT) {
-    this.changedBytesUnavailable = true
     this.postBackup = fn
     this.postBackupWeight = weight
     return this
@@ -946,9 +942,6 @@ export class Backups<M extends T.SDKManifest> implements InitScript {
    * @param effects - The effects context
    */
   async createBackup(effects: T.Effects) {
-    // Root tracker reports to the backup progress UI via setBackupProgress,
-    // with the effects context baked into the sink. Phase updates auto-sync in
-    // the background; we only flush at the end.
     const tracker = new FullProgressTracker(progress =>
       effects.setBackupProgress({ progress }),
     )
@@ -971,6 +964,7 @@ export class Backups<M extends T.SDKManifest> implements InitScript {
     }
 
     let changedBytes = 0
+    let changedBytesUnavailable = !!(this.preBackup || this.postBackup)
     for (let i = 0; i < this.backupSet.length; i++) {
       const item = this.backupSet[i]!
       const phase = syncs[i]!
@@ -988,8 +982,7 @@ export class Backups<M extends T.SDKManifest> implements InitScript {
           ...item.backupOptions,
         },
       })
-      // Poll rsync's parsed percentage; setDone auto-syncs to the host. Cap at
-      // 99 until wait() resolves so the bar never claims "done" before exit.
+      // Progress stays below 100% until rsync exits.
       const interval = setInterval(async () => {
         const pct = await rsyncResults.progress()
         phase.setDone(Math.min(99, Math.floor(pct)))
@@ -997,7 +990,7 @@ export class Backups<M extends T.SDKManifest> implements InitScript {
       try {
         const transferred = await rsyncResults.wait()
         if (transferred === null) {
-          this.changedBytesUnavailable = true
+          changedBytesUnavailable = true
         } else {
           changedBytes += transferred
         }
@@ -1016,13 +1009,11 @@ export class Backups<M extends T.SDKManifest> implements InitScript {
       await this.postBackup!(effects as BackupEffects, postHook)
       postHook.complete()
     }
-    // Don't mark the tracker complete: the OS backup harness holds this
-    // package's phase open until the s9pk image finishes writing, so it reports
-    // 100%, not "done".
+    // The OS completes this phase after writing the s9pk image.
     await tracker.sync()
     return {
       changedBytes:
-        this.changedBytesUnavailable || !Number.isSafeInteger(changedBytes)
+        changedBytesUnavailable || !Number.isSafeInteger(changedBytes)
           ? null
           : changedBytes,
     }

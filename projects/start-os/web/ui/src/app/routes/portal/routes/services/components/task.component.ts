@@ -263,10 +263,15 @@ export class ServiceTaskComponent {
   protected async handle() {
     const task = this.task()
     if (this.backupReview()) {
-      const [jobs, reviews] = await Promise.all([
-        this.api.getScheduledBackupJobs({}),
-        this.api.getNewServiceBackupReviews({}),
-      ])
+      let jobs: T.BackupJob[] = []
+      let reviews: T.NewServiceBackupReview[] = []
+      const loaded = await this.tasks.run(async () => {
+        ;[jobs, reviews] = await Promise.all([
+          this.api.getScheduledBackupJobs({}),
+          this.api.getNewServiceBackupReviews({}),
+        ])
+      }, 'Loading')
+      if (!loaded) return
       const review = reviews.find(item => item.packageId === task.packageId)
       if (!review) return
       if (jobs.length === 1) {
@@ -274,7 +279,7 @@ export class ServiceTaskComponent {
           this.dialog.openComponent<BackupReviewDecision>(
             BACKUP_REVIEW_DIALOG,
             {
-              label: this.i18n.transform('Add to backup schedule'),
+              label: 'Add to backup schedule',
               size: 's',
             },
           ),

@@ -31,6 +31,8 @@ Tests are Jest + `ts-jest` (`jest.config.js`, `rootDir: ./src`). `mime` is mocke
 - **Formatting is the root prettier config** (`.prettierrc.json` at the repo root), applied via `make format` / `make web-format` from the repo root. Never run prettier from inside this directory: the root `.prettierignore` (which protects `__fixtures__/`) only applies when prettier runs from the root cwd.
 - **`CLAUDE.md` is just `@AGENTS.md`** — edit this file, not `CLAUDE.md`.
 
+- Preserve optional backup results through `System.createBackup` and the RPC response; custom and legacy hooks may return no result.
+
 ## Image build (gotchas)
 
 - Compiled JS is installed into the container at `/usr/lib/startos/init/index.js` (the systemd unit runs `start-container pipe-wrap node … /usr/lib/startos/init/index.js`).

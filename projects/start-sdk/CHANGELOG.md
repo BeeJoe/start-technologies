@@ -321,6 +321,7 @@
   the health checks that require it ran, while nothing was listening
 
 - **Backup reports now include rsync transfer size when it can be measured.**
+  Custom backup functions can return no result. Each run measures independently.
   StartOS records it as recent transfer metadata alongside automatic-backup
   capacity estimates and treats an unavailable measurement as unknown.
 

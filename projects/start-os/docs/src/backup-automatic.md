@@ -35,6 +35,8 @@ run at different times. Pausing a schedule keeps its settings and checkpoints
 in its active history so resumed backups continue from the existing history.
 The schedule list updates as schedules run, pause, or change from another
 browser or the command line.
+Pause all and Resume all update every selected schedule together. If a schedule
+cannot be resumed, the schedules keep their previous enabled states.
 When no schedule includes future services, StartOS recommends adding each newly
 installed service to one or more schedules; the recommendation can be dismissed.
 
@@ -73,14 +75,17 @@ retained checkpoints, and staging space.
 
 Retention applies to a service's shared automatic history on a backup location.
 If several schedules use that history, StartOS previews the checkpoints a policy
-change would remove and the schedules it would affect before applying it.
+change would remove and the schedules it would affect before applying it. When
+editing a schedule, the confirmation lists the affected services and each
+checkpoint's date and size.
 If the location contains checkpoints missing from that preview, review the
 updated history before confirming the change again.
 
 Changing a schedule's location does not copy its existing checkpoints. They
 remain archived on the old location, and the next run begins a history on the
 new one. Deleting a schedule can either leave its automatic checkpoints archived
-or remove checkpoints no longer referenced by another schedule. Manual
+or remove checkpoints no longer referenced by another schedule. Archive decisions
+made while a location is disconnected are preserved when it reconnects. Manual
 checkpoints are never removed by schedule deletion. Deleting archived
 checkpoints after reconnecting a location requires the current master password.
 
