@@ -10,7 +10,7 @@ checkpoint. A service that is already installed must be uninstalled before its
 checkpoint can be restored. Restore requires access to the physical drive or
 network folder containing the backup and the master password used to encrypt it.
 
-StartOS combines the restorable manual and automatic history on the selected
+StartOS lists services with saved manual or automatic checkpoints on the selected
 location. It chooses the newest checkpoint for each service by default, but a
 different retained or archived checkpoint can be selected for any service.
 Backups from another server remain available for restore alongside this server's
