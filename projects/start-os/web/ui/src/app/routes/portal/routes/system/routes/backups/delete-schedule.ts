@@ -167,7 +167,6 @@ export const DELETE_SCHEDULE_DIALOG = new PolymorpheusComponent(
 export class DeleteScheduleService {
   private readonly api = inject(ApiService)
   private readonly dialogs = inject(DialogService)
-  private readonly i18n = inject(i18nPipe)
   private readonly tasks = inject(TaskService)
 
   async delete(job: T.BackupJob): Promise<boolean> {
@@ -190,7 +189,7 @@ export class DeleteScheduleService {
       this.dialogs.openComponent<DeleteScheduleDecision | null>(
         DELETE_SCHEDULE_DIALOG,
         {
-          label: this.i18n.transform('Delete backup schedule?'),
+          label: 'Delete backup schedule?',
           size: 's',
           data: {
             checkpointCount,
@@ -205,12 +204,12 @@ export class DeleteScheduleService {
     const password = decision.deleteCheckpoints
       ? await firstValueFrom(
           this.dialogs.openPrompt<string>({
-            label: this.i18n.transform('Master password needed'),
+            label: 'Master password needed',
             data: {
-              message: this.i18n.transform('Enter master password'),
-              label: this.i18n.transform('Password'),
-              placeholder: this.i18n.transform('Enter master password'),
-              buttonText: this.i18n.transform('Delete schedule and backups'),
+              message: 'Enter master password',
+              label: 'Password',
+              placeholder: 'Enter master password',
+              buttonText: 'Delete schedule and backups',
               useMask: true,
             },
           }),

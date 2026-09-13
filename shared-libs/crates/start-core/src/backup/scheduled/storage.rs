@@ -7,7 +7,7 @@ use color_eyre::eyre::eyre;
 use serde::{Deserialize, Serialize};
 use tokio::io::AsyncWriteExt;
 
-use super::{BackupRun, RetentionPolicy, ServiceSnapshot, ServiceSnapshotId};
+use super::{BackupRun, RetentionPolicy, ServiceSnapshot, ServiceSnapshotId, ServiceTargetHistory};
 use crate::auth::check_password;
 use crate::disk::BACKUP_DIR_NAME;
 use crate::disk::mount::filesystem::ReadWrite;
@@ -43,6 +43,36 @@ pub struct ScheduledBackupRecoveryInfo {
 pub struct ScheduledBackupOnTargetMetadata {
     pub target_instance_id: String,
     pub services: BTreeMap<PackageId, OnTargetServiceHistory>,
+}
+
+impl ScheduledBackupOnTargetMetadata {
+    pub(crate) fn reconcile_histories(
+        &mut self,
+        histories: impl IntoIterator<Item = ServiceTargetHistory>,
+    ) {
+        for local in histories {
+            if local.target_instance_id != self.target_instance_id {
+                continue;
+            }
+            let Some(history) = self.services.get_mut(&local.package_id) else {
+                continue;
+            };
+            if history.snapshots.is_empty() {
+                history.timezone = local.timezone;
+                history.policy = local.policy;
+            }
+            set_archive_state(history, local.archived);
+            let archived: BTreeSet<_> = local
+                .snapshots
+                .iter()
+                .filter(|snapshot| snapshot.archived)
+                .map(|snapshot| &snapshot.id)
+                .collect();
+            for snapshot in &mut history.snapshots {
+                snapshot.archived |= archived.contains(&snapshot.id);
+            }
+        }
+    }
 }
 
 /// On-target retention state and checkpoints for one service.
@@ -381,11 +411,12 @@ impl<G: GenericMountGuard> ScheduledBackupMountGuard<G> {
             .services
             .entry(snapshot.package_id.clone())
             .or_insert_with(|| OnTargetServiceHistory {
-                timezone,
+                timezone: timezone.clone(),
                 policy: policy.clone(),
                 archived: false,
                 snapshots: Vec::new(),
             });
+        history.timezone = timezone;
         history.policy = policy;
         history.snapshots.push(snapshot.clone());
 
@@ -503,24 +534,6 @@ impl<G: GenericMountGuard> ScheduledBackupMountGuard<G> {
                 )
             })
             .collect())
-    }
-
-    /// Persists archive flags from database histories to target metadata.
-    pub async fn sync_archive_states(
-        &mut self,
-        archived: &BTreeMap<PackageId, (bool, std::collections::BTreeSet<ServiceSnapshotId>)>,
-    ) -> Result<(), Error> {
-        for (package_id, (history_archived, archived_snapshots)) in archived {
-            if let Some(history) = self.metadata.services.get_mut(package_id) {
-                set_archive_state(history, *history_archived);
-                for snapshot in &mut history.snapshots {
-                    if archived_snapshots.contains(&snapshot.id) {
-                        snapshot.archived = true;
-                    }
-                }
-            }
-        }
-        self.save().await
     }
 
     async fn remove_unreferenced_runs(&self) -> Result<(), Error> {
@@ -657,6 +670,96 @@ async fn write_json(path: &Path, value: &impl Serialize) -> Result<(), Error> {
 mod tests {
     use super::*;
     use crate::backup::scheduled::BackupSource;
+
+    #[test]
+    fn reconnect_preserves_offline_archive_decisions_and_empty_history_settings() {
+        let package_id: PackageId = "test-service".parse().unwrap();
+        let now = Utc::now();
+        let snapshot = ServiceSnapshot {
+            id: ServiceSnapshotId::new(),
+            package_id: package_id.clone(),
+            package_version: "1.0.0".into(),
+            source: BackupSource::Scheduled,
+            job_id: Guid::new(),
+            job_name: "Daily".into(),
+            run_id: Guid::new(),
+            completed_at: now,
+            logical_size: 1,
+            physical_size: None,
+            changed_bytes: None,
+            measured_at: now,
+            archived: false,
+        };
+        let mut metadata = ScheduledBackupOnTargetMetadata {
+            target_instance_id: "target".into(),
+            services: BTreeMap::from([(
+                package_id.clone(),
+                OnTargetServiceHistory {
+                    timezone: "UTC".into(),
+                    policy: RetentionPolicy::latest_only(),
+                    archived: false,
+                    snapshots: vec![snapshot.clone()],
+                },
+            )]),
+        };
+        let mut local = ServiceTargetHistory {
+            target_id: "cifs-0".parse().unwrap(),
+            target_instance_id: "target".into(),
+            package_id: package_id.clone(),
+            timezone: "America/New_York".into(),
+            policy: RetentionPolicy {
+                tiers: vec![super::super::RetentionTier {
+                    interval_seconds: 3600,
+                    coverage_seconds: 86400,
+                }],
+            },
+            feeding_jobs: BTreeSet::new(),
+            snapshots: vec![ServiceSnapshot {
+                archived: true,
+                ..snapshot.clone()
+            }],
+            archived: true,
+        };
+
+        metadata.reconcile_histories([local.clone()]);
+        let history = &metadata.services[&package_id];
+        assert!(history.archived);
+        assert!(history.snapshots[0].archived);
+        assert_eq!(history.timezone, "UTC");
+        assert_eq!(history.policy, RetentionPolicy::latest_only());
+
+        local.archived = false;
+        local.feeding_jobs.insert(Guid::new());
+        metadata.reconcile_histories([local.clone()]);
+        let history = metadata.services.get_mut(&package_id).unwrap();
+        assert!(!history.archived);
+        history.snapshots.push(ServiceSnapshot {
+            id: ServiceSnapshotId::new(),
+            completed_at: now + chrono::Duration::hours(1),
+            ..snapshot
+        });
+        assert!(
+            history
+                .policy
+                .preview(&history.snapshots, chrono_tz::UTC)
+                .unwrap()
+                .removed
+                .is_empty()
+        );
+
+        history.snapshots.clear();
+        metadata.reconcile_histories([local.clone()]);
+        let history = &metadata.services[&package_id];
+        assert_eq!(history.timezone, local.timezone);
+        assert_eq!(history.policy, local.policy);
+
+        local.target_instance_id = "another-target".into();
+        local.timezone = "Asia/Tokyo".into();
+        local.archived = true;
+        metadata.reconcile_histories([local]);
+        assert_eq!(metadata.services[&package_id].timezone, "America/New_York");
+        assert!(!metadata.services[&package_id].archived);
+    }
 
     #[tokio::test]
     async fn existing_target_requires_readable_metadata() {

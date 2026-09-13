@@ -51,10 +51,11 @@ for the detail behind its highlights.
   history. Multiple schedules can be created, edited, paused, resumed, run
   immediately, repaired, reassigned,
   or deleted while unreferenced checkpoints remain available as archives.
-  Reconnected locations can authenticate again to manage those archives.
+  Reconnected locations preserve archive decisions made while disconnected and
+  can authenticate again to manage those archives.
   Schedules preserve existing version history when a location is reconnected.
   Name and timing edits preserve the location's saved retention policy.
-  Retention changes require confirmation of the checkpoints on the location,
+  Retention changes list the affected checkpoints before confirmation,
   and schedules stop when their backup metadata is missing or invalid.
   New-service reviews keep selective schedules current. Backup history is
   searchable, filterable, and paginated, and retains the newest 1,000 completed
@@ -71,7 +72,8 @@ for the detail behind its highlights.
   server, and initial setup can recover a server from its latest automatic System
   and service checkpoints. Pausing a
   schedule keeps its checkpoints in active retention history. The schedule list
-  reflects live status and changes from other sessions. Backup progress
+  reflects live status and changes from other sessions; pausing or resuming all
+  schedules updates them together. Backup progress
   and history remain in view. The same schedules, history, retention, repair, and restore
   operations are available for command-line administration. A stalled service
   backup stops after six hours so later backups can run.

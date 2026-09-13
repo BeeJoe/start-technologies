@@ -1,6 +1,6 @@
 # AGENTS.md — Container Runtime
 
-Node.js/TypeScript service runtime that runs inside StartOS package LXC containers. Sub-component of the **start-os** product. `CLAUDE.md` is a one-line `@AGENTS.md` import — edit this file, not `CLAUDE.md`. Wire-protocol reference: [RPCSpec.md](RPCSpec.md); structure: [ARCHITECTURE.md](ARCHITECTURE.md); contributor workflow: [CONTRIBUTING.md](CONTRIBUTING.md).
+Node.js/TypeScript service runtime that runs inside StartOS package LXC containers. Sub-component of the **start-os** product. `CLAUDE.md` is a one-line `@AGENTS.md` import — edit this file, not `CLAUDE.md`. Wire-protocol reference: [RPCSpec.md](RPCSpec.md); structure: [ARCHITECTURE.md](ARCHITECTURE.md).
 
 **Read up the tree first.** These docs are hierarchical: before working here, read the `AGENTS.md` in each enclosing directory up to the repo root (and their `ARCHITECTURE.md` / `CONTRIBUTING.md` where relevant). This file covers only what is specific to this scope and does not repeat rules already stated higher up.
 
@@ -32,6 +32,21 @@ Tests are Jest + `ts-jest` (`jest.config.js`, `rootDir: ./src`). `mime` is mocke
 - **Depends on the _built_ SDK at `../../start-sdk/dist`** (declared in `package.json` as `"@start9labs/start-sdk": "file:../../start-sdk/dist"`) **and on `@start9labs/start-core` at `../../../shared-libs/ts-modules/start-core/dist`**. Editing `projects/start-sdk/` or `shared-libs/ts-modules/start-core/` source alone has no effect here — rebuild first: `cd projects/start-sdk && make bundle` (which builds start-core and bundles it). The Makefile target `projects/start-os/container-runtime/package-lock.json` also depends on `projects/start-sdk/dist/package.json`, so a stale SDK can break `npm ci`/`check`/`test`.
 - **Formatting is the root prettier config** (`.prettierrc.json` at the repo root), applied via `make format` / `make web-format` from the repo root. Never run prettier from inside this directory: the root `.prettierignore` (which protects `__fixtures__/`) only applies when prettier runs from the root cwd.
 - **`CLAUDE.md` is just `@AGENTS.md`** — edit this file, not `CLAUDE.md`.
+
+## Building and dependencies
+
+Use the repository's Node version from the root `CONTRIBUTING.md`. Rebuild the SDK
+before installing or checking runtime dependencies:
+
+```sh
+make -C projects/start-sdk bundle
+npm --prefix projects/start-os/container-runtime ci
+npm --prefix projects/start-os/container-runtime run build
+```
+
+The runtime implements the package ABI from `@start9labs/start-core`. Preserve
+optional backup results through `System.createBackup` and the RPC response;
+custom and legacy hooks may return no result.
 
 ## Image build (gotchas)
 

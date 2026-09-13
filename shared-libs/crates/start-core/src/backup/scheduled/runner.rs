@@ -209,7 +209,7 @@ async fn run_job_inner(
         }
     };
 
-    let scheduled_guard = match ScheduledBackupMountGuard::mount_with_key(
+    let mut scheduled_guard = match ScheduledBackupMountGuard::mount_with_key(
         target_guard,
         &server_id,
         &job.target_instance_id,
@@ -237,6 +237,7 @@ async fn run_job_inner(
             return Err(error);
         }
     };
+    super::rpc::reconcile_target_histories(&db, &job.target_id, &mut scheduled_guard)?;
     mark_target_connected(ctx, &job.target_id).await?;
     let target_available =
         match crate::disk::util::get_available(scheduled_guard.target_path()).await {
