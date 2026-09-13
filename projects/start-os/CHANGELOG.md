@@ -67,9 +67,10 @@ for the detail behind its highlights.
   checkpoint instead of blocking the schedule. Existing history never restricts
   new schedule timing, and empty histories detached from every schedule adopt
   the new policy and timezone. Password controls are keyboard accessible, and
-  backup management remains usable on narrow displays. Restore can mix
-  manual and automatic checkpoints by service, including backups from another
-  server, and initial setup can recover a server from its latest automatic System
+  backup management remains usable on narrow displays. Restore lists services with
+  saved checkpoints and can mix manual and automatic checkpoints by service,
+  including backups from another server, and initial setup can recover a server
+  from its latest automatic System
   and service checkpoints. Pausing a
   schedule keeps its checkpoints in active retention history. The schedule list
   reflects live status and changes from other sessions; pausing or resuming all
