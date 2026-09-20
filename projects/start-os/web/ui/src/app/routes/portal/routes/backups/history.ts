@@ -105,14 +105,14 @@ const STATUS_FILTERS: StatusFilter[] = [
           <button tuiAccordion>
             <tui-icon [icon]="activityIcon(activity)" />
             <span tuiTitle>
-              <b>{{ activityLabel(activity) | i18n }}</b>
+              <b>{{ activityLabel(activity) }}</b>
               <span tuiSubtitle>
                 {{ activity.startedAt | date: 'medium' }} ·
-                {{ activityState(activity) | i18n }}
+                {{ activityState(activity) }}
               </span>
             </span>
             <span tuiBadge [appearance]="activityAppearance(activity)">
-              {{ activityState(activity) | i18n }}
+              {{ activityState(activity) }}
             </span>
           </button>
           <tui-expand>
@@ -357,7 +357,7 @@ const STATUS_FILTERS: StatusFilter[] = [
       }
 
       .activity-details {
-        padding-inline: 1rem;
+        padding-inline: 0;
       }
     }
   `,
@@ -522,13 +522,13 @@ export class BackupHistory {
   }
 
   protected activityLabel(activity: T.BackupActivity): string {
-    if (activity.kind === 'manual') return 'Manual backup'
-    if (activity.kind === 'restore') return 'Restore'
-    return activity.jobName || 'Automatic backup'
+    if (activity.kind === 'manual') return this.i18n.transform('Manual backup')
+    if (activity.kind === 'restore') return this.i18n.transform('Restore')
+    return activity.jobName || this.i18n.transform('Automatic backup')
   }
 
   protected activityState(activity: T.BackupActivity): string {
-    return this.activityStateValue(activity.state)
+    return this.i18n.transform(this.activityStateValue(activity.state))
   }
 
   private activityStateValue(state: T.BackupRunState): string {

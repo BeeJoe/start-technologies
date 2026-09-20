@@ -15,9 +15,9 @@ default when the first schedule is created. A schedule can also include future
 services automatically.
 
 StartOS stops each selected service while copying its data, then starts it again
-if it was running before the backup. Other services remain available. A service
-backup that runs for more than six hours fails so it cannot block later backup
-or restore operations indefinitely.
+if it was running before the backup. Other services remain available. A service’s
+backup procedure fails after six hours. Staging and checkpoint copies can add
+time to the overall backup.
 
 Automatic backups use the same master-password encryption as manual backups.
 StartOS uses the password to initialize or unlock the backup location but does
@@ -71,7 +71,8 @@ Each retained checkpoint is a full copy on the backup location, not an
 incremental delta. A run also needs temporary staging space. Keeping more
 versions therefore increases storage use, run time, and I/O, especially on
 network folders and slower drives. Capacity estimates account for current data,
-retained checkpoints, and staging space.
+retained checkpoints, and staging space. Use **Refresh estimates** after changing
+a schedule’s services or version-history rules.
 
 Retention applies to a service's shared automatic history on a backup location.
 If several schedules use that history, StartOS previews the checkpoints a policy
@@ -92,7 +93,9 @@ checkpoints after reconnecting a location requires the current master password.
 ## History, Restore, and Failures
 
 Backup history records manual backups, automatic runs, and restores, including
-service-level failures. It retains the newest 1,000 completed entries in addition
+service-level failures. Search by schedule name, service, backup location, or
+status in your selected language. Schedule names appear as you entered them.
+History retains the newest 1,000 completed entries in addition
 to any backup or restore still in progress. Successful checkpoints remain
 available when another service in the same run fails. During restore, StartOS
 selects the newest available checkpoint for each service by default, but any

@@ -18,7 +18,7 @@ use crate::status::DesiredStatus;
 use crate::util::actor::background::BackgroundJobQueue;
 use crate::util::actor::{ConflictBuilder, Handler};
 
-/// Maximum wall-clock time an installed package may hold backup resources.
+/// Maximum wall-clock time a service backup procedure may run.
 const PACKAGE_BACKUP_TIMEOUT: Duration = Duration::from_secs(6 * 60 * 60);
 
 async fn run_backup_procedure<T>(

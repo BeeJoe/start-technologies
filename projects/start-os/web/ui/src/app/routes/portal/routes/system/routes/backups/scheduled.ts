@@ -308,7 +308,7 @@ class JobEditor
             type="button"
             size="s"
             appearance="flat"
-            (click)="createForReview(review)"
+            (click)="create(review)"
           >
             {{ 'Add new schedule' | i18n }}
           </button>
@@ -474,7 +474,7 @@ class JobEditor
           </div>
 
           <div class="setting-row vertical services-setting">
-            <tui-accordion class="g-wrap-accordion">
+            <tui-accordion class="g-wrap-accordion" size="s">
               <button
                 [tuiAccordion]="showServices()"
                 (tuiAccordionChange)="showServices.set(!!$event)"
@@ -1202,6 +1202,10 @@ class JobEditor
     }
 
     @container (max-inline-size: 30rem) {
+      form[tuiCardLarge] {
+        padding: 1rem;
+      }
+
       [tuiBlock] img,
       [tuiBlock] > tui-icon {
         display: none;
@@ -1360,6 +1364,7 @@ export class ScheduledBackups {
   protected readonly showServices = signal(false)
   protected readonly reassigning = signal<T.BackupJob | null>(null)
   protected readonly estimates = signal<T.BackupServiceCapacityEstimate[]>([])
+  private estimateRequest = 0
   protected readonly capacityDetailsOpen = signal<ReadonlySet<string>>(
     new Set(),
   )
@@ -1379,12 +1384,7 @@ export class ScheduledBackups {
     effect(() => {
       if (!this.createRequest() || this.loading()) return
       this.createRequestHandled.emit()
-      const review = this.visibleReviews()[0]
-      if (review) {
-        void this.createForReview(review)
-      } else {
-        void this.create()
-      }
+      void this.create(this.visibleReviews()[0])
     })
   }
 
@@ -1469,14 +1469,16 @@ export class ScheduledBackups {
     }
   }
 
-  protected async create(): Promise<boolean> {
-    if (!(await this.confirmDiscardChanges())) return false
+  protected async create(review?: T.NewServiceBackupReview) {
+    if (!(await this.confirmDiscardChanges())) return
     const now = new Date()
     const form = new JobEditor(this.formBuilder, {
       name: '',
       targetId: this.targets()[0]?.id || '',
-      packageIds: this.packages().map(pkg => pkg.id),
-      includeFuture: true,
+      packageIds: review
+        ? [SYSTEM_PACKAGE_ID, review.packageId]
+        : this.packages().map(pkg => pkg.id),
+      includeFuture: !review,
       preservedSelectedPackageIds: [],
       preservedExcludedPackageIds: [],
       frequency: 'daily',
@@ -1496,7 +1498,7 @@ export class ScheduledBackups {
     this.showServices.set(false)
     this.showSingleJobList = false
     this.reassigning.set(null)
-    this.pendingReview = null
+    this.pendingReview = review || null
     this.selectedJobId.set('')
     this.editor.set(form)
     this.editorBaseline = this.editorSnapshot(form)
@@ -1504,7 +1506,6 @@ export class ScheduledBackups {
     afterNextRender(() => this.jobNameInput()?.nativeElement.focus(), {
       injector: this.injector,
     })
-    return true
   }
 
   protected async viewAllJobs() {
@@ -1562,17 +1563,6 @@ export class ScheduledBackups {
       this.editorBaseline = form ? this.editorSnapshot(form) : null
     }
     return confirmed
-  }
-
-  protected async createForReview(review: T.NewServiceBackupReview) {
-    if (!(await this.create())) return
-    const form = this.editor()
-    if (!form) return
-    form.packageIds = [SYSTEM_PACKAGE_ID, review.packageId]
-    form.includeFuture = false
-    this.pendingReview = review
-    this.editorBaseline = this.editorSnapshot(form)
-    void this.refreshEstimates(form)
   }
 
   protected isDefaultJob(form: JobEditor): boolean {
@@ -2169,26 +2159,31 @@ export class ScheduledBackups {
   }
 
   protected async refreshEstimates(form: JobEditor) {
+    const request = ++this.estimateRequest
+    const snapshot = this.editorSnapshot(form)
+    this.estimates.set([])
     if (!form.targetId) return
     await this.tasks.run(async () => {
-      this.estimates.set(
-        await this.api.estimateScheduledBackupCapacity({
-          targetId: form.targetId,
-          services: serializeBackupServiceSelection(
-            form,
-            this.packages().map(pkg => pkg.id),
+      const estimates = await this.api.estimateScheduledBackupCapacity({
+        targetId: form.targetId,
+        services: serializeBackupServiceSelection(
+          form,
+          this.packages().map(pkg => pkg.id),
+        ),
+        defaultRetention: this.defaultPolicy(form),
+        retentionOverrides: Object.fromEntries(
+          Object.entries(form.retentionOverrides).map(
+            ([packageId, override]) => [packageId, this.policy(override.tiers)],
           ),
-          defaultRetention: this.defaultPolicy(form),
-          retentionOverrides: Object.fromEntries(
-            Object.entries(form.retentionOverrides).map(
-              ([packageId, override]) => [
-                packageId,
-                this.policy(override.tiers),
-              ],
-            ),
-          ),
-        }),
-      )
+        ),
+      })
+      if (
+        request === this.estimateRequest &&
+        this.editor() === form &&
+        this.editorSnapshot(form) === snapshot
+      ) {
+        this.estimates.set(estimates)
+      }
     }, 'Loading')
   }
 

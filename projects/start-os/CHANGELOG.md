@@ -62,7 +62,8 @@ for the detail behind its highlights.
   Retention changes list the affected checkpoints before confirmation,
   and schedules stop when their backup metadata is missing or invalid.
   New-service reviews keep selective schedules current. Backup history is
-  searchable, filterable, and paginated, and retains the newest 1,000 completed
+  searchable in the selected language, preserves user-defined schedule names,
+  and supports filtering and pagination. It retains the newest 1,000 completed
   entries, with a notification for every failed run, clear failure summaries,
   and expandable technical details.
   Authentication, network, and validation errors identify the action users can
@@ -81,7 +82,7 @@ for the detail behind its highlights.
   schedules updates them together. Backup progress
   and history remain in view. The same schedules, history, retention, repair, and restore
   operations are available for command-line administration. A stalled service
-  backup stops after six hours so later backups can run.
+  backup procedure stops after six hours.
 
 - **A service can permanently retire a network host or a port it no longer
   uses, and the port numbers it held become available again.** A service that
