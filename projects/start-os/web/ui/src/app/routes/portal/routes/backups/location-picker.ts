@@ -94,6 +94,10 @@ type Location = MappedBackupTarget<CifsBackupTarget | DiskBackupTarget>
 
     .manage-location {
       justify-content: flex-start;
+      block-size: auto;
+      padding-block: 0.75rem;
+      white-space: normal;
+      text-align: start;
     }
 
     [tuiCell] {
