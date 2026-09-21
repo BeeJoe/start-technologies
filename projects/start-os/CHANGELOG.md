@@ -65,7 +65,7 @@ for the detail behind its highlights.
   searchable in the selected language, preserves user-defined schedule names,
   and supports filtering and pagination. It retains the newest 1,000 completed
   entries, with a notification for every failed run, clear failure summaries,
-  and expandable technical details.
+  and expandable technical details. Server data is labeled System in history.
   Authentication, network, and validation errors identify the action users can
   take. Schedules can run less often than their version-history intervals;
   StartOS warns that some intervals may be empty while retaining every available

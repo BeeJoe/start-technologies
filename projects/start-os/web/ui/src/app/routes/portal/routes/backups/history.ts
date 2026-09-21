@@ -29,6 +29,7 @@ import {
   BackupService,
   formatCifsLocation,
 } from '../system/routes/backups/backup.service'
+import { SYSTEM_PACKAGE_ID } from '../system/routes/backups/scheduled-utils'
 
 type HistoryFilter = 'all' | T.BackupActivityKind
 type StatusFilter = 'all' | T.BackupRunState
@@ -613,6 +614,7 @@ export class BackupHistory {
   }
 
   protected packageName(id: string): string {
+    if (id === SYSTEM_PACKAGE_ID) return this.i18n.transform('System')
     const pkg = this.packageData()?.[id]
     return (pkg && getManifest(pkg)?.title) || id
   }

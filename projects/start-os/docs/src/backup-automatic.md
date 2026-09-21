@@ -95,6 +95,7 @@ checkpoints after reconnecting a location requires the current master password.
 Backup history records manual backups, automatic runs, and restores, including
 service-level failures. Search by schedule name, service, backup location, or
 status in your selected language. Schedule names appear as you entered them.
+Server data appears as **System** alongside the individual service reports.
 History retains the newest 1,000 completed entries in addition
 to any backup or restore still in progress. Successful checkpoints remain
 available when another service in the same run fails. During restore, StartOS
