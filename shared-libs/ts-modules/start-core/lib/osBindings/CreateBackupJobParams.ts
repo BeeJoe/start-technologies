@@ -17,6 +17,10 @@ export type CreateBackupJobParams = {
   defaultRetention: RetentionPolicy
   retentionOverrides: { [key: PackageId]: RetentionPolicy }
   password: PasswordType
+  /**
+   * Password that encrypted the existing backup location.
+   */
+  oldPassword?: PasswordType
   enabled: boolean
   /**
    * Queue the job's first run after creation.

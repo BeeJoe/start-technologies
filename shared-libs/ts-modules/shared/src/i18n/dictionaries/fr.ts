@@ -1012,4 +1012,6 @@ export default {
   1214: 'Appliquer',
   1215: 'Rechercher',
   1216: 'Fuseau horaire',
+  1222: 'Emplacement de sauvegarde illisible',
+  1223: 'StartOS n’a pas pu lire l’emplacement de sauvegarde. Consultez l’historique des sauvegardes pour plus de détails.',
 } satisfies i18n

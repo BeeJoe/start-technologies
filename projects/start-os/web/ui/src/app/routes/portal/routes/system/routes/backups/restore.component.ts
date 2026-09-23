@@ -31,7 +31,7 @@ import { RECOVER } from './recover.component'
     } @else {
       <section class="unlock-flow">
         <span tuiTitle>
-          <b>{{ 'Master Password' | i18n }}</b>
+          <b>{{ 'Password' | i18n }}</b>
           <span tuiSubtitle>
             {{ selectedServerName() }} ·
             {{
@@ -41,7 +41,7 @@ import { RECOVER } from './recover.component'
           </span>
         </span>
         <tui-textfield>
-          <label tuiLabel>{{ 'Master Password' | i18n }}</label>
+          <label tuiLabel>{{ 'Password' | i18n }}</label>
           <input
             tuiInput
             required

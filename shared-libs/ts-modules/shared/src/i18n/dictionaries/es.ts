@@ -1012,4 +1012,6 @@ export default {
   1214: 'Aplicar',
   1215: 'Buscar copias',
   1216: 'Zona horaria',
+  1222: 'No se puede leer la ubicación de las copias',
+  1223: 'StartOS no pudo leer la ubicación de las copias. Consulte el historial de copias para obtener más información.',
 } satisfies i18n

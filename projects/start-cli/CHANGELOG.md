@@ -13,6 +13,17 @@ or the CLI's externally observable behavior.
 
 ### Added
 
+- **Complete automatic-backup administration.** Create, edit, enable, disable,
+  delete, and immediately run automatic jobs; reconnect or reassign their
+  targets; inspect activity and checkpoint history; delete archived checkpoints;
+  estimate capacity; resolve new-service reviews; and restore selected checkpoints.
+  Service selection includes System data and future services independently.
+  Use `--old-password` when an existing backup location uses a password different
+  from the current server password.
+- **Safe version-history commands.** Preview rule-based or latest-only retention
+  changes and apply the exact previewed checkpoint removals, including per-service
+  overrides.
+
 - **`s9pk edit add-image` enables CPU emulation by default** when the server uses
   another architecture. Use `--no-emulation` for images that require a native architecture.
 
@@ -68,16 +79,6 @@ or the CLI's externally observable behavior.
   it is **optional**, so a package without one still builds; it is simply absent from the
   archive and the accessor returns `None`. Nothing is packed for an s9pk built before this,
   and v1 packages migrated forward carry no README either.
-- **Complete automatic-backup administration.** `start-cli` can now create,
-  edit, enable, disable, delete, and immediately run automatic jobs; reconnect
-  or reassign their targets; inspect activity and checkpoint history; delete
-  archived checkpoints, including after reconnecting a location; estimate
-  capacity; resolve new-service reviews; and restore selected automatic
-  checkpoints. Service selection can include or
-  exclude System data and future services independently.
-- **Safe version-history commands.** Operators can preview rule-based or
-  latest-only retention changes and then apply the exact previewed checkpoint
-  removals, including per-service overrides.
 
 - **An `s9pk` command says when `start-cli` is behind the published release.** It compares
   itself against the `start-cli` version named by the workspace's `start-technologies`

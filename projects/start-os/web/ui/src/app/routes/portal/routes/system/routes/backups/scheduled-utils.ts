@@ -53,6 +53,8 @@ export function backupPauseLabel(pause: T.BackupJobPause) {
       return 'Backup location unavailable' as const
     case 'targetIdentityMismatch':
       return 'Backup location changed' as const
+    case 'targetUnreadable':
+      return 'Backup location unreadable' as const
     case 'reauthenticationRequired':
       return 'Authentication required' as const
     default:

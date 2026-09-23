@@ -4,10 +4,13 @@
 .SH NAME
 start\-cli\-backup\-job\-add \- Add an automatic backup job
 .SH SYNOPSIS
-\fBstart\-cli backup job add\fR [\fB\-\-cron\fR] [\fB\-\-timezone\fR] [\fB\-\-package\-ids\fR] [\fB\-\-exclude\-package\-ids\fR] [\fB\-\-system\-data\fR] [\fB\-\-keep\-rule\fR] [\fB\-\-service\-keep\-rule\fR] [\fB\-\-service\-latest\-only\fR] [\fB\-\-disabled\fR] [\fB\-\-format\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fINAME\fR> <\fITARGET_ID\fR> <\fIPASSWORD\fR>
+\fBstart\-cli backup job add\fR [\fB\-\-old\-password\fR] [\fB\-\-cron\fR] [\fB\-\-timezone\fR] [\fB\-\-package\-ids\fR] [\fB\-\-exclude\-package\-ids\fR] [\fB\-\-system\-data\fR] [\fB\-\-keep\-rule\fR] [\fB\-\-service\-keep\-rule\fR] [\fB\-\-service\-latest\-only\fR] [\fB\-\-disabled\fR] [\fB\-\-format\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fINAME\fR> <\fITARGET_ID\fR> <\fIPASSWORD\fR>
 .SH DESCRIPTION
 Add an automatic backup job
 .SH OPTIONS
+.TP
+\fB\-\-old\-password\fR \fI<OLD_PASSWORD>\fR
+Previous backup password
 .TP
 \fB\-\-cron\fR \fI<CRON>\fR [default: 0 3 * * *]
 Five\-field cron schedule (minute, hour, day of month, month, weekday)

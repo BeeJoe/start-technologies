@@ -14,4 +14,8 @@ export type RetryBackupTargetParams = {
    * Current master password.
    */
   password: PasswordType
+  /**
+   * Password that encrypted the existing backup location.
+   */
+  oldPassword?: PasswordType
 }

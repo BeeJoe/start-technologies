@@ -464,6 +464,12 @@ apply` to change an existing history.
 
 ### Activity and checkpoint history
 
+Use the current master password for `backup job add`, `retry-target`,
+`reassign-target`, and `backup history delete-archived`. If the location was
+encrypted with a different password, also pass `--old-password <PASS>` with
+that original backup password. `backup history discover` takes the backup
+password directly.
+
 - `start-cli backup activity list` — List manual backup, automatic backup, and
   restore activity
 - `start-cli backup history list` — List automatic checkpoint history known to

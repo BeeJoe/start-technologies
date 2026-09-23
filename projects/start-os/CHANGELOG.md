@@ -52,37 +52,16 @@ for the detail behind its highlights.
 - **Automatic backups.** StartOS can protect optional System data and selected
   current or future services on hourly, daily, weekly, or monthly schedules
   with selectable timezones, capacity estimates, and configurable version
-  history. Multiple schedules can be created, edited, paused, resumed, run
-  immediately, repaired, reassigned,
-  or deleted while unreferenced checkpoints remain available as archives.
-  Reconnected locations preserve archive decisions made while disconnected and
-  can authenticate again to manage those archives.
-  Schedules preserve existing version history when a location is reconnected.
-  Name and timing edits preserve the location's saved retention policy.
-  Retention changes list the affected checkpoints before confirmation,
-  and schedules stop when their backup metadata is missing or invalid.
-  New-service reviews keep selective schedules current. Backup history is
-  searchable in the selected language, preserves user-defined schedule names,
-  and supports filtering and pagination. It retains the newest 1,000 completed
-  entries, with a notification for every failed run, clear failure summaries,
-  and expandable technical details. Server data is labeled System in history.
-  Authentication, network, and validation errors identify the action users can
-  take. Schedules can run less often than their version-history intervals;
-  StartOS warns that some intervals may be empty while retaining every available
-  checkpoint instead of blocking the schedule. Existing history never restricts
-  new schedule timing, and empty histories detached from every schedule adopt
-  the new policy and timezone. Password controls are keyboard accessible, and
-  backup management remains usable on narrow displays. Restore lists services with
-  saved checkpoints and can mix manual and automatic checkpoints by service,
-  including backups from another server, and initial setup can recover a server
-  from its latest automatic System
-  and service checkpoints. Pausing a
-  schedule keeps its checkpoints in active retention history. The schedule list
-  reflects live status and changes from other sessions; pausing or resuming all
-  schedules updates them together. Backup progress
-  and history remain in view. The same schedules, history, retention, repair, and restore
-  operations are available for command-line administration. A stalled service
-  backup procedure stops after six hours.
+  history through the web UI and CLI. Schedules can be paused, run immediately,
+  moved to another location, or deleted while keeping their checkpoints as
+  archives. Retention changes preview the checkpoints they will remove.
+  Searchable backup history records the latest 1,000 completed operations,
+  with failure notifications and technical details for troubleshooting.
+  Existing locations remain usable after a server password change by supplying
+  their original backup password. Restore can mix manual and automatic
+  checkpoints by service, and initial setup can recover a server from its latest
+  automatic System and service checkpoints. A stalled service backup procedure
+  stops after six hours.
 
 - **A service can permanently retire a network host or a port it no longer
   uses, and the port numbers it held become available again.** A service that

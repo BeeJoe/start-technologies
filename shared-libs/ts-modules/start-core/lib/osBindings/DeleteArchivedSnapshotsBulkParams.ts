@@ -9,4 +9,8 @@ export type DeleteArchivedSnapshotsBulkParams = {
   targetId: BackupTargetId
   snapshots: Array<ArchivedSnapshotSelection>
   password: string
+  /**
+   * Password that encrypted the existing backup location.
+   */
+  oldPassword?: string
 }

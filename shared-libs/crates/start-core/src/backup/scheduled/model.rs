@@ -113,6 +113,7 @@ pub enum BackupJobPause {
     User,
     TargetUnavailable { failures: u8 },
     TargetIdentityMismatch,
+    TargetUnreadable,
     ReauthenticationRequired,
 }
 

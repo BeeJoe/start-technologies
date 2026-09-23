@@ -1012,4 +1012,6 @@ export default {
   1214: 'Zastosuj',
   1215: 'Szukaj kopii',
   1216: 'Strefa czasowa',
+  1222: 'Nie można odczytać lokalizacji kopii',
+  1223: 'StartOS nie mógł odczytać lokalizacji kopii. Sprawdź szczegóły w historii kopii zapasowych.',
 } satisfies i18n

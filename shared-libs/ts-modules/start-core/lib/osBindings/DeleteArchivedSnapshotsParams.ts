@@ -11,4 +11,8 @@ export type DeleteArchivedSnapshotsParams = {
   packageId: PackageId
   snapshotIds: Array<Guid>
   password: string
+  /**
+   * Password that encrypted the existing backup location.
+   */
+  oldPassword?: string
 }

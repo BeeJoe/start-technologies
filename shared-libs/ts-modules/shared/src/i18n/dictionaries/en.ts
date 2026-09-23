@@ -1012,4 +1012,6 @@ export const ENGLISH: Record<string, number> = {
   'Apply': 1214,
   'Search backups': 1215,
   'Timezone': 1216,
+  'Backup location unreadable': 1222,
+  'StartOS could not read the backup location. Check Backup history for details.': 1223,
 }

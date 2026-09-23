@@ -220,19 +220,8 @@ async fn run_job_inner(
         Ok(guard) => guard,
         Err(error) => {
             let message = error.to_string();
-            pause_for_intervention(
-                ctx,
-                &job,
-                BackupJobPause::TargetIdentityMismatch,
-                t!("backup.scheduled.identity-title").to_string(),
-                t!(
-                    "backup.scheduled.identity-message",
-                    job = job.name,
-                    target = target_name.as_str()
-                )
-                .to_string(),
-            )
-            .await?;
+            let (pause, title, notification) = target_read_failure(&error, &job.name, &target_name);
+            pause_for_intervention(ctx, &job, pause, title, notification).await?;
             record_failed_run(ctx, &job, &package_ids, trigger, message).await?;
             return Err(error);
         }
@@ -1099,11 +1088,64 @@ async fn pause_for_intervention(
         .result
 }
 
+fn target_read_failure(error: &Error, job: &str, target: &str) -> (BackupJobPause, String, String) {
+    if error
+        .source
+        .downcast_ref::<super::storage::TargetIdentityMismatch>()
+        .is_some()
+    {
+        (
+            BackupJobPause::TargetIdentityMismatch,
+            t!("backup.scheduled.identity-title").to_string(),
+            t!(
+                "backup.scheduled.identity-message",
+                job = job,
+                target = target
+            )
+            .to_string(),
+        )
+    } else {
+        (
+            BackupJobPause::TargetUnreadable,
+            t!("backup.scheduled.unreadable-title").to_string(),
+            t!(
+                "backup.scheduled.unreadable-message",
+                job = job,
+                target = target
+            )
+            .to_string(),
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     use super::*;
+
+    #[test]
+    fn target_read_failure_distinguishes_identity_from_unreadable_metadata() {
+        let mismatch = Error::new(
+            super::super::storage::TargetIdentityMismatch("changed identity".into()),
+            ErrorKind::InvalidRequest,
+        );
+        assert_eq!(
+            target_read_failure(&mismatch, "Daily", "Drive").0,
+            BackupJobPause::TargetIdentityMismatch,
+        );
+        for kind in [
+            ErrorKind::Filesystem,
+            ErrorKind::InvalidRequest,
+            ErrorKind::Backup,
+        ] {
+            let unreadable = Error::new(eyre!("unreadable metadata"), kind);
+            assert_eq!(
+                target_read_failure(&unreadable, "Daily", "Drive").0,
+                BackupJobPause::TargetUnreadable,
+            );
+        }
+    }
 
     #[test]
     fn complete_preflight_is_order_independent_and_uses_full_copies() {

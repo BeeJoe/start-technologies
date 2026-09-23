@@ -5,7 +5,6 @@ use std::sync::Arc;
 use chrono::{DateTime, Utc};
 use color_eyre::eyre::eyre;
 use serde::{Deserialize, Serialize};
-use tokio::io::AsyncWriteExt;
 
 use super::{BackupRun, RetentionPolicy, ServiceSnapshot, ServiceSnapshotId, ServiceTargetHistory};
 use crate::auth::check_password;
@@ -18,10 +17,14 @@ use crate::hostname::ServerHostname;
 use crate::prelude::*;
 use crate::rpc_continuations::Guid;
 use crate::util::crypto::{decrypt_slice, encrypt_slice};
-use crate::util::io::{AtomicFile, delete_dir, delete_file, dir_copy, dir_size, rename};
+use crate::util::io::{delete_dir, delete_file, dir_copy, dir_size, rename, write_file_atomic};
 use crate::util::serde::{IoFormat, read_json_file_bounded};
 use crate::version::VersionT;
 use crate::{PackageId, SYSTEM_PACKAGE_ID};
+
+#[derive(Debug, thiserror::Error)]
+#[error("{0}")]
+pub(super) struct TargetIdentityMismatch(pub(super) String);
 
 /// Unencrypted recovery metadata needed to unlock a scheduled backup target.
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -35,6 +38,23 @@ pub struct ScheduledBackupRecoveryInfo {
     pub wrapped_key: String,
     #[serde(default)]
     pub has_system_backup: Option<bool>,
+}
+
+impl ScheduledBackupRecoveryInfo {
+    fn encryption_key(&self, password: &str) -> Result<String, Error> {
+        check_password(&self.password_hash, password)?;
+        let wrapped_key = base32::decode(
+            base32::Alphabet::Rfc4648 { padding: true },
+            &self.wrapped_key,
+        )
+        .ok_or_else(|| {
+            Error::new(
+                eyre!("{}", t!("backup.scheduled.decode-key-failed")),
+                ErrorKind::Backup,
+            )
+        })?;
+        Ok(String::from_utf8(decrypt_slice(wrapped_key, password))?)
+    }
 }
 
 /// Encrypted metadata describing all scheduled histories on a target.
@@ -145,6 +165,7 @@ impl<G: GenericMountGuard> ScheduledBackupMountGuard<G> {
         server_id: &str,
         hostname: ServerHostname,
         password: &str,
+        old_password: Option<&str>,
     ) -> Result<(Self, String), Error> {
         let root = scheduled_root(target_guard.path(), server_id);
         let recovery_path = root.join("unencrypted-metadata.json");
@@ -154,20 +175,10 @@ impl<G: GenericMountGuard> ScheduledBackupMountGuard<G> {
             Err(error) => return Err(error.into()),
         };
         let (recovery, encryption_key) = if !initializing {
+            let password = old_password.unwrap_or(password);
             let recovery: ScheduledBackupRecoveryInfo =
                 read_json_file_bounded(&recovery_path, MAX_BACKUP_RECOVERY_METADATA_BYTES).await?;
-            check_password(&recovery.password_hash, password)?;
-            let wrapped_key = base32::decode(
-                base32::Alphabet::Rfc4648 { padding: true },
-                &recovery.wrapped_key,
-            )
-            .ok_or_else(|| {
-                Error::new(
-                    eyre!("{}", t!("backup.scheduled.decode-key-failed")),
-                    ErrorKind::Backup,
-                )
-            })?;
-            let key = String::from_utf8(decrypt_slice(wrapped_key, password))?;
+            let key = recovery.encryption_key(password)?;
             (recovery, key)
         } else {
             let encryption_key = base32::encode(
@@ -218,7 +229,7 @@ impl<G: GenericMountGuard> ScheduledBackupMountGuard<G> {
             read_json_file_bounded(&recovery_path, MAX_BACKUP_RECOVERY_METADATA_BYTES).await?;
         if recovery.target_instance_id != expected_target_instance_id {
             return Err(Error::new(
-                eyre!("{}", t!("backup.scheduled.target-identity-mismatch")),
+                TargetIdentityMismatch(t!("backup.scheduled.target-identity-mismatch").to_string()),
                 ErrorKind::InvalidRequest,
             ));
         }
@@ -233,7 +244,7 @@ impl<G: GenericMountGuard> ScheduledBackupMountGuard<G> {
         .await
     }
 
-    /// Authenticates with the master password and mounts an existing backup area.
+    /// Unlocks an existing backup area with its original password.
     pub async fn mount_with_password(
         target_guard: G,
         server_id: &str,
@@ -244,14 +255,14 @@ impl<G: GenericMountGuard> ScheduledBackupMountGuard<G> {
             Self::discover_with_password(target_guard, server_id, password).await?;
         if guard.recovery.target_instance_id != expected_target_instance_id {
             return Err(Error::new(
-                eyre!("{}", t!("backup.scheduled.target-identity-mismatch")),
+                TargetIdentityMismatch(t!("backup.scheduled.target-identity-mismatch").to_string()),
                 ErrorKind::InvalidRequest,
             ));
         }
         Ok((guard, encryption_key))
     }
 
-    /// Reads recoverable scheduled-backup metadata using the master password.
+    /// Reads recoverable scheduled-backup metadata using its original password.
     pub async fn discover_with_password(
         target_guard: G,
         server_id: &str,
@@ -261,18 +272,7 @@ impl<G: GenericMountGuard> ScheduledBackupMountGuard<G> {
             scheduled_root(target_guard.path(), server_id).join("unencrypted-metadata.json");
         let recovery: ScheduledBackupRecoveryInfo =
             read_json_file_bounded(&recovery_path, MAX_BACKUP_RECOVERY_METADATA_BYTES).await?;
-        check_password(&recovery.password_hash, password)?;
-        let wrapped_key = base32::decode(
-            base32::Alphabet::Rfc4648 { padding: true },
-            &recovery.wrapped_key,
-        )
-        .ok_or_else(|| {
-            Error::new(
-                eyre!("{}", t!("backup.scheduled.decode-key-failed")),
-                ErrorKind::Backup,
-            )
-        })?;
-        let encryption_key = String::from_utf8(decrypt_slice(wrapped_key, password))?;
+        let encryption_key = recovery.encryption_key(password)?;
         let guard = Self::mount_inner(
             target_guard,
             server_id,
@@ -307,7 +307,9 @@ impl<G: GenericMountGuard> ScheduledBackupMountGuard<G> {
         .await?;
         if metadata.target_instance_id != recovery.target_instance_id {
             return Err(Error::new(
-                eyre!("{}", t!("backup.scheduled.metadata-identity-mismatch")),
+                TargetIdentityMismatch(
+                    t!("backup.scheduled.metadata-identity-mismatch").to_string(),
+                ),
                 ErrorKind::InvalidRequest,
             ));
         }
@@ -658,18 +660,44 @@ async fn read_target_metadata(
 }
 
 async fn write_json(path: &Path, value: &impl Serialize) -> Result<(), Error> {
-    if let Some(parent) = path.parent() {
-        tokio::fs::create_dir_all(parent).await?;
-    }
-    let mut file = AtomicFile::new(path, None::<PathBuf>).await?;
-    file.write_all(&IoFormat::Json.to_vec(value)?).await?;
-    file.save().await
+    write_file_atomic(path, IoFormat::Json.to_vec(value)?).await
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::backup::scheduled::BackupSource;
+
+    #[test]
+    fn existing_store_requires_its_original_password() {
+        let original = "original password";
+        let key = "target encryption key";
+        let recovery = ScheduledBackupRecoveryInfo {
+            target_instance_id: "target".into(),
+            hostname: ServerHostname::new("test-server".into()).unwrap(),
+            version: "0.4.0".parse().unwrap(),
+            timestamp: Utc::now(),
+            password_hash: argon2::hash_encoded(
+                original.as_bytes(),
+                b"test-password-salt",
+                &argon2::Config::default(),
+            )
+            .unwrap(),
+            wrapped_key: base32::encode(
+                base32::Alphabet::Rfc4648 { padding: true },
+                &encrypt_slice(key, original),
+            ),
+            has_system_backup: Some(false),
+        };
+        assert_eq!(recovery.encryption_key(original).unwrap(), key);
+        assert_eq!(
+            recovery
+                .encryption_key("changed server password")
+                .unwrap_err()
+                .kind,
+            ErrorKind::IncorrectPassword,
+        );
+    }
 
     #[test]
     fn reconnect_preserves_offline_archive_decisions_and_empty_history_settings() {

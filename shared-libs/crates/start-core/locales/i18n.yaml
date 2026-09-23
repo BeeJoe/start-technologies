@@ -2101,6 +2101,20 @@ backup.scheduled.target-unavailable-title:
   fr_FR: "Cible de sauvegarde indisponible"
   pl_PL: "Cel kopii niedostępny"
 
+backup.scheduled.unreadable-message:
+  en_US: "Job %{job} is paused because StartOS could not read the automatic backups on %{target}. Check the location and its backup metadata, review the technical details in Backup history, then retry."
+  de_DE: "Auftrag %{job} ist pausiert, da StartOS die automatischen Sicherungen auf %{target} nicht lesen konnte. Prüfen Sie den Speicherort und die Sicherungsmetadaten sowie die technischen Details im Sicherungsverlauf und versuchen Sie es erneut."
+  es_ES: "La tarea %{job} está en pausa porque StartOS no pudo leer las copias automáticas en %{target}. Compruebe la ubicación y los metadatos, revise los detalles técnicos en el historial de copias y reintente."
+  fr_FR: "La tâche %{job} est en pause car StartOS n'a pas pu lire les sauvegardes automatiques sur %{target}. Vérifiez l'emplacement et les métadonnées, consultez les détails techniques dans l'historique des sauvegardes, puis réessayez."
+  pl_PL: "Zadanie %{job} jest wstrzymane, ponieważ StartOS nie mógł odczytać automatycznych kopii w %{target}. Sprawdź lokalizację i metadane kopii, przejrzyj szczegóły techniczne w historii kopii i ponów próbę."
+
+backup.scheduled.unreadable-title:
+  en_US: "Backup location unreadable"
+  de_DE: "Sicherungsort nicht lesbar"
+  es_ES: "No se puede leer la ubicación de las copias"
+  fr_FR: "Emplacement de sauvegarde illisible"
+  pl_PL: "Nie można odczytać lokalizacji kopii"
+
 backup.scheduled.unreasonable-retention:
   en_US: "Retention policy or capacity estimate is unreasonably large"
   de_DE: "Aufbewahrungsrichtlinie oder Kapazitätsschätzung ist unangemessen groß"

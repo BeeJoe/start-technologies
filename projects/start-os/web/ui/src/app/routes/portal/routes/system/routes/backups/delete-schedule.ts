@@ -18,6 +18,8 @@ import { firstValueFrom } from 'rxjs'
 
 import { ApiService } from 'src/app/services/api/embassy-api.service'
 
+import { BackupService } from './backup.service'
+
 export interface DeleteScheduleDialogData {
   checkpointCount: number
   reclaimable: string
@@ -166,6 +168,7 @@ export const DELETE_SCHEDULE_DIALOG = new PolymorpheusComponent(
 @Service()
 export class DeleteScheduleService {
   private readonly api = inject(ApiService)
+  private readonly backupService = inject(BackupService)
   private readonly dialogs = inject(DialogService)
   private readonly tasks = inject(TaskService)
 
@@ -228,14 +231,17 @@ export class DeleteScheduleService {
         }
         await this.api.deleteScheduledBackupJob({ id: job.id })
         if (decision.deleteCheckpoints) {
-          await this.api.deleteArchivedBackupSnapshotsBulk({
-            targetId: job.targetId,
-            password,
-            snapshots: unreferenced.map(history => ({
-              packageId: history.packageId,
-              snapshotIds: history.snapshots.map(snapshot => snapshot.id),
-            })),
-          })
+          await this.backupService.withOriginalPassword(oldPassword =>
+            this.api.deleteArchivedBackupSnapshotsBulk({
+              targetId: job.targetId,
+              password,
+              oldPassword,
+              snapshots: unreferenced.map(history => ({
+                packageId: history.packageId,
+                snapshotIds: history.snapshots.map(snapshot => snapshot.id),
+              })),
+            }),
+          )
         }
       },
       decision.deleteCheckpoints

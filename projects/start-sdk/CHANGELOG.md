@@ -95,6 +95,10 @@
 
 ### Added
 
+- **Backup reports include rsync transfer size when it can be measured.**
+  StartOS uses the measurement alongside automatic-backup capacity estimates.
+  Custom backup functions can omit it; unavailable measurements remain unknown.
+
 - **An action learns who is running it.** The `run` handler, the prefill
   function and a function-valued input spec each receive `caller`: the id of
   the service that reached the action through `effects.action`, or `null` when
@@ -246,11 +250,6 @@
   side
 
 - **Backup and restore progress no longer falls back mid-sync**
-
-- **Backup reports now include rsync transfer size when it can be measured.**
-  Custom backup functions can return no result. Each run measures independently.
-  StartOS records it as recent transfer metadata alongside automatic-backup
-  capacity estimates and treats an unavailable measurement as unknown.
 
 ### Security
 

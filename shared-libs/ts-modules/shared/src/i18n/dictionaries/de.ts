@@ -1012,4 +1012,6 @@ export default {
   1214: 'Anwenden',
   1215: 'Sicherungen suchen',
   1216: 'Zeitzone',
+  1222: 'Sicherungsort nicht lesbar',
+  1223: 'StartOS konnte den Sicherungsort nicht lesen. Einzelheiten finden Sie im Sicherungsverlauf.',
 } satisfies i18n

@@ -122,41 +122,6 @@ class AutomaticEditor
     })
   }
 
-  get includeFuture() {
-    return this.form.controls.includeFuture.value
-  }
-  set includeFuture(value: boolean) {
-    this.form.controls.includeFuture.setValue(value)
-  }
-
-  get keepAdditional() {
-    return this.form.controls.keepAdditional.value
-  }
-  set keepAdditional(value: boolean) {
-    this.form.controls.keepAdditional.setValue(value)
-  }
-
-  get password() {
-    return this.form.controls.password.value
-  }
-  set password(value: string) {
-    this.form.controls.password.setValue(value)
-  }
-
-  get firstBackupNow() {
-    return this.form.controls.firstBackupNow.value
-  }
-  set firstBackupNow(value: boolean) {
-    this.form.controls.firstBackupNow.setValue(value)
-  }
-
-  get capacityConfirmed() {
-    return this.form.controls.capacityConfirmed.value
-  }
-  set capacityConfirmed(value: boolean) {
-    this.form.controls.capacityConfirmed.setValue(value)
-  }
-
   toJSON() {
     return {
       ...this.scheduleValue(),
@@ -378,7 +343,6 @@ class AutomaticEditor
               <input
                 tuiSwitch
                 type="checkbox"
-                [showIcons]="false"
                 [attr.aria-label]="'Keep additional versions' | i18n"
                 formControlName="keepAdditional"
               />
@@ -494,7 +458,7 @@ class AutomaticEditor
           </label>
 
           <tui-textfield>
-            <label tuiLabel>{{ 'Master Password' | i18n }}</label>
+            <label tuiLabel>{{ 'Password' | i18n }}</label>
             <input
               tuiInput
               [type]="passwordMasked ? 'password' : 'text'"
@@ -558,7 +522,6 @@ class AutomaticEditor
                   <input
                     tuiSwitch
                     type="checkbox"
-                    [showIcons]="false"
                     [attr.aria-label]="'Automatic backups' | i18n"
                     [checked]="job.enabled && !job.pause"
                     (change)="toggleAllJobs($any($event.target).checked)"
@@ -1003,6 +966,7 @@ export default class AutomaticBackups {
   private async initialize() {
     await this.backupService.getBackupTargets()
     this.targetId.set(this.targets().find(target => target.available)?.id || '')
+    this.ensureServices()
     this.setupBaseline = this.setupSnapshot()
     this.loading.set(false)
   }
@@ -1302,17 +1266,22 @@ export default class AutomaticBackups {
     if (!this.canSaveSetup()) return
     if (!(await this.validateSetup())) return
     await this.tasks.run(async () => {
-      const created = await this.api.createScheduledBackupJob({
-        name: 'Default',
-        targetId: this.targetId(),
-        services: this.serviceScope(),
-        schedule: serializeBackupSchedule(this.editor),
-        defaultRetention: this.policy(),
-        retentionOverrides: {},
-        password: this.editor.password,
-        enabled: true,
-        runNow: this.editor.firstBackupNow,
-      })
+      const created = await this.backupService.withOriginalPassword(
+        oldPassword =>
+          this.api.createScheduledBackupJob({
+            name: 'Default',
+            targetId: this.targetId(),
+            services: this.serviceScope(),
+            schedule: serializeBackupSchedule(this.editor),
+            defaultRetention: this.policy(),
+            retentionOverrides: {},
+            password: this.editor.password,
+            oldPassword,
+            enabled: true,
+            runNow: this.editor.firstBackupNow,
+          }),
+      )
+      if (!created) return
       this.backupService.showQueuedNotification(created)
       this.setupBaseline = this.setupSnapshot()
       if (this.embedded()) this.collapseRequested.emit(null)
