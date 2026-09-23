@@ -160,7 +160,6 @@ type BackupPanel = 'automatic' | 'manual' | 'restore' | 'locations' | 'history'
               <input
                 tuiSwitch
                 type="checkbox"
-                [showIcons]="false"
                 [attr.aria-label]="'Automatic backups' | i18n"
                 [ngModel]="primary()?.enabled ?? false"
                 [disabled]="changingAutomatic()"
@@ -765,6 +764,9 @@ export default class BackupsComponent {
     }
     if (job?.pause?.reason === 'targetIdentityMismatch') {
       return 'The connected backup location is not the expected location.'
+    }
+    if (job?.pause?.reason === 'targetUnreadable') {
+      return 'StartOS could not read the backup location. Check Backup history for details.'
     }
     if (job?.pause?.reason === 'targetUnavailable') {
       return 'StartOS cannot connect to the backup location.'

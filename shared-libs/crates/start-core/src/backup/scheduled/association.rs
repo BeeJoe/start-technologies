@@ -144,6 +144,7 @@ pub(crate) fn refresh_archive_state(
     Ok(())
 }
 
+/// Identifies a service's shared history on a backup target.
 pub fn history_key(target_id: &BackupTargetId, package_id: &PackageId) -> String {
     format!("{target_id}::{package_id}")
 }

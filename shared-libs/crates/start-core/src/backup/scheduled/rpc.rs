@@ -782,6 +782,10 @@ pub struct DeleteArchivedSnapshotsParams {
     pub package_id: PackageId,
     pub snapshot_ids: BTreeSet<ServiceSnapshotId>,
     pub password: String,
+    /// Password that encrypted the existing backup location.
+    #[serde(default)]
+    #[ts(optional)]
+    pub old_password: Option<String>,
 }
 
 /// Archived automatic backup snapshots selected for one service.
@@ -801,6 +805,10 @@ pub struct DeleteArchivedSnapshotsBulkParams {
     pub target_id: BackupTargetId,
     pub snapshots: Vec<ArchivedSnapshotSelection>,
     pub password: String,
+    /// Password that encrypted the existing backup location.
+    #[serde(default)]
+    #[ts(optional)]
+    pub old_password: Option<String>,
 }
 
 /// CLI inputs for deleting archived automatic backup snapshots.
@@ -821,6 +829,10 @@ pub struct DeleteArchivedSnapshotsCliParams {
     /// Current master password.
     #[arg(long, help = "help.arg.backup-password")]
     pub password: String,
+    /// Password that encrypted the existing backup location.
+    #[arg(long, help = "help.arg.old-backup-password")]
+    #[serde(default)]
+    pub old_password: Option<String>,
 }
 
 /// Deletes selected archived checkpoints from the command line.
@@ -831,6 +843,7 @@ pub async fn delete_archived_snapshots_cli(
         package_id,
         snapshot_ids,
         password,
+        old_password,
     }: DeleteArchivedSnapshotsCliParams,
 ) -> Result<ServiceTargetHistory, Error> {
     delete_archived_snapshots(
@@ -840,6 +853,7 @@ pub async fn delete_archived_snapshots_cli(
             package_id,
             snapshot_ids: snapshot_ids.into_iter().collect(),
             password,
+            old_password,
         },
     )
     .await
@@ -853,6 +867,7 @@ pub async fn delete_archived_snapshots(
         package_id,
         snapshot_ids,
         password,
+        old_password,
     }: DeleteArchivedSnapshotsParams,
 ) -> Result<ServiceTargetHistory, Error> {
     let mut histories = delete_archived_snapshots_bulk(
@@ -864,6 +879,7 @@ pub async fn delete_archived_snapshots(
                 snapshot_ids,
             }],
             password,
+            old_password,
         },
     )
     .await?;
@@ -879,6 +895,7 @@ pub async fn delete_archived_snapshots_bulk(
         target_id,
         snapshots,
         password,
+        old_password,
     }: DeleteArchivedSnapshotsBulkParams,
 ) -> Result<Vec<ServiceTargetHistory>, Error> {
     if snapshots.is_empty() {
@@ -919,9 +936,10 @@ pub async fn delete_archived_snapshots_bulk(
         &target_id,
         &server_id,
         &expected_target_instance_id,
-        Some(&password),
+        Some(old_password.as_deref().unwrap_or(&password)),
     )
-    .await?;
+    .await
+    .map_err(backup_password_mismatch)?;
     let mut remaining = guard.delete_archived_snapshots_bulk(&requested).await?;
     for history in &mut histories {
         history.snapshots = remaining
@@ -964,6 +982,17 @@ fn validate_archived_snapshot_deletion(
         eyre!("{}", t!("backup.scheduled.delete-active-history")),
         ErrorKind::InvalidRequest,
     ))
+}
+
+fn backup_password_mismatch(error: Error) -> Error {
+    if error.kind == ErrorKind::IncorrectPassword {
+        Error::new(
+            eyre!("{}", t!("backup.bulk.password-mismatch")),
+            ErrorKind::BackupPasswordMismatch,
+        )
+    } else {
+        error
+    }
 }
 
 pub(crate) async fn mount_scheduled_target(
@@ -1056,6 +1085,11 @@ pub struct RetryBackupTargetParams {
     /// Current master password.
     #[arg(help = "help.arg.backup-password")]
     pub password: PasswordType,
+    /// Password that encrypted the existing backup location.
+    #[arg(long, help = "help.arg.old-backup-password")]
+    #[serde(default)]
+    #[ts(optional)]
+    pub old_password: Option<PasswordType>,
 }
 
 /// Reconnects a failed automatic backup target and resumes affected jobs.
@@ -1064,9 +1098,13 @@ pub async fn retry_target(
     RetryBackupTargetParams {
         target_id,
         password,
+        old_password,
     }: RetryBackupTargetParams,
 ) -> Result<Vec<BackupJob>, Error> {
     let password = password.decrypt(&ctx)?;
+    let old_password = old_password
+        .map(|password| password.decrypt(&ctx))
+        .transpose()?;
     let coordinator = crate::backup::try_backup_coordinator(ctx.backup_coordinator.clone())?;
     let db = ctx.db.peek().await;
     RpcContext::check_password(&db, &password)?;
@@ -1077,9 +1115,10 @@ pub async fn retry_target(
         &target_id,
         &server_id,
         &target_instance_id,
-        Some(&password),
+        Some(old_password.as_deref().unwrap_or(&password)),
     )
-    .await?;
+    .await
+    .map_err(backup_password_mismatch)?;
     guard.save_and_unmount().await?;
 
     let jobs = ctx
@@ -1103,6 +1142,7 @@ pub async fn retry_target(
                     Some(
                         BackupJobPause::TargetUnavailable { .. }
                             | BackupJobPause::TargetIdentityMismatch
+                            | BackupJobPause::TargetUnreadable
                             | BackupJobPause::ReauthenticationRequired
                     )
                 ) {
@@ -1224,6 +1264,11 @@ pub struct ReassignBackupTargetParams {
     /// Current master password.
     #[arg(help = "help.arg.backup-password")]
     pub password: PasswordType,
+    /// Password that encrypted the destination's existing backups.
+    #[arg(long, help = "help.arg.old-backup-password")]
+    #[serde(default)]
+    #[ts(optional)]
+    pub old_password: Option<PasswordType>,
     /// Wait for the next scheduled time instead of running on the new target now.
     #[arg(long, help = "help.arg.automatic-backup-wait-for-schedule")]
     #[serde(default)]
@@ -1237,10 +1282,14 @@ pub async fn reassign_target(
         id,
         target_id,
         password,
+        old_password,
         wait_for_schedule,
     }: ReassignBackupTargetParams,
 ) -> Result<BackupJob, Error> {
     let password = password.decrypt(&ctx)?;
+    let old_password = old_password
+        .map(|password| password.decrypt(&ctx))
+        .transpose()?;
     let coordinator = crate::backup::try_backup_coordinator(ctx.backup_coordinator.clone())?;
     let db = ctx.db.peek().await;
     RpcContext::check_password(&db, &password)?;
@@ -1258,9 +1307,15 @@ pub async fn reassign_target(
     let target_guard = TmpMountGuard::mount(&target_id.clone().load(&db)?, ReadWrite).await?;
     let available = crate::disk::util::get_available(target_guard.path()).await?;
     super::runner::preflight_new_target_capacity(&ctx, &package_ids, available).await?;
-    let (mut guard, encryption_key) =
-        ScheduledBackupMountGuard::initialize(target_guard, &server_id, hostname, &password)
-            .await?;
+    let (mut guard, encryption_key) = ScheduledBackupMountGuard::initialize(
+        target_guard,
+        &server_id,
+        hostname,
+        &password,
+        old_password.as_deref(),
+    )
+    .await
+    .map_err(backup_password_mismatch)?;
     let target_instance_id = guard.recovery.target_instance_id.clone();
     validate_target_alias(&db, &target_id, &target_instance_id)?;
     reconcile_target_histories(&db, &target_id, &mut guard)?;
@@ -1600,6 +1655,10 @@ pub struct CreateBackupJobParams {
     pub default_retention: RetentionPolicy,
     pub retention_overrides: BTreeMap<PackageId, RetentionPolicy>,
     pub password: PasswordType,
+    /// Password that encrypted the existing backup location.
+    #[serde(default)]
+    #[ts(optional)]
+    pub old_password: Option<PasswordType>,
     #[serde(default = "default_true")]
     pub enabled: bool,
     /// Queue the job's first run after creation.
@@ -1635,9 +1694,13 @@ pub struct AddBackupJobCliParams {
     /// Backup target identifier, such as cifs-0 or disk-/dev/sda1.
     #[arg(help = "help.arg.backup-target-id")]
     pub target_id: BackupTargetId,
-    /// Master password used to initialize the encrypted automatic backup store.
+    /// Current master password.
     #[arg(help = "help.arg.backup-password")]
     pub password: PasswordType,
+    /// Password that encrypted the existing backup location.
+    #[arg(long, help = "help.arg.old-backup-password")]
+    #[serde(default)]
+    pub old_password: Option<PasswordType>,
     /// Five-field cron expression (minute, hour, day of month, month, weekday).
     #[arg(
         long,
@@ -1709,6 +1772,7 @@ pub async fn add_cli(
         name,
         target_id,
         password,
+        old_password,
         cron,
         timezone,
         package_ids,
@@ -1736,6 +1800,7 @@ pub async fn add_cli(
                 latest_only_overrides,
             )?,
             password,
+            old_password,
             enabled: !disabled,
             run_now: false,
         },
@@ -2161,12 +2226,16 @@ pub async fn create(
         default_retention,
         retention_overrides,
         password,
+        old_password,
         enabled,
         run_now,
     }: CreateBackupJobParams,
 ) -> Result<BackupJob, Error> {
     validate_job_input(&name, &schedule, &default_retention, &retention_overrides)?;
     let password = password.decrypt(&ctx)?;
+    let old_password = old_password
+        .map(|password| password.decrypt(&ctx))
+        .transpose()?;
     let coordinator = crate::backup::try_backup_coordinator(ctx.backup_coordinator.clone())?;
     let db = ctx.db.peek().await;
     RpcContext::check_password(&db, &password)?;
@@ -2175,9 +2244,15 @@ pub async fn create(
     let server_id = db.as_public().as_server_info().as_id().de()?;
     let hostname = ctx.account.peek(|account| account.hostname.clone());
     let target_guard = TmpMountGuard::mount(&target_id.clone().load(&db)?, ReadWrite).await?;
-    let (mut scheduled_guard, encryption_key) =
-        ScheduledBackupMountGuard::initialize(target_guard, &server_id, hostname, &password)
-            .await?;
+    let (mut scheduled_guard, encryption_key) = ScheduledBackupMountGuard::initialize(
+        target_guard,
+        &server_id,
+        hostname,
+        &password,
+        old_password.as_deref(),
+    )
+    .await
+    .map_err(backup_password_mismatch)?;
     let target_instance_id = scheduled_guard.recovery.target_instance_id.clone();
     validate_target_alias(&db, &target_id, &target_instance_id)?;
     reconcile_target_histories(&db, &target_id, &mut scheduled_guard)?;
@@ -2372,6 +2447,7 @@ pub async fn set_enabled(
                     Some(
                         BackupJobPause::TargetUnavailable { .. }
                             | BackupJobPause::TargetIdentityMismatch
+                            | BackupJobPause::TargetUnreadable
                             | BackupJobPause::ReauthenticationRequired
                     )
                 )
@@ -2440,6 +2516,7 @@ pub async fn set_enabled_bulk(
                         Some(
                             BackupJobPause::TargetUnavailable { .. }
                                 | BackupJobPause::TargetIdentityMismatch
+                                | BackupJobPause::TargetUnreadable
                                 | BackupJobPause::ReauthenticationRequired
                         )
                     )
@@ -2702,6 +2779,50 @@ const fn default_true() -> bool {
 #[cfg(test)]
 mod cli_tests {
     use super::*;
+
+    #[test]
+    fn backup_password_error_preserves_other_failures() {
+        let mismatch = backup_password_mismatch(Error::new(
+            eyre!("wrong backup password"),
+            ErrorKind::IncorrectPassword,
+        ));
+        assert_eq!(mismatch.kind, ErrorKind::BackupPasswordMismatch);
+        let unreadable =
+            backup_password_mismatch(Error::new(eyre!("metadata missing"), ErrorKind::Filesystem));
+        assert_eq!(unreadable.kind, ErrorKind::Filesystem);
+        assert_eq!(unreadable.source.to_string(), "metadata missing");
+    }
+
+    #[test]
+    fn schedule_cli_accepts_separate_server_and_backup_passwords() {
+        let add = AddBackupJobCliParams::try_parse_from([
+            "test",
+            "Daily",
+            "cifs-0",
+            "current",
+            "--old-password",
+            "original",
+        ])
+        .unwrap();
+        assert!(add.old_password.is_some());
+        let retry = RetryBackupTargetParams::try_parse_from([
+            "test",
+            "cifs-0",
+            "current",
+            "--old-password",
+            "original",
+        ])
+        .unwrap();
+        assert!(retry.old_password.is_some());
+        let without_original =
+            RetryBackupTargetParams::try_parse_from(["test", "cifs-0", "current"]).unwrap();
+        assert!(without_original.old_password.is_none());
+        let legacy: RetryBackupTargetParams = serde_json::from_value(serde_json::json!({
+            "targetId": "cifs-0", "password": "current"
+        }))
+        .unwrap();
+        assert!(legacy.old_password.is_none());
+    }
 
     fn backup_job(
         id: BackupJobId,

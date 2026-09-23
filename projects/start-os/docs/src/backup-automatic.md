@@ -22,6 +22,9 @@ time to the overall backup.
 Automatic backups use the same master-password encryption as manual backups.
 StartOS uses the password to initialize or unlock the backup location but does
 not store it. Changing the server password does not re-encrypt existing backups.
+Use the current master password to authorize changes. When an existing location
+needs to be unlocked, StartOS also asks for its original backup password if that
+differs from the current password.
 
 ## Schedules
 
@@ -109,6 +112,10 @@ also refuses to write when credentials are no longer valid, the location's
 identity has changed, or its metadata is missing or invalid. Repair the original
 location, provide current credentials, or explicitly move the schedule to
 another location before resuming it.
+An unreadable-location notification points to the technical details in Backup
+history. Check the drive or network folder and its backup metadata before retrying;
+an identity-change notification means the location no longer matches the saved
+backup history.
 
 The command-line backup interface can list and manage schedules, inspect
 activity and checkpoints, preview retention changes, repair targets, and start

@@ -20,6 +20,10 @@ export type ReassignBackupTargetParams = {
    */
   password: PasswordType
   /**
+   * Password that encrypted the destination's existing backups.
+   */
+  oldPassword?: PasswordType
+  /**
    * Wait for the next scheduled time instead of running on the new target now.
    */
   waitForSchedule: boolean

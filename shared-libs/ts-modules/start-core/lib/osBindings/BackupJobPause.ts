@@ -7,4 +7,5 @@ export type BackupJobPause =
   | { reason: 'user' }
   | { reason: 'targetUnavailable'; failures: number }
   | { reason: 'targetIdentityMismatch' }
+  | { reason: 'targetUnreadable' }
   | { reason: 'reauthenticationRequired' }

@@ -1,5 +1,11 @@
 import { inject, Injectable, signal } from '@angular/core'
-import { ErrorService, getErrorMessage, i18nPipe } from '@start9labs/shared'
+import {
+  DialogService,
+  ErrorService,
+  getErrorMessage,
+  i18nPipe,
+  RpcError,
+} from '@start9labs/shared'
 import { T, Version } from '@start9labs/start-core'
 import { TuiNotificationService } from '@taiga-ui/core'
 import { PatchDB } from 'patch-db-client'
@@ -32,6 +38,7 @@ export class BackupService {
   private readonly i18n = inject(i18nPipe)
   private readonly patch = inject<PatchDB<DataModel>>(PatchDB)
   private readonly alerts = inject(TuiNotificationService)
+  private readonly dialogs = inject(DialogService)
 
   private serverId = ''
 
@@ -75,7 +82,7 @@ export class BackupService {
             }
           }),
       )
-    } catch (e: any) {
+    } catch (e) {
       this.errorService.handleError(getErrorMessage(e))
     } finally {
       this.loading.set(false)
@@ -97,14 +104,10 @@ export class BackupService {
     )
   }
 
-  // Whether *this* server has a current (V2) backup on the target — the signal
-  // that decides if deleting the legacy backup needs an extra confirmation.
   hasCurrentBackup(target: T.BackupTarget): boolean {
     return this.hasThisBackup(target, this.serverId)
   }
 
-  // Drop the now-deleted legacy (V1) backup from the cached target so the
-  // warning + delete button disappear without re-listing every drive.
   clearLegacy(id: string): void {
     this.drives.update(drives =>
       drives.map(t =>
@@ -132,5 +135,33 @@ export class BackupService {
         },
       )
       .subscribe()
+  }
+
+  async withOriginalPassword<Result>(
+    action: (oldPassword?: string) => Promise<Result>,
+  ): Promise<Result | null> {
+    let oldPassword: string | undefined
+    for (;;) {
+      try {
+        return await action(oldPassword)
+      } catch (error) {
+        if (!(error instanceof RpcError) || error.code !== 81) throw error
+      }
+      oldPassword = await firstValueFrom(
+        this.dialogs.openPrompt<string>({
+          label: 'Original password needed',
+          data: {
+            message:
+              'This backup was created with a different password. Enter the original password that was used to encrypt this backup.',
+            label: 'Password',
+            placeholder: 'Enter original password',
+            useMask: true,
+            buttonText: 'Retry',
+          },
+        }),
+        { defaultValue: '' },
+      )
+      if (!oldPassword) return null
+    }
   }
 }

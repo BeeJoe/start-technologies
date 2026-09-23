@@ -63,7 +63,6 @@ import {
                 <input
                   tuiSwitch
                   type="checkbox"
-                  [showIcons]="false"
                   [attr.aria-label]="job.name"
                   [ngModelOptions]="{ standalone: true }"
                   [ngModel]="job.enabled && !job.pause"

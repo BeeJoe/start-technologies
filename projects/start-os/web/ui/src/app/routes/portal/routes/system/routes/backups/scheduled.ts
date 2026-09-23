@@ -187,41 +187,6 @@ class JobEditor
     this.form.controls.targetId.setValue(value)
   }
 
-  get includeFuture() {
-    return this.form.controls.includeFuture.value
-  }
-  set includeFuture(value: boolean) {
-    this.form.controls.includeFuture.setValue(value)
-  }
-
-  get keepAdditional() {
-    return this.form.controls.keepAdditional.value
-  }
-  set keepAdditional(value: boolean) {
-    this.form.controls.keepAdditional.setValue(value)
-  }
-
-  get password() {
-    return this.form.controls.password.value
-  }
-  set password(value: string) {
-    this.form.controls.password.setValue(value)
-  }
-
-  get firstBackupNow() {
-    return this.form.controls.firstBackupNow.value
-  }
-  set firstBackupNow(value: boolean) {
-    this.form.controls.firstBackupNow.setValue(value)
-  }
-
-  get capacityConfirmed() {
-    return this.form.controls.capacityConfirmed.value
-  }
-  set capacityConfirmed(value: boolean) {
-    this.form.controls.capacityConfirmed.setValue(value)
-  }
-
   toJSON() {
     return {
       id: this.id,
@@ -561,7 +526,6 @@ class JobEditor
                 <input
                   tuiSwitch
                   type="checkbox"
-                  [showIcons]="false"
                   [attr.aria-label]="'Keep additional versions' | i18n"
                   formControlName="keepAdditional"
                 />
@@ -695,7 +659,7 @@ class JobEditor
 
           @if (!form.id) {
             <tui-textfield>
-              <label tuiLabel>{{ 'Master Password' | i18n }}</label>
+              <label tuiLabel>{{ 'Password' | i18n }}</label>
               <input
                 tuiInput
                 [type]="passwordMasked ? 'password' : 'text'"
@@ -799,7 +763,7 @@ class JobEditor
             </tui-textfield>
             <tui-error formControlName="targetId" />
             <tui-textfield>
-              <label tuiLabel>{{ 'Master Password' | i18n }}</label>
+              <label tuiLabel>{{ 'Password' | i18n }}</label>
               <input
                 tuiInput
                 [type]="reassignPasswordMasked ? 'password' : 'text'"
@@ -830,7 +794,6 @@ class JobEditor
             <label class="switch-row">
               <input
                 tuiSwitch
-                [showIcons]="false"
                 type="checkbox"
                 formControlName="waitForSchedule"
               />
@@ -1764,13 +1727,18 @@ export class ScheduledBackups {
         }
         return
       } else {
-        const created = await this.api.createScheduledBackupJob({
-          ...common,
-          targetId: form.targetId,
-          password: form.password,
-          enabled: true,
-          runNow: form.firstBackupNow,
-        })
+        const created = await this.backupService.withOriginalPassword(
+          oldPassword =>
+            this.api.createScheduledBackupJob({
+              ...common,
+              targetId: form.targetId,
+              password: form.password,
+              oldPassword,
+              enabled: true,
+              runNow: form.firstBackupNow,
+            }),
+        )
+        if (!created) return
         this.selectedJobId.set(created.id)
         this.backupService.showQueuedNotification(created)
         if (
@@ -1937,10 +1905,13 @@ export class ScheduledBackups {
     )
     if (!password) return
     await this.performAndReload(() =>
-      this.api.retryScheduledBackupTarget({
-        targetId: job.targetId,
-        password,
-      }),
+      this.backupService.withOriginalPassword(oldPassword =>
+        this.api.retryScheduledBackupTarget({
+          targetId: job.targetId,
+          password,
+          oldPassword,
+        }),
+      ),
     )
   }
 
@@ -1967,15 +1938,21 @@ export class ScheduledBackups {
     this.reassignForm.markAllAsTouched()
     if (this.reassignForm.invalid) return
     const reassign = this.reassignForm.getRawValue()
-    await this.performAndReload(() =>
-      this.api.reassignScheduledBackupTarget({
-        id: job.id,
-        targetId: reassign.targetId,
-        password: reassign.password,
-        waitForSchedule: reassign.waitForSchedule,
-      }),
-    )
-    this.reassigning.set(null)
+    await this.tasks.run(async () => {
+      const reassigned = await this.backupService.withOriginalPassword(
+        oldPassword =>
+          this.api.reassignScheduledBackupTarget({
+            id: job.id,
+            targetId: reassign.targetId,
+            password: reassign.password,
+            oldPassword,
+            waitForSchedule: reassign.waitForSchedule,
+          }),
+      )
+      if (!reassigned) return
+      this.reassigning.set(null)
+      await this.reload()
+    }, 'Saving')
   }
 
   protected reviewDecision(packageId: string, jobId: string): boolean {
