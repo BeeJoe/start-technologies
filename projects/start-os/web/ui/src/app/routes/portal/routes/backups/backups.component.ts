@@ -153,53 +153,55 @@ type BackupPanel = 'automatic' | 'manual' | 'restore' | 'locations' | 'history'
           }
 
           @if (jobs().length === 1) {
-            @if (!primary()?.enabled) {
-              <span tuiBadge>{{ 'Paused' | i18n }}</span>
-            }
-            <label class="simple-switch">
-              <input
-                tuiSwitch
-                type="checkbox"
-                [attr.aria-label]="'Automatic backups' | i18n"
-                [ngModel]="primary()?.enabled ?? false"
-                [disabled]="changingAutomatic()"
-                (ngModelChange)="setAutomatic($event)"
-              />
-            </label>
-            <button
-              tuiIconButton
-              tuiDropdown
-              tuiDropdownAuto
-              type="button"
-              size="s"
-              appearance="flat-grayscale"
-              iconStart="@tui.ellipsis-vertical"
-            >
-              {{ 'More' | i18n }}
-              <tui-data-list *tuiDropdown="let close" (click)="close()">
-                <button
-                  tuiOption
-                  tuiAppearance="flat"
-                  [disabled]="!canRunNow()"
-                  (click)="runNow()"
-                >
-                  {{ 'Run now' | i18n }}
-                </button>
-                <button tuiOption (click)="openAutomaticEditor()">
-                  {{ 'View/Edit' | i18n }}
-                </button>
-                <button tuiOption (click)="addSchedule()">
-                  {{ 'Add schedule' | i18n }}
-                </button>
-                <button
-                  tuiOption
-                  tuiAppearance="flat-destructive"
-                  (click)="deleteSchedule()"
-                >
-                  {{ 'Delete schedule' | i18n }}
-                </button>
-              </tui-data-list>
-            </button>
+            <span class="automatic-controls">
+              @if (!primary()?.enabled) {
+                <span tuiBadge>{{ 'Paused' | i18n }}</span>
+              }
+              <label class="simple-switch">
+                <input
+                  tuiSwitch
+                  type="checkbox"
+                  [attr.aria-label]="'Automatic backups' | i18n"
+                  [ngModel]="primary()?.enabled ?? false"
+                  [disabled]="changingAutomatic()"
+                  (ngModelChange)="setAutomatic($event)"
+                />
+              </label>
+              <button
+                tuiIconButton
+                tuiDropdown
+                tuiDropdownAuto
+                type="button"
+                size="s"
+                appearance="flat-grayscale"
+                iconStart="@tui.ellipsis-vertical"
+              >
+                {{ 'More' | i18n }}
+                <tui-data-list *tuiDropdown="let close" (click)="close()">
+                  <button
+                    tuiOption
+                    tuiAppearance="flat"
+                    [disabled]="!canRunNow()"
+                    (click)="runNow()"
+                  >
+                    {{ 'Run now' | i18n }}
+                  </button>
+                  <button tuiOption (click)="openAutomaticEditor()">
+                    {{ 'View/Edit' | i18n }}
+                  </button>
+                  <button tuiOption (click)="addSchedule()">
+                    {{ 'Add schedule' | i18n }}
+                  </button>
+                  <button
+                    tuiOption
+                    tuiAppearance="flat-destructive"
+                    (click)="deleteSchedule()"
+                  >
+                    {{ 'Delete schedule' | i18n }}
+                  </button>
+                </tui-data-list>
+              </button>
+            </span>
           } @else {
             <button
               tuiIconButton
@@ -447,15 +449,24 @@ type BackupPanel = 'automatic' | 'manual' | 'restore' | 'locations' | 'history'
     }
 
     .card-accessories,
+    .automatic-controls,
     .simple-switch {
       display: flex;
       align-items: center;
       gap: 0.5rem;
     }
 
-    .card-accessories {
+    .card-heading .card-accessories {
+      align-items: center;
       flex-wrap: wrap;
       justify-content: flex-end;
+      gap: 1rem;
+    }
+
+    .automatic-controls {
+      flex: none;
+      margin-inline-start: auto;
+      gap: 1rem;
     }
 
     .simple-switch {
@@ -539,7 +550,7 @@ type BackupPanel = 'automatic' | 'manual' | 'restore' | 'locations' | 'history'
       }
 
       .card-accessories {
-        justify-content: flex-start;
+        inline-size: 100%;
       }
 
       .automatic-heading._single-job .card-toggle b {
@@ -550,11 +561,6 @@ type BackupPanel = 'automatic' | 'manual' | 'restore' | 'locations' | 'history'
     @container (max-inline-size: 30rem) {
       .card-toggle {
         align-items: flex-start;
-      }
-
-      .card-accessories {
-        align-items: flex-start;
-        justify-content: flex-start;
       }
 
       .operation {

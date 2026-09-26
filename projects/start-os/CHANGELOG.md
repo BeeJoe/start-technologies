@@ -57,6 +57,7 @@ for the detail behind its highlights.
   archives. Retention changes preview the checkpoints they will remove.
   Searchable backup history records the latest 1,000 completed operations,
   with failure notifications and technical details for troubleshooting.
+  The overview keeps history access separate from its right-aligned schedule controls.
   Existing locations remain usable after a server password change by supplying
   their original backup password. Restore can mix manual and automatic
   checkpoints by service, and initial setup can recover a server from its latest
