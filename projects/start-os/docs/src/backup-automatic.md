@@ -99,6 +99,9 @@ Backup history records manual backups, automatic runs, and restores, including
 service-level failures. Search by schedule name, service, backup location, or
 status in your selected language. Schedule names appear as you entered them.
 Server data appears as **System** alongside the individual service reports.
+When the automatic-backup card needs attention, **See more** opens Backup history.
+For a single schedule, the switch and menu on the right pause or resume backups
+and provide schedule actions.
 History retains the newest 1,000 completed entries in addition
 to any backup or restore still in progress. Successful checkpoints remain
 available when another service in the same run fails. During restore, StartOS
