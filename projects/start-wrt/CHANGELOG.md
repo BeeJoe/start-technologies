@@ -5,6 +5,63 @@ All notable changes to StartWRT are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0]
+
+### Added
+
+- **Wi-Fi regulatory country.** `Points of Entry > Wi-Fi > Settings` gains a
+  Country selector. The selected country sets the channels each band may use
+  and the maximum transmit power; the channel dropdowns list only what that
+  country permits, and automatic channel selection skips radar-detection
+  (DFS) channels, which take a minute or more to come up. With no country selected the router runs on a conservative
+  worldwide subset (2.4 GHz channels 1–11, 5 GHz channels 36–48, 20 dBm), so
+  select yours after setup.
+
+- **Root CA profile for iPhone and iPad.** Downloading the Root CA in Safari
+  on iOS or iPadOS now fetches a configuration profile that installs through
+  Settings.
+
+### Changed
+
+- **Setup ends with a link to `router.lan`.** After you set the admin
+  password, the confirmation page links to `router.lan` to trust your Root
+  CA, instead of saying the window can be closed.
+
+- **The Root CA walkthrough matches StartOS.** It links to the instructions
+  for each platform and no longer asks you to bookmark the page. The Root CA
+  downloads from `/static/local-root-ca.crt`, the path StartOS uses.
+
+### Fixed
+
+- **A published domain typed without `https://` now reaches the published
+  service, not the router.** While port 443 is published to a device — by a
+  Published Port or a device's hostname routes — plain HTTP at the router's
+  public address is answered with a redirect to `https://` instead of the
+  router's web interface, from inside the network and from the Internet under
+  every Remote Access setting. A Published Port or a hostname route on 80
+  takes precedence.
+
+- **Freshly generated Root CAs carry an Authority Key Identifier conforming to RFC 5280 and the CA/Browser Forum Baseline Requirements.** Existing routers retain their trusted Root CA when updated with settings preserved.
+
+- **Publishing a port no longer names the device after its generated label,
+  which could stop the router's DHCP server.** Publishing a port to a device
+  with no reserved address reserves one; for a device without a name of its
+  own, that reservation was saved under the label shown for it, such as
+  `Android device (4c8f63)`. The router's DHCP server refuses such a name and
+  failed to start on its next reload or reboot, leaving devices on the network
+  without addresses. Reserving an address now leaves the device's name alone,
+  the device page edits only the name you assigned rather than whatever was
+  shown, and the router rejects a reservation it could not serve — a name must
+  be a valid hostname (letters, digits, and hyphens; up to 63 characters).
+  A router that already holds such a name clears it on its first boot on this
+  version and serves DHCP again, recording the cleared name in Activity. Since
+  a router in that state is hard to reach, reflashing from a microSD card and
+  choosing **Keep settings** is the way to get there without losing anything —
+  that path preserves the settings the name is stored in.
+
+- **A device can move a hostname route it holds to another of its own ports.**
+  Previously the request was refused as taken until the old lease expired.
+
 ## [1.1.1]
 
 ### Fixed

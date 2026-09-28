@@ -130,16 +130,19 @@ async fn setup_flash_handler(
         .unwrap()
 }
 
-/// GET /static/root-ca.crt — serves the Root CA certificate for download (no auth required).
-async fn root_ca_handler() -> Response<Body> {
-    match ssl::read_root_ca_pem() {
-        Ok(pem) => Response::builder()
-            .header(header::CONTENT_TYPE, "application/x-pem-file")
+fn root_ca_response(
+    file: Result<String, Error>,
+    content_type: &'static str,
+    filename: &'static str,
+) -> Response<Body> {
+    match file {
+        Ok(body) => Response::builder()
+            .header(header::CONTENT_TYPE, content_type)
             .header(
                 header::CONTENT_DISPOSITION,
-                "attachment; filename=\"startwrt-ca.crt\"",
+                format!("attachment; filename=\"{filename}\""),
             )
-            .body(Body::from(pem))
+            .body(Body::from(body))
             .unwrap(),
         Err(_) => Response::builder()
             .status(500)
@@ -187,7 +190,7 @@ async fn init_ssl() -> bool {
 /// connection. Plumbed through `WebServer`'s metadata pipeline so request
 /// extensions can inspect it if needed.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-enum WebserverListener {
+pub enum WebserverListener {
     Http,
     Https,
 }
@@ -286,6 +289,12 @@ async fn inner_main() -> Result<(), Error> {
         if let Err(e) = crate::system::apply_remote_access(ServerContext::default()).await {
             tracing::error!("Remote access rule apply failed: {e}");
         }
+        // Repairs a reservation name from a release that let one through, which
+        // dnsmasq refuses to start on. Must precede the fingerprint hook: both
+        // reload dnsmasq, and this one decides whether it can come up at all.
+        if let Err(e) = crate::devices::heal_dhcp_host_names("/etc/config").await {
+            tracing::error!("DHCP reservation name repair failed: {e}");
+        }
         // Install the DHCP-fingerprint hook (script + `dhcpscript` on every
         // dnsmasq section) — daemon-side so OTA-updated routers converge on
         // first boot. Reloads dnsmasq only when something actually changed.
@@ -355,7 +364,7 @@ async fn inner_main() -> Result<(), Error> {
         // The IGD UUID derives from the initialized root CA.
         // Configure reply diversion before constructing the SNI demux.
         startos::net::transparent::set_divert_config(startos::net::transparent::DivertConfig {
-            route_table: 5344,
+            route_table: startos::net::transparent::DIVERT_TABLE,
             rule_priority: 49,
             masked_fwmark: true,
             manage_nft: false,
@@ -366,6 +375,8 @@ async fn inner_main() -> Result<(), Error> {
                 ErrorKind::Network,
             )
         })?;
+        // Seeded before port control raises the gate.
+        crate::http_redirect::seed("/etc/config".into()).await;
         let pc = crate::port_control::PortControl::new("/etc/config".into());
         if crate::port_control::PORT_CONTROL.set(pc.clone()).is_ok() {
             tokio::spawn(crate::port_control::run(pc));
@@ -431,7 +442,26 @@ async fn inner_main() -> Result<(), Error> {
         // being rejected with 405 by the method router.
         .route("/api/logs", any(crate::logs::logs_ws_handler))
         // Root CA download (no auth required)
-        .route("/static/root-ca.crt", get(root_ca_handler))
+        .route(
+            "/static/local-root-ca.crt",
+            get(|| async {
+                root_ca_response(
+                    ssl::read_root_ca_pem(),
+                    "application/x-x509-ca-cert",
+                    "startwrt-ca.crt",
+                )
+            }),
+        )
+        .route(
+            "/static/local-root-ca.mobileconfig",
+            get(|| async {
+                root_ca_response(
+                    ssl::read_root_ca_mobileconfig(),
+                    "application/x-apple-aspen-config",
+                    "startwrt-ca.mobileconfig",
+                )
+            }),
+        )
         // LuCI reverse proxy — forwards to uhttpd on localhost:8080
         .route("/cgi-bin/{*rest}", any(luci_proxy::handler))
         .route("/luci-static/{*rest}", any(luci_proxy::handler))
@@ -449,6 +479,9 @@ async fn inner_main() -> Result<(), Error> {
         .layer(Extension(continuations))
         .layer(Extension(proxy_client))
         .layer(Extension(app_state));
+
+    // Must stay outermost.
+    let app = crate::http_redirect::redirect_public_http(app);
 
     // WAN-specific demux listeners require every wildcard listener to use SO_REUSEPORT.
     let http_addr = SocketAddr::from(([0, 0, 0, 0, 0, 0, 0, 0], 80));

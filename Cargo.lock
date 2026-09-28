@@ -7712,7 +7712,7 @@ checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
 
 [[package]]
 name = "start-cli"
-version = "2.1.0"
+version = "2.2.0"
 dependencies = [
  "start-core",
  "tracing",
@@ -7756,6 +7756,7 @@ dependencies = [
  "exver",
  "fast-socks5",
  "fd-lock-rs",
+ "foreign-types",
  "form_urlencoded",
  "futures",
  "gpt",
@@ -7804,6 +7805,7 @@ dependencies = [
  "once_cell",
  "openssh-keys",
  "openssl",
+ "openssl-sys",
  "p256",
  "patch-db",
  "pbkdf2",
@@ -7837,6 +7839,7 @@ dependencies = [
  "sscanf",
  "ssh-key",
  "tar",
+ "tempfile",
  "termion",
  "textwrap",
  "thiserror 2.0.18",
@@ -7872,7 +7875,7 @@ dependencies = [
 
 [[package]]
 name = "start-registry"
-version = "1.1.0"
+version = "1.1.1"
 dependencies = [
  "start-core",
 ]

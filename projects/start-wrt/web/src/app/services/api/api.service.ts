@@ -30,6 +30,7 @@ export abstract class ApiService {
   abstract wifiGet(): Promise<WifiConfig>
   abstract wifiSet(params: WifiConfig): Promise<WifiSetResult>
   abstract wifiGeneratePassword(): Promise<string>
+  abstract wifiRegulatory(): Promise<WifiRegulatory>
   abstract wifiBlackoutGet(): Promise<ScheduleWindow[]>
   abstract wifiBlackoutSet(params: ScheduleWindow[]): Promise<null>
   abstract profilesList(): Promise<ProfileId[]>
@@ -362,6 +363,8 @@ export interface WifiProfileId {
 export interface WifiConfig {
   ssid: string
   broadcastSeparately: boolean
+  // ISO 3166-1 alpha-2; null leaves the radios on the world domain.
+  country: string | null
   radios: Record<string, WifiRadio>
   passwords: WifiPassword[]
   // When true, authorize deleting the published ports listed in a prior
@@ -372,6 +375,12 @@ export interface WifiConfig {
 export interface WifiSetResult {
   // Non-empty (and nothing applied) when confirmation is required; empty once applied.
   pendingPublishedPortDeletions: AffectedPublishedPort[]
+}
+
+export interface WifiRegulatory {
+  countries: string[]
+  // Channels an access point may use under the current country, by band ('2g', '5g').
+  channels: Record<string, number[]>
 }
 
 export interface ScheduleWindow {
@@ -474,6 +483,8 @@ export interface SetupFlashEvent {
 export interface DeviceFromApi {
   mac: string | null
   name: string
+  /** The name assigned in the router; null when `name` is resolved from elsewhere. */
+  custom_name: string | null
   hostname: string | null
   status: 'online' | 'offline'
   connection: string | null
@@ -489,7 +500,8 @@ export interface DeviceFromApi {
 
 export interface DeviceUpdateReq {
   mac: string
-  name: string
+  /** Omitted leaves the assigned name untouched; empty clears it. */
+  name?: string
   ipv4_static: boolean
   ipv4: string
 }
