@@ -4,6 +4,7 @@ import {
   Component,
   computed,
   DestroyRef,
+  Directive,
   effect,
   ElementRef,
   inject,
@@ -16,6 +17,7 @@ import {
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop'
 import {
   NonNullableFormBuilder,
+  NgControl,
   ReactiveFormsModule,
   Validators,
 } from '@angular/forms'
@@ -73,6 +75,7 @@ import {
   BackupScheduleFormValue,
   BackupServiceSelection,
   backupTargetName,
+  formatBackupRetentionRule,
   formatBackupScheduleSummary,
   formatBackupServiceSummary,
   hasDuplicateRetentionRules,
@@ -84,7 +87,6 @@ import {
   removeBackupRetentionRule,
   retentionIntervalFromSeconds,
   retentionIntervalSeconds,
-  retentionPeriodLabel,
   serializeBackupRetentionTier,
   serializeBackupSchedule,
   serializeBackupServiceSelection,
@@ -123,6 +125,19 @@ interface JobEditorValue
   password: string
   firstBackupNow: boolean
   capacityConfirmed: boolean
+}
+
+@Directive({
+  selector: 'input[backupJobName]',
+  host: { '(blur)': 'normalize()', '(keydown.enter)': 'normalize()' },
+})
+class BackupJobName {
+  private readonly control = inject(NgControl)
+
+  protected normalize() {
+    const control = this.control.control
+    if (control) control.setValue(control.value.trim())
+  }
 }
 
 class JobEditor
@@ -398,7 +413,12 @@ class JobEditor
               </span>
               <tui-textfield>
                 <label tuiLabel>{{ 'Schedule name' | i18n }}</label>
-                <input #jobNameInput tuiInput formControlName="name" />
+                <input
+                  #jobNameInput
+                  tuiInput
+                  backupJobName
+                  formControlName="name"
+                />
               </tui-textfield>
               <tui-error formControlName="name" />
             </div>
@@ -1252,6 +1272,7 @@ class JobEditor
     '(window:beforeunload)': 'confirmBrowserExit($event)',
   },
   imports: [
+    BackupJobName,
     DatePipe,
     ReactiveFormsModule,
     TuiAccordion,
@@ -1660,7 +1681,7 @@ export class ScheduledBackups {
       ? this.jobs().find(job => job.id === form.id)
       : null
     const common = {
-      name: form.name.trim(),
+      name: form.form.getRawValue().name,
       services: serializeBackupServiceSelection(
         form,
         this.packages().map(pkg => pkg.id),
@@ -1759,9 +1780,7 @@ export class ScheduledBackups {
     }, 'Saving')
   }
 
-  private async confirmJobRetentionChanges(
-    form: JobEditor,
-  ): Promise<ConfirmedRetentionChange[] | null> {
+  private jobRetentionChanges(form: JobEditor) {
     const job = this.jobs().find(candidate => candidate.id === form.id)
     if (!job) return []
     const selected = new Set(this.selectedPackages(form).map(pkg => pkg.id))
@@ -1772,7 +1791,7 @@ export class ScheduledBackups {
         this.policy(override.tiers),
       ]),
     )
-    const candidates = this.histories().flatMap(history => {
+    return this.histories().flatMap(history => {
       if (
         !selected.has(history.packageId) ||
         history.feedingJobs.length !== 1 ||
@@ -1788,6 +1807,12 @@ export class ScheduledBackups {
         ? []
         : [{ history, policy }]
     })
+  }
+
+  private async confirmJobRetentionChanges(
+    form: JobEditor,
+  ): Promise<ConfirmedRetentionChange[] | null> {
+    const candidates = this.jobRetentionChanges(form)
     let changes: ConfirmedRetentionChange[] = []
     const loaded = await this.tasks.run(async () => {
       changes = await Promise.all(
@@ -1806,7 +1831,6 @@ export class ScheduledBackups {
     if (!changes.some(change => change.preview.removed.length)) return changes
     const confirmed = await firstValueFrom(
       this.dialogs.openComponent<boolean>(BACKUP_RETENTION_CONFIRM, {
-        label: 'Apply version-history change?',
         size: 'm',
         data: changes
           .filter(change => change.preview.removed.length)
@@ -2054,31 +2078,10 @@ export class ScheduledBackups {
       return this.i18n.transform('Keep only the latest automatic checkpoint')
     }
     return [form, ...form.additionalTiers]
-      .map(rule => this.retentionRuleSummary(rule))
+      .map(rule =>
+        formatBackupRetentionRule(rule, label => this.i18n.transform(label)),
+      )
       .join(' · ')
-  }
-
-  private retentionRuleSummary(rule: BackupRetentionTierEditor): string {
-    const every = this.i18n.transform('Keep one backup every')
-    if (rule.interval === 'custom') {
-      const intervalUnit = this.i18n.transform(
-        rule.customIntervalHours === 1 ? 'hour' : 'hours',
-      )
-      const coverageUnit = this.i18n.transform(
-        rule.customCoverageHours === 1 ? 'hour' : 'hours',
-      )
-      return `${every} ${rule.customIntervalHours} ${intervalUnit} ${this.i18n.transform('for')} ${rule.customCoverageHours} ${coverageUnit}`
-    }
-    const interval = this.i18n.transform(rule.interval)
-    const forLabel = this.i18n.transform('for')
-    const period = this.i18n.transform(this.retentionPeriodFor(rule))
-    return `${every} ${interval} ${forLabel} ${rule.duration} ${period}`
-  }
-
-  protected retentionPeriodFor(rule: BackupRetentionTierEditor) {
-    return rule.interval === 'custom'
-      ? 'hours'
-      : retentionPeriodLabel(rule.interval, rule.duration)
   }
 
   protected newRetentionRule(): EditableRetentionRule {
@@ -2148,11 +2151,25 @@ export class ScheduledBackups {
           this.packages().map(pkg => pkg.id),
         ),
         defaultRetention: this.defaultPolicy(form),
-        retentionOverrides: Object.fromEntries(
-          Object.entries(form.retentionOverrides).map(
+        preserveExistingPolicies: !form.id,
+        retentionOverrides: Object.fromEntries([
+          ...Object.entries(form.retentionOverrides).map(
             ([packageId, override]) => [packageId, this.policy(override.tiers)],
           ),
-        ),
+          ...(form.id
+            ? this.histories()
+                .filter(
+                  history =>
+                    history.targetId === form.targetId &&
+                    (history.snapshots.length || history.feedingJobs.length),
+                )
+                .map(history => [history.packageId, history.policy])
+            : []),
+          ...this.jobRetentionChanges(form).map(({ history, policy }) => [
+            history.packageId,
+            policy,
+          ]),
+        ]),
       })
       if (
         request === this.estimateRequest &&

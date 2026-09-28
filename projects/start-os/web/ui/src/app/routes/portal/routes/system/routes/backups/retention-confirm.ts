@@ -3,10 +3,16 @@ import { Component } from '@angular/core'
 import { convertBytes, i18nPipe } from '@start9labs/shared'
 import { T } from '@start9labs/start-core'
 import { TuiButton, TuiDialogContext, TuiTitle } from '@taiga-ui/core'
+import { TuiHeader } from '@taiga-ui/layout'
 import { injectContext, PolymorpheusComponent } from '@taiga-ui/polymorpheus'
 
 @Component({
   template: `
+    <header tuiHeader>
+      <h2 tuiTitle [id]="context.id">
+        {{ 'Apply version-history change?' | i18n }}
+      </h2>
+    </header>
     <p>
       {{
         'This permanently deletes the checkpoints listed in the preview.' | i18n
@@ -54,7 +60,7 @@ import { injectContext, PolymorpheusComponent } from '@taiga-ui/polymorpheus'
       padding-inline-start: 1.25rem;
     }
   `,
-  imports: [DatePipe, i18nPipe, TuiButton, TuiTitle],
+  imports: [DatePipe, i18nPipe, TuiButton, TuiHeader, TuiTitle],
 })
 class RetentionConfirm {
   protected readonly context =

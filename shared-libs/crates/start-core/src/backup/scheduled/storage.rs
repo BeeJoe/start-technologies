@@ -663,10 +663,55 @@ async fn write_json(path: &Path, value: &impl Serialize) -> Result<(), Error> {
     write_file_atomic(path, IoFormat::Json.to_vec(value)?).await
 }
 
+/// Requires exclusive ownership of backup operations.
+pub(super) async fn remove_abandoned_staging(target: &Path) -> Result<(), Error> {
+    let staging = target.join("staging");
+    if tokio::fs::try_exists(&staging).await? {
+        delete_dir(staging).await?;
+        crate::disk::mount::util::sync_directory(target).await?;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::backup::scheduled::BackupSource;
+
+    #[tokio::test]
+    async fn abandoned_staging_cleanup_preserves_checkpoints_and_metadata() {
+        let root = tempfile::tempdir().unwrap();
+        let staging = root.path().join("staging/interrupted-run/test-service");
+        let snapshot = root
+            .path()
+            .join("services/test-service/snapshots/checkpoint");
+        tokio::fs::create_dir_all(&staging).await.unwrap();
+        tokio::fs::create_dir_all(&snapshot).await.unwrap();
+        tokio::fs::write(staging.join("partial"), b"incomplete")
+            .await
+            .unwrap();
+        tokio::fs::write(snapshot.join("data"), b"retained")
+            .await
+            .unwrap();
+        tokio::fs::write(root.path().join("metadata.json"), b"metadata")
+            .await
+            .unwrap();
+
+        remove_abandoned_staging(root.path()).await.unwrap();
+        remove_abandoned_staging(root.path()).await.unwrap();
+
+        assert!(!root.path().join("staging").exists());
+        assert_eq!(
+            tokio::fs::read(snapshot.join("data")).await.unwrap(),
+            b"retained"
+        );
+        assert_eq!(
+            tokio::fs::read(root.path().join("metadata.json"))
+                .await
+                .unwrap(),
+            b"metadata"
+        );
+    }
 
     #[test]
     fn existing_store_requires_its_original_password() {

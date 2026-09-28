@@ -62,6 +62,37 @@ mod non_fuse_tests {
     }
 
     #[test]
+    fn root_directory_sync_reclaims_dead_segments_with_open_files() {
+        let data = TempDir::new("backupfs_data").unwrap();
+        let ctrl = controller(&data);
+        let payload = bytes(1024);
+        let inode = create_file(&ctrl, &payload);
+        let attrs = ctrl.load::<InodeAttributes>(inode).unwrap();
+        for _ in 0..40 {
+            ctrl.save(&attrs).unwrap();
+        }
+        let segment_bytes = || {
+            fs::read_dir(data.path().join("segments"))
+                .unwrap()
+                .map(|entry| entry.unwrap().metadata().unwrap().len())
+                .sum::<u64>()
+        };
+        let before = segment_bytes();
+        let mut handler = Handler::new(ctrl.clone());
+        let fh = handler.fopen(inode, true, true, |_, _| Ok(())).unwrap();
+        handler.sync_directory(Inode(FUSE_ROOT_ID + 1)).unwrap();
+        assert!(segment_bytes() >= before);
+        handler.sync_directory(Inode(FUSE_ROOT_ID)).unwrap();
+        assert!(segment_bytes() < before / 2);
+        assert_eq!(
+            handler.read(inode, fh, 0, payload.len(), 0, None).unwrap(),
+            payload
+        );
+        handler.fclose(fh).unwrap();
+        assert_eq!(read_file(ctrl, inode), payload);
+    }
+
+    #[test]
     fn handler_read_past_eof_returns_no_bytes() {
         let data = TempDir::with_prefix("backupfs_data").unwrap();
         let ctrl = controller(&data);
@@ -738,34 +769,34 @@ pub struct OverwriteOptions {
 }
 
 impl Handler {
+    pub fn sync_directory(&mut self, inode: Inode) -> BkfsResult<()> {
+        self.flush_all_dirty()?;
+        if inode.0 == FUSE_ROOT_ID {
+            self.compact();
+        }
+        Ok(())
+    }
+
+    fn compact(&self) {
+        match self.ctrl().compact() {
+            Ok(n) if n > 0 => debug!("compacted {n} dead log segment(s)"),
+            Ok(_) => {}
+            Err(e) => warn!("backup log compaction failed (non-fatal): {e}"),
+        }
+    }
+
     pub fn close_all(&mut self) -> BkfsResult<()> {
         let mut errs = Vec::new();
-        // Close all open files first — each FileHandle::close runs
-        // Contents::fsync which persists the inode+content file. This
-        // drops strong refs from self.inodes as a side effect (Weak
-        // upgrades start failing), but we still clear the map below.
         for (_, handle) in std::mem::take(&mut self.open_files) {
             if let Err(e) = handle.close(self) {
                 errs.push(e);
             }
         }
         std::mem::take(&mut self.inodes);
-        // Persist any metadata changes (setattr / xattr / link / unlink
-        // on non-open inodes) that are still sitting in the dirty cache.
-        // Without this, an unmount would drop those changes silently —
-        // which has been the behaviour the user hit when the daemon was
-        // killed mid-backup.
         if let Err(e) = self.flush_all_dirty() {
             errs.push(e);
         }
-        // Reclaim dead log space now that everything is durable. Best-effort:
-        // the data is already safe, so a compaction error must not fail the
-        // unmount — just log it.
-        match self.ctrl().compact() {
-            Ok(n) if n > 0 => debug!("compacted {n} dead log segment(s) on unmount"),
-            Ok(_) => {}
-            Err(e) => warn!("log compaction on unmount failed (non-fatal): {e}"),
-        }
+        self.compact();
         BkfsResult::multiple((), errs)
     }
 

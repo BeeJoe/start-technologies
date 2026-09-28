@@ -6,7 +6,7 @@ use crate::backup::target::BackupTargetId;
 use crate::db::model::DatabaseModel;
 use crate::prelude::*;
 
-fn history_owns_retention_settings(history: &ServiceTargetHistory) -> bool {
+pub(super) fn history_owns_retention_settings(history: &ServiceTargetHistory) -> bool {
     !history.snapshots.is_empty() || !history.feeding_jobs.is_empty()
 }
 

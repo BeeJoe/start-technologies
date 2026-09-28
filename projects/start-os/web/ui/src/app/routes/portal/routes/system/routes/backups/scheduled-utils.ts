@@ -475,6 +475,26 @@ export function scheduleNeedsMoreFrequentRuns(
   return finestInterval < maximumGapSeconds
 }
 
+export function formatBackupRetentionRule(
+  rule: BackupRetentionRuleValue,
+  translate: (
+    label: BackupRetentionPeriodLabel | 'Keep one backup every' | 'for',
+  ) => string,
+): string {
+  const every = translate('Keep one backup every')
+  const forLabel = translate('for')
+  if (rule.interval === 'custom') {
+    const intervalUnit = translate(
+      rule.customIntervalHours === 1 ? 'hour' : 'hours',
+    )
+    const coverageUnit = translate(
+      rule.customCoverageHours === 1 ? 'hour' : 'hours',
+    )
+    return `${every} ${rule.customIntervalHours} ${intervalUnit} ${forLabel} ${rule.customCoverageHours} ${coverageUnit}`
+  }
+  return `${every} ${translate(rule.interval)} ${forLabel} ${rule.duration} ${translate(retentionPeriodLabel(rule.interval, rule.duration))}`
+}
+
 export function retentionPeriodLabel(
   interval: BackupRetentionInterval,
   count: number,

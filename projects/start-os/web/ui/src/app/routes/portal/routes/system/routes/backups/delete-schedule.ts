@@ -14,6 +14,7 @@ import {
   TuiTitle,
 } from '@taiga-ui/core'
 import { injectContext, PolymorpheusComponent } from '@taiga-ui/polymorpheus'
+import { TuiHeader } from '@taiga-ui/layout'
 import { firstValueFrom } from 'rxjs'
 
 import { ApiService } from 'src/app/services/api/embassy-api.service'
@@ -31,6 +32,11 @@ export interface DeleteScheduleDecision {
 
 @Component({
   template: `
+    <header tuiHeader>
+      <h2 tuiTitle [id]="context.id">
+        {{ 'Delete backup schedule?' | i18n }}
+      </h2>
+    </header>
     <p>
       {{
         'Snapshots that are no longer referenced will be kept as an archive by default.'
@@ -139,7 +145,7 @@ export interface DeleteScheduleDecision {
       display: inline;
     }
   `,
-  imports: [FormsModule, TuiButton, TuiCheckbox, TuiTitle, i18nPipe],
+  imports: [FormsModule, TuiButton, TuiCheckbox, TuiHeader, TuiTitle, i18nPipe],
 })
 export class DeleteScheduleDialog {
   protected readonly context =
@@ -192,7 +198,6 @@ export class DeleteScheduleService {
       this.dialogs.openComponent<DeleteScheduleDecision | null>(
         DELETE_SCHEDULE_DIALOG,
         {
-          label: 'Delete backup schedule?',
           size: 's',
           data: {
             checkpointCount,

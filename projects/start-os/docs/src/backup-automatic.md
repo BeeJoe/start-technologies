@@ -49,7 +49,9 @@ automatic run is rejected rather than queued silently. Creating or changing a
 schedule also requires the backup system to be free because StartOS verifies
 the location's encrypted metadata before saving the schedule. If StartOS
 restarts during an operation, the interrupted activity is recorded as failed
-and stale progress is cleared.
+and stale progress is cleared. The next run reclaims incomplete staging data
+on its backup location before checking available space. Backup storage is compacted
+before the location is disconnected to reclaim space from deleted data.
 
 ## Version History and Storage
 
@@ -75,7 +77,9 @@ incremental delta. A run also needs temporary staging space. Keeping more
 versions therefore increases storage use, run time, and I/O, especially on
 network folders and slower drives. Capacity estimates account for current data,
 retained checkpoints, and staging space. Use **Refresh estimates** after changing
-a schedule’s services or version-history rules.
+a schedule’s services or version-history rules. Estimates follow the rules that
+will apply to each history. The setup summary compares additional storage needed
+with free space, accounting for checkpoints already on the location.
 
 Retention applies to a service's shared automatic history on a backup location.
 If several schedules use that history, StartOS previews the checkpoints a policy

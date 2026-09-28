@@ -401,7 +401,9 @@ Create a backup of all or selected packages.
 Estimate per-service automatic-backup storage and next-run staging requirements
 before creating a schedule. With no service filters it includes every currently
 installed service; with no version-history rules it estimates latest-only
-retention.
+retention. The command previews the supplied rules even when the location has a
+saved history policy. Adding a schedule preserves an established history policy;
+use `backup policy preview-change` and `backup policy apply` to change it.
 The result separates live data, retained and archived checkpoints, staging
 headroom, and the conservative projected peak. A schedule created without
 filters also includes services installed in the future, whose size cannot yet

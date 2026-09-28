@@ -12,4 +12,8 @@ export type EstimateBackupCapacityParams = {
   services: BackupServiceScope
   defaultRetention: RetentionPolicy
   retentionOverrides: { [key: PackageId]: RetentionPolicy }
+  /**
+   * Preserves established history policies when estimating a new schedule.
+   */
+  preserveExistingPolicies: boolean
 }

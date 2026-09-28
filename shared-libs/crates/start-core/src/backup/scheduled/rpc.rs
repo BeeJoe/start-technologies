@@ -230,6 +230,9 @@ pub struct EstimateBackupCapacityParams {
     pub services: BackupServiceScope,
     pub default_retention: RetentionPolicy,
     pub retention_overrides: BTreeMap<PackageId, RetentionPolicy>,
+    /// Preserves established history policies when estimating a new schedule.
+    #[serde(default)]
+    pub preserve_existing_policies: bool,
 }
 
 /// CLI inputs for estimating automatic backup capacity.
@@ -321,6 +324,7 @@ pub async fn estimate_capacity(
         services,
         default_retention,
         retention_overrides,
+        preserve_existing_policies,
     }: EstimateBackupCapacityParams,
 ) -> Result<Vec<BackupServiceCapacityEstimate>, Error> {
     default_retention.validate()?;
@@ -347,15 +351,14 @@ pub async fn estimate_capacity(
             .as_idx(&history_key(&target_id, &package_id))
             .map(|history| history.de())
             .transpose()?;
-        let policy = history
-            .as_ref()
-            .map(|history| history.policy.clone())
-            .unwrap_or_else(|| {
-                retention_overrides
-                    .get(&package_id)
-                    .unwrap_or(&default_retention)
-                    .clone()
-            });
+        let policy = estimated_retention_policy(
+            history.as_ref(),
+            retention_overrides
+                .get(&package_id)
+                .unwrap_or(&default_retention),
+            preserve_existing_policies,
+        )
+        .clone();
         let (active, archived): (Vec<_>, Vec<_>) = history
             .into_iter()
             .flat_map(|history| history.snapshots)
@@ -388,6 +391,19 @@ pub async fn estimate_capacity(
     Ok(estimates)
 }
 
+fn estimated_retention_policy<'a>(
+    history: Option<&'a ServiceTargetHistory>,
+    proposed: &'a RetentionPolicy,
+    preserve_existing: bool,
+) -> &'a RetentionPolicy {
+    history
+        .filter(|history| {
+            preserve_existing && super::association::history_owns_retention_settings(history)
+        })
+        .map(|history| &history.policy)
+        .unwrap_or(proposed)
+}
+
 /// Estimates automatic-backup capacity from CLI service and retention flags.
 pub async fn estimate_capacity_cli(
     ctx: RpcContext,
@@ -414,6 +430,7 @@ pub async fn estimate_capacity_cli(
                 retention_override_tiers,
                 latest_only_overrides,
             )?,
+            preserve_existing_policies: false,
         },
     )
     .await
@@ -2863,6 +2880,31 @@ mod cli_tests {
             snapshots: Vec::new(),
             archived: true,
         }
+    }
+
+    #[test]
+    fn capacity_preview_uses_proposed_rules_and_preserves_established_history_on_create() {
+        let proposed = RetentionPolicy {
+            tiers: vec![RetentionTier {
+                interval_seconds: 86400,
+                coverage_seconds: 30 * 86400,
+            }],
+        };
+        let mut history = empty_history(BTreeSet::from([BackupJobId::new()]));
+        assert_eq!(
+            estimated_retention_policy(Some(&history), &proposed, false),
+            &proposed
+        );
+        assert_eq!(
+            estimated_retention_policy(Some(&history), &proposed, true),
+            &history.policy
+        );
+        history.feeding_jobs.clear();
+        assert_eq!(
+            estimated_retention_policy(Some(&history), &proposed, true),
+            &proposed
+        );
+        assert_eq!(estimated_retention_policy(None, &proposed, true), &proposed);
     }
 
     fn backup_database() -> DatabaseModel {

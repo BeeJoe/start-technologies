@@ -5,6 +5,8 @@ Back up your server's data to a physical drive or a network folder.
 > [!IMPORTANT]
 > Creating backups is an essential responsibility of self-hosting. If you do not make backups, you _will_ eventually lose your data.
 
+Existing links to the manual-backup page open the manual backup controls directly.
+
 ## Watch The Video
 
 <div class="yt-video" data-id="omHymkqroRk" data-title="Creating Backups"></div>

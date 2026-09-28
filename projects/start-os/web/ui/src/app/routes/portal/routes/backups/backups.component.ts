@@ -621,7 +621,7 @@ export default class BackupsComponent {
   protected readonly reviewPackageId =
     this.route.snapshot.queryParamMap.get('addService') || ''
   protected readonly expanded = signal<BackupPanel | null>(
-    this.reviewPackageId ? 'automatic' : null,
+    this.reviewPackageId ? 'automatic' : this.route.snapshot.data['panel'],
   )
   private readonly progressRequest = signal<{
     jobId: string

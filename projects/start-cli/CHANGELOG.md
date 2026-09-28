@@ -24,7 +24,8 @@ or the CLI's externally observable behavior.
 - **Complete automatic-backup administration.** Create, edit, enable, disable,
   delete, and immediately run automatic jobs; reconnect or reassign their
   targets; inspect activity and checkpoint history; delete archived checkpoints;
-  estimate capacity; resolve new-service reviews; and restore selected checkpoints.
+  estimate capacity for proposed retention rules; resolve new-service reviews;
+  and restore selected checkpoints.
   Service selection includes System data and future services independently.
   Use `--old-password` when an existing backup location uses a password different
   from the current server password.

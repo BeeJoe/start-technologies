@@ -116,7 +116,11 @@ for the detail behind its highlights.
   Existing locations remain usable after a server password change by supplying
   their original backup password. Restore can mix manual and automatic
   checkpoints by service, and initial setup can recover a server from its latest
-  automatic System and service checkpoints. A stalled service backup procedure
+  automatic System and service checkpoints. Interrupted staging is reclaimed
+  before later runs, and capacity previews account for edited retention and
+  checkpoints already stored. Deleted backup data is compacted before disconnecting
+  the location. Backup and restore links open the requested controls.
+  A stalled service backup procedure
   stops after six hours.
 
 - **A service can permanently retire a network host or a port it no longer

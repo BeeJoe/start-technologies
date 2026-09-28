@@ -53,13 +53,13 @@ import {
   BackupRetentionTierEditor,
   BackupScheduleFormValue,
   BackupServiceSelection,
+  formatBackupRetentionRule,
   formatBackupScheduleSummary,
   formatBackupServiceSummary,
   hasDuplicateRetentionRules,
   isValidBackupRetentionRules,
   isValidBackupSchedule,
   removeBackupRetentionRule,
-  retentionPeriodLabel,
   scheduleNeedsMoreFrequentRuns,
   serializeBackupRetentionPolicy,
   serializeBackupSchedule,
@@ -1110,19 +1110,11 @@ export default class AutomaticBackups {
   }
 
   protected retentionSummary(): string {
-    const every = this.i18n.transform('Keep one backup every')
-    const forLabel = this.i18n.transform('for')
     return this.retentionRules()
-      .map(rule => {
-        const interval = this.i18n.transform(rule.interval)
-        const period = this.i18n.transform(this.retentionPeriod(rule))
-        return `${every} ${interval} ${forLabel} ${rule.duration} ${period}`
-      })
+      .map(rule =>
+        formatBackupRetentionRule(rule, label => this.i18n.transform(label)),
+      )
       .join(', ')
-  }
-
-  protected retentionPeriod(rule: AutomaticRetentionRule) {
-    return retentionPeriodLabel(rule.interval, rule.duration)
   }
 
   protected retentionRules(): AutomaticRetentionRule[] {
@@ -1221,6 +1213,7 @@ export default class AutomaticBackups {
           services: this.serviceScope(),
           defaultRetention: this.policy(),
           retentionOverrides: {},
+          preserveExistingPolicies: true,
         }),
       )
     }, 'Loading')
@@ -1229,7 +1222,14 @@ export default class AutomaticBackups {
   protected capacityNeeded(): number | null {
     if (!this.estimates().length) return null
     return this.estimates().reduce(
-      (sum, item) => sum + item.conservativePeakExcludingManualBytes,
+      (sum, item) =>
+        sum +
+        Math.max(
+          item.stagingHeadroomBytes,
+          item.conservativePeakExcludingManualBytes -
+            item.scheduledRetainedBytes -
+            item.archivedBytes,
+        ),
       0,
     )
   }
