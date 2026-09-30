@@ -3,9 +3,6 @@ import type { BackupTargetId } from './BackupTargetId'
 import type { Guid } from './Guid'
 import type { PackageId } from './PackageId'
 
-/**
- * Inputs for deleting archived automatic backup snapshots.
- */
 export type DeleteArchivedSnapshotsParams = {
   targetId: BackupTargetId
   packageId: PackageId

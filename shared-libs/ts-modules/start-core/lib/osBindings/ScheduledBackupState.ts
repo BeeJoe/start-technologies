@@ -8,9 +8,6 @@ import type { NewServiceBackupReview } from './NewServiceBackupReview'
 import type { PackageId } from './PackageId'
 import type { ServiceTargetHistory } from './ServiceTargetHistory'
 
-/**
- * PatchDB state published for automatic backups.
- */
 export type ScheduledBackupState = {
   jobs: { [key: Guid]: BackupJob }
   histories: { [key: string]: ServiceTargetHistory }

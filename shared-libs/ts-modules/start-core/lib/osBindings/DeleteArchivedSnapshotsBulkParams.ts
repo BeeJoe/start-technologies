@@ -2,9 +2,6 @@
 import type { ArchivedSnapshotSelection } from './ArchivedSnapshotSelection'
 import type { BackupTargetId } from './BackupTargetId'
 
-/**
- * Inputs for deleting archived automatic backup snapshots in one target operation.
- */
 export type DeleteArchivedSnapshotsBulkParams = {
   targetId: BackupTargetId
   snapshots: Array<ArchivedSnapshotSelection>

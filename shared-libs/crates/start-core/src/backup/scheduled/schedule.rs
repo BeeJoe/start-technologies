@@ -23,14 +23,12 @@ pub struct Schedule {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-/// One schedule occurrence represented in UTC and local wall-clock time.
 pub struct LocalOccurrence {
     pub utc: DateTime<Utc>,
     pub local: NaiveDateTime,
 }
 
 impl Schedule {
-    /// Validates and constructs a schedule.
     pub fn new(cron: impl Into<String>, timezone: impl Into<String>) -> Result<Self, Error> {
         let schedule = Self {
             cron: cron.into(),
@@ -40,7 +38,7 @@ impl Schedule {
         Ok(schedule)
     }
 
-    /// Returns the first occurrence after `after`, excluding a repeated local occurrence.
+    /// Skips repeated local occurrences.
     pub fn next_after(
         &self,
         after: DateTime<Utc>,
@@ -75,7 +73,6 @@ impl Schedule {
         ))
     }
 
-    /// Returns the first occurrence after a UTC scheduling cursor.
     pub fn next_after_cursor(
         &self,
         after: DateTime<Utc>,
@@ -93,7 +90,6 @@ impl Schedule {
         self.next_after(after, last_local)
     }
 
-    /// Returns at most one missed occurrence.
     pub fn catch_up_after(
         &self,
         cursor: DateTime<Utc>,

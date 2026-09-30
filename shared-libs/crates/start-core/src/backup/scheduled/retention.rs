@@ -15,7 +15,6 @@ const MAX_PROJECTED_SNAPSHOTS: u64 = 10_000;
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
-/// One retention cadence and the period it covers.
 pub struct RetentionTier {
     /// Width of one local-time retention bucket.
     #[ts(type = "number")]
@@ -28,7 +27,6 @@ pub struct RetentionTier {
 #[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
-/// Version-history rules; no tiers means latest checkpoint only.
 pub struct RetentionPolicy {
     /// An empty tier list is the latest-only policy.
     pub tiers: Vec<RetentionTier>,
@@ -37,7 +35,6 @@ pub struct RetentionPolicy {
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
-/// The checkpoints kept and removed by a proposed retention policy.
 pub struct RetentionPreview {
     pub retained: BTreeSet<ServiceSnapshotId>,
     pub removed: Vec<ServiceSnapshot>,
@@ -46,12 +43,10 @@ pub struct RetentionPreview {
 }
 
 impl RetentionPolicy {
-    /// Creates a latest-checkpoint-only policy.
     pub fn latest_only() -> Self {
         Self::default()
     }
 
-    /// Validates retention ordering, bounds, and projected checkpoint count.
     pub fn validate(&self) -> Result<(), Error> {
         let mut previous_interval = 0;
         let mut previous_coverage = 0;
@@ -81,7 +76,6 @@ impl RetentionPolicy {
         Ok(())
     }
 
-    /// Returns the maximum checkpoints this policy can retain.
     pub fn maximum_projected_snapshot_count(&self) -> Result<u64, Error> {
         self.validate()?;
         Ok(1 + self
@@ -91,7 +85,6 @@ impl RetentionPolicy {
             .sum::<u64>())
     }
 
-    /// Selects checkpoint IDs retained by this policy in the supplied timezone.
     pub fn retained_snapshot_ids(
         &self,
         snapshots: &[ServiceSnapshot],
@@ -140,7 +133,6 @@ impl RetentionPolicy {
         Ok(retained)
     }
 
-    /// Previews checkpoint removal and reclaimable space.
     pub fn preview(
         &self,
         snapshots: &[ServiceSnapshot],
@@ -167,7 +159,6 @@ impl RetentionPolicy {
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
-/// Conservative storage requirements for a backup history.
 pub struct CapacityEstimate {
     pub retained_snapshot_count: usize,
     #[ts(type = "number")]
@@ -187,7 +178,6 @@ pub struct CapacityEstimate {
 }
 
 impl CapacityEstimate {
-    /// Calculates retained storage and staging headroom for a history.
     pub fn calculate(
         policy: &RetentionPolicy,
         retained: &[ServiceSnapshot],

@@ -60,7 +60,6 @@ impl ScheduledBackupCredential {
     }
 }
 
-/// Generates a fresh device-local key for sealing scheduled-backup credentials.
 pub fn generate_scheduled_backup_device_key() -> Vec<u8> {
     rand::random::<[u8; 32]>().to_vec()
 }

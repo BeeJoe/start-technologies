@@ -23,6 +23,7 @@ import {
 } from '@start9labs/shared'
 import { T } from '@start9labs/start-core'
 import {
+  TUI_BREAKPOINT,
   TuiButton,
   TuiCheckbox,
   TuiError,
@@ -33,7 +34,7 @@ import {
   TuiNotification,
   TuiTitle,
 } from '@taiga-ui/core'
-import { TuiAccordion, TuiBlock, TuiSwitch } from '@taiga-ui/kit'
+import { TuiAccordion, TuiBlock, TuiStepper, TuiSwitch } from '@taiga-ui/kit'
 import { TuiCardLarge, TuiHeader } from '@taiga-ui/layout'
 import { PatchDB } from 'patch-db-client'
 import { firstValueFrom } from 'rxjs'
@@ -190,14 +191,27 @@ class AutomaticEditor
         {{ 'Automatic backups are already set up.' | i18n }}
       </div>
     } @else if (setupMode()) {
-      <nav class="steps" [attr.aria-label]="'Setup progress' | i18n">
+      <tui-stepper
+        [attr.aria-label]="'Setup progress' | i18n"
+        [orientation]="breakpoint() === 'mobile' ? 'vertical' : 'horizontal'"
+        [activeItemIndex]="step() - 1"
+        (activeItemIndexChange)="previous($event + 1)"
+      >
         @for (item of setupSteps; track item.number) {
-          <span [class._active]="step() === item.number">
-            <b>{{ item.number }}</b>
+          <button
+            tuiStep
+            [style.--tui-text-action]="
+              item.number > step() ? 'var(--tui-text-secondary)' : null
+            "
+            [style.--tui-disabled-opacity]="1"
+            [disabled]="item.number > step()"
+            [stepState]="item.number < step() ? 'pass' : 'normal'"
+            [attr.aria-current]="item.number === step() ? 'step' : null"
+          >
             {{ item.label | i18n }}
-          </span>
+          </button>
         }
-      </nav>
+      </tui-stepper>
 
       @if (step() === 1) {
         <section
@@ -590,41 +604,10 @@ class AutomaticEditor
       overflow-wrap: anywhere;
     }
 
-    .steps,
     .wizard-actions {
       display: flex;
       gap: 0.5rem;
       align-items: center;
-    }
-
-    .steps {
-      justify-content: center;
-      color: var(--tui-text-secondary);
-    }
-
-    .steps span {
-      display: flex;
-      align-items: center;
-      gap: 0.4rem;
-      padding: 0.5rem 0.75rem;
-    }
-
-    .steps b {
-      display: grid;
-      place-items: center;
-      inline-size: 1.5rem;
-      block-size: 1.5rem;
-      border-radius: 50%;
-      background: var(--tui-background-neutral-1);
-    }
-
-    .steps ._active {
-      color: var(--tui-text-primary);
-    }
-
-    .steps ._active b {
-      background: var(--tui-background-accent-1);
-      color: var(--tui-text-primary-on-accent-1);
     }
 
     .panel {
@@ -779,14 +762,6 @@ class AutomaticEditor
     }
 
     @container (max-inline-size: 48rem) {
-      .steps span {
-        font-size: 0;
-      }
-
-      .steps b {
-        font-size: initial;
-      }
-
       dl div {
         grid-template-columns: 1fr;
         gap: 0.2rem;
@@ -851,6 +826,7 @@ class AutomaticEditor
     ReactiveFormsModule,
     RouterLink,
     TuiAccordion,
+    TuiStepper,
     TuiBlock,
     TuiButton,
     TuiCardLarge,
@@ -873,6 +849,7 @@ class AutomaticEditor
   ],
 })
 export default class AutomaticBackups {
+  protected readonly breakpoint = inject(TUI_BREAKPOINT)
   private readonly formBuilder = inject(NonNullableFormBuilder)
   private readonly api = inject(ApiService)
   private readonly backupService = inject(BackupService)
@@ -1078,9 +1055,10 @@ export default class AutomaticBackups {
     this.step.update(step => Math.min(3, step + 1))
   }
 
-  protected previous() {
+  protected previous(step = this.step() - 1) {
+    if (step >= this.step()) return
     if (this.step() === 3) this.editor.capacityConfirmed = false
-    this.step.update(step => Math.max(1, step - 1))
+    this.step.set(Math.max(1, step))
   }
 
   protected setAllServices(checked: boolean) {

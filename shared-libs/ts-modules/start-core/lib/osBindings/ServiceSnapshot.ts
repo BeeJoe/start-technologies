@@ -3,9 +3,6 @@ import type { BackupSource } from './BackupSource'
 import type { Guid } from './Guid'
 import type { PackageId } from './PackageId'
 
-/**
- * Metadata for one retained service checkpoint on a backup target.
- */
 export type ServiceSnapshot = {
   id: Guid
   packageId: PackageId

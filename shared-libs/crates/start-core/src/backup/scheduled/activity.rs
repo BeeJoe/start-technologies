@@ -15,7 +15,6 @@ use crate::db::model::DatabaseModel;
 use crate::prelude::*;
 use crate::util::serde::HandlerExtSerde;
 
-/// Builds the CLI/RPC handler tree for unified backup activity.
 pub fn activity<C: Context>() -> ParentHandler<C> {
     ParentHandler::new().subcommand(
         "list",
@@ -26,7 +25,7 @@ pub fn activity<C: Context>() -> ParentHandler<C> {
     )
 }
 
-/// Lists backup activity newest first.
+/// Newest first.
 pub async fn list(ctx: RpcContext) -> Result<Vec<BackupActivity>, Error> {
     let mut activities = ctx
         .db

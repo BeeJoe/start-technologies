@@ -2,9 +2,6 @@
 import type { Guid } from './Guid'
 import type { PackageId } from './PackageId'
 
-/**
- * Archived automatic backup snapshots selected for one service.
- */
 export type ArchivedSnapshotSelection = {
   packageId: PackageId
   snapshotIds: Array<Guid>

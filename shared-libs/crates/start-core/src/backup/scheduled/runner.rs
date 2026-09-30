@@ -228,7 +228,15 @@ async fn run_job_inner(
     };
     super::rpc::reconcile_target_histories(&db, &job.target_id, &mut scheduled_guard)?;
     mark_target_connected(ctx, &job.target_id).await?;
-    if let Err(error) = super::storage::remove_abandoned_staging(scheduled_guard.path()).await {
+    let cleanup = async {
+        super::storage::remove_abandoned_staging(scheduled_guard.path()).await?;
+        super::storage::remove_unreferenced_snapshots(
+            scheduled_guard.path(),
+            &scheduled_guard.metadata,
+        )
+        .await
+    };
+    if let Err(error) = cleanup.await {
         record_failed_run_and_notify(ctx, &job, &package_ids, trigger, error.to_string()).await?;
         return Err(error);
     }

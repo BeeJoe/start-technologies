@@ -66,6 +66,33 @@ pub struct ScheduledBackupOnTargetMetadata {
 }
 
 impl ScheduledBackupOnTargetMetadata {
+    pub(super) fn refresh_history(&self, local: &mut ServiceTargetHistory) {
+        if local.target_instance_id != self.target_instance_id {
+            return;
+        }
+        let Some(saved) = self.services.get(&local.package_id) else {
+            local.snapshots.clear();
+            return;
+        };
+        let archived: BTreeSet<_> = local
+            .snapshots
+            .iter()
+            .filter(|snapshot| snapshot.archived)
+            .map(|snapshot| &snapshot.id)
+            .collect();
+        local.snapshots = saved
+            .snapshots
+            .iter()
+            .cloned()
+            .map(|mut snapshot| {
+                snapshot.archived |= local.archived || archived.contains(&snapshot.id);
+                snapshot
+            })
+            .collect();
+        local.timezone = saved.timezone.clone();
+        local.policy = saved.policy.clone();
+    }
+
     pub(crate) fn reconcile_histories(
         &mut self,
         histories: impl IntoIterator<Item = ServiceTargetHistory>,
@@ -74,8 +101,17 @@ impl ScheduledBackupOnTargetMetadata {
             if local.target_instance_id != self.target_instance_id {
                 continue;
             }
-            let Some(history) = self.services.get_mut(&local.package_id) else {
-                continue;
+            let history = match self.services.entry(local.package_id.clone()) {
+                std::collections::btree_map::Entry::Occupied(entry) => entry.into_mut(),
+                std::collections::btree_map::Entry::Vacant(entry) if local.snapshots.is_empty() => {
+                    entry.insert(OnTargetServiceHistory {
+                        timezone: local.timezone.clone(),
+                        policy: local.policy.clone(),
+                        archived: local.archived,
+                        snapshots: Vec::new(),
+                    })
+                }
+                _ => continue,
             };
             if history.snapshots.is_empty() {
                 history.timezone = local.timezone;
@@ -95,7 +131,6 @@ impl ScheduledBackupOnTargetMetadata {
     }
 }
 
-/// On-target retention state and checkpoints for one service.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OnTargetServiceHistory {
@@ -140,7 +175,6 @@ impl OnTargetServiceHistory {
     }
 }
 
-/// Owns the physical target mount and its encrypted scheduled-backup mount.
 #[derive(Debug)]
 pub struct ScheduledBackupMountGuard<G: GenericMountGuard> {
     target_guard: Option<G>,
@@ -151,7 +185,6 @@ pub struct ScheduledBackupMountGuard<G: GenericMountGuard> {
 }
 
 impl<G: GenericMountGuard> ScheduledBackupMountGuard<G> {
-    /// Returns the underlying backup target path rather than the synthetic BackupFS mount.
     pub(crate) fn target_path(&self) -> &Path {
         self.target_guard
             .as_ref()
@@ -159,7 +192,6 @@ impl<G: GenericMountGuard> ScheduledBackupMountGuard<G> {
             .path()
     }
 
-    /// Opens or creates the scheduled-backup area and returns its target key.
     pub async fn initialize(
         target_guard: G,
         server_id: &str,
@@ -216,7 +248,6 @@ impl<G: GenericMountGuard> ScheduledBackupMountGuard<G> {
         Ok((guard, encryption_key))
     }
 
-    /// Mounts an existing scheduled-backup area with its decrypted target key.
     pub async fn mount_with_key(
         target_guard: G,
         server_id: &str,
@@ -244,7 +275,6 @@ impl<G: GenericMountGuard> ScheduledBackupMountGuard<G> {
         .await
     }
 
-    /// Unlocks an existing backup area with its original password.
     pub async fn mount_with_password(
         target_guard: G,
         server_id: &str,
@@ -262,7 +292,6 @@ impl<G: GenericMountGuard> ScheduledBackupMountGuard<G> {
         Ok((guard, encryption_key))
     }
 
-    /// Reads recoverable scheduled-backup metadata using its original password.
     pub async fn discover_with_password(
         target_guard: G,
         server_id: &str,
@@ -322,7 +351,6 @@ impl<G: GenericMountGuard> ScheduledBackupMountGuard<G> {
         })
     }
 
-    /// Creates a staging directory for a service in the encrypted target.
     pub async fn staging(
         self: &Arc<Self>,
         run_id: &Guid,
@@ -346,7 +374,6 @@ impl<G: GenericMountGuard> ScheduledBackupMountGuard<G> {
         Ok(SubPath::new(self.clone(), relative))
     }
 
-    /// Returns the newest retained checkpoint for a service.
     pub fn latest_snapshot(&self, package_id: &PackageId) -> Option<&ServiceSnapshot> {
         self.metadata.services.get(package_id).and_then(|history| {
             history
@@ -357,7 +384,6 @@ impl<G: GenericMountGuard> ScheduledBackupMountGuard<G> {
         })
     }
 
-    /// Resolves the on-target path for a retained checkpoint.
     pub fn snapshot_path(
         &self,
         package_id: &PackageId,
@@ -370,7 +396,6 @@ impl<G: GenericMountGuard> ScheduledBackupMountGuard<G> {
             .join(snapshot_id.as_ref())
     }
 
-    /// Finds a retained checkpoint by service and checkpoint identifier.
     pub fn snapshot(
         self: &Arc<Self>,
         package_id: &PackageId,
@@ -385,7 +410,6 @@ impl<G: GenericMountGuard> ScheduledBackupMountGuard<G> {
         )
     }
 
-    /// Atomically promotes staged service data into a retained checkpoint.
     pub async fn promote(
         &mut self,
         run_id: &Guid,
@@ -422,7 +446,6 @@ impl<G: GenericMountGuard> ScheduledBackupMountGuard<G> {
         history.policy = policy;
         history.snapshots.push(snapshot.clone());
 
-        // Pruning failures retain extra valid snapshots.
         self.save().await?;
         self.prune(&snapshot.package_id).await?;
         self.remove_unreferenced_runs().await?;
@@ -446,32 +469,29 @@ impl<G: GenericMountGuard> ScheduledBackupMountGuard<G> {
         let retained = history
             .policy
             .retained_snapshot_ids(&history.snapshots, timezone)?;
-        let removed: Vec<_> = history
+        let removed: BTreeSet<_> = history
             .snapshots
             .iter()
             .filter(|snapshot| !snapshot.archived && !retained.contains(&snapshot.id))
             .map(|snapshot| snapshot.id.clone())
             .collect();
-        for snapshot_id in &removed {
-            delete_dir(&self.snapshot_path(package_id, snapshot_id)).await?;
-        }
-        self.metadata
-            .services
-            .get_mut(package_id)
-            .expect("history exists")
-            .snapshots
-            .retain(|snapshot| !removed.contains(&snapshot.id));
-        Ok(())
+        remove_snapshots(
+            &self.path().to_owned(),
+            &mut self.metadata,
+            &self.recovery_path,
+            &mut self.recovery,
+            &BTreeMap::from([(package_id.clone(), removed)]),
+        )
+        .await
     }
 
-    /// Applies a retention policy and returns the checkpoints that remain.
     pub async fn apply_policy(
         &mut self,
         package_id: &PackageId,
         timezone: String,
         policy: RetentionPolicy,
         confirmed_removals: &BTreeSet<ServiceSnapshotId>,
-    ) -> Result<Vec<ServiceSnapshot>, Error> {
+    ) -> Result<(), Error> {
         let history = self
             .metadata
             .services
@@ -480,21 +500,13 @@ impl<G: GenericMountGuard> ScheduledBackupMountGuard<G> {
         history.change_policy(timezone, policy, confirmed_removals)?;
         self.prune(package_id).await?;
         self.remove_unreferenced_runs().await?;
-        self.save().await?;
-        Ok(self
-            .metadata
-            .services
-            .get(package_id)
-            .expect("history exists")
-            .snapshots
-            .clone())
+        self.save().await
     }
 
-    /// Deletes archived checkpoints for multiple services without remounting the target.
     pub async fn delete_archived_snapshots_bulk(
         &mut self,
         snapshots: &BTreeMap<PackageId, BTreeSet<ServiceSnapshotId>>,
-    ) -> Result<BTreeMap<PackageId, Vec<ServiceSnapshot>>, Error> {
+    ) -> Result<(), Error> {
         for (package_id, snapshot_ids) in snapshots {
             let history = self
                 .metadata
@@ -515,27 +527,15 @@ impl<G: GenericMountGuard> ScheduledBackupMountGuard<G> {
             }
         }
 
-        for (package_id, snapshot_ids) in snapshots {
-            for snapshot_id in snapshot_ids {
-                delete_dir(&self.snapshot_path(package_id, snapshot_id)).await?;
-            }
-            self.metadata
-                .services
-                .get_mut(package_id)
-                .expect("history exists")
-                .snapshots
-                .retain(|snapshot| !snapshot_ids.contains(&snapshot.id));
-        }
-        self.remove_unreferenced_runs().await?;
-        Ok(snapshots
-            .keys()
-            .map(|package_id| {
-                (
-                    package_id.clone(),
-                    self.metadata.services[package_id].snapshots.clone(),
-                )
-            })
-            .collect())
+        remove_snapshots(
+            &self.path().to_owned(),
+            &mut self.metadata,
+            &self.recovery_path,
+            &mut self.recovery,
+            snapshots,
+        )
+        .await?;
+        self.remove_unreferenced_runs().await
     }
 
     async fn remove_unreferenced_runs(&self) -> Result<(), Error> {
@@ -563,7 +563,6 @@ impl<G: GenericMountGuard> ScheduledBackupMountGuard<G> {
         Ok(())
     }
 
-    /// Writes one completed run record to the target.
     pub async fn save_run(&self, run: &BackupRun) -> Result<(), Error> {
         write_json(
             &self.path().join("runs").join(format!("{}.json", run.id)),
@@ -572,14 +571,17 @@ impl<G: GenericMountGuard> ScheduledBackupMountGuard<G> {
         .await
     }
 
-    /// Atomically persists the current target metadata.
     pub async fn save(&mut self) -> Result<(), Error> {
         self.recovery.has_system_backup = Some(contains_system_backup(&self.metadata));
         write_json(&self.path().join("metadata.json"), &self.metadata).await?;
         write_json(&self.recovery_path, &self.recovery).await
     }
 
-    /// Persists metadata and cleanly unmounts the encrypted target.
+    pub(super) async fn reload_metadata(&mut self) -> Result<(), Error> {
+        self.metadata = read_target_metadata(&self.path().join("metadata.json"), None).await?;
+        Ok(())
+    }
+
     pub async fn save_and_unmount(mut self) -> Result<(), Error> {
         self.save().await?;
         self.unmount().await
@@ -663,6 +665,85 @@ async fn write_json(path: &Path, value: &impl Serialize) -> Result<(), Error> {
     write_file_atomic(path, IoFormat::Json.to_vec(value)?).await
 }
 
+async fn remove_snapshots(
+    target: &Path,
+    metadata: &mut ScheduledBackupOnTargetMetadata,
+    recovery_path: &Path,
+    recovery: &mut ScheduledBackupRecoveryInfo,
+    removals: &BTreeMap<PackageId, BTreeSet<ServiceSnapshotId>>,
+) -> Result<(), Error> {
+    if removals.values().all(BTreeSet::is_empty) {
+        return Ok(());
+    }
+    let mut updated = metadata.clone();
+    for (package_id, snapshot_ids) in removals {
+        updated
+            .services
+            .get_mut(package_id)
+            .or_not_found(package_id)?
+            .snapshots
+            .retain(|snapshot| !snapshot_ids.contains(&snapshot.id));
+    }
+    // Persist removals before deleting checkpoint data.
+    write_json(&target.join("metadata.json"), &updated).await?;
+    recovery.has_system_backup = Some(contains_system_backup(&updated));
+    write_json(recovery_path, recovery).await?;
+    crate::disk::mount::util::sync_directory(recovery_path.parent().expect("recovery directory"))
+        .await?;
+    crate::disk::mount::util::sync_directory(target).await?;
+    *metadata = updated;
+    for (package_id, snapshot_ids) in removals {
+        let snapshots = target
+            .join("services")
+            .join(&**package_id)
+            .join("snapshots");
+        for snapshot_id in snapshot_ids {
+            delete_dir(snapshots.join(snapshot_id.as_ref())).await?;
+        }
+    }
+    crate::disk::mount::util::sync_directory(target).await
+}
+
+/// Requires exclusive ownership of backup operations.
+pub(super) async fn remove_unreferenced_snapshots(
+    target: &Path,
+    metadata: &ScheduledBackupOnTargetMetadata,
+) -> Result<(), Error> {
+    let services = target.join("services");
+    let mut packages = match tokio::fs::read_dir(&services).await {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error.into()),
+    };
+    let mut removed = false;
+    while let Some(package) = packages.next_entry().await? {
+        let package_id = package.file_name();
+        let referenced: BTreeSet<_> = metadata
+            .services
+            .get(package_id.to_string_lossy().as_ref())
+            .into_iter()
+            .flat_map(|history| &history.snapshots)
+            .map(|snapshot| snapshot.id.as_ref())
+            .collect();
+        let mut snapshots = match tokio::fs::read_dir(package.path().join("snapshots")).await {
+            Ok(entries) => entries,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(error) => return Err(error.into()),
+        };
+        while let Some(snapshot) = snapshots.next_entry().await? {
+            let id = snapshot.file_name();
+            if !referenced.contains(id.to_string_lossy().as_ref()) {
+                delete_dir(snapshot.path()).await?;
+                removed = true;
+            }
+        }
+    }
+    if removed {
+        crate::disk::mount::util::sync_directory(target).await?;
+    }
+    Ok(())
+}
+
 /// Requires exclusive ownership of backup operations.
 pub(super) async fn remove_abandoned_staging(target: &Path) -> Result<(), Error> {
     let staging = target.join("staging");
@@ -677,6 +758,234 @@ pub(super) async fn remove_abandoned_staging(target: &Path) -> Result<(), Error>
 mod tests {
     use super::*;
     use crate::backup::scheduled::BackupSource;
+
+    fn snapshot() -> ServiceSnapshot {
+        ServiceSnapshot {
+            id: Guid::new(),
+            package_id: "test-service".parse().unwrap(),
+            package_version: "1.0.0".into(),
+            source: BackupSource::Scheduled,
+            job_id: Guid::new(),
+            job_name: "Daily".into(),
+            run_id: Guid::new(),
+            completed_at: Utc::now(),
+            logical_size: 1,
+            physical_size: None,
+            changed_bytes: None,
+            measured_at: Utc::now(),
+            archived: false,
+        }
+    }
+
+    #[tokio::test]
+    async fn interrupted_deletion_keeps_only_intact_checkpoints_advertised() {
+        let root = tempfile::tempdir().unwrap();
+        let retained = snapshot();
+        let removed = ServiceSnapshot {
+            id: Guid::from("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA").unwrap(),
+            ..snapshot()
+        };
+        let failing = ServiceSnapshot {
+            id: Guid::from("BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB").unwrap(),
+            ..snapshot()
+        };
+        let package_id = retained.package_id.clone();
+        let snapshots_path = root.path().join("services/test-service/snapshots");
+        for snapshot in [&retained, &removed] {
+            let path = snapshots_path.join(snapshot.id.as_ref());
+            tokio::fs::create_dir_all(&path).await.unwrap();
+            tokio::fs::write(path.join("data"), b"checkpoint")
+                .await
+                .unwrap();
+        }
+        let failing_path = snapshots_path.join(failing.id.as_ref());
+        tokio::fs::write(&failing_path, b"not a directory")
+            .await
+            .unwrap();
+        let mut metadata = ScheduledBackupOnTargetMetadata {
+            target_instance_id: "target".into(),
+            services: BTreeMap::from([(
+                package_id.clone(),
+                OnTargetServiceHistory {
+                    timezone: "UTC".into(),
+                    policy: RetentionPolicy::latest_only(),
+                    archived: false,
+                    snapshots: vec![retained.clone(), removed.clone(), failing.clone()],
+                },
+            )]),
+        };
+        write_json(&root.path().join("metadata.json"), &metadata)
+            .await
+            .unwrap();
+        let removals = BTreeMap::from([(
+            package_id.clone(),
+            BTreeSet::from([removed.id.clone(), failing.id.clone()]),
+        )]);
+        let recovery_path = root.path().join("unencrypted-metadata.json");
+        let mut recovery = ScheduledBackupRecoveryInfo {
+            target_instance_id: "target".into(),
+            hostname: ServerHostname::new("test-server".into()).unwrap(),
+            version: "0.4.0".parse().unwrap(),
+            timestamp: Utc::now(),
+            password_hash: String::new(),
+            wrapped_key: String::new(),
+            has_system_backup: Some(true),
+        };
+        assert!(
+            remove_snapshots(
+                root.path(),
+                &mut metadata,
+                &recovery_path,
+                &mut recovery,
+                &removals
+            )
+            .await
+            .is_err()
+        );
+        assert!(!snapshots_path.join(removed.id.as_ref()).exists());
+        let reloaded_recovery: ScheduledBackupRecoveryInfo =
+            read_json_file_bounded(&recovery_path, MAX_BACKUP_RECOVERY_METADATA_BYTES)
+                .await
+                .unwrap();
+        assert_eq!(reloaded_recovery.has_system_backup, Some(false));
+
+        let reloaded = read_target_metadata(&root.path().join("metadata.json"), None)
+            .await
+            .unwrap();
+        let advertised = &reloaded.services[&package_id].snapshots;
+        assert_eq!(advertised.len(), 1);
+        assert_eq!(advertised[0].id, retained.id);
+        assert_eq!(
+            tokio::fs::read(snapshots_path.join(retained.id.as_ref()).join("data"))
+                .await
+                .unwrap(),
+            b"checkpoint"
+        );
+
+        tokio::fs::remove_file(&failing_path).await.unwrap();
+        tokio::fs::create_dir(&failing_path).await.unwrap();
+        remove_unreferenced_snapshots(root.path(), &reloaded)
+            .await
+            .unwrap();
+        remove_unreferenced_snapshots(root.path(), &reloaded)
+            .await
+            .unwrap();
+        assert!(!failing_path.exists());
+        assert!(!snapshots_path.join(removed.id.as_ref()).exists());
+        assert!(
+            snapshots_path
+                .join(retained.id.as_ref())
+                .join("data")
+                .exists()
+        );
+    }
+
+    #[test]
+    fn retention_can_change_before_the_first_checkpoint() {
+        let package_id: PackageId = "test-service".parse().unwrap();
+        let mut metadata = ScheduledBackupOnTargetMetadata {
+            target_instance_id: "target".into(),
+            services: BTreeMap::new(),
+        };
+        let mut local = ServiceTargetHistory {
+            target_id: "cifs-0".parse().unwrap(),
+            target_instance_id: "target".into(),
+            package_id: package_id.clone(),
+            timezone: "UTC".into(),
+            policy: RetentionPolicy::latest_only(),
+            feeding_jobs: BTreeSet::from([Guid::new()]),
+            snapshots: Vec::new(),
+            archived: false,
+        };
+        metadata.reconcile_histories([local.clone()]);
+        let policy = RetentionPolicy {
+            tiers: vec![super::super::RetentionTier {
+                interval_seconds: 3600,
+                coverage_seconds: 86400,
+            }],
+        };
+        metadata
+            .services
+            .get_mut(&package_id)
+            .unwrap()
+            .change_policy("UTC".into(), policy.clone(), &BTreeSet::new())
+            .unwrap();
+        assert_eq!(metadata.services[&package_id].policy, policy);
+
+        metadata.services.clear();
+        local.snapshots.push(snapshot());
+        metadata.reconcile_histories([local.clone()]);
+        assert!(metadata.services.is_empty());
+        local.snapshots.clear();
+        local.target_instance_id = "another-target".into();
+        metadata.reconcile_histories([local]);
+        assert!(metadata.services.is_empty());
+    }
+
+    #[test]
+    fn saved_history_updates_preserve_archive_decisions_and_committed_policy() {
+        let retained = snapshot();
+        let removed = snapshot();
+        let package_id = retained.package_id.clone();
+        let policy = RetentionPolicy {
+            tiers: vec![super::super::RetentionTier {
+                interval_seconds: 3600,
+                coverage_seconds: 86400,
+            }],
+        };
+        let mut metadata = ScheduledBackupOnTargetMetadata {
+            target_instance_id: "target".into(),
+            services: BTreeMap::from([(
+                package_id.clone(),
+                OnTargetServiceHistory {
+                    timezone: "UTC".into(),
+                    policy: policy.clone(),
+                    archived: false,
+                    snapshots: vec![retained.clone()],
+                },
+            )]),
+        };
+        let mut local = ServiceTargetHistory {
+            target_id: "cifs-0".parse().unwrap(),
+            target_instance_id: "target".into(),
+            package_id: package_id.clone(),
+            timezone: "UTC".into(),
+            policy: RetentionPolicy::latest_only(),
+            feeding_jobs: BTreeSet::new(),
+            snapshots: vec![retained.clone(), removed],
+            archived: true,
+        };
+        metadata.refresh_history(&mut local);
+        assert!(local.archived);
+        assert_eq!(local.snapshots.len(), 1);
+        assert_eq!(local.snapshots[0].id, retained.id);
+        assert!(local.snapshots[0].archived);
+        assert_eq!(local.policy, policy);
+
+        local.archived = false;
+        local.feeding_jobs.insert(Guid::new());
+        metadata
+            .services
+            .get_mut(&package_id)
+            .unwrap()
+            .snapshots
+            .push(snapshot());
+        metadata.refresh_history(&mut local);
+        assert!(!local.archived);
+        assert!(local.snapshots[0].archived);
+        assert!(!local.snapshots[1].archived);
+
+        local.policy = RetentionPolicy::latest_only();
+        metadata
+            .services
+            .get_mut(&package_id)
+            .unwrap()
+            .snapshots
+            .clear();
+        metadata.refresh_history(&mut local);
+        assert!(local.snapshots.is_empty());
+        assert_eq!(local.policy, policy);
+    }
 
     #[tokio::test]
     async fn abandoned_staging_cleanup_preserves_checkpoints_and_metadata() {

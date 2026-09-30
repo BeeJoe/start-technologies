@@ -27,7 +27,6 @@ use crate::util::serde::HandlerExtSerde;
 use crate::volume::PKG_VOLUME_DIR;
 use crate::{DATA_DIR, PackageId, SYSTEM_PACKAGE_ID};
 
-/// Builds the automatic-backup job CLI/RPC handler tree.
 pub fn job<C: Context>() -> ParentHandler<C> {
     ParentHandler::new()
         .subcommand(
@@ -100,7 +99,6 @@ pub fn job<C: Context>() -> ParentHandler<C> {
         )
 }
 
-/// Builds the automatic-backup history CLI/RPC handler tree.
 pub fn history<C: Context>() -> ParentHandler<C> {
     ParentHandler::new()
         .subcommand(
@@ -135,7 +133,6 @@ pub fn history<C: Context>() -> ParentHandler<C> {
         )
 }
 
-/// Builds the automatic-backup retention-policy CLI/RPC handler tree.
 pub fn policy<C: Context>() -> ParentHandler<C> {
     ParentHandler::new()
         .subcommand("estimate", from_fn_async(estimate_capacity).no_cli())
@@ -157,7 +154,6 @@ pub fn policy<C: Context>() -> ParentHandler<C> {
         )
 }
 
-/// CLI selection for including StartOS system data in an automatic backup.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize, ValueEnum)]
 #[serde(rename_all = "camelCase")]
 pub enum SystemDataSelection {
@@ -221,7 +217,6 @@ fn with_system_data_selection(
     }
 }
 
-/// Inputs for estimating the capacity required by an automatic backup policy.
 #[derive(Deserialize, Serialize, TS)]
 #[ts(export)]
 #[serde(rename_all = "camelCase")]
@@ -291,7 +286,6 @@ pub struct EstimateBackupCapacityCliParams {
     pub latest_only_overrides: Vec<PackageId>,
 }
 
-/// Per-service storage estimate for an automatic backup policy.
 #[derive(Deserialize, Serialize, TS)]
 #[ts(export)]
 #[serde(rename_all = "camelCase")]
@@ -316,7 +310,6 @@ pub struct BackupServiceCapacityEstimate {
     pub conservative_peak_excluding_manual_bytes: u64,
 }
 
-/// Estimates the storage required by each selected service and retention policy.
 pub async fn estimate_capacity(
     ctx: RpcContext,
     EstimateBackupCapacityParams {
@@ -404,7 +397,6 @@ fn estimated_retention_policy<'a>(
         .unwrap_or(proposed)
 }
 
-/// Estimates automatic-backup capacity from CLI service and retention flags.
 pub async fn estimate_capacity_cli(
     ctx: RpcContext,
     EstimateBackupCapacityCliParams {
@@ -436,7 +428,6 @@ pub async fn estimate_capacity_cli(
     .await
 }
 
-/// Lists all configured automatic backup jobs.
 pub async fn list(ctx: RpcContext) -> Result<Vec<BackupJob>, Error> {
     Ok(ctx
         .db
@@ -451,7 +442,6 @@ pub async fn list(ctx: RpcContext) -> Result<Vec<BackupJob>, Error> {
         .collect::<Result<_, _>>()?)
 }
 
-/// Lists the locally indexed automatic backup histories.
 pub async fn list_histories(ctx: RpcContext) -> Result<Vec<ServiceTargetHistory>, Error> {
     ctx.db
         .peek()
@@ -580,7 +570,6 @@ pub struct DiscoverScheduledBackupsParams {
     pub password: String,
 }
 
-/// Discovers automatic backup histories on a target using supplied recovery credentials.
 pub async fn discover_histories(
     ctx: RpcContext,
     DiscoverScheduledBackupsParams {
@@ -790,7 +779,6 @@ fn import_target_histories(
     Ok(())
 }
 
-/// Inputs for deleting archived automatic backup snapshots.
 #[derive(Deserialize, Serialize, TS)]
 #[ts(export)]
 #[serde(rename_all = "camelCase")]
@@ -805,7 +793,6 @@ pub struct DeleteArchivedSnapshotsParams {
     pub old_password: Option<String>,
 }
 
-/// Archived automatic backup snapshots selected for one service.
 #[derive(Deserialize, Serialize, TS)]
 #[ts(export)]
 #[serde(rename_all = "camelCase")]
@@ -814,7 +801,6 @@ pub struct ArchivedSnapshotSelection {
     pub snapshot_ids: BTreeSet<ServiceSnapshotId>,
 }
 
-/// Inputs for deleting archived automatic backup snapshots in one target operation.
 #[derive(Deserialize, Serialize, TS)]
 #[ts(export)]
 #[serde(rename_all = "camelCase")]
@@ -852,7 +838,6 @@ pub struct DeleteArchivedSnapshotsCliParams {
     pub old_password: Option<String>,
 }
 
-/// Deletes selected archived checkpoints from the command line.
 pub async fn delete_archived_snapshots_cli(
     ctx: RpcContext,
     DeleteArchivedSnapshotsCliParams {
@@ -876,7 +861,6 @@ pub async fn delete_archived_snapshots_cli(
     .await
 }
 
-/// Deletes selected archived checkpoints for one service.
 pub async fn delete_archived_snapshots(
     ctx: RpcContext,
     DeleteArchivedSnapshotsParams {
@@ -957,28 +941,38 @@ pub async fn delete_archived_snapshots_bulk(
     )
     .await
     .map_err(backup_password_mismatch)?;
-    let mut remaining = guard.delete_archived_snapshots_bulk(&requested).await?;
-    for history in &mut histories {
-        history.snapshots = remaining
-            .remove(&history.package_id)
-            .expect("requested history remains present");
+    let deletion = guard.delete_archived_snapshots_bulk(&requested).await;
+    finish_history_change(
+        &ctx,
+        guard,
+        histories,
+        Some((&target_id, &credential)),
+        deletion,
+    )
+    .await
+}
+
+async fn finish_history_change(
+    ctx: &RpcContext,
+    mut guard: ScheduledBackupMountGuard<TmpMountGuard>,
+    mut histories: Vec<ServiceTargetHistory>,
+    credential: Option<(&BackupTargetId, &ScheduledBackupCredential)>,
+    change: Result<(), Error>,
+) -> Result<Vec<ServiceTargetHistory>, Error> {
+    if change.is_err() {
+        if let Err(error) = guard.reload_metadata().await {
+            guard.unmount().await.log_err();
+            change?;
+            return Err(error);
+        }
     }
-    guard.save_and_unmount().await?;
-    ctx.db
-        .mutate(|db| {
-            db.as_private_mut()
-                .as_scheduled_backup_credentials_mut()
-                .insert(&target_id.to_string(), &credential)?;
-            for history in &histories {
-                db.as_public_mut()
-                    .as_scheduled_backups_mut()
-                    .as_histories_mut()
-                    .insert(&history_key(&target_id, &history.package_id), history)?;
-            }
-            Ok(())
-        })
-        .await
-        .result?;
+    for history in &mut histories {
+        guard.metadata.refresh_history(history);
+    }
+    let unmount = guard.unmount().await;
+    persist_histories(ctx, &histories, credential).await?;
+    change?;
+    unmount?;
     Ok(histories)
 }
 
@@ -1292,7 +1286,6 @@ pub struct ReassignBackupTargetParams {
     pub wait_for_schedule: bool,
 }
 
-/// Moves an automatic backup job to another target.
 pub async fn reassign_target(
     ctx: RpcContext,
     ReassignBackupTargetParams {
@@ -1379,7 +1372,6 @@ pub async fn reassign_target(
     Ok(job)
 }
 
-/// Inputs for previewing the effect of a retention-policy change.
 #[derive(Deserialize, Serialize, TS)]
 #[ts(export)]
 #[serde(rename_all = "camelCase")]
@@ -1389,7 +1381,6 @@ pub struct PreviewRetentionPolicyParams {
     pub policy: RetentionPolicy,
 }
 
-/// Previews the checkpoints removed by a retention-policy change.
 pub async fn preview_policy_change(
     ctx: RpcContext,
     params: PreviewRetentionPolicyParams,
@@ -1430,7 +1421,6 @@ pub struct PreviewRetentionPolicyCliParams {
     pub latest_only: bool,
 }
 
-/// Previews a retention-policy change from command-line inputs.
 pub async fn preview_policy_change_cli(
     ctx: RpcContext,
     PreviewRetentionPolicyCliParams {
@@ -1451,7 +1441,6 @@ pub async fn preview_policy_change_cli(
     .await
 }
 
-/// Inputs for applying a retention-policy change after previewing removals.
 #[derive(Deserialize, Serialize, TS)]
 #[ts(export)]
 #[serde(rename_all = "camelCase")]
@@ -1501,7 +1490,6 @@ pub struct ApplyRetentionPolicyCliParams {
     pub confirmed_removals: Vec<ServiceSnapshotId>,
 }
 
-/// Applies a retention-policy change from command-line inputs.
 pub async fn apply_retention_policy_cli(
     ctx: RpcContext,
     ApplyRetentionPolicyCliParams {
@@ -1541,7 +1529,6 @@ fn retention_policy_from_cli(
     Ok(policy)
 }
 
-/// Applies a confirmed retention-policy change to one service history.
 pub async fn update_policy(
     ctx: RpcContext,
     UpdateRetentionPolicyParams {
@@ -1603,27 +1590,16 @@ pub async fn update_policy(
         .snapshots
         .clone();
     persist_histories(&ctx, std::slice::from_ref(&history), None).await?;
-    history.snapshots = guard
+    let change = guard
         .apply_policy(
             &package_id,
             history.timezone.clone(),
-            policy.clone(),
+            policy,
             &confirmed_removals,
         )
-        .await?;
-    guard.save_and_unmount().await?;
-    history.policy = policy;
-    ctx.db
-        .mutate(|db| {
-            db.as_public_mut()
-                .as_scheduled_backups_mut()
-                .as_histories_mut()
-                .insert(&key, &history)?;
-            Ok(())
-        })
-        .await
-        .result?;
-    Ok(history)
+        .await;
+    let mut histories = finish_history_change(&ctx, guard, vec![history], None, change).await?;
+    Ok(histories.pop().expect("one service history"))
 }
 
 fn policy_preview(
@@ -1660,7 +1636,6 @@ fn policy_preview(
     })
 }
 
-/// Inputs for creating an automatic backup job.
 #[derive(Deserialize, Serialize, TS)]
 #[ts(export)]
 #[serde(rename_all = "camelCase")]
@@ -1683,7 +1658,6 @@ pub struct CreateBackupJobParams {
     pub run_now: bool,
 }
 
-/// Candidate schedule configuration checked without changing stored state.
 #[derive(Deserialize, Serialize, TS)]
 #[ts(export)]
 #[serde(rename_all = "camelCase")]
@@ -1782,7 +1756,6 @@ pub struct AddBackupJobCliParams {
     pub disabled: bool,
 }
 
-/// Creates an automatic backup job from command-line inputs.
 pub async fn add_cli(
     ctx: RpcContext,
     AddBackupJobCliParams {
@@ -1909,7 +1882,6 @@ pub struct EditBackupJobCliParams {
     pub default_retention_packages: Vec<PackageId>,
 }
 
-/// Updates an automatic backup job from command-line inputs.
 pub async fn edit_cli(
     ctx: RpcContext,
     EditBackupJobCliParams {
@@ -2136,7 +2108,6 @@ pub struct ResolveBackupReviewCliParams {
     pub decisions: Vec<(BackupJobId, bool)>,
 }
 
-/// Resolves pending new-service backup reviews from command-line inputs.
 pub async fn resolve_review_cli(
     ctx: RpcContext,
     ResolveBackupReviewCliParams {
@@ -2178,7 +2149,6 @@ pub struct RestoreAutomaticCheckpointCliParams {
     pub password: Option<String>,
 }
 
-/// Restores a CLI-selected set of automatic checkpoints.
 pub async fn restore_automatic_checkpoint_cli(
     ctx: RpcContext,
     RestoreAutomaticCheckpointCliParams {
@@ -2200,7 +2170,6 @@ pub async fn restore_automatic_checkpoint_cli(
     .await
 }
 
-/// Validates a proposed automatic backup job without storing it.
 pub async fn validate(
     ctx: RpcContext,
     ValidateBackupJobParams {
@@ -2232,7 +2201,6 @@ pub async fn validate(
     Ok(())
 }
 
-/// Creates and optionally queues an automatic backup job.
 pub async fn create(
     ctx: RpcContext,
     CreateBackupJobParams {
@@ -2340,7 +2308,6 @@ pub async fn create(
     Ok(job)
 }
 
-/// Replacement settings for an existing automatic backup job.
 #[derive(Deserialize, Serialize, TS)]
 #[ts(export)]
 #[serde(rename_all = "camelCase")]
@@ -2353,7 +2320,6 @@ pub struct UpdateBackupJobParams {
     pub retention_overrides: BTreeMap<PackageId, RetentionPolicy>,
 }
 
-/// Replaces the editable settings of an automatic backup job.
 pub async fn update(
     ctx: RpcContext,
     UpdateBackupJobParams {
@@ -2424,7 +2390,6 @@ pub async fn update(
     Ok(job)
 }
 
-/// Inputs for enabling or disabling one automatic backup job.
 #[derive(Deserialize, Serialize, TS)]
 #[ts(export)]
 #[serde(rename_all = "camelCase")]
@@ -2433,7 +2398,6 @@ pub struct SetBackupJobEnabledParams {
     pub enabled: bool,
 }
 
-/// Inputs for atomically enabling or disabling automatic backup jobs.
 #[derive(Deserialize, Serialize, TS)]
 #[ts(export)]
 #[serde(rename_all = "camelCase")]
@@ -2442,7 +2406,6 @@ pub struct SetBackupJobsEnabledParams {
     pub enabled: bool,
 }
 
-/// Enables or disables one automatic backup job.
 pub async fn set_enabled(
     ctx: RpcContext,
     SetBackupJobEnabledParams { id, enabled }: SetBackupJobEnabledParams,
@@ -2617,7 +2580,6 @@ pub struct BackupJobIdCliParams {
     pub id: BackupJobId,
 }
 
-/// Enables one automatic backup job from the command line.
 pub async fn enable_cli(
     ctx: RpcContext,
     BackupJobIdCliParams { id }: BackupJobIdCliParams,
@@ -2625,7 +2587,6 @@ pub async fn enable_cli(
     set_enabled(ctx, SetBackupJobEnabledParams { id, enabled: true }).await
 }
 
-/// Disables one automatic backup job from the command line.
 pub async fn disable_cli(
     ctx: RpcContext,
     BackupJobIdCliParams { id }: BackupJobIdCliParams,
@@ -2633,7 +2594,6 @@ pub async fn disable_cli(
     set_enabled(ctx, SetBackupJobEnabledParams { id, enabled: false }).await
 }
 
-/// Requests an immediate run of one automatic backup job.
 pub async fn run_now(
     ctx: RpcContext,
     RunBackupJobNowParams { id }: RunBackupJobNowParams,

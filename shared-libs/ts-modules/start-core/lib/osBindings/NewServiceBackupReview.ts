@@ -2,9 +2,6 @@
 import type { Guid } from './Guid'
 import type { PackageId } from './PackageId'
 
-/**
- * Pending decision about adding a newly installed service to backup jobs.
- */
 export type NewServiceBackupReview = {
   packageId: PackageId
   affectedJobs: Array<Guid>

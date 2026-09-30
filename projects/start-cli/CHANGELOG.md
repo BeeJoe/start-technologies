@@ -31,7 +31,8 @@ or the CLI's externally observable behavior.
   from the current server password.
 - **Safe version-history commands.** Preview rule-based or latest-only retention
   changes and apply the exact previewed checkpoint removals, including per-service
-  overrides.
+  overrides and histories awaiting their first checkpoint. Interrupted deletion
+  keeps recovery choices consistent.
 
 - **`s9pk edit add-image` enables CPU emulation by default** when the server uses
   another architecture. Use `--no-emulation` for images that require a native architecture.

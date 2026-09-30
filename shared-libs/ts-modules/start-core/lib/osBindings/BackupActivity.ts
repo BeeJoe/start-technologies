@@ -7,9 +7,6 @@ import type { Guid } from './Guid'
 import type { PackageBackupReport } from './PackageBackupReport'
 import type { PackageId } from './PackageId'
 
-/**
- * User-visible history entry for a backup or restore operation.
- */
 export type BackupActivity = {
   id: Guid
   kind: BackupActivityKind

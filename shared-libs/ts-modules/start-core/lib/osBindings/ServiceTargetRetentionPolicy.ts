@@ -4,9 +4,6 @@ import type { Guid } from './Guid'
 import type { PackageId } from './PackageId'
 import type { RetentionPolicy } from './RetentionPolicy'
 
-/**
- * Retention policy and feeding jobs for one service on one target.
- */
 export type ServiceTargetRetentionPolicy = {
   targetId: BackupTargetId
   packageId: PackageId

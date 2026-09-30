@@ -3,9 +3,6 @@ import type { BackupTargetId } from './BackupTargetId'
 import type { PackageId } from './PackageId'
 import type { RetentionPolicy } from './RetentionPolicy'
 
-/**
- * Inputs for previewing the effect of a retention-policy change.
- */
 export type PreviewRetentionPolicyParams = {
   targetId: BackupTargetId
   packageId: PackageId

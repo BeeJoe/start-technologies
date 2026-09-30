@@ -6,9 +6,6 @@ import type { Guid } from './Guid'
 import type { PackageBackupReport } from './PackageBackupReport'
 import type { PackageId } from './PackageId'
 
-/**
- * Recorded execution of an automatic backup job.
- */
 export type BackupRun = {
   id: Guid
   jobId: Guid

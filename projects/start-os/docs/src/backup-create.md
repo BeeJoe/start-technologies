@@ -71,7 +71,7 @@ storage, failure recovery, and command-line administration.
 
 1. Plug the drive into your server.
 
-1. In StartOS, go to `System > Create Backup`. The drive appears under `Physical Drives`; if it doesn't, click "Refresh".
+1. In StartOS, go to `System > Backups` and open **Create a manual backup**. If the drive does not appear, refresh the page.
 
 1. Click the drive.
 
@@ -371,7 +371,7 @@ A network folder backup sends your encrypted backup over the LAN to a shared fol
 
 ### Step 2. Connect from StartOS
 
-1. In StartOS, go to `System > Backups > Locations`.
+1. In StartOS, go to `System > Backups` and open **Manage backup locations**.
 
 1. Under `Network Folders`, click "New".
 
@@ -463,7 +463,7 @@ A network folder backup sends your encrypted backup over the LAN to a shared fol
 
 ### Step 3. Back Up
 
-1. Click the folder under `Network Folders`.
+1. Open **Create a manual backup** and select the network folder.
 
 1. Select the services to back up, or click "Toggle all", then click "Done".
 

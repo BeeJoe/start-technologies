@@ -28,6 +28,9 @@ differs from the current password.
 
 ## Schedules
 
+During setup, **Continue** validates each step. Select a completed step to return
+to its settings.
+
 Schedules can run hourly, daily, weekly, or monthly at a chosen local time and
 timezone. StartOS stores the selected timezone with the schedule so
 daylight-saving changes are handled correctly. A monthly schedule set for a
@@ -67,6 +70,7 @@ location, its saved policy remains unchanged. Adding a schedule does not remove
 existing checkpoints or restrict the new timing. An empty history detached from
 every schedule adopts the new schedule's policy and timezone.
 Editing a schedule's name or timing preserves the location's saved history policy.
+Version-history rules can be changed before the first successful checkpoint.
 
 Schedules that share a physical drive or network folder must select the same
 backup-location entry. If StartOS reports that another schedule already uses
@@ -93,8 +97,10 @@ Changing a schedule's location does not copy its existing checkpoints. They
 remain archived on the old location, and the next run begins a history on the
 new one. Deleting a schedule can either leave its automatic checkpoints archived
 or remove checkpoints no longer referenced by another schedule. Archive decisions
-made while a location is disconnected are preserved when it reconnects. Manual
-checkpoints are never removed by schedule deletion. Deleting archived
+made while a location is disconnected are preserved when it reconnects. If
+checkpoint deletion is interrupted, removed checkpoints disappear from recovery
+choices and their remaining data is reclaimed before the next automatic run.
+Manual checkpoints are never removed by schedule deletion. Deleting archived
 checkpoints after reconnecting a location requires the current master password.
 
 ## History, Restore, and Failures

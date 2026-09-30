@@ -8,9 +8,6 @@ import type { PackageId } from './PackageId'
 import type { RetentionPolicy } from './RetentionPolicy'
 import type { Schedule } from './Schedule'
 
-/**
- * Configuration and runtime status for an automatic backup schedule.
- */
 export type BackupJob = {
   id: Guid
   name: string

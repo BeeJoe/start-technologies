@@ -5,9 +5,6 @@ import type { PackageId } from './PackageId'
 import type { RetentionPolicy } from './RetentionPolicy'
 import type { ServiceSnapshot } from './ServiceSnapshot'
 
-/**
- * Shared checkpoint history for one service on one backup target.
- */
 export type ServiceTargetHistory = {
   targetId: BackupTargetId
   targetInstanceId: string

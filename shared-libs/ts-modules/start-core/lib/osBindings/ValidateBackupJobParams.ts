@@ -6,9 +6,6 @@ import type { PackageId } from './PackageId'
 import type { RetentionPolicy } from './RetentionPolicy'
 import type { Schedule } from './Schedule'
 
-/**
- * Candidate schedule configuration checked without changing stored state.
- */
 export type ValidateBackupJobParams = {
   /**
    * Existing job being replaced, or `None` for a new job.

@@ -109,7 +109,9 @@ for the detail behind its highlights.
   with selectable timezones, capacity estimates, and configurable version
   history through the web UI and CLI. Schedules can be paused, run immediately,
   moved to another location, or deleted while keeping their checkpoints as
-  archives. Retention changes preview the checkpoints they will remove.
+  archives. Retention changes preview the checkpoints they will remove and can
+  be applied before the first checkpoint. Interrupted deletion keeps recovery
+  choices consistent and reclaims remaining data before later runs.
   Searchable backup history records the latest 1,000 completed operations,
   with failure notifications and technical details for troubleshooting.
   The overview keeps history access separate from its right-aligned schedule controls.

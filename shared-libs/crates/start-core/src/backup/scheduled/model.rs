@@ -12,18 +12,13 @@ use crate::prelude::Model;
 use crate::rpc_continuations::Guid;
 use crate::{PackageId, SYSTEM_PACKAGE_ID};
 
-/// Stable identifier for an automatic backup schedule.
 pub type BackupJobId = Guid;
-/// Stable identifier for one automatic backup execution.
 pub type BackupRunId = Guid;
-/// Stable identifier for a backup or restore activity entry.
 pub type BackupActivityId = Guid;
-/// Stable identifier for a retained service checkpoint.
 pub type ServiceSnapshotId = Guid;
 
 pub(crate) const MAX_COMPLETED_HISTORY_ITEMS: usize = 1_000;
 
-/// Selects the installed services covered by an automatic backup schedule.
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize, TS)]
 #[serde(rename_all = "camelCase", tag = "type")]
 #[ts(export)]
@@ -49,7 +44,6 @@ pub enum BackupServiceScope {
 }
 
 impl BackupServiceScope {
-    /// Returns whether this scope includes a package, including StartOS system data.
     pub fn includes(&self, package_id: &PackageId) -> bool {
         if package_id == &*SYSTEM_PACKAGE_ID {
             return match self {
@@ -105,7 +99,6 @@ impl BackupServiceScope {
     }
 }
 
-/// Explains why an enabled backup job cannot run.
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize, TS)]
 #[serde(rename_all = "camelCase", tag = "reason")]
 #[ts(export)]
@@ -117,7 +110,6 @@ pub enum BackupJobPause {
     ReauthenticationRequired,
 }
 
-/// Durable scheduling and outcome state for an automatic backup job.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
@@ -137,7 +129,6 @@ pub struct BackupJobStatus {
     pub last_result: Option<BackupRunState>,
 }
 
-/// Configuration and runtime status for an automatic backup schedule.
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
@@ -159,7 +150,6 @@ pub struct BackupJob {
     pub updated_at: DateTime<Utc>,
 }
 
-/// Identifies what caused an automatic backup run to start.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
@@ -169,7 +159,6 @@ pub enum BackupRunTrigger {
     RunNow,
 }
 
-/// Lifecycle state shared by backup runs and activity entries.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
@@ -180,7 +169,6 @@ pub enum BackupRunState {
     Failed,
 }
 
-/// Recorded execution of an automatic backup job.
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
@@ -200,7 +188,6 @@ pub struct BackupRun {
     pub error: Option<String>,
 }
 
-/// Distinguishes manual backups, automatic backups, and restores.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
@@ -210,7 +197,6 @@ pub enum BackupActivityKind {
     Restore,
 }
 
-/// User-visible history entry for a backup or restore operation.
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize, HasModel, TS)]
 #[serde(rename_all = "camelCase")]
 #[model = "Model<Self>"]
@@ -233,7 +219,6 @@ pub struct BackupActivity {
     pub error: Option<String>,
 }
 
-/// Identifies whether a checkpoint came from a manual or scheduled backup.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
@@ -242,7 +227,6 @@ pub enum BackupSource {
     Scheduled,
 }
 
-/// Metadata for one retained service checkpoint on a backup target.
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
@@ -267,7 +251,6 @@ pub struct ServiceSnapshot {
     pub archived: bool,
 }
 
-/// Retention policy and feeding jobs for one service on one target.
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
@@ -281,7 +264,6 @@ pub struct ServiceTargetRetentionPolicy {
     pub archived: bool,
 }
 
-/// PatchDB state published for automatic backups.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize, HasModel, TS)]
 #[serde(rename_all = "camelCase")]
 #[model = "Model<Self>"]
@@ -343,7 +325,6 @@ fn completed_history_overflow(
         .collect()
 }
 
-/// Shared checkpoint history for one service on one backup target.
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize, HasModel, TS)]
 #[serde(rename_all = "camelCase")]
 #[model = "Model<Self>"]
@@ -359,7 +340,6 @@ pub struct ServiceTargetHistory {
     pub archived: bool,
 }
 
-/// Consecutive connection-failure state for a backup target.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize, HasModel, TS)]
 #[serde(rename_all = "camelCase")]
 #[model = "Model<Self>"]
@@ -387,7 +367,6 @@ impl BackupTargetFailureState {
         }
     }
 
-    /// Clears the accumulated connection failures and paused-job record.
     pub fn reset(&mut self) {
         self.consecutive_connectivity_failures = 0;
         self.jobs_paused.clear();
@@ -395,7 +374,6 @@ impl BackupTargetFailureState {
     }
 }
 
-/// Pending decision about adding a newly installed service to backup jobs.
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize, HasModel, TS)]
 #[serde(rename_all = "camelCase")]
 #[model = "Model<Self>"]
@@ -407,7 +385,6 @@ pub struct NewServiceBackupReview {
     pub created_at: DateTime<Utc>,
 }
 
-/// Exact destructive effect of a proposed retention-policy change.
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]

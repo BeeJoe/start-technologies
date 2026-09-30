@@ -19,7 +19,6 @@ pub const BACKUP_REVIEW_ACTION_ID: &str = "add-to-backup-schedule";
 /// Replay identifier used when the service review task is regenerated.
 pub const BACKUP_REVIEW_REPLAY_ID: &str = "startos-add-to-backup-schedule";
 
-/// Builds the CLI/RPC handler tree for new-service backup reviews.
 pub fn review<C: Context>() -> ParentHandler<C> {
     ParentHandler::new()
         .subcommand(
