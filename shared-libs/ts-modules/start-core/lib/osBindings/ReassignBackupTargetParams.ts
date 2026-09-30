@@ -3,28 +3,10 @@ import type { BackupTargetId } from './BackupTargetId'
 import type { Guid } from './Guid'
 import type { PasswordType } from './PasswordType'
 
-/**
- * Inputs for moving an automatic backup job to another target.
- */
 export type ReassignBackupTargetParams = {
-  /**
-   * Automatic backup job ID to move.
-   */
   id: Guid
-  /**
-   * New backup target ID.
-   */
   targetId: BackupTargetId
-  /**
-   * Current master password.
-   */
   password: PasswordType
-  /**
-   * Password that encrypted the destination's existing backups.
-   */
   oldPassword?: PasswordType
-  /**
-   * Wait for the next scheduled time instead of running on the new target now.
-   */
   waitForSchedule: boolean
 }

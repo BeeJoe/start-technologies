@@ -10,6 +10,7 @@ use super::{
 use crate::PackageId;
 use crate::backup::target::BackupTargetId;
 use crate::context::RpcContext;
+use crate::db::model::DatabaseModel;
 use crate::prelude::*;
 
 /// Reconciles interrupted state and starts the automatic-backup dispatcher.
@@ -98,8 +99,30 @@ async fn reconcile_if_idle(ctx: &RpcContext) -> Result<(), Error> {
     let Some(_coordinator) = try_scheduler_slot(ctx.backup_coordinator.clone()) else {
         return Ok(());
     };
-    reconcile_interrupted_backup_state(ctx).await?;
+    let needed = needs_idle_reconciliation(&ctx.db.peek().await)?;
+    if needed {
+        reconcile_interrupted_backup_state(ctx).await?;
+    }
     Ok(())
+}
+
+fn needs_idle_reconciliation(db: &DatabaseModel) -> Result<bool, Error> {
+    let public = db.as_public();
+    if public
+        .as_server_info()
+        .as_status_info()
+        .as_backup_progress()
+        .de()?
+        .is_some()
+    {
+        return Ok(true);
+    }
+    for (_, activity) in public.as_scheduled_backups().as_activities().as_entries()? {
+        if activity.as_state().de()? == BackupRunState::Running {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 #[derive(Default)]
@@ -334,6 +357,51 @@ mod tests {
     use serde_json::json;
 
     use super::*;
+
+    fn idle_database(activities: imbl_value::Value) -> DatabaseModel {
+        DatabaseModel::from(imbl_value::json!({
+            "public": {
+                "serverInfo": { "statusInfo": { "backupProgress": null } },
+                "scheduledBackups": {
+                    "activities": activities,
+                    "histories": { "unrelated": "unread" }
+                }
+            }
+        }))
+    }
+
+    #[test]
+    fn idle_scheduler_skips_completed_history_without_reading_checkpoints() {
+        let db = idle_database(imbl_value::json!({
+            "2BY2ABKG4HN5F75DNPPL54ALW4PFXPLD": { "state": "succeeded" },
+            "WO4IBGDJGLOERNNYUQ5EDOXUMSUWU2VH": { "state": "partiallyFailed" },
+            "7ANO3T72PSPP6NFBQMVBQH6XPCGQS3BY": { "state": "failed" }
+        }));
+        assert!(!needs_idle_reconciliation(&db).unwrap());
+        assert!(!needs_idle_reconciliation(&idle_database(imbl_value::json!({}))).unwrap());
+    }
+
+    #[test]
+    fn idle_scheduler_detects_interrupted_activity_without_progress() {
+        for kind in ["automatic", "manual", "restore"] {
+            let db = idle_database(imbl_value::json!({
+                "7ANO3T72PSPP6NFBQMVBQH6XPCGQS3BY": { "kind": kind, "state": "running" }
+            }));
+            assert!(needs_idle_reconciliation(&db).unwrap());
+        }
+    }
+
+    #[test]
+    fn idle_scheduler_detects_stale_progress_without_activity() {
+        let mut db = idle_database(imbl_value::json!({}));
+        db.as_public_mut()
+            .as_server_info_mut()
+            .as_status_info_mut()
+            .as_backup_progress_mut()
+            .ser(&Some(crate::progress::FullProgress::new()))
+            .unwrap();
+        assert!(needs_idle_reconciliation(&db).unwrap());
+    }
 
     fn job_with_next_run(id: &str, next_run_at: chrono::DateTime<Utc>) -> BackupJob {
         serde_json::from_value(json!({

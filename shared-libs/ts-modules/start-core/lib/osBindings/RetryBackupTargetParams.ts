@@ -2,20 +2,8 @@
 import type { BackupTargetId } from './BackupTargetId'
 import type { PasswordType } from './PasswordType'
 
-/**
- * Inputs for reconnecting a failed automatic backup target.
- */
 export type RetryBackupTargetParams = {
-  /**
-   * Backup target to reconnect and resume.
-   */
   targetId: BackupTargetId
-  /**
-   * Current master password.
-   */
   password: PasswordType
-  /**
-   * Password that encrypted the existing backup location.
-   */
   oldPassword?: PasswordType
 }

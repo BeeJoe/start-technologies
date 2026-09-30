@@ -227,16 +227,13 @@ pub struct EstimateBackupCapacityParams {
     pub preserve_existing_policies: bool,
 }
 
-/// CLI inputs for estimating automatic backup capacity.
 #[derive(Deserialize, Serialize, Parser)]
 #[group(skip)]
 #[serde(rename_all = "camelCase")]
 #[command(rename_all = "kebab-case")]
 pub struct EstimateBackupCapacityCliParams {
-    /// Backup target to estimate.
     #[arg(help = "help.arg.backup-target-id")]
     pub target_id: BackupTargetId,
-    /// Estimate only these service package IDs. Accepts comma-separated values.
     #[arg(
         long,
         value_delimiter = ',',
@@ -244,7 +241,6 @@ pub struct EstimateBackupCapacityCliParams {
         help = "help.arg.automatic-backup-package-ids"
     )]
     pub package_ids: Vec<PackageId>,
-    /// Estimate every current and future service except these package IDs.
     #[arg(
         long,
         value_delimiter = ',',
@@ -252,10 +248,8 @@ pub struct EstimateBackupCapacityCliParams {
         help = "help.arg.automatic-backup-excluded-package-ids"
     )]
     pub exclude_package_ids: Vec<PackageId>,
-    /// Whether to include or exclude StartOS System data.
     #[arg(long, value_enum, help = "help.arg.automatic-backup-system-data")]
     pub system_data: Option<SystemDataSelection>,
-    /// Version-history rule INTERVAL:COVERAGE; accepts s, m, h, d, or w suffixes and may repeat.
     #[arg(
         long = "keep-rule",
         alias = "keep-tier",
@@ -264,7 +258,6 @@ pub struct EstimateBackupCapacityCliParams {
         help = "help.arg.automatic-backup-retention-tier"
     )]
     pub retention_tiers: Vec<RetentionTier>,
-    /// Per-service version-history rule PACKAGE_ID=INTERVAL:COVERAGE; may repeat.
     #[arg(
         long = "service-keep-rule",
         alias = "service-keep-tier",
@@ -273,7 +266,6 @@ pub struct EstimateBackupCapacityCliParams {
         help = "help.arg.automatic-backup-service-retention-tier"
     )]
     pub retention_override_tiers: Vec<(PackageId, RetentionTier)>,
-    /// Service package IDs that should keep only their latest checkpoint.
     #[arg(
         long = "service-latest-only",
         value_name = "PACKAGE_ID",
@@ -543,20 +535,16 @@ async fn refresh_histories(
     Ok(histories)
 }
 
-/// Inputs for discovering automatic backup histories on a target.
 #[derive(Deserialize, Serialize, Parser, TS)]
 #[group(skip)]
 #[ts(export)]
 #[serde(rename_all = "camelCase")]
 #[command(rename_all = "kebab-case")]
 pub struct DiscoverScheduledBackupsParams {
-    /// Backup target containing the automatic checkpoints.
     #[arg(help = "help.arg.backup-target-id")]
     pub target_id: BackupTargetId,
-    /// Source StartOS server ID stored on the backup target.
     #[arg(help = "help.arg.server-id")]
     pub server_id: String,
-    /// Master password that encrypted the source server's checkpoints.
     #[arg(help = "help.arg.backup-password")]
     pub password: String,
 }
@@ -805,25 +793,19 @@ pub struct DeleteArchivedSnapshotsBulkParams {
     pub old_password: Option<String>,
 }
 
-/// CLI inputs for deleting archived automatic backup snapshots.
 #[derive(Deserialize, Serialize, Parser)]
 #[group(skip)]
 #[serde(rename_all = "camelCase")]
 #[command(rename_all = "kebab-case")]
 pub struct DeleteArchivedSnapshotsCliParams {
-    /// Backup target containing the archived checkpoints.
     #[arg(help = "help.arg.backup-target-id")]
     pub target_id: BackupTargetId,
-    /// Service package ID whose archived checkpoints should be deleted.
     #[arg(help = "help.arg.package-id")]
     pub package_id: PackageId,
-    /// Automatic checkpoint IDs to delete.
     #[arg(required = true, help = "help.arg.automatic-backup-snapshot-ids")]
     pub snapshot_ids: Vec<ServiceSnapshotId>,
-    /// Current master password.
     #[arg(long, help = "help.arg.backup-password")]
     pub password: String,
-    /// Password that encrypted the existing backup location.
     #[arg(long, help = "help.arg.old-backup-password")]
     #[serde(default)]
     pub old_password: Option<String>,
@@ -1074,20 +1056,16 @@ fn one_target_instance_id(
         .clone())
 }
 
-/// Inputs for reconnecting a failed automatic backup target.
 #[derive(Deserialize, Serialize, Parser, TS)]
 #[group(skip)]
 #[ts(export)]
 #[serde(rename_all = "camelCase")]
 #[command(rename_all = "kebab-case")]
 pub struct RetryBackupTargetParams {
-    /// Backup target to reconnect and resume.
     #[arg(help = "help.arg.backup-target-id")]
     pub target_id: BackupTargetId,
-    /// Current master password.
     #[arg(help = "help.arg.backup-password")]
     pub password: PasswordType,
-    /// Password that encrypted the existing backup location.
     #[arg(long, help = "help.arg.old-backup-password")]
     #[serde(default)]
     #[ts(optional)]
@@ -1261,28 +1239,22 @@ fn update_job_schedule(
     reschedule_job(job, now)
 }
 
-/// Inputs for moving an automatic backup job to another target.
 #[derive(Deserialize, Serialize, Parser, TS)]
 #[group(skip)]
 #[ts(export)]
 #[serde(rename_all = "camelCase")]
 #[command(rename_all = "kebab-case")]
 pub struct ReassignBackupTargetParams {
-    /// Automatic backup job ID to move.
     #[arg(help = "help.arg.automatic-backup-job-id")]
     pub id: BackupJobId,
-    /// New backup target ID.
     #[arg(help = "help.arg.backup-target-id")]
     pub target_id: BackupTargetId,
-    /// Current master password.
     #[arg(help = "help.arg.backup-password")]
     pub password: PasswordType,
-    /// Password that encrypted the destination's existing backups.
     #[arg(long, help = "help.arg.old-backup-password")]
     #[serde(default)]
     #[ts(optional)]
     pub old_password: Option<PasswordType>,
-    /// Wait for the next scheduled time instead of running on the new target now.
     #[arg(long, help = "help.arg.automatic-backup-wait-for-schedule")]
     #[serde(default)]
     pub wait_for_schedule: bool,
@@ -1391,19 +1363,15 @@ pub async fn preview_policy_change(
     policy_preview(&db, &params)
 }
 
-/// CLI inputs for previewing a retention-policy change.
 #[derive(Deserialize, Serialize, Parser)]
 #[group(skip)]
 #[serde(rename_all = "camelCase")]
 #[command(rename_all = "kebab-case")]
 pub struct PreviewRetentionPolicyCliParams {
-    /// Backup target containing the automatic checkpoints.
     #[arg(help = "help.arg.backup-target-id")]
     pub target_id: BackupTargetId,
-    /// Service package ID whose automatic checkpoints should use this policy.
     #[arg(help = "help.arg.package-id")]
     pub package_id: PackageId,
-    /// Version-history rule INTERVAL:COVERAGE; accepts s, m, h, d, or w suffixes and may repeat.
     #[arg(
         long = "keep-rule",
         alias = "keep-tier",
@@ -1414,7 +1382,6 @@ pub struct PreviewRetentionPolicyCliParams {
         help = "help.arg.automatic-backup-retention-tier"
     )]
     pub retention_tiers: Vec<RetentionTier>,
-    /// Keep only the latest automatic checkpoint.
     #[arg(
         long,
         required_unless_present = "retention_tiers",
@@ -1453,19 +1420,15 @@ pub struct UpdateRetentionPolicyParams {
     pub confirmed_removals: BTreeSet<ServiceSnapshotId>,
 }
 
-/// CLI inputs for applying an automatic backup retention policy.
 #[derive(Deserialize, Serialize, Parser)]
 #[group(skip)]
 #[serde(rename_all = "camelCase")]
 #[command(rename_all = "kebab-case")]
 pub struct ApplyRetentionPolicyCliParams {
-    /// Backup target containing the automatic checkpoints.
     #[arg(help = "help.arg.backup-target-id")]
     pub target_id: BackupTargetId,
-    /// Service package ID whose automatic checkpoints should use this policy.
     #[arg(help = "help.arg.package-id")]
     pub package_id: PackageId,
-    /// Version-history rule INTERVAL:COVERAGE; accepts s, m, h, d, or w suffixes and may repeat.
     #[arg(
         long = "keep-rule",
         alias = "keep-tier",
@@ -1476,14 +1439,12 @@ pub struct ApplyRetentionPolicyCliParams {
         help = "help.arg.automatic-backup-retention-tier"
     )]
     pub retention_tiers: Vec<RetentionTier>,
-    /// Keep only the latest automatic checkpoint.
     #[arg(
         long,
         required_unless_present = "retention_tiers",
         help = "help.arg.automatic-backup-latest-only"
     )]
     pub latest_only: bool,
-    /// Checkpoint ID reported as removed by preview-change. Repeat for every reported ID.
     #[arg(
         long = "confirm-removal",
         value_name = "CHECKPOINT_ID",
@@ -1675,40 +1636,32 @@ pub struct ValidateBackupJobParams {
     pub enabled: bool,
 }
 
-/// Omitting service filters includes every current and future service.
 #[derive(Deserialize, Serialize, Parser)]
 #[group(skip)]
 #[serde(rename_all = "camelCase")]
 #[command(rename_all = "kebab-case")]
 pub struct AddBackupJobCliParams {
-    /// Display name for the automatic backup job.
     #[arg(help = "help.arg.automatic-backup-job-name")]
     pub name: String,
-    /// Backup target identifier, such as cifs-0 or disk-/dev/sda1.
     #[arg(help = "help.arg.backup-target-id")]
     pub target_id: BackupTargetId,
-    /// Current master password.
     #[arg(help = "help.arg.backup-password")]
     pub password: PasswordType,
-    /// Password that encrypted the existing backup location.
     #[arg(long, help = "help.arg.old-backup-password")]
     #[serde(default)]
     pub old_password: Option<PasswordType>,
-    /// Five-field cron expression (minute, hour, day of month, month, weekday).
     #[arg(
         long,
         default_value = "0 3 * * *",
         help = "help.arg.automatic-backup-cron"
     )]
     pub cron: String,
-    /// IANA timezone for the schedule.
     #[arg(
         long,
         default_value = "UTC",
         help = "help.arg.automatic-backup-timezone"
     )]
     pub timezone: String,
-    /// Back up only these service package IDs. Accepts comma-separated values.
     #[arg(
         long,
         value_delimiter = ',',
@@ -1716,7 +1669,6 @@ pub struct AddBackupJobCliParams {
         help = "help.arg.automatic-backup-package-ids"
     )]
     pub package_ids: Vec<PackageId>,
-    /// Back up every current and future service except these package IDs.
     #[arg(
         long,
         value_delimiter = ',',
@@ -1724,10 +1676,8 @@ pub struct AddBackupJobCliParams {
         help = "help.arg.automatic-backup-excluded-package-ids"
     )]
     pub exclude_package_ids: Vec<PackageId>,
-    /// Whether to include or exclude StartOS System data.
     #[arg(long, value_enum, help = "help.arg.automatic-backup-system-data")]
     pub system_data: Option<SystemDataSelection>,
-    /// Version-history rule INTERVAL:COVERAGE; accepts s, m, h, d, or w suffixes and may repeat.
     #[arg(
         long = "keep-rule",
         alias = "keep-tier",
@@ -1736,7 +1686,6 @@ pub struct AddBackupJobCliParams {
         help = "help.arg.automatic-backup-retention-tier"
     )]
     pub retention_tiers: Vec<RetentionTier>,
-    /// Per-service version-history rule PACKAGE_ID=INTERVAL:COVERAGE; may repeat.
     #[arg(
         long = "service-keep-rule",
         alias = "service-keep-tier",
@@ -1745,7 +1694,6 @@ pub struct AddBackupJobCliParams {
         help = "help.arg.automatic-backup-service-retention-tier"
     )]
     pub retention_override_tiers: Vec<(PackageId, RetentionTier)>,
-    /// Service package IDs that should keep only their latest checkpoint.
     #[arg(
         long = "service-latest-only",
         value_name = "PACKAGE_ID",
@@ -1753,7 +1701,6 @@ pub struct AddBackupJobCliParams {
         help = "help.arg.automatic-backup-service-latest-only"
     )]
     pub latest_only_overrides: Vec<PackageId>,
-    /// Create the job paused instead of scheduling its first run.
     #[arg(long, help = "help.arg.automatic-backup-disabled")]
     pub disabled: bool,
 }
@@ -1800,32 +1747,25 @@ pub async fn add_cli(
     .await
 }
 
-/// Update only the automatic backup job settings supplied on the command line.
 #[derive(Deserialize, Serialize, Parser)]
 #[group(skip)]
 #[serde(rename_all = "camelCase")]
 #[command(rename_all = "kebab-case")]
 pub struct EditBackupJobCliParams {
-    /// Automatic backup job ID.
     #[arg(help = "help.arg.automatic-backup-job-id")]
     pub id: BackupJobId,
-    /// New display name.
     #[arg(long, help = "help.arg.automatic-backup-job-name")]
     pub name: Option<String>,
-    /// New five-field cron expression (minute, hour, day of month, month, weekday).
     #[arg(long, help = "help.arg.automatic-backup-cron")]
     pub cron: Option<String>,
-    /// New IANA timezone for the schedule.
     #[arg(long, help = "help.arg.automatic-backup-timezone")]
     pub timezone: Option<String>,
-    /// Back up every current and future service.
     #[arg(
         long,
         conflicts_with_all = ["package_ids", "exclude_package_ids"],
         help = "help.arg.automatic-backup-all-services"
     )]
     pub all_services: bool,
-    /// Back up only these service package IDs. Accepts comma-separated values.
     #[arg(
         long,
         value_delimiter = ',',
@@ -1833,7 +1773,6 @@ pub struct EditBackupJobCliParams {
         help = "help.arg.automatic-backup-package-ids"
     )]
     pub package_ids: Vec<PackageId>,
-    /// Back up every current and future service except these package IDs.
     #[arg(
         long,
         value_delimiter = ',',
@@ -1841,10 +1780,8 @@ pub struct EditBackupJobCliParams {
         help = "help.arg.automatic-backup-excluded-package-ids"
     )]
     pub exclude_package_ids: Vec<PackageId>,
-    /// Change whether the job includes StartOS System data.
     #[arg(long, value_enum, help = "help.arg.automatic-backup-system-data")]
     pub system_data: Option<SystemDataSelection>,
-    /// Version-history rule INTERVAL:COVERAGE; accepts s, m, h, d, or w suffixes and may repeat.
     #[arg(
         long = "keep-rule",
         alias = "keep-tier",
@@ -1854,10 +1791,8 @@ pub struct EditBackupJobCliParams {
         help = "help.arg.automatic-backup-retention-tier"
     )]
     pub retention_tiers: Vec<RetentionTier>,
-    /// Keep only the latest automatic checkpoint.
     #[arg(long, help = "help.arg.automatic-backup-latest-only")]
     pub latest_only: bool,
-    /// Set per-service version-history rule PACKAGE_ID=INTERVAL:COVERAGE; may repeat.
     #[arg(
         long = "service-keep-rule",
         alias = "service-keep-tier",
@@ -1866,7 +1801,6 @@ pub struct EditBackupJobCliParams {
         help = "help.arg.automatic-backup-service-retention-tier"
     )]
     pub retention_override_tiers: Vec<(PackageId, RetentionTier)>,
-    /// Set these service package IDs to latest-checkpoint-only retention.
     #[arg(
         long = "service-latest-only",
         value_name = "PACKAGE_ID",
@@ -1874,7 +1808,6 @@ pub struct EditBackupJobCliParams {
         help = "help.arg.automatic-backup-service-latest-only"
     )]
     pub latest_only_overrides: Vec<PackageId>,
-    /// Remove per-service overrides so these packages use the job default.
     #[arg(
         long = "use-default-retention",
         value_name = "PACKAGE_ID",
@@ -2092,16 +2025,13 @@ pub fn parse_review_decision(value: &str) -> Result<(BackupJobId, bool), String>
     ))
 }
 
-/// CLI inputs for resolving a newly installed service's backup review.
 #[derive(Deserialize, Serialize, Parser)]
 #[group(skip)]
 #[serde(rename_all = "camelCase")]
 #[command(rename_all = "kebab-case")]
 pub struct ResolveBackupReviewCliParams {
-    /// Newly installed service package ID awaiting a backup decision.
     #[arg(help = "help.arg.package-id")]
     pub package_id: PackageId,
-    /// Decision for a current job, as JOB_ID=add or JOB_ID=skip. Repeat for every job.
     #[arg(
         long = "decision",
         value_parser = parse_review_decision,
@@ -2127,26 +2057,21 @@ pub async fn resolve_review_cli(
     .await
 }
 
-/// CLI inputs for restoring selected automatic backup checkpoints.
 #[derive(Deserialize, Serialize, Parser)]
 #[group(skip)]
 #[serde(rename_all = "camelCase")]
 #[command(rename_all = "kebab-case")]
 pub struct RestoreAutomaticCheckpointCliParams {
-    /// Backup target containing the automatic checkpoints.
     #[arg(help = "help.arg.backup-target-id")]
     pub target_id: BackupTargetId,
-    /// Checkpoint selection as PACKAGE_ID=SNAPSHOT_ID. Repeat to restore multiple services.
     #[arg(
         required = true,
         value_parser = parse_checkpoint_selection,
         help = "help.arg.automatic-backup-checkpoint-selection"
     )]
     pub checkpoints: Vec<(PackageId, ServiceSnapshotId)>,
-    /// Source StartOS server ID. Defaults to this server.
     #[arg(long, help = "help.arg.server-id")]
     pub server_id: Option<String>,
-    /// Master password, required when this server has no saved target credential.
     #[arg(long, help = "help.arg.backup-password")]
     pub password: Option<String>,
 }
@@ -2496,37 +2421,31 @@ pub async fn set_enabled_bulk(
     Ok(jobs)
 }
 
-/// Inputs for deleting an automatic backup job.
 #[derive(Deserialize, Serialize, Parser, TS)]
 #[group(skip)]
 #[ts(export)]
 #[serde(rename_all = "camelCase")]
 #[command(rename_all = "kebab-case")]
 pub struct DeleteBackupJobParams {
-    /// Automatic backup job ID.
     #[arg(help = "help.arg.automatic-backup-job-id")]
     pub id: BackupJobId,
 }
 
-/// Inputs for immediately running an automatic backup job.
 #[derive(Deserialize, Serialize, Parser, TS)]
 #[group(skip)]
 #[ts(export)]
 #[serde(rename_all = "camelCase")]
 #[command(rename_all = "kebab-case")]
 pub struct RunBackupJobNowParams {
-    /// Automatic backup job ID.
     #[arg(help = "help.arg.automatic-backup-job-id")]
     pub id: BackupJobId,
 }
 
-/// CLI input containing an automatic backup job identifier.
 #[derive(Deserialize, Serialize, Parser)]
 #[group(skip)]
 #[serde(rename_all = "camelCase")]
 #[command(rename_all = "kebab-case")]
 pub struct BackupJobIdCliParams {
-    /// Automatic backup job ID.
     #[arg(help = "help.arg.automatic-backup-job-id")]
     pub id: BackupJobId,
 }

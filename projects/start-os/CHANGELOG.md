@@ -104,28 +104,21 @@ for the detail behind its highlights.
   `balance_power` when available. Without a saved preference, all other systems
   retain their current value.
 
-- **Automatic backups.** StartOS can protect optional System data and selected
-  current or future services on hourly, daily, weekly, or monthly schedules
-  with selectable timezones, daylight-saving-safe edits and resumes, capacity
-  estimates that account for service-data growth, and configurable version
-  history through the web UI and CLI. Custom CLI retention rules retain their
-  saved intervals in the web UI. Schedules can be paused, run immediately,
-  moved to another location, or deleted while keeping their checkpoints as
-  archives. Retention changes preview the checkpoints they will remove and can
-  be applied before the first checkpoint. Interrupted deletion keeps recovery
-  choices consistent and reclaims remaining data before later runs.
-  Searchable backup history records the latest 1,000 completed operations,
+- **Automatic backups.** Protect System data and selected current or future
+  services on hourly, daily, weekly, or monthly schedules through the web UI
+  and CLI. Schedules support timezones, daylight-saving changes, capacity
+  estimates, and configurable version history. Custom CLI retention rules
+  display their saved intervals in the web UI. Pause schedules, run them
+  immediately, move them to another location, or delete them while keeping
+  their checkpoints archived. Retention changes preview the checkpoints they
+  will remove. Searchable history keeps the latest 1,000 completed operations,
   with failure notifications and technical details for troubleshooting.
-  The overview keeps history access separate from its right-aligned schedule controls.
-  Existing locations remain usable after a server password change by supplying
-  their original backup password. Restore can mix manual and automatic
-  checkpoints by service, and initial setup can recover a server from its latest
-  automatic System and service checkpoints. Interrupted staging is reclaimed
-  before later runs, and capacity previews account for edited retention and
-  checkpoints already stored. Deleted backup data is compacted before disconnecting
-  the location. Backup and restore links open the requested controls.
-  A stalled service backup procedure
-  stops after six hours.
+  Restore services from a mix of manual and automatic checkpoints, or recover
+  a server during initial setup from its latest automatic checkpoints.
+  Existing locations can be unlocked with their original backup password
+  after a server password change. Interrupted backups preserve completed
+  checkpoints and reclaim incomplete backup data before later runs.
+  A stalled service backup procedure stops after six hours.
 
 - **A service can permanently retire a network host or a port it no longer
   uses, and the port numbers it held become available again.** A service that

@@ -1,6 +1,7 @@
-import { inject, Injectable, signal } from '@angular/core'
+import { computed, inject, Injectable, signal } from '@angular/core'
 import {
   DialogService,
+  convertBytes,
   ErrorService,
   getErrorMessage,
   i18nPipe,
@@ -45,6 +46,31 @@ export class BackupService {
   readonly cifs = signal<MappedBackupTarget<CifsBackupTarget>[]>([])
   readonly drives = signal<MappedBackupTarget<DiskBackupTarget>[]>([])
   readonly loading = signal(true)
+  readonly locations = computed(() => [
+    ...this.cifs().map(location => ({
+      id: location.id,
+      location,
+      name: location.entry.path.split('/').pop() || location.entry.path,
+      detail: formatCifsLocation(location.entry),
+      icon: '@tui.network',
+      available: location.entry.mountable,
+      capacity: null as number | null,
+      used: null as number | null,
+    })),
+    ...this.drives().map(location => ({
+      id: location.id,
+      location,
+      name:
+        [location.entry.vendor, location.entry.model]
+          .filter(Boolean)
+          .join(' ') || location.entry.logicalname,
+      detail: `${location.entry.logicalname} · ${convertBytes(location.entry.capacity)}`,
+      icon: '@tui.hard-drive',
+      available: location.entry.capacity > 0,
+      capacity: location.entry.capacity,
+      used: location.entry.used,
+    })),
+  ])
 
   async getBackupTargets(): Promise<void> {
     this.loading.set(true)

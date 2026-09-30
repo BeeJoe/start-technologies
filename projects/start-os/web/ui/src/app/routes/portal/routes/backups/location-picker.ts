@@ -1,5 +1,5 @@
 import { Component, computed, inject, input, output } from '@angular/core'
-import { convertBytes, i18nPipe } from '@start9labs/shared'
+import { i18nPipe } from '@start9labs/shared'
 import {
   TuiAppearance,
   TuiButton,
@@ -14,7 +14,6 @@ import {
 } from 'src/app/services/api/api.types'
 import {
   BackupService,
-  formatCifsLocation,
   MappedBackupTarget,
 } from '../system/routes/backups/backup.service'
 
@@ -237,29 +236,13 @@ export class BackupLocationPicker {
   readonly selected = output<Location>()
   readonly manage = output<void>()
 
-  protected readonly targets = computed(() => [
-    ...this.backupService.cifs().map(location => ({
-      location,
-      name: location.entry.path.split('/').pop() || location.entry.path,
-      detail: formatCifsLocation(location.entry),
-      icon: '@tui.network',
+  protected readonly targets = computed(() =>
+    this.backupService.locations().map(target => ({
+      ...target,
       available:
-        location.entry.mountable &&
-        (this.mode() !== 'restore' || location.hasAnyBackup),
-      reason: !location.entry.mountable ? 'Unavailable' : 'No backups found',
+        target.available &&
+        (this.mode() !== 'restore' || target.location.hasAnyBackup),
+      reason: target.available ? 'No backups found' : 'Unavailable',
     })),
-    ...this.backupService.drives().map(location => ({
-      location,
-      name:
-        [location.entry.vendor, location.entry.model]
-          .filter(Boolean)
-          .join(' ') || location.entry.logicalname,
-      detail: `${location.entry.logicalname} · ${convertBytes(location.entry.capacity)}`,
-      icon: '@tui.hard-drive',
-      available:
-        location.entry.capacity > 0 &&
-        (this.mode() !== 'restore' || location.hasAnyBackup),
-      reason: 'No backups found',
-    })),
-  ])
+  )
 }

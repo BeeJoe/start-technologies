@@ -43,10 +43,7 @@ import { ApiService } from 'src/app/services/api/embassy-api.service'
 import { DataModel } from 'src/app/services/patch-db/data-model'
 import { TitleDirective } from 'src/app/services/title.service'
 import { getManifest } from 'src/app/utils/get-package-data'
-import {
-  BackupService,
-  formatCifsLocation,
-} from '../system/routes/backups/backup.service'
+import { BackupService } from '../system/routes/backups/backup.service'
 import {
   BACKUP_RETENTION_INTERVALS,
   BackupRetentionInterval,
@@ -907,29 +904,6 @@ export default class AutomaticBackups {
     () => this.jobs().length > 0 && this.activeJobCount() === 0,
   )
   protected readonly primary = computed(() => this.jobs()[0])
-  protected readonly targets = computed(() => [
-    ...this.backupService.cifs().map(target => ({
-      id: target.id,
-      name: target.entry.path.split('/').pop() || target.entry.path,
-      detail: formatCifsLocation(target.entry),
-      icon: '@tui.network',
-      available: target.entry.mountable,
-      capacity: null as number | null,
-      used: null as number | null,
-    })),
-    ...this.backupService.drives().map(target => ({
-      id: target.id,
-      name:
-        [target.entry.vendor, target.entry.model].filter(Boolean).join(' ') ||
-        target.entry.logicalname,
-      detail: `${target.entry.logicalname} · ${convertBytes(target.entry.capacity)}`,
-      icon: '@tui.hard-drive',
-      available: target.entry.capacity > 0,
-      capacity: target.entry.capacity,
-      used: target.entry.used,
-    })),
-  ])
-
   protected editor: AutomaticEditor = this.defaultEditor()
   protected readonly allServicesControl = this.formBuilder.control(true)
   protected passwordMasked = true
@@ -942,7 +916,9 @@ export default class AutomaticBackups {
 
   private async initialize() {
     await this.backupService.getBackupTargets()
-    this.targetId.set(this.targets().find(target => target.available)?.id || '')
+    this.targetId.set(
+      this.backupService.locations().find(target => target.available)?.id || '',
+    )
     this.ensureServices()
     this.setupBaseline = this.setupSnapshot()
     this.loading.set(false)
@@ -1159,7 +1135,9 @@ export default class AutomaticBackups {
 
   protected selectedTargetName(): string {
     return (
-      this.targets().find(target => target.id === this.targetId())?.name || '—'
+      this.backupService
+        .locations()
+        .find(target => target.id === this.targetId())?.name || '—'
     )
   }
 
@@ -1213,7 +1191,9 @@ export default class AutomaticBackups {
   }
 
   protected capacityAvailable(): number | null {
-    const target = this.targets().find(item => item.id === this.targetId())
+    const target = this.backupService
+      .locations()
+      .find(item => item.id === this.targetId())
     return target?.capacity != null && target.used != null
       ? Math.max(0, target.capacity - target.used)
       : null
