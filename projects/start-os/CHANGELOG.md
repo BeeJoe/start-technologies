@@ -108,7 +108,8 @@ for the detail behind its highlights.
   current or future services on hourly, daily, weekly, or monthly schedules
   with selectable timezones, daylight-saving-safe edits and resumes, capacity
   estimates that account for service-data growth, and configurable version
-  history through the web UI and CLI. Schedules can be paused, run immediately,
+  history through the web UI and CLI. Custom CLI retention rules retain their
+  saved intervals in the web UI. Schedules can be paused, run immediately,
   moved to another location, or deleted while keeping their checkpoints as
   archives. Retention changes preview the checkpoints they will remove and can
   be applied before the first checkpoint. Interrupted deletion keeps recovery

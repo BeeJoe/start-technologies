@@ -478,19 +478,27 @@ export function scheduleNeedsMoreFrequentRuns(
 export function formatBackupRetentionRule(
   rule: BackupRetentionRuleValue,
   translate: (
-    label: BackupRetentionPeriodLabel | 'Keep one backup every' | 'for',
+    label:
+      | BackupRetentionPeriodLabel
+      | 'Minute'
+      | 'Minutes'
+      | 'Keep one backup every'
+      | 'for',
   ) => string,
 ): string {
   const every = translate('Keep one backup every')
   const forLabel = translate('for')
   if (rule.interval === 'custom') {
-    const intervalUnit = translate(
-      rule.customIntervalHours === 1 ? 'hour' : 'hours',
-    )
-    const coverageUnit = translate(
-      rule.customCoverageHours === 1 ? 'hour' : 'hours',
-    )
-    return `${every} ${rule.customIntervalHours} ${intervalUnit} ${forLabel} ${rule.customCoverageHours} ${coverageUnit}`
+    const duration = (hours = 0) => {
+      const seconds = Math.round(hours * 3600)
+      if (seconds % 60) return `${seconds}s`
+      const minutes = seconds / 60
+      if (minutes % 60) {
+        return `${minutes} ${translate(minutes === 1 ? 'Minute' : 'Minutes')}`
+      }
+      return `${minutes / 60} ${translate(minutes === 60 ? 'hour' : 'hours')}`
+    }
+    return `${every} ${duration(rule.customIntervalHours)} ${forLabel} ${duration(rule.customCoverageHours)}`
   }
   return `${every} ${translate(rule.interval)} ${forLabel} ${rule.duration} ${translate(retentionPeriodLabel(rule.interval, rule.duration))}`
 }

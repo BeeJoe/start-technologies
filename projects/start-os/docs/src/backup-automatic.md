@@ -73,6 +73,9 @@ existing checkpoints or restrict the new timing. An empty history detached from
 every schedule adopts the new schedule's policy and timezone.
 Editing a schedule's name or timing preserves the location's saved history policy.
 Version-history rules can be changed before the first successful checkpoint.
+Custom rules created through the CLI appear with their saved interval and
+coverage in the web UI. Remove a custom rule and add a replacement to change it
+through the UI.
 
 Schedules that share a physical drive or network folder must select the same
 backup-location entry. If StartOS reports that another schedule already uses

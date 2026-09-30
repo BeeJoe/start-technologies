@@ -85,24 +85,14 @@ import {
   parseBackupSchedule,
   parseBackupServiceSelection,
   removeBackupRetentionRule,
-  retentionIntervalFromSeconds,
-  retentionIntervalSeconds,
   serializeBackupRetentionTier,
   serializeBackupSchedule,
   serializeBackupServiceSelection,
   SYSTEM_PACKAGE_ID,
 } from './scheduled-utils'
 
-interface EditableRetentionRule extends BackupRetentionTierEditor {
-  preserved: {
-    tier: T.RetentionTier
-    interval: BackupRetentionTierEditor['interval']
-    duration: number
-  } | null
-}
-
 interface RetentionOverrideEditor {
-  tiers: EditableRetentionRule[]
+  tiers: BackupRetentionTierEditor[]
 }
 
 interface ConfirmedRetentionChange {
@@ -113,14 +103,14 @@ interface ConfirmedRetentionChange {
 
 interface JobEditorValue
   extends
-    EditableRetentionRule,
+    BackupRetentionTierEditor,
     BackupScheduleFormValue,
     BackupServiceSelection {
   id?: string
   name: string
   targetId: string
   keepAdditional: boolean
-  additionalTiers: EditableRetentionRule[]
+  additionalTiers: BackupRetentionTierEditor[]
   retentionOverrides: Record<string, RetentionOverrideEditor>
   password: string
   firstBackupNow: boolean
@@ -143,7 +133,7 @@ class BackupJobName {
 class JobEditor
   extends BackupScheduleEditor
   implements
-    EditableRetentionRule,
+    BackupRetentionTierEditor,
     BackupScheduleFormValue,
     BackupServiceSelection
 {
@@ -155,8 +145,7 @@ class JobEditor
   duration: number
   customIntervalHours: number
   customCoverageHours: number
-  preserved: EditableRetentionRule['preserved']
-  additionalTiers: EditableRetentionRule[]
+  additionalTiers: BackupRetentionTierEditor[]
   retentionOverrides: Record<string, RetentionOverrideEditor>
 
   readonly form
@@ -171,7 +160,6 @@ class JobEditor
     this.duration = value.duration
     this.customIntervalHours = value.customIntervalHours
     this.customCoverageHours = value.customCoverageHours
-    this.preserved = value.preserved
     this.additionalTiers = value.additionalTiers
     this.retentionOverrides = value.retentionOverrides
     this.form = formBuilder.group({
@@ -213,7 +201,6 @@ class JobEditor
       duration: this.duration,
       customIntervalHours: this.customIntervalHours,
       customCoverageHours: this.customCoverageHours,
-      preserved: this.preserved,
       additionalTiers: this.additionalTiers,
       retentionOverrides: this.retentionOverrides,
       ...this.form.getRawValue(),
@@ -1472,7 +1459,7 @@ export class ScheduledBackups {
       dayOfMonth: now.getDate(),
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
       keepAdditional: false,
-      ...this.newRetentionRule(),
+      ...parseBackupRetentionTier(),
       additionalTiers: [],
       retentionOverrides: {},
       password: '',
@@ -1565,7 +1552,7 @@ export class ScheduledBackups {
       this.packages().map(pkg => pkg.id),
     )
     const [tier, ...additionalTiers] = job.defaultRetention.tiers
-    const retention = this.editableRetentionTier(tier)
+    const retention = parseBackupRetentionTier(tier)
     const form = new JobEditor(this.formBuilder, {
       id: job.id,
       name: job.name,
@@ -1575,7 +1562,7 @@ export class ScheduledBackups {
       keepAdditional: !!tier,
       ...retention,
       additionalTiers: additionalTiers.map(item =>
-        this.editableRetentionTier(item),
+        parseBackupRetentionTier(item),
       ),
       retentionOverrides: Object.fromEntries(
         Object.entries(job.retentionOverrides).map(([packageId, policy]) => [
@@ -1596,11 +1583,11 @@ export class ScheduledBackups {
   }
 
   protected removeRetentionRule(form: JobEditor, index: number) {
-    const result = removeBackupRetentionRule<EditableRetentionRule>(
+    const result = removeBackupRetentionRule<BackupRetentionTierEditor>(
       form,
       form.additionalTiers,
       index,
-      this.newRetentionRule(),
+      parseBackupRetentionTier(),
     )
     Object.assign(form, result.primary)
     form.additionalTiers = result.additional
@@ -1608,7 +1595,7 @@ export class ScheduledBackups {
     form.capacityConfirmed = false
   }
 
-  protected retentionRules(form: JobEditor): EditableRetentionRule[] {
+  protected retentionRules(form: JobEditor): BackupRetentionTierEditor[] {
     return [form, ...form.additionalTiers]
   }
 
@@ -1624,7 +1611,7 @@ export class ScheduledBackups {
   }
 
   protected addRetentionRule(form: JobEditor) {
-    form.additionalTiers.push(this.newRetentionRule())
+    form.additionalTiers.push(parseBackupRetentionTier())
     form.capacityConfirmed = false
   }
 
@@ -2084,13 +2071,6 @@ export class ScheduledBackups {
       .join(' · ')
   }
 
-  protected newRetentionRule(): EditableRetentionRule {
-    return {
-      ...parseBackupRetentionTier(),
-      preserved: null,
-    }
-  }
-
   protected canSave(form: JobEditor): boolean {
     return !!(
       form.name.trim() &&
@@ -2200,64 +2180,26 @@ export class ScheduledBackups {
     if (!form.keepAdditional) return { tiers: [] }
     return {
       tiers: [
-        this.serializeRetentionRule(form),
+        serializeBackupRetentionTier(form),
         ...this.policy(form.additionalTiers).tiers,
       ],
     }
   }
 
-  private policy(tiers: EditableRetentionRule[]): T.RetentionPolicy {
+  private policy(tiers: BackupRetentionTierEditor[]): T.RetentionPolicy {
     return {
-      tiers: tiers.map(tier => this.serializeRetentionRule(tier)),
+      tiers: tiers.map(tier => serializeBackupRetentionTier(tier)),
     }
   }
 
-  private toTierEditors(policy: T.RetentionPolicy): EditableRetentionRule[] {
-    return policy.tiers.map(tier => this.editableRetentionTier(tier))
+  private toTierEditors(
+    policy: T.RetentionPolicy,
+  ): BackupRetentionTierEditor[] {
+    return policy.tiers.map(tier => parseBackupRetentionTier(tier))
   }
 
   private editorSnapshot(form: JobEditor): string {
     return JSON.stringify(form)
-  }
-
-  private editableRetentionTier(tier?: T.RetentionTier): EditableRetentionRule {
-    const parsed = parseBackupRetentionTier(tier)
-    if (parsed.interval !== 'custom' || !tier) {
-      return {
-        ...parsed,
-        preserved: null,
-      }
-    }
-
-    const interval = retentionIntervalFromSeconds(tier.intervalSeconds)
-    const duration = Math.max(
-      1,
-      Math.min(
-        365,
-        Math.round(tier.coverageSeconds / retentionIntervalSeconds(interval)),
-      ),
-    )
-    return {
-      ...parsed,
-      interval,
-      duration,
-      preserved: {
-        tier: structuredClone(tier),
-        interval,
-        duration,
-      },
-    }
-  }
-
-  private serializeRetentionRule(rule: EditableRetentionRule): T.RetentionTier {
-    if (
-      rule.preserved &&
-      rule.interval === rule.preserved.interval &&
-      rule.duration === rule.preserved.duration
-    ) {
-      return structuredClone(rule.preserved.tier)
-    }
-    return serializeBackupRetentionTier(rule)
   }
 
   private async performAndReload<T>(action: () => Promise<T>) {

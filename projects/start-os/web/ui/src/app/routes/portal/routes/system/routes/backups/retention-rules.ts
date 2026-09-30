@@ -15,6 +15,7 @@ import {
   BackupRetentionInterval,
   backupRetentionIntervalLabel,
   BackupRetentionRuleValue,
+  formatBackupRetentionRule,
   retentionPeriodLabel,
 } from './scheduled-utils'
 
@@ -24,33 +25,38 @@ import {
     <div class="retention-rules">
       @for (ruleForm of ruleForms(); track ruleForm; let index = $index) {
         <div class="retention-rule" [formGroup]="ruleForm">
-          <span>{{ 'Keep one backup every' | i18n }}</span>
-          <tui-textfield
-            tuiChevron
-            [stringify]="stringifyInterval"
-            [tuiTextfieldCleaner]="false"
-          >
-            <label tuiLabel>{{ 'Frequency' | i18n }}</label>
-            <input tuiSelect formControlName="interval" />
-            <tui-data-list *tuiDropdown>
-              @for (interval of intervals; track interval) {
-                <button tuiOption [value]="interval">
-                  {{ stringifyInterval(interval) }}
-                </button>
-              }
-            </tui-data-list>
-          </tui-textfield>
-          <span>{{ 'for' | i18n }}</span>
-          <tui-textfield class="duration-field">
-            <label tuiLabel>{{ 'Duration' | i18n }}</label>
-            <input
-              tuiInputNumber
-              formControlName="duration"
-              [min]="1"
-              [max]="365"
-            />
-          </tui-textfield>
-          <span>{{ period(ruleForm.getRawValue()) | i18n }}</span>
+          @let rule = rules()[index];
+          @if (rule && rule.interval === 'custom') {
+            <span class="custom-rule">{{ customRule(rule) }}</span>
+          } @else {
+            <span>{{ 'Keep one backup every' | i18n }}</span>
+            <tui-textfield
+              tuiChevron
+              [stringify]="stringifyInterval"
+              [tuiTextfieldCleaner]="false"
+            >
+              <label tuiLabel>{{ 'Frequency' | i18n }}</label>
+              <input tuiSelect formControlName="interval" />
+              <tui-data-list *tuiDropdown>
+                @for (interval of intervals; track interval) {
+                  <button tuiOption [value]="interval">
+                    {{ stringifyInterval(interval) }}
+                  </button>
+                }
+              </tui-data-list>
+            </tui-textfield>
+            <span>{{ 'for' | i18n }}</span>
+            <tui-textfield class="duration-field">
+              <label tuiLabel>{{ 'Duration' | i18n }}</label>
+              <input
+                tuiInputNumber
+                formControlName="duration"
+                [min]="1"
+                [max]="365"
+              />
+            </tui-textfield>
+            <span>{{ period(ruleForm.getRawValue()) | i18n }}</span>
+          }
           <button
             tuiButton
             type="button"
@@ -96,6 +102,10 @@ import {
       min-inline-size: 0;
     }
 
+    .custom-rule {
+      grid-column: 1 / -2;
+    }
+
     .duration-field {
       min-inline-size: 10rem;
     }
@@ -106,6 +116,10 @@ import {
 
     :host-context(tui-root._mobile) .retention-rule {
       grid-template-columns: 1fr;
+    }
+
+    :host-context(tui-root._mobile) .custom-rule {
+      grid-column: auto;
     }
   `,
   imports: [
@@ -164,6 +178,10 @@ export class BackupRetentionRules {
         value: { ...this.rules()[index], ...form.getRawValue() },
       })
     })
+
+  protected customRule(rule: BackupRetentionRuleValue) {
+    return formatBackupRetentionRule(rule, label => this.i18n.transform(label))
+  }
 
   protected period(rule: BackupRetentionRuleValue) {
     return rule.interval === 'custom'
