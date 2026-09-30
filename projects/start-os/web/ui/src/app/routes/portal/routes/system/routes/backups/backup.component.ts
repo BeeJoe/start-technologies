@@ -49,7 +49,7 @@ interface Package {
     </label>
     <div tuiGroup orientation="vertical" [collapsed]="true">
       @if (pkgs(); as pkgs) {
-        @for (pkg of pkgs; track $index) {
+        @for (pkg of pkgs; track pkg.id) {
           <label tuiBlock="m">
             <input
               type="checkbox"
@@ -92,9 +92,6 @@ interface Package {
     img {
       inline-size: 2.5rem;
       flex-shrink: 0;
-    }
-
-    img {
       border-radius: 100%;
     }
 
@@ -123,7 +120,6 @@ export class BackupsBackupComponent {
   private readonly tasks = inject(TaskService)
   private readonly api = inject(ApiService)
   private readonly patch = inject<PatchDB<DataModel>>(PatchDB)
-  private readonly i18n = inject(i18nPipe)
 
   protected readonly context = injectContext<BackupContext>()
 
@@ -154,21 +150,19 @@ export class BackupsBackupComponent {
   protected done() {
     this.dialog
       .openPrompt<string>({
-        label: this.i18n.transform('Master password needed'),
+        label: 'Master password needed',
         data: {
-          message: this.i18n.transform(
-            'Enter your master password to encrypt this backup.',
-          ),
-          label: this.i18n.transform('Master Password'),
-          placeholder: this.i18n.transform('Enter master password'),
+          message: 'Enter your master password to encrypt this backup.',
+          label: 'Password',
+          placeholder: 'Enter master password',
           useMask: true,
-          buttonText: this.i18n.transform('Create a manual backup'),
+          buttonText: 'Create a manual backup',
         },
       })
       .pipe(
         filter(Boolean),
         switchMap(password => this.createBackup(password)),
-        filter(Boolean), // a password the server rejects leaves the prompt open to retry
+        filter(Boolean),
         take(1),
       )
       .subscribe()

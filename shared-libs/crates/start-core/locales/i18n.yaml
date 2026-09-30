@@ -1260,6 +1260,13 @@ disk.util.failed-to-parse-pvscan:
   fr_FR: "Échec de l'analyse de la ligne de sortie pvscan : %{line}"
   pl_PL: "Nie udało się przeanalizować linii wyjścia pvscan: %{line}"
 
+disk.util.too-many-recovery-entries:
+  en_US: "Backup location %{path} contains more than %{limit} recovery entries. Use a location with fewer entries."
+  de_DE: "Der Sicherungsort %{path} enthält mehr als %{limit} Wiederherstellungseinträge. Verwenden Sie einen Ort mit weniger Einträgen."
+  es_ES: "La ubicación de copia de seguridad %{path} contiene más de %{limit} entradas de recuperación. Utilice una ubicación con menos entradas."
+  fr_FR: "L’emplacement de sauvegarde %{path} contient plus de %{limit} entrées de récupération. Utilisez un emplacement contenant moins d’entrées."
+  pl_PL: "Lokalizacja kopii zapasowej %{path} zawiera więcej niż %{limit} wpisów odzyskiwania. Użyj lokalizacji z mniejszą liczbą wpisów."
+
 # disk/fsck/ext4.rs
 disk.fsck.process-terminated-by-signal:
   en_US: "e2fsck: process terminated by signal"

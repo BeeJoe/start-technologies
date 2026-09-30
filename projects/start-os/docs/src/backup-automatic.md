@@ -33,8 +33,10 @@ to its settings.
 
 Schedules can run hourly, daily, weekly, or monthly at a chosen local time and
 timezone. StartOS stores the selected timezone with the schedule so
-daylight-saving changes are handled correctly. A monthly schedule set for a
-date that does not occur in a given month runs on that month's final day.
+daylight-saving changes are handled correctly. Pausing, resuming, or changing a
+schedule's name, services, or version history preserves completed occurrences,
+including a repeated autumn hour. A monthly schedule set for a date that does
+not occur in a given month runs on that month's final day.
 
 Multiple schedules can protect different services, use different locations, or
 run at different times. Pausing a schedule keeps its settings and checkpoints
@@ -80,7 +82,9 @@ Each retained checkpoint is a full copy on the backup location, not an
 incremental delta. A run also needs temporary staging space. Keeping more
 versions therefore increases storage use, run time, and I/O, especially on
 network folders and slower drives. Capacity estimates account for current data,
-retained checkpoints, and staging space. Use **Refresh estimates** after changing
+retained checkpoints, and staging space. Before stopping services, StartOS checks
+available space using current service data and its package archive, with previous
+physical measurements as a lower bound. Use **Refresh estimates** after changing
 a schedule’s services or version-history rules. Estimates follow the rules that
 will apply to each history. The setup summary compares additional storage needed
 with free space, accounting for checkpoints already on the location.
@@ -124,7 +128,9 @@ schedules after three consecutive failures to connect to a backup location. It
 also refuses to write when credentials are no longer valid, the location's
 identity has changed, or its metadata is missing or invalid. Repair the original
 location, provide current credentials, or explicitly move the schedule to
-another location before resuming it.
+another location before resuming it. Discovery also limits the number of recovery
+entries; if a location exceeds the limit shown in the error, use a location with
+fewer entries.
 An unreadable-location notification points to the technical details in Backup
 history. Check the drive or network folder and its backup metadata before retrying;
 an identity-change notification means the location no longer matches the saved

@@ -106,7 +106,8 @@ for the detail behind its highlights.
 
 - **Automatic backups.** StartOS can protect optional System data and selected
   current or future services on hourly, daily, weekly, or monthly schedules
-  with selectable timezones, capacity estimates, and configurable version
+  with selectable timezones, daylight-saving-safe edits and resumes, capacity
+  estimates that account for service-data growth, and configurable version
   history through the web UI and CLI. Schedules can be paused, run immediately,
   moved to another location, or deleted while keeping their checkpoints as
   archives. Retention changes preview the checkpoints they will remove and can

@@ -1,5 +1,4 @@
 use std::collections::{BTreeMap, BTreeSet};
-use std::path::Path;
 
 use chrono::Utc;
 use clap::{Parser, ValueEnum};
@@ -22,10 +21,8 @@ use crate::disk::mount::filesystem::ReadWrite;
 use crate::disk::mount::guard::{GenericMountGuard, TmpMountGuard};
 use crate::prelude::*;
 use crate::rpc_continuations::Guid;
-use crate::util::io::dir_size;
 use crate::util::serde::HandlerExtSerde;
-use crate::volume::PKG_VOLUME_DIR;
-use crate::{DATA_DIR, PackageId, SYSTEM_PACKAGE_ID};
+use crate::{PackageId, SYSTEM_PACKAGE_ID};
 
 pub fn job<C: Context>() -> ParentHandler<C> {
     ParentHandler::new()
@@ -329,14 +326,8 @@ pub async fn estimate_capacity(
     let package_ids = selected_installed_services(&db, &services)?;
     let mut estimates = Vec::with_capacity(package_ids.len());
     for package_id in package_ids {
-        let live_path = Path::new(DATA_DIR).join(PKG_VOLUME_DIR).join(&package_id);
-        let live_logical_bytes = if package_id == *crate::SYSTEM_PACKAGE_ID {
-            system_logical_bytes
-        } else if tokio::fs::metadata(&live_path).await.is_ok() {
-            dir_size(&live_path, None).await?
-        } else {
-            0
-        };
+        let live_logical_bytes =
+            super::runner::live_logical_size(&db, &package_id, system_logical_bytes).await?;
         let history: Option<ServiceTargetHistory> = db
             .as_public()
             .as_scheduled_backups()
@@ -1159,15 +1150,9 @@ pub async fn retry_target(
                 ) {
                     job.pause = None;
                     job.status.consecutive_failures = 0;
-                    job.status.next_run_at = job
-                        .enabled
-                        .then(|| {
-                            job.schedule
-                                .next_after_cursor(Utc::now(), job.status.last_scheduled_at)
-                        })
-                        .transpose()?
-                        .map(|next| next.utc);
-                    job.updated_at = Utc::now();
+                    let now = Utc::now();
+                    job.updated_at = now;
+                    reschedule_job(&mut job, now)?;
                     state.as_jobs_mut().insert(&job.id, &job)?;
                 }
                 resumed.push(job);
@@ -1249,14 +1234,31 @@ fn update_reassigned_job(
     job.pause = None;
     job.updated_at = now;
     job.status.consecutive_failures = 0;
-    job.status.next_run_at = if !job.enabled {
-        None
-    } else if wait_for_schedule {
-        Some(job.schedule.next_after(now, None)?.utc)
-    } else {
-        Some(now)
-    };
+    job.status.run_requested = job.enabled && !wait_for_schedule;
+    reschedule_job(job, now)
+}
+
+fn reschedule_job(job: &mut BackupJob, now: chrono::DateTime<Utc>) -> Result<(), Error> {
+    job.status.next_run_at = (job.enabled && job.pause.is_none())
+        .then(|| {
+            job.schedule
+                .next_after_cursor(now, job.status.last_scheduled_at)
+        })
+        .transpose()?
+        .map(|occurrence| occurrence.utc);
     Ok(())
+}
+
+fn update_job_schedule(
+    job: &mut BackupJob,
+    schedule: Schedule,
+    now: chrono::DateTime<Utc>,
+) -> Result<(), Error> {
+    if job.schedule != schedule {
+        job.status.last_scheduled_at = None;
+    }
+    job.schedule = schedule;
+    reschedule_job(job, now)
 }
 
 /// Inputs for moving an automatic backup job to another target.
@@ -2360,15 +2362,11 @@ pub async fn update(
         .collect();
     job.name = name;
     job.services = services;
-    job.schedule = schedule;
     job.default_retention = default_retention;
     job.retention_overrides = retention_overrides;
     job.updated_at = Utc::now();
-    job.status.next_run_at = job
-        .enabled
-        .then(|| job.schedule.next_after(Utc::now(), None))
-        .transpose()?
-        .map(|x| x.utc);
+    let now = job.updated_at;
+    update_job_schedule(&mut job, schedule, now)?;
 
     ctx.db
         .mutate(|db| {
@@ -2410,60 +2408,16 @@ pub async fn set_enabled(
     ctx: RpcContext,
     SetBackupJobEnabledParams { id, enabled }: SetBackupJobEnabledParams,
 ) -> Result<BackupJob, Error> {
-    let coordinator = crate::backup::try_backup_coordinator(ctx.backup_coordinator.clone())?;
-    let job = ctx
-        .db
-        .mutate(|db| {
-            let mut job: BackupJob = db
-                .as_public()
-                .as_scheduled_backups()
-                .as_jobs()
-                .as_idx(&id)
-                .or_not_found(&id)?
-                .de()?;
-            if enabled
-                && matches!(
-                    job.pause,
-                    Some(
-                        BackupJobPause::TargetUnavailable { .. }
-                            | BackupJobPause::TargetIdentityMismatch
-                            | BackupJobPause::TargetUnreadable
-                            | BackupJobPause::ReauthenticationRequired
-                    )
-                )
-            {
-                return Err(Error::new(
-                    eyre!("{}", t!("backup.scheduled.retry-before-resume")),
-                    ErrorKind::InvalidRequest,
-                ));
-            }
-            job.enabled = enabled;
-            job.pause = match (&job.pause, enabled) {
-                (Some(BackupJobPause::User), true) => None,
-                (None, false) => Some(BackupJobPause::User),
-                (pause, _) => pause.clone(),
-            };
-            job.updated_at = Utc::now();
-            job.status.next_run_at = enabled
-                .then(|| job.schedule.next_after(Utc::now(), None))
-                .transpose()?
-                .map(|x| x.utc);
-            if !enabled {
-                job.status.run_requested = false;
-            }
-            db.as_public_mut()
-                .as_scheduled_backups_mut()
-                .as_jobs_mut()
-                .insert(&id, &job)?;
-            refresh_archive_state(db, &job.target_id)?;
-            Ok(job)
-        })
-        .await
-        .result?;
-    sync_archive_states(&ctx, &job.target_id, &coordinator)
-        .await
-        .log_err();
-    Ok(job)
+    Ok(set_enabled_bulk(
+        ctx,
+        SetBackupJobsEnabledParams {
+            ids: vec![id],
+            enabled,
+        },
+    )
+    .await?
+    .pop()
+    .expect("one backup job was enabled or disabled"))
 }
 
 /// Atomically enables or disables multiple automatic backup jobs.
@@ -2517,10 +2471,7 @@ pub async fn set_enabled_bulk(
                     (pause, _) => pause.clone(),
                 };
                 job.updated_at = now;
-                job.status.next_run_at = enabled
-                    .then(|| job.schedule.next_after(now, None))
-                    .transpose()?
-                    .map(|occurrence| occurrence.utc);
+                reschedule_job(job, now)?;
                 if !enabled {
                     job.status.run_requested = false;
                 }
@@ -2755,6 +2706,8 @@ const fn default_true() -> bool {
 
 #[cfg(test)]
 mod cli_tests {
+    use chrono::TimeZone;
+
     use super::*;
 
     #[test]
@@ -3007,6 +2960,7 @@ mod cli_tests {
             "hello-world",
         );
         job.enabled = false;
+        job.status.run_requested = true;
         job.status.next_run_at = Some(Utc::now());
         let now = Utc::now();
 
@@ -3024,6 +2978,102 @@ mod cli_tests {
         assert_eq!(job.target_instance_id, "new-instance");
         assert_eq!(job.updated_at, now);
         assert!(job.status.next_run_at.is_none());
+        assert!(!job.status.run_requested);
+    }
+
+    #[test]
+    fn edits_and_resume_preserve_the_completed_fall_back_occurrence() {
+        let mut job = backup_job(
+            BackupJobId::new(),
+            "Daily",
+            "cifs-0",
+            "instance",
+            "hello-world",
+        );
+        job.schedule = Schedule::new("30 1 * * *", "America/New_York").unwrap();
+        let completed = Utc.with_ymd_and_hms(2025, 11, 2, 5, 30, 0).unwrap();
+        let now = Utc.with_ymd_and_hms(2025, 11, 2, 5, 45, 0).unwrap();
+        let next = Utc.with_ymd_and_hms(2025, 11, 3, 6, 30, 0).unwrap();
+        job.status.last_scheduled_at = Some(completed);
+        job.name = "Renamed".into();
+        let schedule = job.schedule.clone();
+        update_job_schedule(&mut job, schedule, now).unwrap();
+        assert_eq!(job.status.next_run_at, Some(next));
+        assert_eq!(job.status.last_scheduled_at, Some(completed));
+
+        job.enabled = false;
+        reschedule_job(&mut job, now).unwrap();
+        assert_eq!(job.status.next_run_at, None);
+        job.enabled = true;
+        reschedule_job(&mut job, now).unwrap();
+        assert_eq!(job.status.next_run_at, Some(next));
+
+        job.pause = Some(BackupJobPause::TargetUnreadable);
+        reschedule_job(&mut job, now).unwrap();
+        assert_eq!(job.status.next_run_at, None);
+    }
+
+    #[test]
+    fn changed_timing_starts_a_new_schedule_cursor() {
+        for (schedule, expected) in [
+            (
+                Schedule::new("45 1 * * *", "America/New_York").unwrap(),
+                Utc.with_ymd_and_hms(2025, 11, 2, 6, 45, 0).unwrap(),
+            ),
+            (
+                Schedule::new("30 1 * * *", "America/Chicago").unwrap(),
+                Utc.with_ymd_and_hms(2025, 11, 2, 6, 30, 0).unwrap(),
+            ),
+        ] {
+            let mut job = backup_job(
+                BackupJobId::new(),
+                "Daily",
+                "cifs-0",
+                "instance",
+                "hello-world",
+            );
+            job.schedule = Schedule::new("30 1 * * *", "America/New_York").unwrap();
+            job.status.last_scheduled_at =
+                Some(Utc.with_ymd_and_hms(2025, 11, 2, 5, 30, 0).unwrap());
+            update_job_schedule(
+                &mut job,
+                schedule,
+                Utc.with_ymd_and_hms(2025, 11, 2, 5, 45, 0).unwrap(),
+            )
+            .unwrap();
+            assert_eq!(job.status.last_scheduled_at, None);
+            assert_eq!(job.status.next_run_at, Some(expected));
+        }
+    }
+
+    #[test]
+    fn reassignment_keeps_immediate_runs_separate_from_the_schedule_cursor() {
+        for wait_for_schedule in [false, true] {
+            let mut job = backup_job(
+                BackupJobId::new(),
+                "Daily",
+                "cifs-0",
+                "instance",
+                "hello-world",
+            );
+            job.schedule = Schedule::new("30 1 * * *", "America/New_York").unwrap();
+            let completed = Utc.with_ymd_and_hms(2025, 11, 2, 5, 30, 0).unwrap();
+            job.status.last_scheduled_at = Some(completed);
+            update_reassigned_job(
+                &mut job,
+                "cifs-1".parse().unwrap(),
+                "new-instance".into(),
+                wait_for_schedule,
+                Utc.with_ymd_and_hms(2025, 11, 2, 5, 45, 0).unwrap(),
+            )
+            .unwrap();
+            assert_eq!(job.status.last_scheduled_at, Some(completed));
+            assert_eq!(
+                job.status.next_run_at,
+                Some(Utc.with_ymd_and_hms(2025, 11, 3, 6, 30, 0).unwrap())
+            );
+            assert_eq!(job.status.run_requested, !wait_for_schedule);
+        }
     }
 
     #[test]

@@ -185,26 +185,14 @@ async fn run_job_inner(
     let target_fs = match job.target_id.clone().load(&db) {
         Ok(target) => target,
         Err(error) => {
-            let message = error.to_string();
-            let intervention_notified = record_connectivity_failure(ctx, &job).await?;
-            if intervention_notified {
-                record_failed_run(ctx, &job, &package_ids, trigger, message).await?;
-            } else {
-                record_failed_run_and_notify(ctx, &job, &package_ids, trigger, message).await?;
-            }
+            record_target_failure(ctx, &job, &package_ids, trigger, &error).await?;
             return Err(error);
         }
     };
     let target_guard = match mount_target(&target_fs).await {
         Ok(guard) => guard,
         Err(error) => {
-            let message = error.to_string();
-            let intervention_notified = record_connectivity_failure(ctx, &job).await?;
-            if intervention_notified {
-                record_failed_run(ctx, &job, &package_ids, trigger, message).await?;
-            } else {
-                record_failed_run_and_notify(ctx, &job, &package_ids, trigger, message).await?;
-            }
+            record_target_failure(ctx, &job, &package_ids, trigger, &error).await?;
             return Err(error);
         }
     };
@@ -244,13 +232,7 @@ async fn run_job_inner(
         match crate::disk::util::get_available(scheduled_guard.target_path()).await {
             Ok(available) => available,
             Err(error) => {
-                let message = error.to_string();
-                let intervention_notified = record_connectivity_failure(ctx, &job).await?;
-                if intervention_notified {
-                    record_failed_run(ctx, &job, &package_ids, trigger, message).await?;
-                } else {
-                    record_failed_run_and_notify(ctx, &job, &package_ids, trigger, message).await?;
-                }
+                record_target_failure(ctx, &job, &package_ids, trigger, &error).await?;
                 return Err(error);
             }
         };
@@ -578,37 +560,19 @@ async fn run_job_inner(
         .await
         .result?;
     if run.state != BackupRunState::Succeeded {
-        let mut affected = run
+        let failed_packages = run
             .services
             .iter()
             .filter(|(_, report)| report.error.is_some())
-            .map(|(package, _)| backup_item_name(package))
-            .collect::<Vec<_>>()
-            .join(", ");
-        if affected.is_empty() {
-            affected = package_ids
-                .iter()
-                .map(backup_item_name)
-                .collect::<Vec<_>>()
-                .join(", ");
-        }
+            .map(|(package, _)| package.clone())
+            .collect::<BTreeSet<_>>();
+        let affected = if failed_packages.is_empty() {
+            &package_ids
+        } else {
+            &failed_packages
+        };
         ctx.db
-            .mutate(|db| {
-                notify(
-                    db,
-                    None,
-                    NotificationLevel::Warning,
-                    t!("backup.scheduled.run-failed-title").to_string(),
-                    t!(
-                        "backup.scheduled.run-failed-message",
-                        job = job.name,
-                        target = target_name.as_str(),
-                        services = affected
-                    )
-                    .to_string(),
-                    (),
-                )
-            })
+            .mutate(|db| notify_run_failure(db, &job.name, &job.target_id, affected))
             .await
             .result?;
     }
@@ -763,9 +727,10 @@ pub(crate) async fn preflight_new_target_capacity(
     available: u64,
 ) -> Result<(), Error> {
     let system_logical_bytes = crate::backup::os::system_logical_size(ctx).await?;
+    let db = ctx.db.peek().await;
     let mut required = PREFLIGHT_METADATA_BYTES;
     for package_id in package_ids {
-        let logical = live_logical_size(package_id, system_logical_bytes).await?;
+        let logical = live_logical_size(&db, package_id, system_logical_bytes).await?;
         required = required
             .checked_add(logical.saturating_mul(100 + PREFLIGHT_MARGIN_PERCENT) / 100)
             .ok_or_else(|| {
@@ -802,7 +767,7 @@ async fn preflight_capacity<G: GenericMountGuard>(
     let mut requirements = Vec::with_capacity(package_ids.len());
 
     for package_id in package_ids {
-        let live_logical = live_logical_size(package_id, system_logical_bytes).await?;
+        let live_logical = live_logical_size(db, package_id, system_logical_bytes).await?;
         let public_history: super::ServiceTargetHistory = db
             .as_public()
             .as_scheduled_backups()
@@ -843,21 +808,43 @@ async fn preflight_capacity<G: GenericMountGuard>(
     Ok(())
 }
 
-async fn live_logical_size(
+pub(super) async fn live_logical_size(
+    db: &crate::db::model::DatabaseModel,
     package_id: &PackageId,
     system_logical_bytes: u64,
 ) -> Result<u64, Error> {
     if package_id == &*SYSTEM_PACKAGE_ID {
         return Ok(system_logical_bytes);
     }
+    let Some(package) = db.as_public().as_package_data().as_idx(package_id) else {
+        return Ok(0);
+    };
+    if package.as_state_info().expect_installed().is_err() {
+        return Ok(0);
+    }
     let path = std::path::Path::new(DATA_DIR)
         .join(PKG_VOLUME_DIR)
         .join(package_id);
-    if tokio::fs::metadata(&path).await.is_ok() {
-        Ok(dir_size(&path, None).await?)
+    let archive: std::path::PathBuf = package.as_s9pk().de()?;
+    service_backup_logical_size(&path, &archive).await
+}
+
+async fn service_backup_logical_size(
+    volume: &std::path::Path,
+    archive: &std::path::Path,
+) -> Result<u64, Error> {
+    let data_bytes = if tokio::fs::metadata(volume).await.is_ok() {
+        dir_size(volume, None).await?
     } else {
-        Ok(0)
-    }
+        0
+    };
+    let archive_bytes = tokio::fs::metadata(&archive)
+        .await
+        .with_ctx(|_| (ErrorKind::Filesystem, archive.display()))?
+        .len();
+    data_bytes
+        .checked_add(archive_bytes)
+        .ok_or_else(capacity_overflow)
 }
 
 fn complete_run_required_capacity(
@@ -900,7 +887,9 @@ fn projected_copy_bytes(
     latest_logical: Option<u64>,
     latest_physical: Option<u64>,
 ) -> u64 {
-    latest_physical.unwrap_or_else(|| latest_logical.unwrap_or(0).max(live_logical))
+    latest_physical
+        .unwrap_or_else(|| latest_logical.unwrap_or(0))
+        .max(live_logical)
 }
 
 fn capacity_overflow() -> Error {
@@ -908,6 +897,22 @@ fn capacity_overflow() -> Error {
         eyre!("{}", t!("backup.scheduled.capacity-overflow")),
         ErrorKind::InvalidRequest,
     )
+}
+
+async fn record_target_failure(
+    ctx: &RpcContext,
+    job: &BackupJob,
+    package_ids: &BTreeSet<PackageId>,
+    trigger: BackupRunTrigger,
+    error: &Error,
+) -> Result<(), Error> {
+    let message = error.to_string();
+    if record_connectivity_failure(ctx, job).await? {
+        record_failed_run(ctx, job, package_ids, trigger, message).await?;
+    } else {
+        record_failed_run_and_notify(ctx, job, package_ids, trigger, message).await?;
+    }
+    Ok(())
 }
 
 async fn record_failed_run(
@@ -1171,7 +1176,7 @@ mod tests {
     fn subsequent_preflight_uses_measured_target_consumption() {
         let physical_size = consumed_capacity(Some(1_000), Some(960)).unwrap();
         assert_eq!(physical_size, 40);
-        let copy_bytes = projected_copy_bytes(1_000, Some(900), Some(physical_size));
+        let copy_bytes = projected_copy_bytes(30, Some(900), Some(physical_size));
         assert_eq!(copy_bytes, 40);
         assert_eq!(
             complete_run_required_capacity([(copy_bytes, 1, 1)]).unwrap(),
@@ -1179,6 +1184,75 @@ mod tests {
         );
         assert_eq!(projected_copy_bytes(1_000, Some(900), None), 1_000);
         assert_eq!(consumed_capacity(Some(960), Some(1_000)), None);
+    }
+
+    #[test]
+    fn preflight_accounts_for_growth_since_the_measured_checkpoint() {
+        let copy_bytes = projected_copy_bytes(10_000, Some(1_000), Some(100));
+        assert_eq!(copy_bytes, 10_000);
+        assert_eq!(
+            complete_run_required_capacity([(copy_bytes, 1, 1)]).unwrap(),
+            PREFLIGHT_METADATA_BYTES + 11_000
+        );
+        assert_eq!(projected_copy_bytes(900, Some(1_000), Some(100)), 900);
+        assert_eq!(projected_copy_bytes(10_000, None, Some(100)), 10_000);
+        assert_eq!(projected_copy_bytes(u64::MAX, Some(1), Some(100)), u64::MAX);
+        assert!(complete_run_required_capacity([(u64::MAX, 1, 1)]).is_err());
+    }
+
+    #[tokio::test]
+    async fn preflight_counts_current_data_and_the_package_archive_together() {
+        let root = tempfile::tempdir().unwrap();
+        let volume = root.path().join("volume");
+        let archive = root.path().join("service.s9pk");
+        tokio::fs::create_dir(&volume).await.unwrap();
+        tokio::fs::write(volume.join("data"), vec![0; 800])
+            .await
+            .unwrap();
+        tokio::fs::write(&archive, vec![0; 900]).await.unwrap();
+        let current = service_backup_logical_size(&volume, &archive)
+            .await
+            .unwrap();
+        assert_eq!(current, 1_700);
+        let copy_bytes = projected_copy_bytes(current, Some(1_000), Some(1_000));
+        assert_eq!(copy_bytes, 1_700);
+        assert_eq!(
+            complete_run_required_capacity([(copy_bytes, 1, 1)]).unwrap(),
+            PREFLIGHT_METADATA_BYTES + 1_870
+        );
+        tokio::fs::remove_file(volume.join("data")).await.unwrap();
+        tokio::fs::remove_dir(&volume).await.unwrap();
+        assert_eq!(
+            service_backup_logical_size(&volume, &archive)
+                .await
+                .unwrap(),
+            900
+        );
+        tokio::fs::remove_file(&archive).await.unwrap();
+        assert!(
+            service_backup_logical_size(&volume, &archive)
+                .await
+                .is_err()
+        );
+    }
+
+    #[tokio::test]
+    async fn capacity_keeps_system_selection_when_a_selected_service_is_uninstalled() {
+        let db = crate::db::model::DatabaseModel::from(imbl_value::json!({
+            "public": { "packageData": {} }
+        }));
+        assert_eq!(
+            live_logical_size(&db, &"removed-service".parse().unwrap(), 123)
+                .await
+                .unwrap(),
+            0
+        );
+        assert_eq!(
+            live_logical_size(&db, &SYSTEM_PACKAGE_ID, 123)
+                .await
+                .unwrap(),
+            123
+        );
     }
 
     #[tokio::test]

@@ -64,9 +64,6 @@ pub struct PartitionInfo {
     pub filesystem: Option<String>,
 }
 
-/// Whether this server's pre-V2 `StartOSBackups/<server_id>` backup is present
-/// on a mounted target. Scoped to `server_id` so a target shared by several
-/// servers only flags (and later deletes) this server's own legacy backup.
 pub async fn has_legacy_backup(mountpoint: impl AsRef<Path>, server_id: &str) -> bool {
     tokio::fs::metadata(
         mountpoint
@@ -79,11 +76,7 @@ pub async fn has_legacy_backup(mountpoint: impl AsRef<Path>, server_id: &str) ->
     .unwrap_or(false)
 }
 
-/// `unencrypted-metadata.json` as stored on a backup target, and the only place
-/// `password_hash`/`wrapped_key` may live. Together they are exactly what an attacker
-/// needs to crack the password offline and then unwrap the backup's encryption key, so
-/// this type must never be serialized to a client — the API hands out
-/// [`StartOsRecoveryInfo`] instead.
+/// Contains key material; client responses use `StartOsRecoveryInfo`.
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BackupUnencryptedMetadata {
@@ -106,8 +99,6 @@ impl From<BackupUnencryptedMetadata> for StartOsRecoveryInfo {
     }
 }
 
-/// The public view of a backup found on a target: enough to identify it, and none of
-/// [`BackupUnencryptedMetadata`]'s key material.
 #[derive(Clone, Debug, Default, Deserialize, Serialize, ts_rs::TS)]
 #[ts(export)]
 #[serde(rename_all = "camelCase")]
@@ -129,15 +120,13 @@ pub struct StartOsRecoveryInfo {
 
 const DISK_PATH: &str = "/dev/disk/by-path";
 const SYS_BLOCK_PATH: &str = "/sys/block";
-/// EFI System Partition type ids as reported by `lsblk -no PARTTYPE`: the GPT
-/// partition type GUID and the MBR partition type.
+/// GPT and MBR partition types reported by `lsblk -no PARTTYPE`.
 const ESP_PART_TYPES: [&str; 2] = ["c12a7328-f81f-11d2-ba4b-00a0c93ec93b", "0xef"];
 
 /// Recovery metadata contains only scalar identity and key-wrapping fields.
 pub(crate) const MAX_BACKUP_RECOVERY_METADATA_BYTES: u64 = 1024 * 1024;
 /// Encrypted target metadata may contain histories for many services and snapshots.
 pub(crate) const MAX_BACKUP_TARGET_METADATA_BYTES: u64 = 64 * 1024 * 1024;
-/// A target scan must not perform unbounded work over attacker-controlled entries.
 const MAX_BACKUP_RECOVERY_ENTRIES: usize = 1024;
 
 lazy_static::lazy_static! {
@@ -349,8 +338,12 @@ async fn recovery_info_with_limit(
             if entry_count > max_entries {
                 return Err(Error::new(
                     eyre!(
-                        "backup target contains more than {max_entries} recovery entries: {}",
-                        backup_root.display()
+                        "{}",
+                        t!(
+                            "disk.util.too-many-recovery-entries",
+                            limit = max_entries,
+                            path = backup_root.display()
+                        )
                     ),
                     ErrorKind::Backup,
                 ));
@@ -399,8 +392,6 @@ async fn recovery_info_with_limit(
     Ok(res)
 }
 
-/// Returns the canonical path of the source device for a given mount point,
-/// or None if the mount point doesn't exist or isn't mounted.
 #[instrument(skip_all)]
 pub async fn get_mount_source(mountpoint: impl AsRef<Path>) -> Result<Option<PathBuf>, Error> {
     let mounts_content = tokio::fs::read_to_string("/proc/mounts")
@@ -414,7 +405,6 @@ pub async fn get_mount_source(mountpoint: impl AsRef<Path>) -> Result<Option<Pat
         let mount = parts.next();
         if let (Some(source), Some(mount)) = (source, mount) {
             if Path::new(mount) == mountpoint {
-                // Try to canonicalize the source path
                 if let Ok(canonical) = tokio::fs::canonicalize(source).await {
                     return Ok(Some(canonical));
                 }
@@ -909,7 +899,16 @@ async fn recovery_info_rejects_entry_limit_plus_one() {
 
     let error = recovery_info_with_limit(&root, 2).await.unwrap_err();
     assert_eq!(error.kind, ErrorKind::Backup);
-    assert!(error.to_string().contains("more than 2 recovery entries"));
+    assert!(
+        error.to_string().contains(
+            t!(
+                "disk.util.too-many-recovery-entries",
+                limit = 2,
+                path = backup_root.display()
+            )
+            .as_ref()
+        )
+    );
 
     tokio::fs::remove_dir_all(root).await.unwrap();
 }

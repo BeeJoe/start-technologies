@@ -2,7 +2,8 @@ import { Component, computed, inject, input } from '@angular/core'
 import { Router } from '@angular/router'
 import { DialogService, i18nPipe, TaskService } from '@start9labs/shared'
 import { T } from '@start9labs/start-core'
-import { TuiButton, TuiDialogContext } from '@taiga-ui/core'
+import { TuiButton, TuiDialogContext, TuiTitle } from '@taiga-ui/core'
+import { TuiHeader } from '@taiga-ui/layout'
 import { TuiAvatar, TuiFade } from '@taiga-ui/kit'
 import { injectContext, PolymorpheusComponent } from '@taiga-ui/polymorpheus'
 import { filter, firstValueFrom } from 'rxjs'
@@ -22,11 +23,22 @@ type BackupReviewDecision = 'add' | 'create'
 
 @Component({
   template: `
+    <header tuiHeader>
+      <h2 tuiTitle [id]="context.id">{{ 'Add to backup schedule' | i18n }}</h2>
+    </header>
     <footer>
-      <button tuiButton appearance="primary" (click)="choose('add')">
+      <button
+        tuiButton
+        appearance="primary"
+        (click)="context.completeWith('add')"
+      >
         {{ 'Add to current schedule' | i18n }}
       </button>
-      <button tuiButton appearance="flat" (click)="choose('create')">
+      <button
+        tuiButton
+        appearance="flat"
+        (click)="context.completeWith('create')"
+      >
         {{ 'Create a new schedule' | i18n }}
       </button>
     </footer>
@@ -44,15 +56,11 @@ type BackupReviewDecision = 'add' | 'create'
       gap: 0.75rem;
     }
   `,
-  imports: [TuiButton, i18nPipe],
+  imports: [TuiButton, TuiHeader, TuiTitle, i18nPipe],
 })
 class BackupReviewDialog {
   protected readonly context =
     injectContext<TuiDialogContext<BackupReviewDecision, void>>()
-
-  protected choose(decision: BackupReviewDecision) {
-    this.context.completeWith(decision)
-  }
 }
 
 const BACKUP_REVIEW_DIALOG = new PolymorpheusComponent(BackupReviewDialog)
@@ -279,7 +287,6 @@ export class ServiceTaskComponent {
           this.dialog.openComponent<BackupReviewDecision>(
             BACKUP_REVIEW_DIALOG,
             {
-              label: 'Add to backup schedule',
               size: 's',
             },
           ),
