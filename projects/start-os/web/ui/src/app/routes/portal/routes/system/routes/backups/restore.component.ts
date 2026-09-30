@@ -1,9 +1,9 @@
 import { DatePipe } from '@angular/common'
-import { Component, inject } from '@angular/core'
-import { FormControl, ReactiveFormsModule, Validators } from '@angular/forms'
+import { Component, inject, signal } from '@angular/core'
+import { FormsModule } from '@angular/forms'
 import { DialogService, i18nPipe, TaskService } from '@start9labs/shared'
 import { T } from '@start9labs/start-core'
-import { TuiButton, TuiError, TuiInput, TuiTitle } from '@taiga-ui/core'
+import { TuiButton, TuiInput, TuiTitle } from '@taiga-ui/core'
 import { injectContext, PolymorpheusComponent } from '@taiga-ui/polymorpheus'
 
 import { TableComponent } from 'src/app/routes/portal/components/table.component'
@@ -47,7 +47,7 @@ import { RECOVER } from './recover.component'
             required
             autocomplete="current-password"
             [type]="passwordMasked ? 'password' : 'text'"
-            [formControl]="password"
+            [(ngModel)]="password"
             (keyup.enter)="decrypt()"
           />
           <button
@@ -64,7 +64,6 @@ import { RECOVER } from './recover.component'
             {{ (passwordMasked ? 'Show password' : 'Hide password') | i18n }}
           </button>
         </tui-textfield>
-        <tui-error [formControl]="password" />
         <footer class="g-buttons">
           @if (servers.length > 1) {
             <button
@@ -76,7 +75,7 @@ import { RECOVER } from './recover.component'
               {{ 'Back' | i18n }}
             </button>
           }
-          <button tuiButton (click)="decrypt()">
+          <button tuiButton [disabled]="!password()" (click)="decrypt()">
             {{ 'Continue' | i18n }}
           </button>
         </footer>
@@ -112,9 +111,8 @@ import { RECOVER } from './recover.component'
   `,
   imports: [
     DatePipe,
-    ReactiveFormsModule,
+    FormsModule,
     TuiButton,
-    TuiError,
     TuiInput,
     TuiTitle,
     TableComponent,
@@ -131,10 +129,7 @@ export class BackupRestoreComponent {
   protected readonly target = this.context.data
   protected readonly servers = this.serverEntries()
   protected serverId = this.servers.length === 1 ? this.servers[0]![0] : ''
-  protected readonly password = new FormControl('', {
-    nonNullable: true,
-    validators: Validators.required,
-  })
+  protected readonly password = signal('')
   protected passwordMasked = true
 
   protected selectedServerName(): string {
@@ -143,9 +138,8 @@ export class BackupRestoreComponent {
   }
 
   protected async decrypt() {
-    this.password.markAsTouched()
-    if (!this.serverId || this.password.invalid) return
-    const password = this.password.value
+    const password = this.password()
+    if (!this.serverId || !password) return
     await this.tasks.run(async () => {
       const params = {
         targetId: this.target.id,

@@ -238,7 +238,6 @@ async fn run_job_inner(
         };
     if let Err(error) = preflight_capacity(
         &db,
-        &job,
         &package_ids,
         &scheduled_guard,
         target_available,
@@ -758,7 +757,6 @@ pub(crate) async fn preflight_new_target_capacity(
 
 async fn preflight_capacity<G: GenericMountGuard>(
     db: &crate::db::model::DatabaseModel,
-    job: &BackupJob,
     package_ids: &BTreeSet<PackageId>,
     guard: &ScheduledBackupMountGuard<G>,
     available: u64,
@@ -768,27 +766,18 @@ async fn preflight_capacity<G: GenericMountGuard>(
 
     for package_id in package_ids {
         let live_logical = live_logical_size(db, package_id, system_logical_bytes).await?;
-        let public_history: super::ServiceTargetHistory = db
-            .as_public()
-            .as_scheduled_backups()
-            .as_histories()
-            .as_idx(&history_key(&job.target_id, package_id))
-            .or_not_found(package_id)?
-            .de()?;
-        let maximum_count = public_history.policy.maximum_projected_snapshot_count()?;
         let on_target = guard.metadata.services.get(package_id);
-        let active: Vec<_> = on_target
+        let latest = on_target
             .into_iter()
             .flat_map(|history| history.snapshots.iter())
             .filter(|snapshot| !snapshot.archived)
-            .collect();
-        let latest = active.iter().max_by_key(|snapshot| snapshot.completed_at);
+            .max_by_key(|snapshot| snapshot.completed_at);
         let copy_bytes = projected_copy_bytes(
             live_logical,
             latest.map(|snapshot| snapshot.logical_size),
             latest.and_then(|snapshot| snapshot.physical_size),
         );
-        requirements.push((copy_bytes, active.len() as u64, maximum_count));
+        requirements.push(copy_bytes);
     }
 
     let required = complete_run_required_capacity(requirements)?;
@@ -848,31 +837,20 @@ async fn service_backup_logical_size(
 }
 
 fn complete_run_required_capacity(
-    requirements: impl IntoIterator<Item = (u64, u64, u64)>,
+    requirements: impl IntoIterator<Item = u64>,
 ) -> Result<u64, Error> {
-    let mut retained_growth = 0u64;
-    let mut temporary_headroom = 0u64;
-    for (copy_bytes, current_count, maximum_count) in requirements {
-        let growth = if current_count < maximum_count {
-            copy_bytes
-        } else {
-            0
-        };
-        retained_growth = retained_growth
-            .checked_add(growth)
-            .ok_or_else(capacity_overflow)?;
+    let mut required = PREFLIGHT_METADATA_BYTES;
+    for copy_bytes in requirements {
         let staging = copy_bytes
             .checked_mul(100 + PREFLIGHT_MARGIN_PERCENT)
             .and_then(|bytes| bytes.checked_add(99))
             .map(|bytes| bytes / 100)
             .ok_or_else(capacity_overflow)?;
-        // Promotion reuses the staging copy as retained growth.
-        temporary_headroom = temporary_headroom.max(staging.saturating_sub(growth));
+        required = required
+            .checked_add(staging)
+            .ok_or_else(capacity_overflow)?;
     }
-    PREFLIGHT_METADATA_BYTES
-        .checked_add(retained_growth)
-        .and_then(|bytes| bytes.checked_add(temporary_headroom))
-        .ok_or_else(capacity_overflow)
+    Ok(required)
 }
 
 fn consumed_capacity(before: Option<u64>, after: Option<u64>) -> Option<u64> {
@@ -1165,11 +1143,18 @@ mod tests {
     }
 
     #[test]
+    fn preflight_reserves_accumulated_growth_when_replacing_checkpoints() {
+        let copy_bytes = 100 * 1024 * 1024;
+        let required = complete_run_required_capacity([copy_bytes, copy_bytes]).unwrap();
+        assert_eq!(required, PREFLIGHT_METADATA_BYTES + 220 * 1024 * 1024);
+    }
+
+    #[test]
     fn complete_preflight_is_order_independent_and_uses_full_copies() {
-        let first = complete_run_required_capacity([(100, 0, 1), (200, 1, 1)]).unwrap();
-        let reversed = complete_run_required_capacity([(200, 1, 1), (100, 0, 1)]).unwrap();
+        let first = complete_run_required_capacity([100, 200]).unwrap();
+        let reversed = complete_run_required_capacity([200, 100]).unwrap();
         assert_eq!(first, reversed);
-        assert_eq!(first, PREFLIGHT_METADATA_BYTES + 100 + 220);
+        assert_eq!(first, PREFLIGHT_METADATA_BYTES + 110 + 220);
     }
 
     #[test]
@@ -1179,7 +1164,7 @@ mod tests {
         let copy_bytes = projected_copy_bytes(30, Some(900), Some(physical_size));
         assert_eq!(copy_bytes, 40);
         assert_eq!(
-            complete_run_required_capacity([(copy_bytes, 1, 1)]).unwrap(),
+            complete_run_required_capacity([copy_bytes]).unwrap(),
             PREFLIGHT_METADATA_BYTES + 44,
         );
         assert_eq!(projected_copy_bytes(1_000, Some(900), None), 1_000);
@@ -1191,13 +1176,13 @@ mod tests {
         let copy_bytes = projected_copy_bytes(10_000, Some(1_000), Some(100));
         assert_eq!(copy_bytes, 10_000);
         assert_eq!(
-            complete_run_required_capacity([(copy_bytes, 1, 1)]).unwrap(),
+            complete_run_required_capacity([copy_bytes]).unwrap(),
             PREFLIGHT_METADATA_BYTES + 11_000
         );
         assert_eq!(projected_copy_bytes(900, Some(1_000), Some(100)), 900);
         assert_eq!(projected_copy_bytes(10_000, None, Some(100)), 10_000);
         assert_eq!(projected_copy_bytes(u64::MAX, Some(1), Some(100)), u64::MAX);
-        assert!(complete_run_required_capacity([(u64::MAX, 1, 1)]).is_err());
+        assert!(complete_run_required_capacity([u64::MAX]).is_err());
     }
 
     #[tokio::test]
@@ -1217,7 +1202,7 @@ mod tests {
         let copy_bytes = projected_copy_bytes(current, Some(1_000), Some(1_000));
         assert_eq!(copy_bytes, 1_700);
         assert_eq!(
-            complete_run_required_capacity([(copy_bytes, 1, 1)]).unwrap(),
+            complete_run_required_capacity([copy_bytes]).unwrap(),
             PREFLIGHT_METADATA_BYTES + 1_870
         );
         tokio::fs::remove_file(volume.join("data")).await.unwrap();

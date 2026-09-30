@@ -27,6 +27,7 @@ or the CLI's externally observable behavior.
   estimate capacity for proposed retention rules; resolve new-service reviews;
   and restore selected checkpoints.
   Schedule edits and resumes preserve completed daylight-saving occurrences.
+  Capacity checks reserve full copies for the complete run before stopping services.
   Service selection includes System data and future services independently.
   Use `--old-password` when an existing backup location uses a password different
   from the current server password.

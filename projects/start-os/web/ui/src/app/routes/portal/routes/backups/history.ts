@@ -398,6 +398,15 @@ export class BackupHistory {
   protected readonly query = signal('')
   protected readonly page = signal(0)
   private readonly pageSize = 20
+  private readonly activityStatuses = {
+    running: { label: 'In progress', appearance: 'neutral' },
+    succeeded: { label: 'Succeeded', appearance: 'positive' },
+    partiallyFailed: { label: 'Partially failed', appearance: 'warning' },
+    failed: { label: 'Failed', appearance: 'negative' },
+  } as const satisfies Record<
+    T.BackupRunState,
+    { label: string; appearance: string }
+  >
   protected readonly historyFilters = HISTORY_FILTERS
   protected readonly stringifyFilter = (filter: HistoryFilter) =>
     this.i18n.transform(
@@ -412,7 +421,7 @@ export class BackupHistory {
   protected readonly statusFilters = STATUS_FILTERS
   protected readonly stringifyStatusFilter = (status: StatusFilter) =>
     this.i18n.transform(
-      status === 'all' ? 'All statuses' : this.activityStateValue(status),
+      status === 'all' ? 'All statuses' : this.activityStatuses[status].label,
     )
   protected readonly activities = computed(() =>
     Object.values(this.state()?.activities || {}).sort((a, b) =>
@@ -525,24 +534,13 @@ export class BackupHistory {
   protected activityLabel(activity: T.BackupActivity): string {
     if (activity.kind === 'manual') return this.i18n.transform('Manual backup')
     if (activity.kind === 'restore') return this.i18n.transform('Restore')
-    return activity.jobName || this.i18n.transform('Automatic backup')
+    return activity.jobName === 'Default'
+      ? this.i18n.transform('Default')
+      : activity.jobName || this.i18n.transform('Automatic backup')
   }
 
   protected activityState(activity: T.BackupActivity): string {
-    return this.i18n.transform(this.activityStateValue(activity.state))
-  }
-
-  private activityStateValue(state: T.BackupRunState): string {
-    switch (state) {
-      case 'succeeded':
-        return 'Succeeded'
-      case 'partiallyFailed':
-        return 'Partially failed'
-      case 'failed':
-        return 'Failed'
-      default:
-        return 'In progress'
-    }
+    return this.i18n.transform(this.activityStatuses[activity.state].label)
   }
 
   protected failureSummary(activity: T.BackupActivity): string {
@@ -583,10 +581,7 @@ export class BackupHistory {
   protected activityAppearance(
     activity: T.BackupActivity,
   ): 'positive' | 'warning' | 'negative' | 'neutral' {
-    if (activity.state === 'succeeded') return 'positive'
-    if (activity.state === 'partiallyFailed') return 'warning'
-    if (activity.state === 'failed') return 'negative'
-    return 'neutral'
+    return this.activityStatuses[activity.state].appearance
   }
 
   protected serviceReports(activity: T.BackupActivity) {

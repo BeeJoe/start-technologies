@@ -118,6 +118,7 @@ for the detail behind its highlights.
   Existing locations can be unlocked with their original backup password
   after a server password change. Interrupted backups preserve completed
   checkpoints and reclaim incomplete backup data before later runs.
+  Capacity checks reserve full copies for the complete run before stopping services.
   A stalled service backup procedure stops after six hours.
 
 - **A service can permanently retire a network host or a port it no longer

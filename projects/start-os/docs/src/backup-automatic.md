@@ -87,8 +87,12 @@ versions therefore increases storage use, run time, and I/O, especially on
 network folders and slower drives. Capacity estimates account for current data,
 retained checkpoints, and staging space. Before stopping services, StartOS checks
 available space using current service data and its package archive, with previous
-physical measurements as a lower bound. Use **Refresh estimates** after changing
-a schedule’s services or version-history rules. Estimates follow the rules that
+physical measurements as a lower bound.
+The preflight check reserves space for a full copy of every selected item plus
+safety headroom. Free space must cover the complete run before services stop,
+even when its version-history policy replaces earlier checkpoints.
+Use **Refresh estimates** after changing a schedule’s services or version-history
+rules. Estimates follow the rules that
 will apply to each history. The setup summary compares additional storage needed
 with free space, accounting for checkpoints already on the location.
 
