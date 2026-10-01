@@ -4,6 +4,8 @@
 
 ### Changed
 
+- **Breaking — read-only volume and asset mounts are enforced.** Writes through a volume mount declared `readonly: true`, or through any asset mount, fail with `EROFS`. Mount volumes writable wherever the service writes to them. Copy assets that need modification into a writable volume
+
 - **Breaking — `Watchable<A>` takes only the type it reads.** A reader that
   maps a raw value extends `MappedWatchable<Raw, Mapped>` and implements
   `fetchRaw`/`produceRaw` in place of `fetch`/`produce`. A type written
@@ -116,6 +118,8 @@
   a timeout. `watch` and `waitFor` end at once on a signal that has already
   aborted.
 
+- **`FileHelper.update(effects, change)`** computes a complete replacement under the writer lock. The callback receives the validated current value and returns the replacement or `null` to skip writing. Reads inside it remain reentrant; nested writes, merges, or updates to the same file throw immediately. The callback has a five-second deadline, which also bounds file access it starts; a timed-out callback cannot commit later.
+
 - **`preDownloadAlert` in `setupManifest()`** displays a localized Markdown confirmation before downloading an update from an installed version matching `when.sourceVersion`.
 
 - **An `env` variable set to `undefined` is removed from the process**,
@@ -202,6 +206,10 @@
 - **A file model's reads see every change to the file.** `watch`, `const` and
   `waitFor` no longer miss a write made while the previous value was being
   read or handled, or a file created just as the wait began.
+
+- **FileHelper writes replace files atomically.** Writers hold a cross-process lock on the file, waiting up to ten seconds for it, and `merge()` and `update()` hold it through their complete read-modify-write; replacements retain the file's owner and permissions.
+
+- **Own-volume file mounts follow atomic source replacement in running subcontainers.** Refreshes preserve idmaps and readonly settings and run before FileHelper operations return and commands launch. Refresh failures propagate to the caller, including after a write has replaced the source. Existing descriptors retain the previous inode until the application reopens the file.
 
 - **Reactive init re-runs receive `kind: null`** after the initial install,
   update, or restore pass. Lifecycle-only work guarded by `kind` runs once for
