@@ -286,8 +286,14 @@ async fn inner_main() -> Result<(), Error> {
         if let Err(e) = crate::published_ports::heal_hairpin("/etc/config").await {
             tracing::error!("Hairpin repair failed: {e}");
         }
+        if let Err(e) = crate::vpn_client::heal_vpn_clients("/etc/config").await {
+            tracing::error!("Outbound VPN repair failed: {e}");
+        }
         if let Err(e) = crate::system::apply_remote_access(ServerContext::default()).await {
             tracing::error!("Remote access rule apply failed: {e}");
+        }
+        if let Err(e) = crate::dns::heal_smartdns_conf("/etc/config").await {
+            tracing::error!("SmartDNS config repair failed: {e}");
         }
         // Repairs a reservation name from a release that let one through, which
         // dnsmasq refuses to start on. Must precede the fingerprint hook: both
