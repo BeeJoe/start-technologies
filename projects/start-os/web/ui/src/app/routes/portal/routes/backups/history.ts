@@ -1,4 +1,4 @@
-import { DatePipe, DecimalPipe } from '@angular/common'
+import { DatePipe, DecimalPipe, KeyValuePipe } from '@angular/common'
 import { Component, computed, inject, signal } from '@angular/core'
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop'
 import { FormsModule } from '@angular/forms'
@@ -25,10 +25,7 @@ import { tap } from 'rxjs'
 
 import { DataModel } from 'src/app/services/patch-db/data-model'
 import { getManifest } from 'src/app/utils/get-package-data'
-import {
-  BackupService,
-  formatCifsLocation,
-} from '../system/routes/backups/backup.service'
+import { BackupService } from '../system/routes/backups/backup.service'
 import { SYSTEM_PACKAGE_ID } from '../system/routes/backups/scheduled-utils'
 
 type HistoryFilter = 'all' | T.BackupActivityKind
@@ -120,7 +117,7 @@ const STATUS_FILTERS: StatusFilter[] = [
             <div class="activity-details">
               <p>
                 <b>{{ 'Backup location' | i18n }}:</b>
-                {{ targetName(activity.targetId) }}
+                {{ backupService.targetName(activity.targetId) }}
               </p>
               <p>
                 <b>
@@ -145,11 +142,11 @@ const STATUS_FILTERS: StatusFilter[] = [
                 </div>
               }
               @for (
-                report of serviceReports(activity);
-                track report.packageId
+                report of activity.services | keyvalue: null;
+                track report.key
               ) {
                 <section class="service-report">
-                  <b>{{ packageName(report.packageId) }}</b>
+                  <b>{{ packageName(report.key) }}</b>
                   @if (report.value.error) {
                     <p class="g-negative">
                       {{ 'This service did not complete successfully.' | i18n }}
@@ -162,7 +159,7 @@ const STATUS_FILTERS: StatusFilter[] = [
                     </p>
                   }
                   @for (
-                    snapshot of snapshotsFor(activity, report.packageId);
+                    snapshot of snapshotsFor(activity, report.key);
                     track snapshot.id
                   ) {
                     <p class="checkpoint">
@@ -366,6 +363,7 @@ const STATUS_FILTERS: StatusFilter[] = [
   imports: [
     DatePipe,
     DecimalPipe,
+    KeyValuePipe,
     FormsModule,
     TuiBadge,
     TuiAccordion,
@@ -382,7 +380,7 @@ const STATUS_FILTERS: StatusFilter[] = [
   ],
 })
 export class BackupHistory {
-  private readonly backupService = inject(BackupService)
+  protected readonly backupService = inject(BackupService)
   private readonly i18n = inject(i18nPipe)
   private readonly route = inject(ActivatedRoute)
   private readonly router = inject(Router)
@@ -559,12 +557,12 @@ export class BackupHistory {
       ...(activity.error
         ? [{ label: this.i18n.transform('Operation'), detail: activity.error }]
         : []),
-      ...this.serviceReports(activity).flatMap(report =>
-        report.value.error
+      ...Object.entries(activity.services).flatMap(([packageId, report]) =>
+        report.error
           ? [
               {
-                label: this.packageName(report.packageId),
-                detail: report.value.error,
+                label: this.packageName(packageId),
+                detail: report.error,
               },
             ]
           : [],
@@ -582,13 +580,6 @@ export class BackupHistory {
     activity: T.BackupActivity,
   ): 'positive' | 'warning' | 'negative' | 'neutral' {
     return this.activityStatuses[activity.state].appearance
-  }
-
-  protected serviceReports(activity: T.BackupActivity) {
-    return Object.entries(activity.services).map(([packageId, value]) => ({
-      packageId,
-      value,
-    }))
   }
 
   protected snapshotsFor(
@@ -614,16 +605,6 @@ export class BackupHistory {
     return (pkg && getManifest(pkg)?.title) || id
   }
 
-  protected targetName(id: string): string {
-    const cifs = this.backupService.cifs().find(target => target.id === id)
-    if (cifs) return formatCifsLocation(cifs.entry)
-    const drive = this.backupService.drives().find(target => target.id === id)
-    return drive
-      ? [drive.entry.vendor, drive.entry.model].filter(Boolean).join(' ') ||
-          drive.entry.logicalname
-      : id
-  }
-
   private matchesQuery(activity: T.BackupActivity, query: string): boolean {
     if (!query) return true
     const terms = [
@@ -632,7 +613,7 @@ export class BackupHistory {
       this.activityState(activity),
       this.stringifyFilter(activity.kind),
       this.activityLabel(activity),
-      this.targetName(activity.targetId),
+      this.backupService.targetName(activity.targetId),
       ...activity.intendedServices.flatMap(id => [id, this.packageName(id)]),
     ]
     return terms.some(term => term.toLocaleLowerCase().includes(query))

@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use clap::Parser;
-use futures::{StreamExt, stream};
+use futures::{FutureExt, StreamExt, stream};
 use patch_db::json_ptr::ROOT;
 use serde::{Deserialize, Serialize};
 use tokio::sync::{Mutex, OwnedMutexGuard};
@@ -295,10 +295,10 @@ pub async fn restore_selection_rpc(
             .result?;
     }
     if let Some(guard) = scheduled_guard {
-        tasks.extend(restore_scheduled_packages(&ctx, guard, snapshots).await?);
+        tasks.extend(restore_scheduled_packages(&ctx, guard, snapshots));
     }
     if let Some(guard) = manual_guard {
-        tasks.extend(restore_packages(&ctx, guard, manual_ids).await?);
+        tasks.extend(restore_packages(&ctx, guard, manual_ids));
     }
 
     let intended_services = tasks.keys().cloned().collect();
@@ -354,30 +354,41 @@ pub async fn restore_scheduled_packages_rpc(
     .await
 }
 
-async fn restore_scheduled_packages(
+fn restore_scheduled_packages(
     ctx: &RpcContext,
     guard: ScheduledBackupMountGuard<TmpMountGuard>,
     snapshots: BTreeMap<PackageId, ServiceSnapshotId>,
-) -> Result<BTreeMap<PackageId, DownloadInstallFuture>, Error> {
+) -> BTreeMap<PackageId, DownloadInstallFuture> {
     let guard = Arc::new(guard);
     let mut tasks = BTreeMap::new();
     for (package_id, snapshot_id) in snapshots {
         let snapshot = guard.snapshot(&package_id, &snapshot_id);
         let s9pk_path = snapshot.path().join(&package_id).with_extension("s9pk");
-        let task = ctx
-            .services
-            .install(
-                ctx.clone(),
-                || S9pk::open(s9pk_path, Some(&package_id)),
-                None,
-                Some(snapshot),
-                None,
-            )
-            .await?;
+        let ctx = ctx.clone();
+        let id = package_id.clone();
+        let task = defer_restore_preparation(async move {
+            ctx.services
+                .install(
+                    ctx.clone(),
+                    || S9pk::open(s9pk_path, Some(&id)),
+                    None,
+                    Some(snapshot),
+                    None,
+                )
+                .await
+        });
         tasks.insert(package_id, task);
     }
 
-    Ok(tasks)
+    tasks
+}
+
+fn defer_restore_preparation(
+    preparation: impl std::future::Future<Output = Result<DownloadInstallFuture, Error>>
+    + Send
+    + 'static,
+) -> DownloadInstallFuture {
+    async move { preparation.await?.await }.boxed()
 }
 
 async fn validate_scheduled_snapshots(
@@ -520,7 +531,7 @@ pub async fn recover_full_server(
         rpc_ctx_phases,
     )
     .await?;
-    let tasks = restore_packages(&rpc_ctx, backup_guard, ids).await?;
+    let tasks = restore_packages(&rpc_ctx, backup_guard, ids);
     restore_setup_services(tasks, restore_phase).await;
     Ok((result, rpc_ctx))
 }
@@ -570,7 +581,7 @@ pub async fn recover_full_server_from_scheduled(
         rpc_ctx_phases,
     )
     .await?;
-    let tasks = restore_scheduled_packages(&rpc_ctx, backup_guard, snapshots).await?;
+    let tasks = restore_scheduled_packages(&rpc_ctx, backup_guard, snapshots);
     restore_setup_services(tasks, restore_phase).await;
     Ok((result, rpc_ctx))
 }
@@ -789,35 +800,77 @@ async fn restore_setup_services(
 }
 
 #[instrument(skip(ctx, backup_guard))]
-async fn restore_packages(
+fn restore_packages(
     ctx: &RpcContext,
     backup_guard: BackupMountGuard<TmpMountGuard>,
     ids: Vec<PackageId>,
-) -> Result<BTreeMap<PackageId, DownloadInstallFuture>, Error> {
+) -> BTreeMap<PackageId, DownloadInstallFuture> {
     let backup_guard = Arc::new(backup_guard);
     let mut tasks = BTreeMap::new();
     for id in ids {
-        let backup_dir = backup_guard.clone().package_backup(&id).await?;
-        let s9pk_path = backup_dir.path().join(&id).with_extension("s9pk");
-        let task = ctx
-            .services
-            .install(
-                ctx.clone(),
-                || S9pk::open(s9pk_path, Some(&id)),
-                None, // TODO: pull from metadata?
-                Some(backup_dir),
-                None,
-            )
-            .await?;
+        let ctx = ctx.clone();
+        let backup_guard = backup_guard.clone();
+        let package_id = id.clone();
+        let task = defer_restore_preparation(async move {
+            let backup_dir = backup_guard.package_backup(&package_id).await?;
+            let s9pk_path = backup_dir.path().join(&package_id).with_extension("s9pk");
+            ctx.services
+                .install(
+                    ctx.clone(),
+                    || S9pk::open(s9pk_path, Some(&package_id)),
+                    None,
+                    Some(backup_dir),
+                    None,
+                )
+                .await
+        });
         tasks.insert(id, task);
     }
 
-    Ok(tasks)
+    tasks
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
+
+    #[tokio::test]
+    async fn restore_preparation_is_deferred_and_failures_leave_siblings_running() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        let completed = Arc::new(AtomicUsize::new(0));
+        let failed = defer_restore_preparation({
+            let completed = completed.clone();
+            async move {
+                completed.fetch_add(1, Ordering::SeqCst);
+                Err(Error::new(eyre!("Unreadable archive"), ErrorKind::Backup))
+            }
+        });
+        let succeeded = defer_restore_preparation({
+            let completed = completed.clone();
+            async move {
+                completed.fetch_add(1, Ordering::SeqCst);
+                Ok(async move {
+                    Ok(async move {
+                        completed.fetch_add(1, Ordering::SeqCst);
+                        Ok(())
+                    }
+                    .boxed())
+                }
+                .boxed())
+            }
+        });
+
+        assert_eq!(completed.load(Ordering::SeqCst), 0);
+        let (failed, succeeded) = tokio::join!(async { failed.await?.await }, async {
+            succeeded.await?.await
+        });
+        let failed = failed.unwrap_err();
+        assert_eq!(failed.kind, ErrorKind::Backup);
+        assert_eq!(failed.source.to_string(), "Unreadable archive");
+        succeeded.unwrap();
+        assert_eq!(completed.load(Ordering::SeqCst), 3);
+    }
 
     fn hostname(value: &str) -> ServerHostname {
         ServerHostname::new(InternedString::intern(value)).unwrap()

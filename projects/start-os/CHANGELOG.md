@@ -106,7 +106,8 @@ for the detail behind its highlights.
 
 - **Automatic backups.** Protect System data and selected current or future
   services on hourly, daily, weekly, or monthly schedules through the web UI
-  and CLI. Schedules support timezones, daylight-saving changes, capacity
+  and CLI. Service selection and new-service reviews support individual or
+  bulk choices. Schedules support timezones, daylight-saving changes, capacity
   estimates, and configurable version history. Custom CLI retention rules
   display their saved intervals in the web UI. Pause schedules, run them
   immediately, move them to another location, or delete them while keeping
@@ -115,6 +116,8 @@ for the detail behind its highlights.
   with failure notifications and technical details for troubleshooting.
   Restore services from a mix of manual and automatic checkpoints, or recover
   a server during initial setup from its latest automatic checkpoints.
+  Unreadable service archives appear in restore history while other selected
+  services continue restoring.
   Existing locations can be unlocked with their original backup password
   after a server password change. Interrupted backups preserve completed
   checkpoints and reclaim incomplete backup data before later runs.

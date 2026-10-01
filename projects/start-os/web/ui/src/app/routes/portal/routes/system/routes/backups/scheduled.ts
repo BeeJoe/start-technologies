@@ -16,6 +16,7 @@ import {
 } from '@angular/core'
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop'
 import {
+  FormsModule,
   NonNullableFormBuilder,
   NgControl,
   ReactiveFormsModule,
@@ -61,7 +62,7 @@ import { filter, firstValueFrom, from, map, race } from 'rxjs'
 import { ApiService } from 'src/app/services/api/embassy-api.service'
 import { DataModel } from 'src/app/services/patch-db/data-model'
 import { getManifest } from 'src/app/utils/get-package-data'
-import { BackupService, formatCifsLocation } from './backup.service'
+import { BackupService } from './backup.service'
 import { DeleteScheduleService } from './delete-schedule'
 import { BACKUP_RETENTION_CONFIRM } from './retention-confirm'
 import { BackupRetentionRules } from './retention-rules'
@@ -74,7 +75,6 @@ import {
   BackupRetentionTierEditor,
   BackupScheduleFormValue,
   BackupServiceSelection,
-  backupTargetName,
   formatBackupRetentionRule,
   formatBackupScheduleSummary,
   formatBackupServiceSummary,
@@ -245,8 +245,8 @@ class JobEditor
             tuiCheckbox
             type="checkbox"
             size="s"
-            [checked]="allReviewJobsSelected(review)"
-            (change)="setAllReviewJobs(review, $any($event.target).checked)"
+            [ngModel]="allReviewJobsSelected(review)"
+            (ngModelChange)="setAllReviewJobs(review, $event)"
           />
         </label>
         @for (job of jobs(); track job.id) {
@@ -258,13 +258,9 @@ class JobEditor
               tuiCheckbox
               type="checkbox"
               size="s"
-              [checked]="reviewDecision(review.packageId, job.id)"
-              (change)="
-                setReviewDecision(
-                  review.packageId,
-                  job.id,
-                  $any($event.target).checked
-                )
+              [ngModel]="reviewDecision(review.packageId, job.id)"
+              (ngModelChange)="
+                setReviewDecision(review.packageId, job.id, $event)
               "
             />
           </label>
@@ -308,7 +304,7 @@ class JobEditor
         <backup-schedule-browser
           [jobs]="jobs()"
           [packageIds]="packageIds()"
-          [targets]="targets()"
+          [targets]="backupService.targets()"
           (enabledChange)="setJobEnabled($event.job, $event.enabled)"
           (runRequested)="runNow($event)"
           (editRequested)="edit($event)"
@@ -353,7 +349,8 @@ class JobEditor
             <div class="selected-job">
               <span tuiTitle>
                 <span tuiSubtitle>
-                  {{ targetName(job.targetId) }} · {{ 'Next run' | i18n }}:
+                  {{ backupService.targetName(job.targetId) }} ·
+                  {{ 'Next run' | i18n }}:
                   {{
                     job.status.nextRunAt
                       ? (job.status.nextRunAt | date: 'medium')
@@ -414,7 +411,9 @@ class JobEditor
           <div class="setting-row vertical">
             <span tuiTitle>
               <b>{{ 'Backup location' | i18n }}</b>
-              <span tuiSubtitle>{{ targetName(form.targetId) }}</span>
+              <span tuiSubtitle>
+                {{ backupService.targetName(form.targetId) }}
+              </span>
             </span>
             <tui-textfield
               tuiChevron
@@ -424,7 +423,7 @@ class JobEditor
               <label tuiLabel>{{ 'Backup location' | i18n }}</label>
               <input tuiSelect formControlName="targetId" />
               <tui-data-list *tuiDropdown>
-                @for (target of targets(); track target.id) {
+                @for (target of backupService.targets(); track target.id) {
                   <button tuiOption [value]="target.id">
                     {{ target.name }}
                   </button>
@@ -480,10 +479,9 @@ class JobEditor
                     <input
                       tuiCheckbox
                       type="checkbox"
-                      [checked]="allPackagesSelected(form)"
-                      (change)="
-                        setAllPackages(form, $any($event.target).checked)
-                      "
+                      [ngModel]="allPackagesSelected(form)"
+                      [ngModelOptions]="{ standalone: true }"
+                      (ngModelChange)="setAllPackages(form, $event)"
                     />
                     <span tuiTitle>
                       <b>{{ 'Toggle all services' | i18n }}</b>
@@ -495,14 +493,9 @@ class JobEditor
                         <input
                           tuiCheckbox
                           type="checkbox"
-                          [checked]="form.packageIds.includes(pkg.id)"
-                          (change)="
-                            togglePackage(
-                              form,
-                              pkg.id,
-                              $any($event.target).checked
-                            )
-                          "
+                          [ngModel]="form.packageIds.includes(pkg.id)"
+                          [ngModelOptions]="{ standalone: true }"
+                          (ngModelChange)="togglePackage(form, pkg.id, $event)"
                         />
                         @if (pkg.id === systemPackageId) {
                           <tui-icon icon="@tui.settings" />
@@ -761,7 +754,7 @@ class JobEditor
               <label tuiLabel>{{ 'New backup location' | i18n }}</label>
               <input tuiSelect formControlName="targetId" />
               <tui-data-list *tuiDropdown>
-                @for (target of targets(); track target.id) {
+                @for (target of backupService.targets(); track target.id) {
                   <button tuiOption [value]="target.id">
                     {{ target.name }}
                   </button>
@@ -1261,6 +1254,7 @@ class JobEditor
   imports: [
     BackupJobName,
     DatePipe,
+    FormsModule,
     ReactiveFormsModule,
     TuiAccordion,
     TuiAppearance,
@@ -1300,7 +1294,7 @@ export class ScheduledBackups {
   readonly collapseRequested = output<string | null>()
 
   private readonly api = inject(ApiService)
-  private readonly backupService = inject(BackupService)
+  protected readonly backupService = inject(BackupService)
   private readonly dialogs = inject(DialogService)
   private readonly deleteSchedule = inject(DeleteScheduleService)
   private readonly errors = inject(ErrorService)
@@ -1362,20 +1356,8 @@ export class ScheduledBackups {
   private readonly reviewDecisions = new Map<string, Record<string, boolean>>()
   protected readonly systemPackageId = SYSTEM_PACKAGE_ID
 
-  protected readonly targets = computed(() => [
-    ...this.backupService.cifs().map(target => ({
-      id: target.id,
-      name: formatCifsLocation(target.entry),
-    })),
-    ...this.backupService.drives().map(target => ({
-      id: target.id,
-      name:
-        [target.entry.vendor, target.entry.model].filter(Boolean).join(' ') ||
-        target.id,
-    })),
-  ])
   protected readonly stringifyTarget = (targetId: string) =>
-    this.targetName(targetId)
+    this.backupService.targetName(targetId)
 
   protected readonly packages = computed(() => [
     {
@@ -1445,7 +1427,7 @@ export class ScheduledBackups {
     const now = new Date()
     const form = new JobEditor(this.formBuilder, {
       name: '',
-      targetId: this.targets()[0]?.id || '',
+      targetId: this.backupService.targets()[0]?.id || '',
       packageIds: review
         ? [SYSTEM_PACKAGE_ID, review.packageId]
         : this.packages().map(pkg => pkg.id),
@@ -1934,7 +1916,8 @@ export class ScheduledBackups {
     this.showServices.set(false)
     this.reassigning.set(job)
     this.reassignForm.reset({
-      targetId: this.targets().find(t => t.id !== job.targetId)?.id || '',
+      targetId:
+        this.backupService.targets().find(t => t.id !== job.targetId)?.id || '',
       password: '',
       waitForSchedule: false,
     })
@@ -2031,9 +2014,6 @@ export class ScheduledBackups {
   }
 
   protected readonly pauseLabel = backupPauseLabel
-  protected readonly targetName = (id: string) =>
-    backupTargetName(this.targets(), id)
-
   protected scheduleSummary(form: JobEditor): string {
     return formatBackupScheduleSummary(form, label =>
       this.i18n.transform(label),

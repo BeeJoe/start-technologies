@@ -21,6 +21,9 @@ scheduled backups wait for the active operation to finish. If StartOS restarts
 during a restore, the interrupted operation is recorded as failed and stale
 progress is cleared.
 
+Backup history records each selected service's result. If a service archive is
+unreadable, its restore fails while the other selected services continue.
+
 For command-line recovery, use `start-cli backup history list` or `backup
 history discover` to find automatic checkpoint IDs, then `start-cli package
 backup restore-checkpoint` to select one checkpoint per service. See the

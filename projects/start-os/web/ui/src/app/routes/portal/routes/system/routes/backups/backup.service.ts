@@ -72,6 +72,20 @@ export class BackupService {
     })),
   ])
 
+  readonly targets = computed(() =>
+    this.locations().map(location => ({
+      id: location.id,
+      name:
+        location.location.entry.type === 'cifs'
+          ? location.detail
+          : location.name,
+    })),
+  )
+
+  targetName(id: string): string {
+    return this.targets().find(target => target.id === id)?.name || id
+  }
+
   async getBackupTargets(): Promise<void> {
     this.loading.set(true)
 

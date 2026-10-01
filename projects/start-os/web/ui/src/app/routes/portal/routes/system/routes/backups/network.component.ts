@@ -13,7 +13,9 @@ import {
   TuiDialogContext,
   TuiDropdown,
   TuiIcon,
+  TuiTitle,
 } from '@taiga-ui/core'
+import { TuiHeader } from '@taiga-ui/layout'
 import { injectContext, PolymorpheusComponent } from '@taiga-ui/polymorpheus'
 import { filter } from 'rxjs'
 
@@ -37,6 +39,11 @@ const ERROR =
 
 @Component({
   template: `
+    <header tuiHeader>
+      <h2 tuiTitle [id]="context.id">
+        {{ 'Delete network folder?' | i18n }}
+      </h2>
+    </header>
     <p>
       <strong>{{ context.data.name }}</strong>
     </p>
@@ -66,7 +73,7 @@ const ERROR =
       </button>
     </footer>
   `,
-  imports: [TuiButton, i18nPipe],
+  imports: [TuiButton, TuiHeader, TuiTitle, i18nPipe],
 })
 class NetworkDeleteDialog {
   protected readonly context =
@@ -462,7 +469,6 @@ export class BackupNetworkComponent {
   ) {
     this.dialog
       .openComponent<boolean>(NETWORK_DELETE, {
-        label: 'Delete network folder?',
         data: { name: formatCifsLocation(target.entry) },
         size: 's',
       })

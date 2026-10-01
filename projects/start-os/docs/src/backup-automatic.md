@@ -13,6 +13,8 @@ Each schedule has its own backup location, timing, service selection, and
 version-history policy. System data and installed services are selected by
 default when the first schedule is created. A schedule can also include future
 services automatically.
+Select services individually, or use **Toggle all services** to change every
+selection at once.
 
 StartOS stops each selected service while copying its data, then starts it again
 if it was running before the backup. Other services remain available. A service’s
@@ -117,7 +119,9 @@ checkpoints after reconnecting a location requires the current master password.
 ## History, Restore, and Failures
 
 Backup history records manual backups, automatic runs, and restores, including
-service-level failures. Search by schedule name, service, backup location, or
+service-level failures. An unreadable service archive appears as a failed restore
+in history while other selected services continue restoring.
+Search by schedule name, service, backup location, or
 status in your selected language. Schedule names appear as you entered them.
 Server data appears as **System** alongside the individual service reports.
 When the automatic-backup card needs attention, **See more** opens Backup history.

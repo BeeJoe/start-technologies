@@ -10,6 +10,7 @@ import {
 import { toSignal } from '@angular/core/rxjs-interop'
 import {
   FormControl,
+  FormsModule,
   NonNullableFormBuilder,
   ReactiveFormsModule,
   Validators,
@@ -534,8 +535,8 @@ class AutomaticEditor
                     tuiSwitch
                     type="checkbox"
                     [attr.aria-label]="'Automatic backups' | i18n"
-                    [checked]="job.enabled && !job.pause"
-                    (change)="toggleAllJobs($any($event.target).checked)"
+                    [ngModel]="job.enabled && !job.pause"
+                    (ngModelChange)="toggleAllJobs($event)"
                   />
                 </label>
               </span>
@@ -820,6 +821,7 @@ class AutomaticEditor
   `,
   host: { class: 'g-wrap-content' },
   imports: [
+    FormsModule,
     ReactiveFormsModule,
     RouterLink,
     TuiAccordion,

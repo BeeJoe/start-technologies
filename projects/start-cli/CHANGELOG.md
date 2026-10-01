@@ -26,6 +26,8 @@ or the CLI's externally observable behavior.
   targets; inspect activity and checkpoint history; delete archived checkpoints;
   estimate capacity for proposed retention rules; resolve new-service reviews;
   and restore selected checkpoints.
+  Unreadable service archives appear in restore history while other selected
+  services continue restoring.
   Schedule edits and resumes preserve completed daylight-saving occurrences.
   Capacity checks reserve full copies for the complete run before stopping services.
   Service selection includes System data and future services independently.

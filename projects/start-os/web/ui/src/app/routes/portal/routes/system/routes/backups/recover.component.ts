@@ -43,7 +43,7 @@ import { SYSTEM_PACKAGE_ID } from './scheduled-utils'
         </label>
         <tui-textfield
           tuiChevron
-          [stringify]="stringifyBulkSelection(options)"
+          [stringify]="options | tuiMapper: stringifyBulkSelection"
           [tuiTextfieldCleaner]="false"
         >
           <label tuiLabel>{{ 'Checkpoints' | i18n }}</label>
@@ -105,7 +105,7 @@ import { SYSTEM_PACKAGE_ID } from './scheduled-utils'
             <tui-textfield
               tuiChevron
               class="checkpoint"
-              [stringify]="stringifyCheckpoint(option)"
+              [stringify]="option | tuiMapper: stringifyCheckpoint"
               [tuiTextfieldCleaner]="false"
             >
               <label tuiLabel>{{ 'Checkpoints' | i18n }}</label>
@@ -327,7 +327,7 @@ export class BackupsRecoverComponent {
 
   protected bulkSelection = 'latest'
 
-  protected stringifyBulkSelection(options: RecoverOption[]) {
+  protected readonly stringifyBulkSelection = (options: RecoverOption[]) => {
     return (selection: string) => {
       if (selection === 'latest') {
         return this.i18n.transform('Latest available')
@@ -347,7 +347,7 @@ export class BackupsRecoverComponent {
     }
   }
 
-  protected stringifyCheckpoint(option: RecoverOption) {
+  protected readonly stringifyCheckpoint = (option: RecoverOption) => {
     return (key: string) => {
       const checkpoint = option.checkpoints.find(item => item.key === key)
       if (!checkpoint) return ''
