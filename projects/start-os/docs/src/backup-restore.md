@@ -15,6 +15,10 @@ location. It chooses the newest checkpoint for each service by default, but a
 different retained or archived checkpoint can be selected for any service.
 Backups from another server remain available for restore alongside this server's
 own scheduled history. Unlock them with the source server's backup password.
+If one checkpoint source cannot be opened, the picker shows a warning alongside
+the readable checkpoints. Check the location or retry with that source's original
+password. Manual and automatic backups encrypted with different passwords can
+be restored in separate passes.
 
 Only one backup or restore can run at a time. A second request is rejected, while
 scheduled backups wait for the active operation to finish. If StartOS restarts

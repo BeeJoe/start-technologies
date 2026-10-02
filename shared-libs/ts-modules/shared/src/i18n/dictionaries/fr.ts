@@ -1018,4 +1018,7 @@ export default {
   1216: 'Fuseau horaire',
   1222: 'Emplacement de sauvegarde illisible',
   1223: 'StartOS n’a pas pu lire l’emplacement de sauvegarde. Consultez l’historique des sauvegardes pour plus de détails.',
+  1224: 'Les sauvegardes manuelles n’ont pas pu être ouvertes',
+  1225: 'Les sauvegardes automatiques n’ont pas pu être ouvertes',
+  1226: 'Vérifiez l’emplacement de sauvegarde ou réessayez avec le mot de passe utilisé pour chiffrer ces points de restauration.',
 } satisfies i18n

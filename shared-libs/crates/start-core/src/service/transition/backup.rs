@@ -1,5 +1,6 @@
 use std::future::Future;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use futures::FutureExt;
@@ -7,6 +8,7 @@ use futures::future::BoxFuture;
 
 use crate::backup::PackageBackupOutput;
 use crate::disk::mount::filesystem::ReadWrite;
+use crate::notifications::{NotificationLevel, notify};
 use crate::prelude::*;
 use crate::progress::PhaseProgressTrackerHandle;
 use crate::rpc_continuations::Guid;
@@ -21,35 +23,35 @@ use crate::util::actor::{ConflictBuilder, Handler};
 /// Maximum wall-clock time a service backup procedure may run.
 const PACKAGE_BACKUP_TIMEOUT: Duration = Duration::from_secs(6 * 60 * 60);
 
-async fn run_backup_procedure<T>(
+async fn run_backup_procedure<T, Stop, StopFuture>(
     execute: impl Future<Output = Result<T, Error>>,
-    stop_runtime: impl Future<Output = Result<(), Error>>,
+    mut stop_runtime: Stop,
     unmount: impl Future<Output = Result<(), Error>>,
     restart_runtime: impl Future<Output = Result<(), Error>>,
     timeout: Duration,
-) -> Result<T, Error> {
+) -> Result<T, Error>
+where
+    Stop: FnMut() -> StopFuture,
+    StopFuture: Future<Output = Result<(), Error>>,
+{
     let (execute_result, timed_out) = match tokio::time::timeout(timeout, execute).await {
         Ok(result) => (result, false),
         Err(error) => (Err(error).with_kind(ErrorKind::Timeout), true),
     };
-    // Timed-out hooks stop before their backup bind is removed.
-    let stop_result = if timed_out {
-        Some(stop_runtime.await)
+    // Cleanup waits for confirmed runtime shutdown.
+    if timed_out {
+        while let Err(error) = stop_runtime().await {
+            tracing::error!(%error, "failed to stop package runtime after backup timeout; retrying");
+            tokio::time::sleep(Duration::from_secs(30)).await;
+        }
+    }
+    let unmount_result = unmount.await;
+    let restart_result = if timed_out && unmount_result.is_ok() {
+        Some(restart_runtime.await)
     } else {
         None
     };
-    let unmount_result = unmount.await;
-    // Failed cancellation or unmount leaves the runtime stopped.
-    let restart_result =
-        if timed_out && stop_result.as_ref().is_some_and(Result::is_ok) && unmount_result.is_ok() {
-            Some(restart_runtime.await)
-        } else {
-            None
-        };
 
-    if let Some(Err(error)) = &stop_result {
-        tracing::error!(%error, "failed to stop package runtime after backup timeout");
-    }
     if let Err(error) = &unmount_result {
         tracing::error!(%error, "failed to unmount package backup");
     }
@@ -62,7 +64,13 @@ async fn run_backup_procedure<T>(
             unmount_result?;
             Ok(output)
         }
-        Err(error) => Err(error),
+        Err(error) => {
+            unmount_result?;
+            if let Some(restarted) = restart_result {
+                restarted?;
+            }
+            Err(error)
+        }
     }
 }
 
@@ -136,12 +144,14 @@ impl Handler<Backup> for ServiceActor {
 
         // The caller's handle only observes the backup result.
         let (remote, handle) = async move {
+            let runtime_stopped = AtomicBool::new(false);
             let res = async {
                 let backup_guard = seed
                     .persistent_container
                     .mount_backup(path, ReadWrite)
                     .await?;
                 let restart_id = id.clone();
+                let cleanup_notified = AtomicBool::new(false);
                 let output = run_backup_procedure(
                     seed.persistent_container
                         .execute_backup::<Option<PackageBackupOutput>>(
@@ -149,18 +159,94 @@ impl Handler<Backup> for ServiceActor {
                             Value::Null,
                             PACKAGE_BACKUP_TIMEOUT,
                         ),
-                    seed.persistent_container
-                        .stop_runtime_after_backup_timeout(),
+                    || async {
+                        let result = seed
+                            .persistent_container
+                            .stop_runtime_after_backup_timeout()
+                            .await;
+                        if result.is_ok() {
+                            runtime_stopped.store(true, Ordering::Relaxed);
+                        }
+                        if result.is_err() && !cleanup_notified.swap(true, Ordering::Relaxed) {
+                            let package_id = seed.id.clone();
+                            seed.ctx
+                                .db
+                                .mutate(|db| {
+                                    notify(
+                                        db,
+                                        Some(package_id.clone()),
+                                        NotificationLevel::Error,
+                                        t!("service.transition.backup.cleanup-blocked-title")
+                                            .to_string(),
+                                        t!(
+                                            "service.transition.backup.cleanup-blocked-message",
+                                            service = package_id
+                                        )
+                                        .to_string(),
+                                        (),
+                                    )
+                                })
+                                .await
+                                .result
+                                .log_err();
+                        }
+                        result
+                    },
                     backup_guard.unmount(true),
-                    seed.persistent_container
-                        .restart_runtime_after_backup_timeout(restart_id),
+                    async {
+                        seed.persistent_container
+                            .restart_runtime_after_backup_timeout(restart_id)
+                            .await?;
+                        runtime_stopped.store(false, Ordering::Relaxed);
+                        Ok(())
+                    },
                     PACKAGE_BACKUP_TIMEOUT,
                 )
                 .await?;
                 Ok::<_, Error>(output.unwrap_or_default())
             }
             .await;
-            seed.leave_backing_up().await?;
+            if runtime_stopped.load(Ordering::Relaxed) {
+                let package_id = seed.id.clone();
+                let message = t!(
+                    "service.transition.backup.runtime-recovery-failed",
+                    service = package_id
+                )
+                .to_string();
+                let error = crate::error::ErrorData {
+                    details: message.clone(),
+                    debug: res
+                        .as_ref()
+                        .err()
+                        .map(|error| format!("{error:?}"))
+                        .unwrap_or_default(),
+                    info: Value::Null,
+                };
+                seed.ctx
+                    .db
+                    .mutate(|db| {
+                        let status = db
+                            .as_public_mut()
+                            .as_package_data_mut()
+                            .as_idx_mut(&package_id)
+                            .or_not_found(&package_id)?
+                            .as_status_info_mut();
+                        status.as_desired_mut().ser(&DesiredStatus::Stopped)?;
+                        status.as_error_mut().ser(&Some(error))?;
+                        notify(
+                            db,
+                            Some(package_id),
+                            NotificationLevel::Error,
+                            t!("service.transition.backup.cleanup-blocked-title").to_string(),
+                            message,
+                            (),
+                        )
+                    })
+                    .await
+                    .result?;
+            } else {
+                seed.leave_backing_up().await?;
+            }
             res
         }
         .remote_handle();
@@ -185,7 +271,7 @@ mod tests {
         let unmounted = step.clone();
         let restarted = step.clone();
         let execute = std::future::pending::<Result<PackageBackupOutput, Error>>();
-        let stop_runtime = async move {
+        let stop_runtime = || async {
             assert_eq!(stopped.fetch_add(1, Ordering::SeqCst), 0);
             Ok(())
         };
@@ -229,7 +315,7 @@ mod tests {
             unmounted_after.store(true, Ordering::SeqCst);
             Ok(())
         };
-        let stop_runtime = async move {
+        let stop_runtime = || async {
             stopped_after.store(true, Ordering::SeqCst);
             Ok(())
         };
@@ -252,5 +338,60 @@ mod tests {
         assert!(unmounted.load(Ordering::SeqCst));
         assert!(!stopped.load(Ordering::SeqCst));
         assert!(!restarted.load(Ordering::SeqCst));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn package_backup_cleanup_waits_for_successful_cancellation() {
+        let attempts = AtomicUsize::new(0);
+        let unmounted = AtomicBool::new(false);
+        let error = run_backup_procedure(
+            std::future::pending::<Result<(), Error>>(),
+            || async {
+                if attempts.fetch_add(1, Ordering::SeqCst) == 0 {
+                    assert!(!unmounted.load(Ordering::SeqCst));
+                    Err(Error::new(
+                        eyre!("runtime shutdown failed"),
+                        ErrorKind::Docker,
+                    ))
+                } else {
+                    Ok(())
+                }
+            },
+            async {
+                assert_eq!(attempts.load(Ordering::SeqCst), 2);
+                unmounted.store(true, Ordering::SeqCst);
+                Ok(())
+            },
+            async { Ok(()) },
+            Duration::ZERO,
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(error.kind, ErrorKind::Timeout);
+        assert!(unmounted.load(Ordering::SeqCst));
+    }
+
+    #[tokio::test]
+    async fn package_backup_restart_failure_is_reported() {
+        let unmounted = AtomicBool::new(false);
+        let error = run_backup_procedure(
+            std::future::pending::<Result<(), Error>>(),
+            || async { Ok(()) },
+            async {
+                unmounted.store(true, Ordering::SeqCst);
+                Ok(())
+            },
+            async {
+                assert!(unmounted.load(Ordering::SeqCst));
+                Err(Error::new(
+                    eyre!("runtime restart failed"),
+                    ErrorKind::Docker,
+                ))
+            },
+            Duration::ZERO,
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(error.kind, ErrorKind::Docker);
     }
 }

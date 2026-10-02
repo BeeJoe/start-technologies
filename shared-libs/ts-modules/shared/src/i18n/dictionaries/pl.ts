@@ -1018,4 +1018,7 @@ export default {
   1216: 'Strefa czasowa',
   1222: 'Nie można odczytać lokalizacji kopii',
   1223: 'StartOS nie mógł odczytać lokalizacji kopii. Sprawdź szczegóły w historii kopii zapasowych.',
+  1224: 'Nie udało się otworzyć ręcznych kopii zapasowych',
+  1225: 'Nie udało się otworzyć automatycznych kopii zapasowych',
+  1226: 'Sprawdź lokalizację kopii zapasowej lub spróbuj ponownie, używając hasła, którym zaszyfrowano te punkty przywracania.',
 } satisfies i18n

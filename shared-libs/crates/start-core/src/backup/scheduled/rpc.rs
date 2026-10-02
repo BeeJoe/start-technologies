@@ -50,6 +50,10 @@ pub fn job<C: Context>() -> ParentHandler<C> {
         .subcommand("create", from_fn_async(create).no_cli())
         .subcommand("update", from_fn_async(update).no_cli())
         .subcommand("validate", from_fn_async(validate).no_cli())
+        .subcommand(
+            "delete-with-backups",
+            from_fn_async(delete_with_backups).no_cli(),
+        )
         .subcommand("set-enabled", from_fn_async(set_enabled).no_cli())
         .subcommand("set-enabled-bulk", from_fn_async(set_enabled_bulk).no_cli())
         .subcommand(
@@ -2431,6 +2435,96 @@ pub struct DeleteBackupJobParams {
     pub id: BackupJobId,
 }
 
+#[derive(Deserialize, Serialize, TS)]
+#[ts(export)]
+#[serde(rename_all = "camelCase")]
+pub struct DeleteBackupJobWithBackupsParams {
+    pub id: BackupJobId,
+    pub password: String,
+    #[serde(default)]
+    #[ts(optional)]
+    pub old_password: Option<String>,
+}
+
+pub async fn delete_with_backups(
+    ctx: RpcContext,
+    DeleteBackupJobWithBackupsParams {
+        id,
+        password,
+        old_password,
+    }: DeleteBackupJobWithBackupsParams,
+) -> Result<(), Error> {
+    let _coordinator = crate::backup::try_backup_coordinator(ctx.backup_coordinator.clone())?;
+    let db = ctx.db.peek().await;
+    RpcContext::check_password(&db, &password)?;
+    let job: BackupJob = db
+        .as_public()
+        .as_scheduled_backups()
+        .as_jobs()
+        .as_idx(&id)
+        .or_not_found(&id)?
+        .de()?;
+    let server_id = db.as_public().as_server_info().as_id().de()?;
+    let (mut guard, credential) = mount_scheduled_target(
+        &db,
+        &job.target_id,
+        &server_id,
+        &job.target_instance_id,
+        Some(old_password.as_deref().unwrap_or(&password)),
+    )
+    .await
+    .map_err(backup_password_mismatch)?;
+    let mut histories = db
+        .as_public()
+        .as_scheduled_backups()
+        .as_histories()
+        .as_entries()?
+        .into_iter()
+        .map(|(_, history)| history.de())
+        .collect::<Result<Vec<ServiceTargetHistory>, Error>>()?
+        .into_iter()
+        .filter(|history| {
+            history.target_id == job.target_id
+                && history.feeding_jobs.len() == 1
+                && history.feeding_jobs.contains(&id)
+        })
+        .collect::<Vec<_>>();
+    for history in &mut histories {
+        guard.metadata.refresh_history(history);
+    }
+    let requested = histories
+        .iter()
+        .filter(|history| !history.snapshots.is_empty())
+        .map(|history| {
+            (
+                history.package_id.clone(),
+                history
+                    .snapshots
+                    .iter()
+                    .map(|snapshot| snapshot.id.clone())
+                    .collect(),
+            )
+        })
+        .collect();
+    drop(db);
+    ctx.db.mutate(|db| remove_job(db, &id)).await.result?;
+    for history in &mut histories {
+        history.feeding_jobs.remove(&id);
+        history.archived = true;
+    }
+    reconcile_target_histories(&ctx.db.peek().await, &job.target_id, &mut guard)?;
+    let deletion = guard.delete_archived_snapshots_bulk(&requested).await;
+    finish_history_change(
+        &ctx,
+        guard,
+        histories,
+        Some((&job.target_id, &credential)),
+        deletion,
+    )
+    .await?;
+    Ok(())
+}
+
 #[derive(Deserialize, Serialize, Parser, TS)]
 #[group(skip)]
 #[ts(export)]
@@ -2477,31 +2571,29 @@ pub async fn delete(
     DeleteBackupJobParams { id }: DeleteBackupJobParams,
 ) -> Result<(), Error> {
     let coordinator = crate::backup::try_backup_coordinator(ctx.backup_coordinator.clone())?;
-    let target_id = ctx
-        .db
-        .mutate(|db| {
-            let job: BackupJob = db
-                .as_public()
-                .as_scheduled_backups()
-                .as_jobs()
-                .as_idx(&id)
-                .or_not_found(&id)?
-                .de()?;
-            let package_ids = associated_service_ids(db, &job)?;
-            disassociate_histories(db, &job, &package_ids)?;
-            db.as_public_mut()
-                .as_scheduled_backups_mut()
-                .as_jobs_mut()
-                .remove(&id)?;
-            refresh_archive_state(db, &job.target_id)?;
-            Ok(job.target_id)
-        })
-        .await
-        .result?;
+    let target_id = ctx.db.mutate(|db| remove_job(db, &id)).await.result?;
     sync_archive_states(&ctx, &target_id, &coordinator)
         .await
         .log_err();
     Ok(())
+}
+
+fn remove_job(db: &mut DatabaseModel, id: &BackupJobId) -> Result<BackupTargetId, Error> {
+    let job: BackupJob = db
+        .as_public()
+        .as_scheduled_backups()
+        .as_jobs()
+        .as_idx(id)
+        .or_not_found(id)?
+        .de()?;
+    let package_ids = associated_service_ids(db, &job)?;
+    disassociate_histories(db, &job, &package_ids)?;
+    db.as_public_mut()
+        .as_scheduled_backups_mut()
+        .as_jobs_mut()
+        .remove(id)?;
+    refresh_archive_state(db, &job.target_id)?;
+    Ok(job.target_id)
 }
 
 fn validate_job_input(

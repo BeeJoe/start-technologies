@@ -273,6 +273,9 @@ export abstract class ApiService {
   abstract deleteScheduledBackupJob(
     params: T.DeleteBackupJobParams,
   ): Promise<null>
+  abstract deleteScheduledBackupJobWithBackups(
+    params: T.DeleteBackupJobWithBackupsParams,
+  ): Promise<null>
   abstract runScheduledBackupJob(
     params: T.RunBackupJobNowParams,
   ): Promise<T.BackupRun>

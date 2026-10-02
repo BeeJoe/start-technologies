@@ -1018,4 +1018,7 @@ export default {
   1216: 'Zeitzone',
   1222: 'Sicherungsort nicht lesbar',
   1223: 'StartOS konnte den Sicherungsort nicht lesen. Einzelheiten finden Sie im Sicherungsverlauf.',
+  1224: 'Manuelle Sicherungen konnten nicht geöffnet werden',
+  1225: 'Automatische Sicherungen konnten nicht geöffnet werden',
+  1226: 'Prüfen Sie den Sicherungsort oder versuchen Sie es erneut mit dem Passwort, mit dem diese Sicherungspunkte verschlüsselt wurden.',
 } satisfies i18n

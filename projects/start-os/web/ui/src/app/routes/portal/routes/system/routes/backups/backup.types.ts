@@ -38,4 +38,5 @@ export interface RecoverData {
   backupInfo: T.BackupInfo
   scheduledHistories: T.ServiceTargetHistory[]
   password: string
+  unavailableSources?: string[]
 }

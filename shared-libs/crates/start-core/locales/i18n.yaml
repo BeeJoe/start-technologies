@@ -3303,12 +3303,33 @@ service.uninstall.invalid-package-state-for-cleanup:
   pl_PL: "Nieprawidłowy stan pakietu do czyszczenia: %{state}"
 
 # service/transition/backup.rs
+service.transition.backup.cleanup-blocked-message:
+  en_US: "The backup for %{service} timed out. StartOS is retrying runtime shutdown before cleaning up the backup. Check OS logs; restart the server if shutdown continues to fail."
+  de_DE: "Die Sicherung für %{service} hat das Zeitlimit überschritten. StartOS versucht erneut, die Laufzeitumgebung vor der Bereinigung der Sicherung zu stoppen. Prüfen Sie die Betriebssystemprotokolle; starten Sie den Server neu, wenn das Stoppen weiterhin fehlschlägt."
+  es_ES: "La copia de seguridad de %{service} agotó el tiempo de espera. StartOS está reintentando detener el entorno de ejecución antes de limpiar la copia. Consulta los registros del sistema; reinicia el servidor si sigue fallando."
+  fr_FR: "La sauvegarde de %{service} a dépassé le délai. StartOS réessaie d’arrêter l’environnement d’exécution avant de nettoyer la sauvegarde. Consultez les journaux du système ; redémarrez le serveur si l’arrêt continue d’échouer."
+  pl_PL: "Kopia zapasowa usługi %{service} przekroczyła limit czasu. StartOS ponawia zatrzymanie środowiska wykonawczego przed posprzątaniem kopii. Sprawdź dzienniki systemu; uruchom serwer ponownie, jeśli zatrzymanie nadal się nie udaje."
+
+service.transition.backup.cleanup-blocked-title:
+  en_US: "Backup cleanup needs attention"
+  de_DE: "Sicherungsbereinigung erfordert Aufmerksamkeit"
+  es_ES: "La limpieza de la copia de seguridad requiere atención"
+  fr_FR: "Le nettoyage de la sauvegarde nécessite une intervention"
+  pl_PL: "Porządkowanie kopii zapasowej wymaga uwagi"
+
 service.transition.backup.no-backup-to-resume:
   en_US: "No backup to resume"
   de_DE: "Keine Sicherung zum Fortsetzen"
   es_ES: "No hay respaldo para reanudar"
   fr_FR: "Aucune sauvegarde à reprendre"
   pl_PL: "Brak kopii zapasowej do wznowienia"
+
+service.transition.backup.runtime-recovery-failed:
+  en_US: "The runtime for %{service} could not recover after its backup timed out. The service remains stopped. Check OS logs and restart the server, then start the service."
+  de_DE: "Die Laufzeitumgebung für %{service} konnte nach dem Zeitlimit der Sicherung nicht wiederhergestellt werden. Der Dienst bleibt gestoppt. Prüfen Sie die Betriebssystemprotokolle und starten Sie den Server neu, dann starten Sie den Dienst."
+  es_ES: "El entorno de ejecución de %{service} no pudo recuperarse tras agotarse el tiempo de la copia de seguridad. El servicio permanece detenido. Consulta los registros del sistema y reinicia el servidor; después, inicia el servicio."
+  fr_FR: "L’environnement d’exécution de %{service} n’a pas pu être rétabli après l’expiration du délai de sauvegarde. Le service reste arrêté. Consultez les journaux du système et redémarrez le serveur, puis démarrez le service."
+  pl_PL: "Nie udało się przywrócić środowiska wykonawczego usługi %{service} po przekroczeniu limitu czasu kopii zapasowej. Usługa pozostaje zatrzymana. Sprawdź dzienniki systemu i uruchom serwer ponownie, a następnie uruchom usługę."
 
 # context/setup.rs
 context.setup.couldnt-generate-ec-key:

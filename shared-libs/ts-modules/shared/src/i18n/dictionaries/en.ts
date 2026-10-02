@@ -1018,4 +1018,7 @@ export const ENGLISH: Record<string, number> = {
   'Timezone': 1216,
   'Backup location unreadable': 1222,
   'StartOS could not read the backup location. Check Backup history for details.': 1223,
+  'Manual backups could not be opened': 1224,
+  'Automatic backups could not be opened': 1225,
+  'Check the backup location or retry with the password used to encrypt those checkpoints.': 1226,
 }

@@ -20,6 +20,11 @@ StartOS stops each selected service while copying its data, then starts it again
 if it was running before the backup. Other services remain available. A service’s
 backup procedure fails after six hours. Staging and checkpoint copies can add
 time to the overall backup.
+If StartOS cannot stop a timed-out backup procedure, it keeps the backup location
+connected and retries shutdown before cleaning up. A notification directs you to
+OS logs and recommends restarting the server if shutdown continues to fail.
+If its runtime cannot recover afterward, the service remains stopped with an
+error and a notification. Restart the server, then start the affected service.
 
 Automatic backups use the same master-password encryption as manual backups.
 StartOS uses the password to initialize or unlock the backup location but does
@@ -115,6 +120,9 @@ checkpoint deletion is interrupted, removed checkpoints disappear from recovery
 choices and their remaining data is reclaimed before the next automatic run.
 Manual checkpoints are never removed by schedule deletion. Deleting archived
 checkpoints after reconnecting a location requires the current master password.
+Deleting a schedule together with its checkpoints verifies the current password
+and backup location before removing the schedule. An incorrect password or a
+canceled original-password prompt leaves the schedule and checkpoints intact.
 
 ## History, Restore, and Failures
 

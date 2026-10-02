@@ -170,7 +170,6 @@ export const DELETE_SCHEDULE_DIALOG = new PolymorpheusComponent(
   DeleteScheduleDialog,
 )
 
-/** Deletes a schedule and optionally removes archives no other schedule uses. */
 @Service()
 export class DeleteScheduleService {
   private readonly api = inject(ApiService)
@@ -185,7 +184,7 @@ export class DeleteScheduleService {
     }, 'Loading')
     if (!loaded) return false
 
-    let unreferenced = this.unreferencedHistories(histories, job)
+    const unreferenced = this.unreferencedHistories(histories, job)
     const checkpointCount = unreferenced.reduce(
       (sum, history) => sum + history.snapshots.length,
       0,
@@ -226,33 +225,31 @@ export class DeleteScheduleService {
       : ''
     if (decision.deleteCheckpoints && !password) return false
 
-    return this.tasks.run(
+    let deleted = false
+    const completed = await this.tasks.run(
       async () => {
         if (decision.deleteCheckpoints) {
-          const refreshed = await this.api.refreshScheduledBackupHistories({
-            targetId: job.targetId,
-          })
-          unreferenced = this.unreferencedHistories(refreshed, job)
-        }
-        await this.api.deleteScheduledBackupJob({ id: job.id })
-        if (decision.deleteCheckpoints) {
-          await this.backupService.withOriginalPassword(oldPassword =>
-            this.api.deleteArchivedBackupSnapshotsBulk({
-              targetId: job.targetId,
-              password,
-              oldPassword,
-              snapshots: unreferenced.map(history => ({
-                packageId: history.packageId,
-                snapshotIds: history.snapshots.map(snapshot => snapshot.id),
-              })),
-            }),
-          )
+          deleted =
+            (await this.backupService.withOriginalPassword(
+              async oldPassword => {
+                await this.api.deleteScheduledBackupJobWithBackups({
+                  id: job.id,
+                  password,
+                  oldPassword,
+                })
+                return true
+              },
+            )) ?? false
+        } else {
+          await this.api.deleteScheduledBackupJob({ id: job.id })
+          deleted = true
         }
       },
       decision.deleteCheckpoints
         ? 'Deleting schedule and related backups…'
         : 'Deleting schedule…',
     )
+    return completed && deleted
   }
 
   private unreferencedHistories(

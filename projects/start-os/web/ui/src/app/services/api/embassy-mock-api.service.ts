@@ -1154,6 +1154,12 @@ export class MockApiService extends ApiService {
     return null
   }
 
+  async deleteScheduledBackupJobWithBackups(
+    params: T.DeleteBackupJobWithBackupsParams,
+  ): Promise<null> {
+    return this.deleteScheduledBackupJob({ id: params.id })
+  }
+
   async runScheduledBackupJob(
     params: T.RunBackupJobNowParams,
   ): Promise<T.BackupRun> {

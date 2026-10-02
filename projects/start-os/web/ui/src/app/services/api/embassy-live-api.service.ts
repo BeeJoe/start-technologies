@@ -548,6 +548,12 @@ export class LiveApiService extends ApiService {
     return this.rpcRequest({ method: 'backup.job.run-now', params })
   }
 
+  async deleteScheduledBackupJobWithBackups(
+    params: T.DeleteBackupJobWithBackupsParams,
+  ): Promise<null> {
+    return this.rpcRequest({ method: 'backup.job.delete-with-backups', params })
+  }
+
   async getScheduledBackupHistories(params: {}): Promise<
     T.ServiceTargetHistory[]
   > {

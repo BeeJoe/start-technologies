@@ -12,6 +12,7 @@ import {
   TuiDialogContext,
   TuiGroup,
   TuiLabel,
+  TuiNotification,
   TuiTitle,
 } from '@taiga-ui/core'
 import { TuiBlock, TuiChevron, TuiSelect } from '@taiga-ui/kit'
@@ -28,6 +29,19 @@ import { SYSTEM_PACKAGE_ID } from './scheduled-utils'
 
 @Component({
   template: `
+    @if (unavailableSources.length) {
+      <div tuiNotification appearance="warning">
+        @for (source of unavailableSources; track source) {
+          <p>{{ source }}</p>
+        }
+        <p>
+          {{
+            'Check the backup location or retry with the password used to encrypt those checkpoints.'
+              | i18n
+          }}
+        </p>
+      </div>
+    }
     @if (packageData(); as options) {
       <div class="bulk-controls">
         <label class="toggle-all">
@@ -244,6 +258,7 @@ import { SYSTEM_PACKAGE_ID } from './scheduled-utils'
     TuiDataList,
     TuiBlock,
     TuiLabel,
+    TuiNotification,
     TuiSelect,
     TuiTitle,
     i18nPipe,
@@ -256,6 +271,9 @@ export class BackupsRecoverComponent {
   private readonly tasks = inject(TaskService)
   private readonly context =
     injectContext<TuiDialogContext<void, RecoverData>>()
+
+  protected readonly unavailableSources =
+    this.context.data.unavailableSources || []
 
   protected readonly packageData = toSignal(
     inject<PatchDB<DataModel>>(PatchDB)

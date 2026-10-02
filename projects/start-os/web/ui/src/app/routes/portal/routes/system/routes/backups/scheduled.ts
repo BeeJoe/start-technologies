@@ -733,7 +733,9 @@ class JobEditor
         >
           <header tuiHeader class="heading">
             <h3 tuiTitle>
-              <b>{{ 'Change backup location' | i18n }} — {{ job.name }}</b>
+              <b>
+                {{ 'Change backup location' | i18n }} — {{ jobName(job.id) }}
+              </b>
             </h3>
             <button
               tuiButton

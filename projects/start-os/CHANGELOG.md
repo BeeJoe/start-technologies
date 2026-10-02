@@ -118,11 +118,14 @@ for the detail behind its highlights.
   a server during initial setup from its latest automatic checkpoints.
   Unreadable service archives appear in restore history while other selected
   services continue restoring.
+  Restore warns when a checkpoint source cannot be opened. Deleting a schedule
+  together with its checkpoints verifies credentials before removing it.
   Existing locations can be unlocked with their original backup password
   after a server password change. Interrupted backups preserve completed
   checkpoints and reclaim incomplete backup data before later runs.
   Capacity checks reserve full copies for the complete run before stopping services.
-  A stalled service backup procedure stops after six hours.
+  A stalled service backup procedure times out after six hours. Failed runtime
+  shutdowns notify the administrator and retry before cleanup.
 
 - **A service can permanently retire a network host or a port it no longer
   uses, and the port numbers it held become available again.** A service that

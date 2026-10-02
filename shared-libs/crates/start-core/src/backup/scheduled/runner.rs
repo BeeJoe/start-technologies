@@ -936,6 +936,17 @@ async fn record_failed_run(
         })
         .await
         .result?;
+    let target_name = job.target_id.user_facing_name(&ctx.db.peek().await);
+    tracing::warn!(
+        job_id = %job.id,
+        job_name = %job.name,
+        target = %target_name,
+        run_id = %run.id,
+        ?trigger,
+        service_count = package_ids.len(),
+        error = run.error.as_deref().unwrap_or_default(),
+        "automatic backup failed before copying services"
+    );
     Ok(run)
 }
 

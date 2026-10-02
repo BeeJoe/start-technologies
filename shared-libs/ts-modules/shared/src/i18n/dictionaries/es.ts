@@ -1018,4 +1018,7 @@ export default {
   1216: 'Zona horaria',
   1222: 'No se puede leer la ubicación de las copias',
   1223: 'StartOS no pudo leer la ubicación de las copias. Consulte el historial de copias para obtener más información.',
+  1224: 'No se pudieron abrir las copias de seguridad manuales',
+  1225: 'No se pudieron abrir las copias de seguridad automáticas',
+  1226: 'Comprueba la ubicación de la copia de seguridad o vuelve a intentarlo con la contraseña utilizada para cifrar esos puntos de restauración.',
 } satisfies i18n

@@ -1,7 +1,12 @@
 import { DatePipe } from '@angular/common'
 import { Component, inject, signal } from '@angular/core'
 import { FormsModule } from '@angular/forms'
-import { DialogService, i18nPipe, TaskService } from '@start9labs/shared'
+import {
+  DialogService,
+  getErrorMessage,
+  i18nPipe,
+  TaskService,
+} from '@start9labs/shared'
 import { T } from '@start9labs/start-core'
 import { TuiButton, TuiInput, TuiTitle } from '@taiga-ui/core'
 import { injectContext, PolymorpheusComponent } from '@taiga-ui/polymorpheus'
@@ -177,6 +182,14 @@ export class BackupRestoreComponent {
         backupInfo,
         scheduledHistories,
         password,
+        unavailableSources: [
+          manual.status === 'rejected' && this.hasSource(false)
+            ? `${this.i18n.transform('Manual backups could not be opened')}: ${getErrorMessage(manual.reason)}`
+            : '',
+          automatic.status === 'rejected' && this.hasSource(true)
+            ? `${this.i18n.transform('Automatic backups could not be opened')}: ${getErrorMessage(automatic.reason)}`
+            : '',
+        ].filter(Boolean),
       }
 
       this.context.$implicit.complete()
@@ -184,6 +197,14 @@ export class BackupRestoreComponent {
         .openComponent(RECOVER, { label: 'Select services', data })
         .subscribe()
     }, 'Decrypting drive')
+  }
+
+  private hasSource(scheduled: boolean): boolean {
+    return Object.entries(this.target.entry.startOs).some(
+      ([key, server]) =>
+        (server.serverId || key) === this.serverId &&
+        !!server.scheduled === scheduled,
+    )
   }
 
   private serverEntries(): [string, T.StartOsRecoveryInfo][] {
