@@ -6,6 +6,7 @@ use rpc_toolkit::{Context, HandlerExt, ParentHandler, from_fn_async};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
+use super::retention::CAPACITY_MARGIN_PERCENT;
 use super::{
     BackupJob, BackupJobId, BackupJobPause, BackupJobStatus, BackupRun, BackupRunTrigger,
     BackupServiceScope, CapacityEstimate, RetentionPolicy, RetentionPolicyChangePreview,
@@ -353,7 +354,7 @@ pub async fn estimate_capacity(
             0,
             archived_bytes,
             live_logical_bytes,
-            10,
+            CAPACITY_MARGIN_PERCENT,
         )?;
         estimates.push(BackupServiceCapacityEstimate {
             package_id,

@@ -11,6 +11,7 @@ use crate::prelude::*;
 
 const MAX_RETENTION_SECONDS: u64 = 10 * 366 * 24 * 60 * 60;
 const MAX_PROJECTED_SNAPSHOTS: u64 = 10_000;
+pub(super) const CAPACITY_MARGIN_PERCENT: u8 = 10;
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -197,7 +198,8 @@ impl CapacityEstimate {
             .iter()
             .map(|snapshot| snapshot.physical_size.unwrap_or(snapshot.logical_size))
             .sum();
-        let staging_headroom_bytes = with_margin(measured_copy_bytes, safety_margin_percent)?;
+        let staging_headroom_bytes = with_margin(measured_copy_bytes, safety_margin_percent)
+            .ok_or_else(retention_overflow)?;
         let projected_scheduled = measured_copy_bytes
             .checked_mul(maximum_projected_snapshot_count)
             .ok_or_else(retention_overflow)?;
@@ -223,12 +225,11 @@ impl CapacityEstimate {
     }
 }
 
-fn with_margin(value: u64, percent: u8) -> Result<u64, Error> {
+pub(super) fn with_margin(value: u64, percent: u8) -> Option<u64> {
     value
-        .checked_mul(u64::from(100 + percent))
+        .checked_mul(100 + u64::from(percent))
         .and_then(|value| value.checked_add(99))
         .map(|value| value / 100)
-        .ok_or_else(retention_overflow)
 }
 
 fn retention_overflow() -> Error {
@@ -357,6 +358,15 @@ mod tests {
         assert_eq!(estimate.staging_headroom_bytes, 1100);
         assert_eq!(estimate.last_changed_bytes, Some(5));
         assert_eq!(estimate.conservative_peak_bytes, 2850);
+    }
+
+    #[test]
+    fn capacity_accepts_large_safety_margins_without_wrapping() {
+        let estimate =
+            CapacityEstimate::calculate(&RetentionPolicy::latest_only(), &[], 0, 0, 1000, u8::MAX)
+                .unwrap();
+        assert_eq!(estimate.staging_headroom_bytes, 3550);
+        assert_eq!(estimate.conservative_peak_bytes, 4550);
     }
 
     #[test]

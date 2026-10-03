@@ -106,7 +106,8 @@ for the detail behind its highlights.
 
 - **Automatic backups.** Protect System data and selected current or future
   services on hourly, daily, weekly, or monthly schedules through the web UI
-  and CLI. Service selection and new-service reviews support individual or
+  and CLI. Runs started with **Run now** continue if the client disconnects.
+  Service selection and new-service reviews support individual or
   bulk choices. Schedules support timezones, daylight-saving changes, capacity
   estimates, and configurable version history. Custom CLI retention rules
   display their saved intervals in the web UI. Pause schedules, run them

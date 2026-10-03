@@ -8,6 +8,7 @@ use color_eyre::eyre::eyre;
 use imbl_value::InternedString;
 use tokio::sync::OwnedMutexGuard;
 
+use super::retention::{CAPACITY_MARGIN_PERCENT, with_margin};
 use super::{
     BackupJob, BackupJobId, BackupJobPause, BackupRun, BackupRunState, BackupRunTrigger,
     BackupServiceScope, BackupTargetFailureState, ScheduledBackupCredential,
@@ -30,7 +31,6 @@ use crate::version::VersionT;
 use crate::volume::PKG_VOLUME_DIR;
 use crate::{DATA_DIR, PackageId, SYSTEM_PACKAGE_ID};
 
-const PREFLIGHT_MARGIN_PERCENT: u64 = 10;
 const PREFLIGHT_METADATA_BYTES: u64 = 1024 * 1024;
 const TARGET_MOUNT_RETRY_DELAYS: [Duration; 2] =
     [Duration::from_millis(500), Duration::from_millis(1500)];
@@ -66,9 +66,13 @@ pub async fn run_job(
     trigger: BackupRunTrigger,
 ) -> Result<BackupRun, Error> {
     let coordinator = crate::backup::try_backup_coordinator(ctx.backup_coordinator.clone())?;
-    run_job_with_coordinator(ctx, job_id, trigger, coordinator).await
+    // Client disconnects must not release active backup ownership.
+    tokio::spawn(run_job_with_coordinator(ctx, job_id, trigger, coordinator))
+        .await
+        .map_err(|error| Error::new(error, ErrorKind::Unknown))?
 }
 
+#[tracing::instrument(skip(ctx, _coordinator), err)]
 pub(super) async fn run_job_with_coordinator(
     ctx: RpcContext,
     job_id: BackupJobId,
@@ -727,18 +731,11 @@ pub(crate) async fn preflight_new_target_capacity(
 ) -> Result<(), Error> {
     let system_logical_bytes = crate::backup::os::system_logical_size(ctx).await?;
     let db = ctx.db.peek().await;
-    let mut required = PREFLIGHT_METADATA_BYTES;
+    let mut requirements = Vec::with_capacity(package_ids.len());
     for package_id in package_ids {
-        let logical = live_logical_size(&db, package_id, system_logical_bytes).await?;
-        required = required
-            .checked_add(logical.saturating_mul(100 + PREFLIGHT_MARGIN_PERCENT) / 100)
-            .ok_or_else(|| {
-                Error::new(
-                    eyre!("{}", t!("backup.scheduled.capacity-overflow")),
-                    ErrorKind::InvalidRequest,
-                )
-            })?;
+        requirements.push(live_logical_size(&db, package_id, system_logical_bytes).await?);
     }
+    let required = complete_run_required_capacity(requirements)?;
     if required > available {
         return Err(Error::new(
             eyre!(
@@ -841,11 +838,8 @@ fn complete_run_required_capacity(
 ) -> Result<u64, Error> {
     let mut required = PREFLIGHT_METADATA_BYTES;
     for copy_bytes in requirements {
-        let staging = copy_bytes
-            .checked_mul(100 + PREFLIGHT_MARGIN_PERCENT)
-            .and_then(|bytes| bytes.checked_add(99))
-            .map(|bytes| bytes / 100)
-            .ok_or_else(capacity_overflow)?;
+        let staging =
+            with_margin(copy_bytes, CAPACITY_MARGIN_PERCENT).ok_or_else(capacity_overflow)?;
         required = required
             .checked_add(staging)
             .ok_or_else(capacity_overflow)?;

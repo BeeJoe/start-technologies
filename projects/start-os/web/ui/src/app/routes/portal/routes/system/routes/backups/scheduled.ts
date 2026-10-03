@@ -85,7 +85,7 @@ import {
   parseBackupSchedule,
   parseBackupServiceSelection,
   removeBackupRetentionRule,
-  serializeBackupRetentionTier,
+  serializeBackupRetentionPolicy,
   serializeBackupSchedule,
   serializeBackupServiceSelection,
   SYSTEM_PACKAGE_ID,
@@ -1662,7 +1662,7 @@ export class ScheduledBackups {
       retentionOverrides: Object.fromEntries(
         Object.entries(form.retentionOverrides).map(([packageId, override]) => [
           packageId,
-          this.policy(override.tiers),
+          serializeBackupRetentionPolicy(override.tiers),
         ]),
       ),
     }
@@ -1759,7 +1759,7 @@ export class ScheduledBackups {
     const overrides = Object.fromEntries(
       Object.entries(form.retentionOverrides).map(([packageId, override]) => [
         packageId,
-        this.policy(override.tiers),
+        serializeBackupRetentionPolicy(override.tiers),
       ]),
     )
     return this.histories().flatMap(history => {
@@ -2078,7 +2078,7 @@ export class ScheduledBackups {
     return Math.max(
       this.maximumProjected(this.defaultPolicy(form)),
       ...Object.values(form.retentionOverrides).map(override =>
-        this.maximumProjected(this.policy(override.tiers)),
+        this.maximumProjected(serializeBackupRetentionPolicy(override.tiers)),
       ),
     )
   }
@@ -2116,7 +2116,10 @@ export class ScheduledBackups {
         preserveExistingPolicies: !form.id,
         retentionOverrides: Object.fromEntries([
           ...Object.entries(form.retentionOverrides).map(
-            ([packageId, override]) => [packageId, this.policy(override.tiers)],
+            ([packageId, override]) => [
+              packageId,
+              serializeBackupRetentionPolicy(override.tiers),
+            ],
           ),
           ...(form.id
             ? this.histories()
@@ -2159,19 +2162,9 @@ export class ScheduledBackups {
   }
 
   private defaultPolicy(form: JobEditor): T.RetentionPolicy {
-    if (!form.keepAdditional) return { tiers: [] }
-    return {
-      tiers: [
-        serializeBackupRetentionTier(form),
-        ...this.policy(form.additionalTiers).tiers,
-      ],
-    }
-  }
-
-  private policy(tiers: BackupRetentionTierEditor[]): T.RetentionPolicy {
-    return {
-      tiers: tiers.map(tier => serializeBackupRetentionTier(tier)),
-    }
+    return serializeBackupRetentionPolicy(
+      form.keepAdditional ? [form, ...form.additionalTiers] : [],
+    )
   }
 
   private toTierEditors(

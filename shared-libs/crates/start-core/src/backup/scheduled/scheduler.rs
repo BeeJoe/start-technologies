@@ -248,26 +248,12 @@ pub(super) async fn dispatch_due_jobs(ctx: &RpcContext) -> Result<(), Error> {
         .result?;
 
     if let Some((job_id, trigger)) = due_job {
-        let run_ctx = ctx.clone();
-        tokio::spawn(async move {
-            let log_job_id = job_id.clone();
-            if let Err(error) =
-                super::runner::run_job_with_coordinator(run_ctx, job_id, trigger, coordinator).await
-            {
-                tracing::error!(
-                    job_id = %log_job_id,
-                    ?trigger,
-                    error = %error,
-                    "automatic backup run failed"
-                );
-                tracing::debug!(
-                    job_id = %log_job_id,
-                    ?trigger,
-                    error = ?error,
-                    "automatic backup run failure details"
-                );
-            }
-        });
+        tokio::spawn(super::runner::run_job_with_coordinator(
+            ctx.clone(),
+            job_id,
+            trigger,
+            coordinator,
+        ));
     }
     Ok(())
 }

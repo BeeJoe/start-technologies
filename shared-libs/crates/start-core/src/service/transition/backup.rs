@@ -142,7 +142,7 @@ impl Handler<Backup> for ServiceActor {
         let seed = self.0.clone();
         seed.backup_phase.replace(Some(progress));
 
-        // The caller's handle only observes the backup result.
+        // Dropping the result handle cancels cleanup.
         let (remote, handle) = async move {
             let runtime_stopped = AtomicBool::new(false);
             let res = async {

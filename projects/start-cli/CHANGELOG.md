@@ -30,6 +30,7 @@ or the CLI's externally observable behavior.
   services continue restoring.
   Schedule edits and resumes preserve completed daylight-saving occurrences.
   Capacity checks reserve full copies for the complete run before stopping services.
+  Immediate runs continue safely if the client disconnects.
   Service selection includes System data and future services independently.
   Use `--old-password` when an existing backup location uses a password different
   from the current server password.
