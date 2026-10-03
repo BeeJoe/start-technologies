@@ -532,9 +532,7 @@ export class BackupHistory {
   protected activityLabel(activity: T.BackupActivity): string {
     if (activity.kind === 'manual') return this.i18n.transform('Manual backup')
     if (activity.kind === 'restore') return this.i18n.transform('Restore')
-    return activity.jobName === 'Default'
-      ? this.i18n.transform('Default')
-      : activity.jobName || this.i18n.transform('Automatic backup')
+    return activity.jobName || this.i18n.transform('Automatic backup')
   }
 
   protected activityState(activity: T.BackupActivity): string {

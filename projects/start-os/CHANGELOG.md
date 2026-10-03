@@ -110,7 +110,8 @@ for the detail behind its highlights.
   Service selection and new-service reviews support individual or
   bulk choices. Schedule setup flags duplicate names inline and brings the name
   field into view on phones while keeping the keyboard closed until a field is
-  selected. Schedules support timezones, daylight-saving changes, capacity
+  selected. Schedule names stay as entered across UI languages. Schedules
+  support timezones, daylight-saving changes, capacity
   estimates, and configurable version history. Custom CLI retention rules
   display their saved intervals in the web UI. Pause schedules, run them
   immediately, move them to another location, or delete them while keeping

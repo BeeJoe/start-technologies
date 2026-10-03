@@ -221,13 +221,7 @@ pub(crate) fn create_review_for_new_service(
     let package_ids = BTreeSet::from([package_id.clone()]);
     let configured_jobs: Vec<_> = jobs
         .iter()
-        .filter(|job| match &job.services {
-            BackupServiceScope::All => true,
-            BackupServiceScope::AllExcept {
-                excluded_package_ids,
-            } => !excluded_package_ids.contains(package_id),
-            BackupServiceScope::Selected { package_ids, .. } => package_ids.contains(package_id),
-        })
+        .filter(|job| job.services.includes(package_id))
         .cloned()
         .collect();
     for job in &configured_jobs {

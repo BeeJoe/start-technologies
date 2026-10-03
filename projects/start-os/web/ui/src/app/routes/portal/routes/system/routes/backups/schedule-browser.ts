@@ -32,7 +32,7 @@ import {
             @let selection = jobSelectionSummary(job);
             <tui-icon icon="@tui.calendar-clock" />
             <span tuiTitle>
-              <b>{{ jobName(job) }}</b>
+              <b>{{ job.name }}</b>
               <span tuiSubtitle>
                 {{ targetName(job.targetId) }} ·
                 {{ selection.serviceCount }}
@@ -63,7 +63,7 @@ import {
                 <input
                   tuiSwitch
                   type="checkbox"
-                  [attr.aria-label]="jobName(job)"
+                  [attr.aria-label]="job.name"
                   [ngModelOptions]="{ standalone: true }"
                   [ngModel]="job.enabled && !job.pause"
                   [disabled]="!!job.pause && job.pause.reason !== 'user'"
@@ -268,10 +268,6 @@ export class BackupScheduleBrowser {
   protected readonly pauseLabel = backupPauseLabel
   protected readonly targetName = (id: string) =>
     backupTargetName(this.targets(), id)
-
-  protected jobName(job: T.BackupJob): string {
-    return job.name === 'Default' ? this.i18n.transform('Default') : job.name
-  }
 
   protected jobSelectionSummary(job: T.BackupJob): {
     serviceCount: number
