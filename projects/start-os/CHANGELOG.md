@@ -117,7 +117,8 @@ for the detail behind its highlights.
   immediately, move them to another location, or delete them while keeping
   their checkpoints archived. Retention changes preview the checkpoints they
   will remove. Searchable history keeps the latest 1,000 completed operations,
-  with failure notifications and technical details for troubleshooting.
+  with navigation that fits small screens, failure notifications, and technical
+  details for troubleshooting.
   Restore services from a mix of manual and automatic checkpoints, or recover
   a server during initial setup from its latest automatic checkpoints.
   Unreadable service archives appear in restore history while other selected

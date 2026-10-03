@@ -6,6 +6,7 @@ import { ActivatedRoute, Router } from '@angular/router'
 import { convertBytes, i18nPipe } from '@start9labs/shared'
 import { T } from '@start9labs/start-core'
 import {
+  TUI_BREAKPOINT,
   TuiDataList,
   TuiIcon,
   TuiInput,
@@ -204,6 +205,8 @@ const STATUS_FILTERS: StatusFilter[] = [
       <tui-pagination
         [length]="pageCount()"
         [index]="page()"
+        [activePadding]="breakpoint() === 'mobile' ? 0 : 1"
+        [sidePadding]="breakpoint() === 'mobile' ? 0 : 1"
         (indexChange)="setPage($event)"
       />
     }
@@ -240,7 +243,6 @@ const STATUS_FILTERS: StatusFilter[] = [
       inline-size: 100%;
       min-inline-size: 0;
       max-inline-size: 100%;
-      overflow-x: auto;
     }
 
     .activity {
@@ -380,6 +382,7 @@ const STATUS_FILTERS: StatusFilter[] = [
   ],
 })
 export class BackupHistory {
+  protected readonly breakpoint = inject(TUI_BREAKPOINT)
   protected readonly backupService = inject(BackupService)
   private readonly i18n = inject(i18nPipe)
   private readonly route = inject(ActivatedRoute)
