@@ -66,7 +66,6 @@ import { DataModel } from 'src/app/services/patch-db/data-model'
       display: grid;
       gap: 0.5rem;
       inline-size: 100%;
-      text-transform: capitalize;
     }
 
     header {

@@ -22,6 +22,7 @@ import {
   ReactiveFormsModule,
   Validators,
 } from '@angular/forms'
+import { WA_IS_MOBILE } from '@ng-web-apis/platform'
 import {
   convertBytes,
   DialogService,
@@ -1302,6 +1303,7 @@ export class ScheduledBackups {
   private readonly errors = inject(ErrorService)
   private readonly i18n = inject(i18nPipe)
   private readonly injector = inject(Injector)
+  private readonly isMobile = inject(WA_IS_MOBILE)
   private readonly destroyRef = inject(DestroyRef)
   private readonly jobNameInput =
     viewChild<ElementRef<HTMLInputElement>>('jobNameInput')
@@ -1458,9 +1460,11 @@ export class ScheduledBackups {
     this.editor.set(form)
     this.editorBaseline = this.editorSnapshot(form)
     void this.refreshEstimates(form)
-    afterNextRender(() => this.jobNameInput()?.nativeElement.focus(), {
-      injector: this.injector,
-    })
+    if (!this.isMobile) {
+      afterNextRender(() => this.jobNameInput()?.nativeElement.focus(), {
+        injector: this.injector,
+      })
+    }
   }
 
   protected async viewAllJobs() {
@@ -1645,7 +1649,7 @@ export class ScheduledBackups {
           },
         )
         .subscribe()
-      this.jobNameInput()?.nativeElement.focus()
+      if (!this.isMobile) this.jobNameInput()?.nativeElement.focus()
       return
     }
     const existingJob = form.id

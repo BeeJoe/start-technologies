@@ -962,7 +962,7 @@ export default class AutomaticBackups {
     )
   }
 
-  private serviceChoices(selected?: Set<string>): ServiceChoice[] {
+  private serviceChoices(): ServiceChoice[] {
     return [
       {
         id: SYSTEM_PACKAGE_ID,
@@ -980,9 +980,7 @@ export default class AutomaticBackups {
                   id,
                   title: manifest.title,
                   icon: entry.icon,
-                  selected: this.formBuilder.control(
-                    selected ? selected.has(id) : true,
-                  ),
+                  selected: this.formBuilder.control(true),
                   system: false,
                 },
               ]

@@ -314,10 +314,7 @@ pub async fn estimate_capacity(
         preserve_existing_policies,
     }: EstimateBackupCapacityParams,
 ) -> Result<Vec<BackupServiceCapacityEstimate>, Error> {
-    default_retention.validate()?;
-    for policy in retention_overrides.values() {
-        policy.validate()?;
-    }
+    validate_retention_policies(&default_retention, &retention_overrides)?;
     let system_logical_bytes = crate::backup::os::system_logical_size(&ctx).await?;
     let db = ctx.db.peek().await;
     let package_ids = selected_installed_services(&db, &services)?;
@@ -2114,10 +2111,7 @@ pub async fn validate(
     }: ValidateBackupJobParams,
 ) -> Result<(), Error> {
     schedule.next_after(Utc::now(), None)?;
-    default_retention.validate()?;
-    for policy in retention_overrides.values() {
-        policy.validate()?;
-    }
+    validate_retention_policies(&default_retention, &retention_overrides)?;
 
     let db = ctx.db.peek().await;
     selected_installed_services(&db, &services)?;
@@ -2610,6 +2604,13 @@ fn validate_job_input(
         ));
     }
     schedule.next_after(Utc::now(), None)?;
+    validate_retention_policies(default_retention, retention_overrides)
+}
+
+fn validate_retention_policies(
+    default_retention: &RetentionPolicy,
+    retention_overrides: &BTreeMap<PackageId, RetentionPolicy>,
+) -> Result<(), Error> {
     default_retention.validate()?;
     for policy in retention_overrides.values() {
         policy.validate()?;

@@ -90,16 +90,6 @@ impl Schedule {
         self.next_after(after, last_local)
     }
 
-    pub fn catch_up_after(
-        &self,
-        cursor: DateTime<Utc>,
-        now: DateTime<Utc>,
-        last_local_occurrence: Option<NaiveDateTime>,
-    ) -> Result<Option<LocalOccurrence>, Error> {
-        let next = self.next_after(cursor, last_local_occurrence)?;
-        Ok((next.utc <= now).then_some(next))
-    }
-
     fn parse(&self) -> Result<ParsedSchedule, Error> {
         let timezone = Tz::from_str(&self.timezone).map_err(|_| {
             Error::new(
@@ -281,7 +271,7 @@ fn cron_error(field: &str) -> Error {
 
 #[cfg(test)]
 mod tests {
-    use chrono::{TimeZone, Timelike};
+    use chrono::TimeZone;
 
     use super::*;
 
@@ -335,15 +325,6 @@ mod tests {
             .next_after_cursor(first.utc, Some(first.utc))
             .unwrap();
         assert_eq!(from_persisted_cursor.utc, next.utc);
-    }
-
-    #[test]
-    fn downtime_yields_only_one_catch_up_occurrence() {
-        let schedule = Schedule::new("0 * * * *", "UTC").unwrap();
-        let cursor = Utc.with_ymd_and_hms(2025, 1, 1, 0, 5, 0).unwrap();
-        let now = Utc.with_ymd_and_hms(2025, 1, 1, 8, 5, 0).unwrap();
-        let due = schedule.catch_up_after(cursor, now, None).unwrap().unwrap();
-        assert_eq!(due.utc.hour(), 1);
     }
 
     #[test]
