@@ -278,7 +278,7 @@ export function isValidBackupSchedule(form: BackupScheduleFormValue): boolean {
 export function parseBackupSchedule(
   schedule: T.Schedule,
 ): BackupScheduleFormValue {
-  const fields = schedule.cron.split(/\s+/)
+  const fields = schedule.cron.trim().split(/\s+/)
   const frequency: BackupScheduleFrequency =
     fields[2] !== '*'
       ? 'monthly'
@@ -289,12 +289,18 @@ export function parseBackupSchedule(
           : 'hourly'
   return {
     frequency,
-    minute: Number(fields[0]) || 0,
-    hour: Number(fields[1]) || 0,
-    weekday: Number(fields[4]) || 0,
-    dayOfMonth: Number(fields[2]) || 1,
+    minute: cronFieldStart(fields[0]),
+    hour: cronFieldStart(fields[1]),
+    weekday: cronFieldStart(fields[4]) % 7,
+    dayOfMonth: cronFieldStart(fields[2], 1),
     timezone: schedule.timezone,
   }
+}
+
+/** Reads the first value of a validated singleton cron field. */
+function cronFieldStart(field = '*', minimum = 0): number {
+  const [start = '*'] = field.split(/[,/-]/)
+  return Number(start.replace('*', String(minimum)))
 }
 
 /** Preserves package IDs absent from the installed-service list. */

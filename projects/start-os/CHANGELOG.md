@@ -111,14 +111,15 @@ for the detail behind its highlights.
   bulk choices. Schedule setup flags duplicate names inline and brings the name
   field into view on phones while keeping the keyboard closed until a field is
   selected. Schedule names stay as entered across UI languages. Schedules
-  support timezones, daylight-saving changes, capacity
+  preserve CLI schedule timing when edited in the UI and support timezones, daylight-saving changes, capacity
   estimates, and configurable version history. Custom CLI retention rules
   display their saved intervals in the web UI. Pause schedules, run them
   immediately, move them to another location, or delete them while keeping
   their checkpoints archived. Retention changes preview the checkpoints they
   will remove. Searchable history keeps the latest 1,000 completed operations,
   with navigation that fits small screens, failure notifications, and technical
-  details for troubleshooting.
+  details for troubleshooting. Backup panels stay selected when sharing an address,
+  refreshing, or navigating back and forward.
   Restore services from a mix of manual and automatic checkpoints, or recover
   a server during initial setup from its latest automatic checkpoints.
   Unreadable service archives appear in restore history while other selected

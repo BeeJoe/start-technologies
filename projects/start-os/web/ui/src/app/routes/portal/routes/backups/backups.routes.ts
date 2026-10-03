@@ -1,4 +1,8 @@
-import { CanDeactivateFn, Routes } from '@angular/router'
+import {
+  ActivatedRouteSnapshot,
+  CanDeactivateFn,
+  Routes,
+} from '@angular/router'
 
 import { titleResolver } from 'src/app/utils/title-resolver'
 import type BackupsComponent from './backups.component'
@@ -14,6 +18,10 @@ export default [
       title: titleResolver,
       loadComponent: () => import('./backups.component'),
       canDeactivate: [confirmBackupExit],
+      runGuardsAndResolvers: (
+        from: ActivatedRouteSnapshot,
+        to: ActivatedRouteSnapshot,
+      ) => from.queryParamMap.get('panel') !== to.queryParamMap.get('panel'),
     }),
   ),
   {

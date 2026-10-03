@@ -45,7 +45,14 @@ import AutomaticBackups from './automatic'
 import { BackupHistory } from './history'
 import BackupLocations from './locations'
 
-type BackupPanel = 'automatic' | 'manual' | 'restore' | 'locations' | 'history'
+const BACKUP_PANELS = [
+  'automatic',
+  'manual',
+  'restore',
+  'locations',
+  'history',
+] as const
+type BackupPanel = (typeof BACKUP_PANELS)[number]
 
 @Component({
   template: `
@@ -613,6 +620,9 @@ export default class BackupsComponent {
   private readonly os = inject(OSService)
   private readonly router = inject(Router)
   private readonly route = inject(ActivatedRoute)
+  private readonly queryParams = toSignal(this.route.queryParamMap, {
+    initialValue: this.route.snapshot.queryParamMap,
+  })
   private readonly injector = inject(Injector)
   private readonly state = toSignal(
     inject<PatchDB<DataModel>>(PatchDB).watch$('scheduledBackups'),
@@ -620,9 +630,15 @@ export default class BackupsComponent {
 
   protected readonly reviewPackageId =
     this.route.snapshot.queryParamMap.get('addService') || ''
-  protected readonly expanded = signal<BackupPanel | null>(
-    this.reviewPackageId ? 'automatic' : this.route.snapshot.data['panel'],
-  )
+  protected readonly expanded = computed<BackupPanel | null>(() => {
+    const panel = this.queryParams().get('panel')
+    return panel === 'overview'
+      ? null
+      : (BACKUP_PANELS.find(value => value === panel) ??
+          (this.reviewPackageId
+            ? 'automatic'
+            : this.route.snapshot.data['panel']))
+  })
   private readonly progressRequest = signal<{
     jobId: string
     previousActivityId: string | null
@@ -690,17 +706,17 @@ export default class BackupsComponent {
     ) {
       return
     }
-    this.expanded.update(current => (current === panel ? null : panel))
+    await this.setPanel(this.expanded() === panel ? null : panel)
   }
 
   protected async openLocations() {
     if (!((await this.automatic()?.confirmDiscardChanges()) ?? true)) return
-    this.expanded.set('locations')
+    await this.setPanel('locations')
   }
 
   protected async openHistory() {
     if (!((await this.automatic()?.confirmDiscardChanges()) ?? true)) return
-    this.expanded.set('history')
+    if (!(await this.setPanel('history'))) return
     afterNextRender(
       () =>
         this.historyCard()?.nativeElement.scrollIntoView({
@@ -713,7 +729,7 @@ export default class BackupsComponent {
 
   protected async collapseAutomatic(runNowJobId: string | null) {
     if (!((await this.automatic()?.confirmDiscardChanges()) ?? true)) return
-    this.expanded.set(null)
+    if (!(await this.setPanel(null))) return
     this.progressRequest.set(
       runNowJobId && !this.operationActivity()
         ? {
@@ -725,12 +741,21 @@ export default class BackupsComponent {
   }
 
   protected openAutomaticEditor() {
-    this.expanded.set('automatic')
+    return this.setPanel('automatic')
   }
 
-  protected addSchedule() {
-    this.expanded.set('automatic')
+  protected async addSchedule() {
+    if (!(await this.setPanel('automatic'))) return
     this.createScheduleRequest.set(true)
+  }
+
+  private async setPanel(panel: BackupPanel | null) {
+    if (this.expanded() === panel) return true
+    return this.router.navigate([], {
+      relativeTo: this.route,
+      queryParams: { panel: panel ?? 'overview' },
+      queryParamsHandling: 'merge',
+    })
   }
 
   protected async goToServices() {
