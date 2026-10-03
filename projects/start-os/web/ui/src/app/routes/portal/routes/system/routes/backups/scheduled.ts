@@ -16,6 +16,7 @@ import {
 } from '@angular/core'
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop'
 import {
+  AbstractControl,
   FormsModule,
   NonNullableFormBuilder,
   NgControl,
@@ -33,6 +34,7 @@ import {
 } from '@start9labs/shared'
 import { T } from '@start9labs/start-core'
 import {
+  TUI_VALIDATION_ERRORS,
   TuiAppearance,
   TuiButton,
   TuiCell,
@@ -151,7 +153,11 @@ class JobEditor
 
   readonly form
 
-  constructor(formBuilder: NonNullableFormBuilder, value: JobEditorValue) {
+  constructor(
+    formBuilder: NonNullableFormBuilder,
+    value: JobEditorValue,
+    jobs: readonly T.BackupJob[],
+  ) {
     super(value)
     this.id = value.id
     this.packageIds = value.packageIds
@@ -164,7 +170,19 @@ class JobEditor
     this.additionalTiers = value.additionalTiers
     this.retentionOverrides = value.retentionOverrides
     this.form = formBuilder.group({
-      name: [value.name, Validators.required],
+      name: [
+        value.name,
+        [
+          Validators.required,
+          (control: AbstractControl<string>) =>
+            jobs.some(
+              job =>
+                job.id !== value.id && job.name.trim() === control.value.trim(),
+            )
+              ? { duplicateJobName: true }
+              : null,
+        ],
+      ],
       targetId: [
         { value: value.targetId, disabled: !!value.id },
         Validators.required,
@@ -211,6 +229,21 @@ class JobEditor
 
 @Component({
   selector: 'section[scheduledBackups]',
+  providers: [
+    {
+      provide: TUI_VALIDATION_ERRORS,
+      useFactory: () => {
+        const i18n = inject(i18nPipe)
+        return {
+          ...inject(TUI_VALIDATION_ERRORS, { skipSelf: true }),
+          duplicateJobName: () =>
+            i18n.transform(
+              'Every backup schedule needs a unique name. Choose a different name.',
+            ),
+        }
+      },
+    },
+  ],
   template: `
     @if (mode() !== 'manage' || (!loading() && jobs().length <= 1)) {
       <div tuiNotification appearance="info" icon="@tui.calendar-clock">
@@ -1429,29 +1462,33 @@ export class ScheduledBackups {
   protected async create(review?: T.NewServiceBackupReview) {
     if (!(await this.confirmDiscardChanges())) return
     const now = new Date()
-    const form = new JobEditor(this.formBuilder, {
-      name: '',
-      targetId: this.backupService.targets()[0]?.id || '',
-      packageIds: review
-        ? [SYSTEM_PACKAGE_ID, review.packageId]
-        : this.packages().map(pkg => pkg.id),
-      includeFuture: !review,
-      preservedSelectedPackageIds: [],
-      preservedExcludedPackageIds: [],
-      frequency: 'daily',
-      minute: now.getMinutes(),
-      hour: now.getHours(),
-      weekday: now.getDay(),
-      dayOfMonth: now.getDate(),
-      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
-      keepAdditional: false,
-      ...parseBackupRetentionTier(),
-      additionalTiers: [],
-      retentionOverrides: {},
-      password: '',
-      firstBackupNow: true,
-      capacityConfirmed: false,
-    })
+    const form = new JobEditor(
+      this.formBuilder,
+      {
+        name: '',
+        targetId: this.backupService.targets()[0]?.id || '',
+        packageIds: review
+          ? [SYSTEM_PACKAGE_ID, review.packageId]
+          : this.packages().map(pkg => pkg.id),
+        includeFuture: !review,
+        preservedSelectedPackageIds: [],
+        preservedExcludedPackageIds: [],
+        frequency: 'daily',
+        minute: now.getMinutes(),
+        hour: now.getHours(),
+        weekday: now.getDay(),
+        dayOfMonth: now.getDate(),
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+        keepAdditional: false,
+        ...parseBackupRetentionTier(),
+        additionalTiers: [],
+        retentionOverrides: {},
+        password: '',
+        firstBackupNow: true,
+        capacityConfirmed: false,
+      },
+      this.jobs(),
+    )
     this.showServices.set(false)
     this.showSingleJobList = false
     this.reassigning.set(null)
@@ -1459,12 +1496,8 @@ export class ScheduledBackups {
     this.selectedJobId.set('')
     this.editor.set(form)
     this.editorBaseline = this.editorSnapshot(form)
-    void this.refreshEstimates(form)
-    if (!this.isMobile) {
-      afterNextRender(() => this.jobNameInput()?.nativeElement.focus(), {
-        injector: this.injector,
-      })
-    }
+    await this.refreshEstimates(form)
+    this.showNameInput(form)
   }
 
   protected async viewAllJobs() {
@@ -1541,29 +1574,33 @@ export class ScheduledBackups {
     )
     const [tier, ...additionalTiers] = job.defaultRetention.tiers
     const retention = parseBackupRetentionTier(tier)
-    const form = new JobEditor(this.formBuilder, {
-      id: job.id,
-      name: job.name,
-      targetId: job.targetId,
-      ...selection,
-      ...schedule,
-      keepAdditional: !!tier,
-      ...retention,
-      additionalTiers: additionalTiers.map(item =>
-        parseBackupRetentionTier(item),
-      ),
-      retentionOverrides: Object.fromEntries(
-        Object.entries(job.retentionOverrides).map(([packageId, policy]) => [
-          packageId,
-          {
-            tiers: this.toTierEditors(policy),
-          },
-        ]),
-      ),
-      password: '',
-      firstBackupNow: false,
-      capacityConfirmed: false,
-    })
+    const form = new JobEditor(
+      this.formBuilder,
+      {
+        id: job.id,
+        name: job.name,
+        targetId: job.targetId,
+        ...selection,
+        ...schedule,
+        keepAdditional: !!tier,
+        ...retention,
+        additionalTiers: additionalTiers.map(item =>
+          parseBackupRetentionTier(item),
+        ),
+        retentionOverrides: Object.fromEntries(
+          Object.entries(job.retentionOverrides).map(([packageId, policy]) => [
+            packageId,
+            {
+              tiers: this.toTierEditors(policy),
+            },
+          ]),
+        ),
+        password: '',
+        firstBackupNow: false,
+        capacityConfirmed: false,
+      },
+      this.jobs(),
+    )
     this.selectedJobId.set(job.id)
     this.editor.set(form)
     this.editorBaseline = this.editorSnapshot(form)
@@ -1638,20 +1675,11 @@ export class ScheduledBackups {
 
   protected async save(form: JobEditor) {
     form.form.markAllAsTouched()
-    if (!this.canSave(form)) return
-    if (this.hasDuplicateJobName(form)) {
-      this.dialogs
-        .openAlert(
-          'Every backup schedule needs a unique name. Choose a different name.',
-          {
-            label: 'Schedule name already in use',
-            size: 's',
-          },
-        )
-        .subscribe()
-      if (!this.isMobile) this.jobNameInput()?.nativeElement.focus()
+    if (form.form.controls.name.invalid) {
+      this.showNameInput(form)
       return
     }
+    if (!this.canSave(form)) return
     const existingJob = form.id
       ? this.jobs().find(job => job.id === form.id)
       : null
@@ -1820,10 +1848,18 @@ export class ScheduledBackups {
     return confirmed ? changes : null
   }
 
-  private hasDuplicateJobName(form: JobEditor): boolean {
-    const name = form.name.trim()
-    return this.jobs().some(
-      job => job.id !== form.id && job.name.trim() === name,
+  private showNameInput(form: JobEditor) {
+    if (this.editor() !== form || this.destroyRef.destroyed) return
+    afterNextRender(
+      () => {
+        const input = this.jobNameInput()?.nativeElement
+        if (this.isMobile) {
+          input?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        } else {
+          input?.focus()
+        }
+      },
+      { injector: this.injector },
     )
   }
 

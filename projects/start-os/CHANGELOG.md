@@ -108,8 +108,9 @@ for the detail behind its highlights.
   services on hourly, daily, weekly, or monthly schedules through the web UI
   and CLI. Runs started with **Run now** continue if the client disconnects.
   Service selection and new-service reviews support individual or
-  bulk choices. Schedule setup keeps the keyboard closed on phones until a
-  field is selected. Schedules support timezones, daylight-saving changes, capacity
+  bulk choices. Schedule setup flags duplicate names inline and brings the name
+  field into view on phones while keeping the keyboard closed until a field is
+  selected. Schedules support timezones, daylight-saving changes, capacity
   estimates, and configurable version history. Custom CLI retention rules
   display their saved intervals in the web UI. Pause schedules, run them
   immediately, move them to another location, or delete them while keeping
