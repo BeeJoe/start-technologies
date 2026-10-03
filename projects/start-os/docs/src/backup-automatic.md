@@ -113,7 +113,17 @@ updated history before confirming the change again.
 
 Changing a schedule's location does not copy its existing checkpoints. They
 remain archived on the old location, and the next run begins a history on the
-new one. Deleting a schedule can either leave its automatic checkpoints archived
+new one. A replacement drive or network folder needs a separate location entry
+while the original entry has schedules or checkpoints.
+For a replacement network folder, add a new location entry. If a replacement
+drive reuses the original device name, find its partition under
+`/dev/disk/by-id/` over SSH and reassign the schedule with the CLI:
+
+```sh
+start-cli backup job reassign-target <JOB_ID> disk-/dev/disk/by-id/<REPLACEMENT_PARTITION> <PASSWORD> --wait-for-schedule
+```
+
+Deleting a schedule can either leave its automatic checkpoints archived
 or remove checkpoints no longer referenced by another schedule. Archive decisions
 made while a location is disconnected are preserved when it reconnects. If
 checkpoint deletion is interrupted, removed checkpoints disappear from recovery

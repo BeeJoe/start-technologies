@@ -1680,9 +1680,6 @@ export class ScheduledBackups {
       return
     }
     if (!this.canSave(form)) return
-    const existingJob = form.id
-      ? this.jobs().find(job => job.id === form.id)
-      : null
     const common = {
       name: form.form.getRawValue().name,
       services: serializeBackupServiceSelection(
@@ -1702,15 +1699,10 @@ export class ScheduledBackups {
       () =>
         this.api.validateScheduledBackupJob({
           id: form.id || null,
-          targetId: existingJob?.targetId || form.targetId,
           services: common.services,
           schedule: common.schedule,
           defaultRetention: common.defaultRetention,
           retentionOverrides: common.retentionOverrides,
-          enabled: existingJob
-            ? (existingJob.enabled && !existingJob.pause) ||
-              (form.firstBackupNow && !existingJob.enabled)
-            : true,
         }),
       'Validating',
     )

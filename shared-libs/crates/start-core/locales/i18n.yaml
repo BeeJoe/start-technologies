@@ -2136,6 +2136,13 @@ backup.scheduled.target-identity-mismatch:
   fr_FR: "L'identité de la cible de sauvegarde ne correspond pas"
   pl_PL: "Tożsamość celu kopii nie jest zgodna"
 
+backup.scheduled.target-location-identity-mismatch:
+  en_US: "This location entry belongs to another backup history. Reconnect the original location, or select a separate location entry for the replacement."
+  de_DE: "Dieser Standorteintrag gehört zu einem anderen Sicherungsverlauf. Verbinden Sie den ursprünglichen Speicherort erneut oder wählen Sie einen separaten Eintrag für den Ersatz."
+  es_ES: "Esta entrada de ubicación pertenece a otro historial de copias de seguridad. Vuelva a conectar la ubicación original o seleccione una entrada distinta para la ubicación de reemplazo."
+  fr_FR: "Cette entrée d'emplacement appartient à un autre historique de sauvegarde. Reconnectez l'emplacement d'origine ou sélectionnez une entrée distincte pour son remplacement."
+  pl_PL: "Ten wpis lokalizacji należy do innej historii kopii zapasowych. Podłącz ponownie pierwotną lokalizację lub wybierz osobny wpis dla zastępczej lokalizacji."
+
 backup.scheduled.target-unavailable-message:
   en_US: "Target %{target} failed three consecutive connection attempts. Its jobs are paused. Retry now, select another target, or delete the affected jobs."
   de_DE: "Drei Verbindungsversuche zu Ziel %{target} sind fehlgeschlagen. Die Aufträge sind pausiert. Versuchen Sie es erneut, wählen Sie ein anderes Ziel oder löschen Sie die Aufträge."

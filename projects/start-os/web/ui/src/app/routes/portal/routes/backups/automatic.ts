@@ -1270,12 +1270,10 @@ export default class AutomaticBackups {
       () =>
         this.api.validateScheduledBackupJob({
           id: null,
-          targetId: this.targetId(),
           services: this.serviceScope(),
           schedule: serializeBackupSchedule(this.editor),
           defaultRetention: this.policy(),
           retentionOverrides: {},
-          enabled: true,
         }),
       'Validating',
     )

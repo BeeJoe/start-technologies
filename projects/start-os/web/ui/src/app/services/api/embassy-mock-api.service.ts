@@ -107,15 +107,12 @@ export class MockApiService extends ApiService {
   readonly mockWsSource$ = new Subject<Revision>()
   private readonly storage = inject(WA_SESSION_STORAGE)
   private readonly revertTime = 1800
-  private scheduledBackupJobs: T.BackupJob[] = structuredClone(
-    Object.values(mockPatchData.scheduledBackups.jobs),
-  )
-  sequence = 0
+  sequence = 1
 
   constructor() {
     super()
     inject(AuthService)
-      .isVerified$.pipe(tap(() => (this.sequence = 0)))
+      .isVerified$.pipe(tap(() => (this.sequence = 1)))
       .subscribe()
   }
 
@@ -204,7 +201,13 @@ export class MockApiService extends ApiService {
     }
 
     return {
-      dump: { id: 1, value: mockPatchData },
+      dump: {
+        id: this.sequence,
+        value: {
+          ...mockPatchData,
+          scheduledBackups: structuredClone(mockPatchData.scheduledBackups),
+        },
+      },
       guid: 'db-guid',
     }
   }
@@ -1075,25 +1078,36 @@ export class MockApiService extends ApiService {
   }
 
   async getScheduledBackupJobs(params: {}): Promise<T.BackupJob[]> {
-    return structuredClone(this.scheduledBackupJobs)
+    return structuredClone(Object.values(mockPatchData.scheduledBackups.jobs))
+  }
+
+  private async saveScheduledBackupJob(job: T.BackupJob): Promise<T.BackupJob> {
+    mockPatchData.scheduledBackups.jobs[job.id] = structuredClone(job)
+    await this.mockRevision([
+      { op: PatchOp.ADD, path: `/scheduledBackups/jobs/${job.id}`, value: job },
+    ])
+    return structuredClone(job)
   }
 
   async createScheduledBackupJob(
     params: T.CreateBackupJobParams,
   ): Promise<T.BackupJob> {
     const now = new Date().toISOString()
-    const { runNow, ...jobParams } = params
+    const { runNow, password, oldPassword, ...jobParams } = params
     const job: T.BackupJob = {
       ...jobParams,
       id: crypto.randomUUID(),
       enabled: params.enabled ?? true,
       pause: null,
-      targetInstanceId: crypto.randomUUID(),
+      targetInstanceId:
+        Object.values(mockPatchData.scheduledBackups.jobs).find(
+          job => job.targetId === params.targetId,
+        )?.targetInstanceId ?? crypto.randomUUID(),
       status: {
         lastScheduledAt: null,
         lastAttemptedAt: null,
         lastSucceededAt: null,
-        nextRunAt: now,
+        nextRunAt: params.enabled === false ? null : now,
         runRequested: false,
         consecutiveFailures: 0,
         lastResult: null,
@@ -1101,23 +1115,21 @@ export class MockApiService extends ApiService {
       createdAt: now,
       updatedAt: now,
     }
-    this.scheduledBackupJobs.push(job)
-    return structuredClone(job)
+    const saved = await this.saveScheduledBackupJob(job)
+    if (runNow && saved.enabled)
+      await this.runScheduledBackupJob({ id: job.id })
+    return saved
   }
 
   async updateScheduledBackupJob(
     params: T.UpdateBackupJobParams,
   ): Promise<T.BackupJob> {
-    const index = this.scheduledBackupJobs.findIndex(
-      job => job.id === params.id,
-    )
     const job = {
-      ...this.scheduledBackupJobs[index]!,
+      ...mockPatchData.scheduledBackups.jobs[params.id]!,
       ...params,
       updatedAt: new Date().toISOString(),
     }
-    this.scheduledBackupJobs[index] = job
-    return structuredClone(job)
+    return this.saveScheduledBackupJob(job)
   }
 
   async validateScheduledBackupJob(
@@ -1129,10 +1141,12 @@ export class MockApiService extends ApiService {
   async setScheduledBackupJobEnabled(
     params: T.SetBackupJobEnabledParams,
   ): Promise<T.BackupJob> {
-    const job = this.scheduledBackupJobs.find(job => job.id === params.id)!
+    const job = structuredClone(mockPatchData.scheduledBackups.jobs[params.id]!)
     job.enabled = params.enabled
     job.pause = params.enabled ? null : { reason: 'user' }
-    return structuredClone(job)
+    job.updatedAt = new Date().toISOString()
+    job.status.nextRunAt = params.enabled ? job.updatedAt : null
+    return this.saveScheduledBackupJob(job)
   }
 
   async setScheduledBackupJobsEnabled(
@@ -1148,9 +1162,10 @@ export class MockApiService extends ApiService {
   async deleteScheduledBackupJob(
     params: T.DeleteBackupJobParams,
   ): Promise<null> {
-    this.scheduledBackupJobs = this.scheduledBackupJobs.filter(
-      job => job.id !== params.id,
-    )
+    delete mockPatchData.scheduledBackups.jobs[params.id]
+    await this.mockRevision([
+      { op: PatchOp.REMOVE, path: `/scheduledBackups/jobs/${params.id}` },
+    ])
     return null
   }
 
@@ -1163,9 +1178,9 @@ export class MockApiService extends ApiService {
   async runScheduledBackupJob(
     params: T.RunBackupJobNowParams,
   ): Promise<T.BackupRun> {
-    const job = this.scheduledBackupJobs.find(job => job.id === params.id)!
+    const job = structuredClone(mockPatchData.scheduledBackups.jobs[params.id]!)
     const now = new Date().toISOString()
-    return {
+    const run: T.BackupRun = {
       id: crypto.randomUUID(),
       jobId: job.id,
       jobName: job.name,
@@ -1179,6 +1194,27 @@ export class MockApiService extends ApiService {
       services: {},
       error: null,
     }
+    const activity: T.BackupActivity = {
+      ...run,
+      kind: 'automatic',
+      sourceServerId: null,
+    }
+    mockPatchData.scheduledBackups.runs[run.id] = run
+    mockPatchData.scheduledBackups.activities[run.id] = activity
+    await this.mockRevision<T.BackupRun | T.BackupActivity>([
+      { op: PatchOp.ADD, path: `/scheduledBackups/runs/${run.id}`, value: run },
+      {
+        op: PatchOp.ADD,
+        path: `/scheduledBackups/activities/${run.id}`,
+        value: activity,
+      },
+    ])
+    job.status.lastAttemptedAt = now
+    job.status.lastSucceededAt = now
+    job.status.lastResult = 'succeeded'
+    job.status.consecutiveFailures = 0
+    await this.saveScheduledBackupJob(job)
+    return structuredClone(run)
   }
 
   async getScheduledBackupHistories(params: {}): Promise<
@@ -1246,18 +1282,31 @@ export class MockApiService extends ApiService {
   async retryScheduledBackupTarget(
     params: T.RetryBackupTargetParams,
   ): Promise<T.BackupJob[]> {
-    return this.scheduledBackupJobs.filter(
-      job => job.targetId === params.targetId,
+    return Promise.all(
+      Object.values(mockPatchData.scheduledBackups.jobs)
+        .filter(job => job.targetId === params.targetId)
+        .map(job =>
+          this.saveScheduledBackupJob({
+            ...job,
+            pause: job.pause?.reason === 'user' ? job.pause : null,
+            status: { ...job.status, consecutiveFailures: 0 },
+          }),
+        ),
     )
   }
 
   async reassignScheduledBackupTarget(
     params: T.ReassignBackupTargetParams,
   ): Promise<T.BackupJob> {
-    const job = this.scheduledBackupJobs.find(job => job.id === params.id)!
+    const job = structuredClone(mockPatchData.scheduledBackups.jobs[params.id]!)
     job.targetId = params.targetId
     job.pause = null
-    return structuredClone(job)
+    job.targetInstanceId =
+      Object.values(mockPatchData.scheduledBackups.jobs).find(
+        other => other.id !== job.id && other.targetId === params.targetId,
+      )?.targetInstanceId ?? crypto.randomUUID()
+    job.updatedAt = new Date().toISOString()
+    return this.saveScheduledBackupJob(job)
   }
 
   async getNewServiceBackupReviews(params: {}): Promise<

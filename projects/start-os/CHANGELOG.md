@@ -115,8 +115,9 @@ for the detail behind its highlights.
   estimates, and configurable version history. Custom CLI retention rules
   display their saved intervals in the web UI. Pause schedules, run them
   immediately, move them to another location, or delete them while keeping
-  their checkpoints archived. Retention changes preview the checkpoints they
-  will remove. Searchable history keeps the latest 1,000 completed operations,
+  their checkpoints archived. Replacement locations keep their history separate
+  from the original location's checkpoints. Retention changes preview the
+  checkpoints they will remove. Searchable history keeps the latest 1,000 completed operations,
   with navigation that fits small screens, failure notifications, and technical
   details for troubleshooting. Backup panels stay selected when sharing an address,
   refreshing, or navigating back and forward.

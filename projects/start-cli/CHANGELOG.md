@@ -26,6 +26,7 @@ or the CLI's externally observable behavior.
   targets; inspect activity and checkpoint history; delete archived checkpoints;
   estimate capacity for proposed retention rules; resolve new-service reviews;
   and restore selected checkpoints.
+  Replacement locations use separate entries to preserve the original history.
   Unreadable service archives appear in restore history while other selected
   services continue restoring.
   Schedule edits and resumes preserve completed daylight-saving occurrences.

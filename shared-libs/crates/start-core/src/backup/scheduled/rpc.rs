@@ -458,7 +458,7 @@ async fn refresh_histories(
         .as_idx(&target_id.to_string())
         .or_not_found(target_id.to_string())?
         .de()?;
-    validate_target_alias(&db, &target_id, &credential.target_instance_id)?;
+    validate_target_identity(&db, &target_id, &credential.target_instance_id)?;
     let encryption_key =
         credential.open(&db.as_private().as_scheduled_backup_device_key().de()?)?;
     let server_id = db.as_public().as_server_info().as_id().de()?;
@@ -588,7 +588,7 @@ pub async fn discover_histories(
     let target_instance_id = guard.recovery.target_instance_id.clone();
     if local_server {
         let db = ctx.db.peek().await;
-        validate_target_alias(&db, &target_id, &target_instance_id)?;
+        validate_target_identity(&db, &target_id, &target_instance_id)?;
         reconcile_target_histories(&db, &target_id, &mut guard)?;
     }
     let credential = device_key
@@ -694,19 +694,45 @@ fn service_target_history(
     }
 }
 
-fn validate_target_alias(
+fn validate_target_identity(
     db: &DatabaseModel,
     target_id: &BackupTargetId,
     target_instance_id: &str,
 ) -> Result<(), Error> {
-    let aliases = db
+    let jobs = db
         .as_public()
         .as_scheduled_backups()
         .as_jobs()
         .as_entries()?
         .into_iter()
         .map(|(_, job)| job.de())
-        .collect::<Result<Vec<BackupJob>, Error>>()?
+        .collect::<Result<Vec<BackupJob>, Error>>()?;
+    let histories = db
+        .as_public()
+        .as_scheduled_backups()
+        .as_histories()
+        .as_entries()?
+        .into_iter()
+        .map(|(_, history)| history.de())
+        .collect::<Result<Vec<ServiceTargetHistory>, Error>>()?;
+    if jobs
+        .iter()
+        .any(|job| job.target_id == *target_id && job.target_instance_id != target_instance_id)
+        || histories.iter().any(|history| {
+            history.target_id == *target_id
+                && history.target_instance_id != target_instance_id
+                && super::association::history_owns_retention_settings(history)
+        })
+    {
+        return Err(Error::new(
+            eyre!(
+                "{}",
+                t!("backup.scheduled.target-location-identity-mismatch")
+            ),
+            ErrorKind::InvalidRequest,
+        ));
+    }
+    let aliases = jobs
         .into_iter()
         .filter(|job| job.target_instance_id == target_instance_id && job.target_id != *target_id)
         .map(|job| job.name)
@@ -994,7 +1020,7 @@ pub(crate) async fn mount_scheduled_target(
     ),
     Error,
 > {
-    validate_target_alias(db, target_id, expected_target_instance_id)?;
+    validate_target_identity(db, target_id, expected_target_instance_id)?;
     let target = target_id.clone().load(db)?;
     let device_key = db.as_private().as_scheduled_backup_device_key().de()?;
     let credential = db
@@ -1119,15 +1145,11 @@ pub async fn retry_target(
                 .collect::<Result<Vec<BackupJob>, Error>>()?;
             let mut resumed = Vec::new();
             for mut job in jobs.into_iter().filter(|job| job.target_id == target_id) {
-                if matches!(
-                    job.pause,
-                    Some(
-                        BackupJobPause::TargetUnavailable { .. }
-                            | BackupJobPause::TargetIdentityMismatch
-                            | BackupJobPause::TargetUnreadable
-                            | BackupJobPause::ReauthenticationRequired
-                    )
-                ) {
+                if job
+                    .pause
+                    .as_ref()
+                    .is_some_and(BackupJobPause::requires_target_retry)
+                {
                     job.pause = None;
                     job.status.consecutive_failures = 0;
                     let now = Utc::now();
@@ -1303,7 +1325,7 @@ pub async fn reassign_target(
     .await
     .map_err(backup_password_mismatch)?;
     let target_instance_id = guard.recovery.target_instance_id.clone();
-    validate_target_alias(&db, &target_id, &target_instance_id)?;
+    validate_target_identity(&db, &target_id, &target_instance_id)?;
     reconcile_target_histories(&db, &target_id, &mut guard)?;
     let target_metadata = guard.metadata.clone();
     guard.save_and_unmount().await?;
@@ -1535,7 +1557,7 @@ pub async fn update_policy(
         .as_idx(&target_id.to_string())
         .or_not_found(target_id.to_string())?
         .de()?;
-    validate_target_alias(&db, &target_id, &credential.target_instance_id)?;
+    validate_target_identity(&db, &target_id, &credential.target_instance_id)?;
     let encryption_key =
         credential.open(&db.as_private().as_scheduled_backup_device_key().de()?)?;
     let server_id = db.as_public().as_server_info().as_id().de()?;
@@ -1629,13 +1651,10 @@ pub struct CreateBackupJobParams {
 pub struct ValidateBackupJobParams {
     /// Existing job being replaced, or `None` for a new job.
     pub id: Option<BackupJobId>,
-    pub target_id: BackupTargetId,
     pub services: BackupServiceScope,
     pub schedule: Schedule,
     pub default_retention: RetentionPolicy,
     pub retention_overrides: BTreeMap<PackageId, RetentionPolicy>,
-    /// Whether this candidate contributes occurrences to shared histories.
-    pub enabled: bool,
 }
 
 #[derive(Deserialize, Serialize, Parser)]
@@ -2107,7 +2126,6 @@ pub async fn validate(
         schedule,
         default_retention,
         retention_overrides,
-        ..
     }: ValidateBackupJobParams,
 ) -> Result<(), Error> {
     schedule.next_after(Utc::now(), None)?;
@@ -2165,7 +2183,7 @@ pub async fn create(
     .await
     .map_err(backup_password_mismatch)?;
     let target_instance_id = scheduled_guard.recovery.target_instance_id.clone();
-    validate_target_alias(&db, &target_id, &target_instance_id)?;
+    validate_target_identity(&db, &target_id, &target_instance_id)?;
     reconcile_target_histories(&db, &target_id, &mut scheduled_guard)?;
     let target_metadata = scheduled_guard.metadata.clone();
     scheduled_guard.save_and_unmount().await?;
@@ -2369,15 +2387,9 @@ pub async fn set_enabled_bulk(
                 .collect::<Result<Vec<_>, Error>>()?;
             if enabled
                 && jobs.iter().any(|job| {
-                    matches!(
-                        job.pause,
-                        Some(
-                            BackupJobPause::TargetUnavailable { .. }
-                                | BackupJobPause::TargetIdentityMismatch
-                                | BackupJobPause::TargetUnreadable
-                                | BackupJobPause::ReauthenticationRequired
-                        )
-                    )
+                    job.pause
+                        .as_ref()
+                        .is_some_and(BackupJobPause::requires_target_retry)
                 })
             {
                 return Err(Error::new(
@@ -2931,9 +2943,51 @@ mod cli_tests {
             .insert(&job.id, &job)
             .unwrap();
 
-        assert!(validate_target_alias(&db, &job.target_id, "instance").is_ok());
-        assert!(validate_target_alias(&db, &"cifs-1".parse().unwrap(), "instance").is_err());
-        assert!(validate_target_alias(&db, &"cifs-1".parse().unwrap(), "other-instance").is_ok());
+        assert!(validate_target_identity(&db, &job.target_id, "instance").is_ok());
+        assert!(validate_target_identity(&db, &job.target_id, "replacement-instance").is_err());
+        assert!(validate_target_identity(&db, &"cifs-1".parse().unwrap(), "instance").is_err());
+        assert!(
+            validate_target_identity(&db, &"cifs-1".parse().unwrap(), "other-instance").is_ok()
+        );
+    }
+
+    #[test]
+    fn archived_checkpoints_preserve_the_location_identity() {
+        let mut db = backup_database();
+        let mut history = empty_history(BTreeSet::new());
+        let now = Utc::now();
+        history.snapshots.push(super::super::ServiceSnapshot {
+            id: ServiceSnapshotId::new(),
+            package_id: history.package_id.clone(),
+            package_version: "1.0.0".to_owned(),
+            source: super::super::BackupSource::Scheduled,
+            job_id: BackupJobId::new(),
+            job_name: "Archived schedule".to_owned(),
+            run_id: Guid::new(),
+            completed_at: now,
+            logical_size: 1,
+            physical_size: None,
+            changed_bytes: None,
+            measured_at: now,
+            archived: true,
+        });
+        let key = history_key(&history.target_id, &history.package_id);
+        db.as_public_mut()
+            .as_scheduled_backups_mut()
+            .as_histories_mut()
+            .insert(&key, &history)
+            .unwrap();
+
+        assert!(validate_target_identity(&db, &history.target_id, "instance").is_ok());
+        assert!(validate_target_identity(&db, &history.target_id, "replacement-instance").is_err());
+
+        history.snapshots.clear();
+        db.as_public_mut()
+            .as_scheduled_backups_mut()
+            .as_histories_mut()
+            .insert(&key, &history)
+            .unwrap();
+        assert!(validate_target_identity(&db, &history.target_id, "replacement-instance").is_ok());
     }
 
     #[test]

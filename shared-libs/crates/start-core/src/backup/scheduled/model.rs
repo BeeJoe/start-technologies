@@ -110,6 +110,12 @@ pub enum BackupJobPause {
     ReauthenticationRequired,
 }
 
+impl BackupJobPause {
+    pub(crate) fn requires_target_retry(&self) -> bool {
+        !matches!(self, Self::User)
+    }
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
