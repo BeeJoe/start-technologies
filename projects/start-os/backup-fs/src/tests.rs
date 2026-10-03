@@ -2018,7 +2018,7 @@ fn large_directory_spills_and_stays_consistent() {
 
 #[test_log::test]
 fn directory_offsets_survive_seekdir_retries() {
-    let data = TempDir::new("backupfs_data").unwrap();
+    let data = TempDir::with_prefix("backupfs_data").unwrap();
 
     with_backupfs(
         data.path(),

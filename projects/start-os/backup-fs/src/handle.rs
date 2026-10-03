@@ -63,7 +63,7 @@ mod non_fuse_tests {
 
     #[test]
     fn root_directory_sync_reclaims_dead_segments_with_open_files() {
-        let data = TempDir::new("backupfs_data").unwrap();
+        let data = TempDir::with_prefix("backupfs_data").unwrap();
         let ctrl = controller(&data);
         let payload = bytes(1024);
         let inode = create_file(&ctrl, &payload);
