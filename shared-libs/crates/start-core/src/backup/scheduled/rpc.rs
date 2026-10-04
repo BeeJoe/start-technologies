@@ -274,6 +274,7 @@ pub struct EstimateBackupCapacityCliParams {
     #[arg(
         long = "service-latest-only",
         value_name = "PACKAGE_ID",
+        value_parser = parse_backup_item_id,
         value_delimiter = ',',
         help = "help.arg.automatic-backup-service-latest-only"
     )]
@@ -828,7 +829,7 @@ pub struct DeleteArchivedSnapshotsBulkParams {
 pub struct DeleteArchivedSnapshotsCliParams {
     #[arg(help = "help.arg.backup-target-id")]
     pub target_id: BackupTargetId,
-    #[arg(help = "help.arg.package-id")]
+    #[arg(value_parser = parse_backup_item_id, help = "help.arg.backup-item-id")]
     pub package_id: PackageId,
     #[arg(required = true, help = "help.arg.automatic-backup-snapshot-ids")]
     pub snapshot_ids: Vec<ServiceSnapshotId>,
@@ -1394,7 +1395,7 @@ pub async fn preview_policy_change(
 pub struct PreviewRetentionPolicyCliParams {
     #[arg(help = "help.arg.backup-target-id")]
     pub target_id: BackupTargetId,
-    #[arg(help = "help.arg.package-id")]
+    #[arg(value_parser = parse_backup_item_id, help = "help.arg.backup-item-id")]
     pub package_id: PackageId,
     #[arg(
         long = "keep-rule",
@@ -1451,7 +1452,7 @@ pub struct UpdateRetentionPolicyParams {
 pub struct ApplyRetentionPolicyCliParams {
     #[arg(help = "help.arg.backup-target-id")]
     pub target_id: BackupTargetId,
-    #[arg(help = "help.arg.package-id")]
+    #[arg(value_parser = parse_backup_item_id, help = "help.arg.backup-item-id")]
     pub package_id: PackageId,
     #[arg(
         long = "keep-rule",
@@ -1718,6 +1719,7 @@ pub struct AddBackupJobCliParams {
     #[arg(
         long = "service-latest-only",
         value_name = "PACKAGE_ID",
+        value_parser = parse_backup_item_id,
         value_delimiter = ',',
         help = "help.arg.automatic-backup-service-latest-only"
     )]
@@ -1825,6 +1827,7 @@ pub struct EditBackupJobCliParams {
     #[arg(
         long = "service-latest-only",
         value_name = "PACKAGE_ID",
+        value_parser = parse_backup_item_id,
         value_delimiter = ',',
         help = "help.arg.automatic-backup-service-latest-only"
     )]
@@ -1832,6 +1835,7 @@ pub struct EditBackupJobCliParams {
     #[arg(
         long = "use-default-retention",
         value_name = "PACKAGE_ID",
+        value_parser = parse_backup_item_id,
         value_delimiter = ',',
         help = "help.arg.automatic-backup-use-default-retention"
     )]
@@ -1953,14 +1957,20 @@ fn parse_retention_tier(value: &str) -> Result<RetentionTier, String> {
     Ok(tier)
 }
 
+fn parse_backup_item_id(value: &str) -> Result<PackageId, crate::id::InvalidId> {
+    if value == &**SYSTEM_PACKAGE_ID {
+        Ok(SYSTEM_PACKAGE_ID.clone())
+    } else {
+        value.parse()
+    }
+}
+
 fn parse_retention_override_tier(value: &str) -> Result<(PackageId, RetentionTier), String> {
     let (package_id, tier) = value
         .split_once('=')
         .ok_or_else(|| t!("backup.scheduled.invalid-retention-override").to_string())?;
     Ok((
-        package_id
-            .parse()
-            .map_err(|error: crate::id::InvalidId| error.to_string())?,
+        parse_backup_item_id(package_id).map_err(|error| error.to_string())?,
         parse_retention_tier(tier)?,
     ))
 }
@@ -3199,6 +3209,102 @@ mod cli_tests {
         );
         assert!(one_target_instance_id(Vec::new()).is_err());
         assert!(one_target_instance_id(["one".to_owned(), "two".to_owned()]).is_err());
+    }
+
+    #[test]
+    fn backup_item_cli_accepts_system_data_without_relaxing_package_ids() {
+        let job_id = BackupJobId::new().to_string();
+        let snapshot_id = ServiceSnapshotId::new().to_string();
+        for (item, valid) in [
+            ("x_system", true),
+            ("hello-world", true),
+            ("x_other", false),
+        ] {
+            assert_eq!(
+                DeleteArchivedSnapshotsCliParams::try_parse_from([
+                    "test",
+                    "cifs-0",
+                    item,
+                    &snapshot_id,
+                    "--password",
+                    "password",
+                ])
+                .is_ok(),
+                valid,
+            );
+            assert_eq!(
+                PreviewRetentionPolicyCliParams::try_parse_from([
+                    "test",
+                    "cifs-0",
+                    item,
+                    "--latest-only",
+                ])
+                .is_ok(),
+                valid,
+            );
+            assert_eq!(
+                ApplyRetentionPolicyCliParams::try_parse_from([
+                    "test",
+                    "cifs-0",
+                    item,
+                    "--latest-only",
+                ])
+                .is_ok(),
+                valid,
+            );
+            let rule = format!("{item}=1h:1d");
+            for (option, value) in [
+                ("--service-latest-only", item),
+                ("--service-keep-rule", rule.as_str()),
+            ] {
+                assert_eq!(
+                    EstimateBackupCapacityCliParams::try_parse_from([
+                        "test", "cifs-0", option, value,
+                    ])
+                    .is_ok(),
+                    valid,
+                );
+                assert_eq!(
+                    AddBackupJobCliParams::try_parse_from([
+                        "test", "Daily", "cifs-0", "password", option, value,
+                    ])
+                    .is_ok(),
+                    valid,
+                );
+                assert_eq!(
+                    EditBackupJobCliParams::try_parse_from(["test", &job_id, option, value,])
+                        .is_ok(),
+                    valid,
+                );
+            }
+            assert_eq!(
+                EditBackupJobCliParams::try_parse_from([
+                    "test",
+                    &job_id,
+                    "--use-default-retention",
+                    item,
+                ])
+                .is_ok(),
+                valid,
+            );
+        }
+        assert_eq!(
+            parse_backup_item_id("x_system").unwrap(),
+            *SYSTEM_PACKAGE_ID
+        );
+        assert!("x_system".parse::<PackageId>().is_err());
+        assert!(parse_checkpoint_selection(&format!("x_system={snapshot_id}")).is_err());
+        assert!(
+            AddBackupJobCliParams::try_parse_from([
+                "test",
+                "Daily",
+                "cifs-0",
+                "password",
+                "--package-ids",
+                "x_system",
+            ])
+            .is_err()
+        );
     }
 
     #[test]

@@ -117,7 +117,8 @@ for the detail behind its highlights.
   immediately, move them to another location, or delete them while keeping
   their checkpoints archived. Replacement locations keep their history separate
   from the original location's checkpoints. Retention changes preview the
-  checkpoints they will remove. Searchable history keeps the latest 1,000 completed operations,
+  checkpoints they will remove for services and System data. Searchable history
+  keeps the latest 1,000 completed operations,
   with navigation that fits small screens, failure notifications, and technical
   details for troubleshooting. Backup panels stay selected when sharing an address,
   refreshing, or navigating back and forward.

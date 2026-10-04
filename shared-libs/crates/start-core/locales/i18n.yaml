@@ -4956,18 +4956,18 @@ help.arg.automatic-backup-review-decision:
   pl_PL: "Decyzja jako JOB_ID=add lub JOB_ID=skip; powtórz dla każdego bieżącego zadania lub pomiń, gdy nie ma żadnego"
 
 help.arg.automatic-backup-service-latest-only:
-  en_US: "Service package IDs that should keep only their latest checkpoint"
-  de_DE: "Dienst-Paket-IDs, die nur ihren neuesten Prüfpunkt behalten sollen"
-  es_ES: "IDs de servicios que conservarán solo su punto más reciente"
-  fr_FR: "IDs de services qui ne conserveront que leur dernier point"
-  pl_PL: "Identyfikatory usług zachowujących tylko najnowszy punkt"
+  en_US: "Service IDs, or x_system for System data, that should keep only their latest checkpoint"
+  de_DE: "Dienst-IDs oder x_system für Systemdaten, die nur ihren neuesten Prüfpunkt behalten sollen"
+  es_ES: "IDs de servicios, o x_system para los datos del sistema, que conservarán solo su punto más reciente"
+  fr_FR: "IDs de services, ou x_system pour les données système, qui ne conserveront que leur dernier point"
+  pl_PL: "Identyfikatory usług lub x_system dla danych systemowych zachowujących tylko najnowszy punkt"
 
 help.arg.automatic-backup-service-retention-tier:
-  en_US: "Per-service version-history rule PACKAGE_ID=INTERVAL:COVERAGE; may repeat"
-  de_DE: "Dienstbezogene Versionsverlaufsregel PACKAGE_ID=INTERVAL:COVERAGE; wiederholbar"
-  es_ES: "Regla de historial por servicio PACKAGE_ID=INTERVAL:COVERAGE; se puede repetir"
-  fr_FR: "Règle d'historique par service PACKAGE_ID=INTERVAL:COVERAGE ; peut être répétée"
-  pl_PL: "Reguła historii wersji usługi PACKAGE_ID=INTERVAL:COVERAGE; może się powtarzać"
+  en_US: "Version-history rule PACKAGE_ID=INTERVAL:COVERAGE; use x_system for System data; may repeat"
+  de_DE: "Versionsverlaufsregel PACKAGE_ID=INTERVAL:COVERAGE; x_system für Systemdaten; wiederholbar"
+  es_ES: "Regla de historial PACKAGE_ID=INTERVAL:COVERAGE; use x_system para los datos del sistema; se puede repetir"
+  fr_FR: "Règle d'historique PACKAGE_ID=INTERVAL:COVERAGE ; utilisez x_system pour les données système ; peut être répétée"
+  pl_PL: "Reguła historii wersji PACKAGE_ID=INTERVAL:COVERAGE; użyj x_system dla danych systemowych; może się powtarzać"
 
 help.arg.automatic-backup-snapshot-ids:
   en_US: "Automatic checkpoint IDs to delete"
@@ -4991,11 +4991,11 @@ help.arg.automatic-backup-timezone:
   pl_PL: "Strefa czasowa IANA harmonogramu automatycznych kopii"
 
 help.arg.automatic-backup-use-default-retention:
-  en_US: "Service package IDs that should use the job's default retention"
-  de_DE: "Dienst-Paket-IDs, die die Standardaufbewahrung des Auftrags verwenden sollen"
-  es_ES: "IDs de servicios que usarán la retención predeterminada de la tarea"
-  fr_FR: "IDs de services qui utiliseront la rétention par défaut de la tâche"
-  pl_PL: "Identyfikatory usług używających domyślnej retencji zadania"
+  en_US: "Service IDs, or x_system for System data, that should use the job's default retention"
+  de_DE: "Dienst-IDs oder x_system für Systemdaten, die die Standardaufbewahrung des Auftrags verwenden sollen"
+  es_ES: "IDs de servicios, o x_system para los datos del sistema, que usarán la retención predeterminada de la tarea"
+  fr_FR: "IDs de services, ou x_system pour les données système, qui utiliseront la rétention par défaut de la tâche"
+  pl_PL: "Identyfikatory usług lub x_system dla danych systemowych używających domyślnej retencji zadania"
 
 help.arg.automatic-backup-wait-for-schedule:
   en_US: "Wait for the next scheduled time instead of running on the new target now"
@@ -5003,6 +5003,13 @@ help.arg.automatic-backup-wait-for-schedule:
   es_ES: "Esperar a la próxima hora programada en vez de ejecutar ahora en el destino nuevo"
   fr_FR: "Attendre la prochaine heure planifiée au lieu d'exécuter maintenant sur la nouvelle cible"
   pl_PL: "Poczekaj na następny termin zamiast uruchamiać teraz w nowym miejscu"
+
+help.arg.backup-item-id:
+  en_US: "Service identifier, or x_system for System data"
+  de_DE: "Dienst-Kennung oder x_system für Systemdaten"
+  es_ES: "Identificador de servicio, o x_system para los datos del sistema"
+  fr_FR: "Identifiant du service, ou x_system pour les données système"
+  pl_PL: "Identyfikator usługi lub x_system dla danych systemowych"
 
 help.arg.backup-password:
   en_US: "Password for backup encryption"

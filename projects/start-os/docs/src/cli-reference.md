@@ -389,6 +389,11 @@ retention; restore checkpoints; and manage backup targets. Commands that return
 records accept the standard `--format` option. Use `start-cli backup -h` and the
 committed man pages for the complete generated command surface.
 
+Use `x_system` as the item ID for System data in history deletion, retention
+policy commands, and per-item retention options (`--service-keep-rule`,
+`--service-latest-only`, and `--use-default-retention`). Use `--system-data`
+to include or exclude System data from a schedule or capacity estimate.
+
 ### `start-cli backup create <TARGET_ID> <PASSWORD>`
 
 Create a backup of all or selected packages.
