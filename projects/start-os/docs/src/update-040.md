@@ -35,7 +35,7 @@ The following services cannot be migrated automatically. Review these before sta
 
 ### LAN addresses are changing
 
-In StartOS 0.3.x, each service had its own `.local` address (e.g. `longexamplepublickey.local`). In 0.4.0, services are accessed on unique ports of your server's main `.local` address (e.g. `adjective-noun.local:4545`). Your old per-service `.local` addresses will no longer exist after the update.
+In StartOS 0.3.x, each service had its own `.local` address (e.g. `longexamplepublickey.local`). In 0.4.0, services are accessed on unique ports of your server's main `.local` address (e.g. `server-name.local:4545`). Your old per-service `.local` addresses will no longer exist after the update.
 
 If you use a password manager, before updating, make sure your saved passwords have clear names/labels (not just the current `.local` URLs) so that you can identify them later and save the new URLs.
 
@@ -145,7 +145,7 @@ Both methods converge here: your server is migrating, and shows its progress at 
 
 1. When the migration is complete, follow the on-screen instructions to reboot. If you updated from a USB installer, remove the USB thumb drive when prompted, before you reboot — a Pi's microSD card stays in.
 
-1. Once your server has rebooted, go to your server's own address (`https://adjective-noun.local`) — the address you used on 0.3.5.1, not `start.local`.
+1. Once your server has rebooted, go to your server's own address (`https://server-name.local`) — the address you used on 0.3.5.1, not `start.local`.
 
    **If you get the old 0.3.5.1 interface, a blank page, or a "cannot connect" error, your browser is serving you its cached copy of the old UI.** The server is fine; the page is stale. Any of these will get you the 0.4.0 UI:
    - Open the address in a new private/incognito window.
@@ -164,6 +164,9 @@ When you can sign in, continue below.
 ### Step 9: Update All Services
 
 Every installed service will have an update available for the 0.4.0 marketplace. Update **all** of them — including Bitcoin (again, to the latest **minor** of your selected **major** version) — before doing anything else. The 0.4.0 versions are repackaged for the new system, even if the underlying software version is the same.
+
+> [!NOTE]
+> Bitcoin Knots updates to **Bitcoin Knots (pre-RDTS)** from the Community Registry. The update keeps your blockchain, and you can switch it to Bitcoin Core afterwards if you prefer.
 
 ### Step 10: Start All Services
 
@@ -188,7 +191,11 @@ Depending on the speed of your drive, plan on 3-5 minutes per GB of backup data.
 
 Check your notifications. A service that fails to migrate raises a notification naming the service and the reason it failed, and a summary notification lists everything that needs re-installing.
 
-Your data is safe — it stays on disk where the service left it. Install the service again from the marketplace and it will pick that data back up.
+StartOS keeps the service's volume on disk if migration fails. Install the service again from the marketplace and it will pick that data back up.
+
+### Legacy Services
+
+Services that remain marked **Legacy** after migration run on servers that have a public IP or use StartTunnel. Their package-managed certificate covers the service's secure addresses.
 
 ### Tor Cleanup
 

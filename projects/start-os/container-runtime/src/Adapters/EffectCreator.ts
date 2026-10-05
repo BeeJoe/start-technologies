@@ -10,14 +10,14 @@ import { Effects } from '../Models/Effects'
 
 import { CallbackHolder } from '../Models/CallbackHolder'
 import { asError } from '@start9labs/start-core/util'
-const matchRpcError = z.object({
-  error: z.object({
+const matchRpcError = z.looseObject({
+  error: z.looseObject({
     code: z.number(),
     message: z.string(),
     data: z
       .union([
         z.string(),
-        z.object({
+        z.looseObject({
           details: z.string(),
           debug: z.string().nullable().optional(),
         }),
@@ -29,7 +29,7 @@ const matchRpcError = z.object({
 function testRpcError(v: unknown): v is RpcError {
   return matchRpcError.safeParse(v).success
 }
-const matchRpcResult = z.object({
+const matchRpcResult = z.looseObject({
   result: z.unknown(),
 })
 function testRpcResult(v: unknown): v is z.infer<typeof matchRpcResult> {
@@ -162,20 +162,26 @@ export function makeEffects(context: EffectContext): Effects {
       },
     },
     bind(...[options]: Parameters<T.Effects['bind']>) {
-      return rpcRound('bind', {
-        ...options,
-        stack: new Error().stack,
-      }) as ReturnType<T.Effects['bind']>
+      return rpcRound('bind', { ...options }) as ReturnType<T.Effects['bind']>
     },
     bindRange(...[options]: Parameters<T.Effects['bindRange']>) {
-      return rpcRound('bind-range', {
-        ...options,
-        stack: new Error().stack,
-      }) as ReturnType<T.Effects['bindRange']>
+      return rpcRound('bind-range', { ...options }) as ReturnType<
+        T.Effects['bindRange']
+      >
     },
     clearBindings(...[options]: Parameters<T.Effects['clearBindings']>) {
       return rpcRound('clear-bindings', { ...options }) as ReturnType<
         T.Effects['clearBindings']
+      >
+    },
+    retireHost(...[options]: Parameters<T.Effects['retireHost']>) {
+      return rpcRound('retire-host', { ...options }) as ReturnType<
+        T.Effects['retireHost']
+      >
+    },
+    retireBinding(...[options]: Parameters<T.Effects['retireBinding']>) {
+      return rpcRound('retire-binding', { ...options }) as ReturnType<
+        T.Effects['retireBinding']
       >
     },
     clearServiceInterfaces(

@@ -8,12 +8,14 @@ This guide is for flashing StartOS to a USB drive, then installing it onto a des
 
 ## Download
 
-1.  Visit the [Github release page](https://github.com/Start9Labs/start-technologies/releases/tag/start-os/v0.4.0.1) to find the latest version of StartOS.
+1.  Visit the [Github release page](https://github.com/Start9Labs/start-technologies/releases/tag/start-os/v0.4.0.2) to find the latest version of StartOS.
 
 1.  Under "Image Downloads", select the image for your hardware. StartOS is available in x86_64 (AMD64), aarch64 (ARM64), and RISC-V (RVA23). For x86_64 and aarch64, two variants are available:
     - **Standard**: Includes proprietary firmware and drivers for broader hardware compatibility, including display and wireless. Recommended for most users.
 
     - **Slim (FOSS-only)**: 100% open source, containing **no** proprietary firmware or drivers. Only compatible with certain hardware, such as the Start9 Server Pure.
+
+    An **NVIDIA** variant is also published for x86_64 and aarch64. Choose it only if your server has an NVIDIA GPU you want services to use for computation — it adds NVIDIA's driver and container toolkit on top of the Standard image. It supports GeForce RTX 20-series, Quadro RTX and newer; older cards such as the GeForce GTX 900- and 10-series, or Tesla M40, P40, P100 and V100, are not supported and should use the Standard image.
 
 ## Verify your download
 
@@ -23,7 +25,7 @@ You do not need to understand what any of this means. Follow the three steps and
 
 ### 1. Find your file on the release page
 
-On the [release page](https://github.com/Start9Labs/start-technologies/releases/tag/start-os/v0.4.0.1), scroll down to **OS Images Checksums**, then to the block under **SHA-256**. It holds one line per image: a long code, then the filename it belongs to.
+On the [release page](https://github.com/Start9Labs/start-technologies/releases/tag/start-os/v0.4.0.2), scroll down to **OS Images Checksums**, then to the block under **SHA-256**. It holds one line per image: a long code, then the filename it belongs to.
 
 ```text
 37b63c86197150866809d34b5824ae22c5fc705d4f8dc9e9750b8fa23485441a  startos-0.4.0.1-fdb27c7_x86_64-nonfree.iso
@@ -122,7 +124,7 @@ Everything rests on that fingerprint being the right one, so confirm it somewher
 > [!WARNING]
 > The download in the next step contains a copy of the key, as `start9.key.asc`. Do not use that one. A key that arrives alongside the signature it is checking proves nothing.
 
-**2. Download `signatures.tar.gz`** from the release page and unpack it, into the same folder as your image. It holds one signature per image, named after the image with `.start9.asc` on the end. A second signature from the person who cut the release is in there too — the `.start9.asc` one is the one to check.
+**2. Download `signatures.tar.gz`** from the release page and unpack it, into the same folder as your image. It holds one signature per image, named after the image with `.start9.asc` on the end. Additional maintainer signatures may be included — the `.start9.asc` one is the one to check.
 
 **3. Check your image.** Replace `FILENAME` with the name of the file you downloaded, in both places:
 
@@ -192,7 +194,7 @@ Anything else is a failure. **`BAD signature`** means the file is not what Start
 
 A Raspberry Pi does not use the USB installer above. Instead, you flash the StartOS image directly to the Pi's microSD card. This is also how a Raspberry Pi is updated to a new major version of StartOS — it cannot update over the air. If you are updating an existing 0.3.5.1 server, complete the [preparation steps in the update guide](update-040.md#prepare-your-server) before flashing.
 
-1. Visit the [Github release page](https://github.com/Start9Labs/start-technologies/releases/tag/start-os/v0.4.0.1) and, from the downloads list, download the **Raspberry Pi `.img.gz`** file.
+1. Visit the [Github release page](https://github.com/Start9Labs/start-technologies/releases/tag/start-os/v0.4.0.2) and, from the downloads list, download the **Raspberry Pi `.img.gz`** file.
 
 1. Check it against the release page, exactly as in [Verify your download](#verify-your-download). The release lists a checksum for the `.img` inside the archive as well — the line you want is the one ending in `.img.gz`, because that is the file you downloaded.
 
@@ -203,6 +205,6 @@ A Raspberry Pi does not use the USB installer above. Instead, you flash the Star
    > [!WARNING]
    > BE ABSOLUTELY CERTAIN you have selected the correct target microSD card. Whatever target you select will be **COMPLETELY ERASED**!!
 
-1. Click "Flash!". When flashing completes, re-insert the microSD card into your Raspberry Pi and power it on.
+1. Click "Flash!". When flashing completes, re-insert the microSD card into your Raspberry Pi and power it on. StartOS prepares the card's storage and restarts once before setup becomes available.
 
 1. From a computer on the same network, visit [http://start.local](http://start.local) and continue with [Initial Setup](initial-setup.md).

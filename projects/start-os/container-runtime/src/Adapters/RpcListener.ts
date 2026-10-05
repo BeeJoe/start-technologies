@@ -18,13 +18,13 @@ import { System } from '../Interfaces/System'
 import { makeEffects } from './EffectCreator'
 type MaybePromise<T> = T | Promise<T>
 export const matchRpcResult = z.union([
-  z.object({ result: z.any() }),
-  z.object({
-    error: z.object({
+  z.looseObject({ result: z.any() }),
+  z.looseObject({
+    error: z.looseObject({
       code: z.number(),
       message: z.string(),
       data: z
-        .object({
+        .looseObject({
           details: z.string().optional(),
           debug: z.any().optional(),
         })
@@ -41,67 +41,67 @@ const SOCKET_PARENT = '/media/startos/rpc'
 const SOCKET_PATH = '/media/startos/rpc/service.sock'
 const jsonrpc = '2.0' as const
 
-const isResultSchema = z.object({ result: z.any() })
+const isResultSchema = z.looseObject({ result: z.any() })
 const isResult = (v: unknown): v is z.infer<typeof isResultSchema> =>
   isResultSchema.safeParse(v).success
 
 const idType = z.union([z.string(), z.number(), z.literal(null)])
 type IdType = null | string | number | undefined
-const runType = z.object({
+const runType = z.looseObject({
   id: idType.optional(),
   method: z.literal('execute'),
-  params: z.object({
+  params: z.looseObject({
     id: z.string(),
     procedure: z.string(),
     input: z.any(),
     timeout: z.number().nullable().optional(),
   }),
 })
-const sandboxRunType = z.object({
+const sandboxRunType = z.looseObject({
   id: idType.optional(),
   method: z.literal('sandbox'),
-  params: z.object({
+  params: z.looseObject({
     id: z.string(),
     procedure: z.string(),
     input: z.any(),
     timeout: z.number().nullable().optional(),
   }),
 })
-const callbackType = z.object({
+const callbackType = z.looseObject({
   method: z.literal('callback'),
-  params: z.object({
+  params: z.looseObject({
     id: z.number(),
     args: z.array(z.unknown()),
   }),
 })
-const initType = z.object({
+const initType = z.looseObject({
   id: idType.optional(),
   method: z.literal('init'),
-  params: z.object({
+  params: z.looseObject({
     id: z.string(),
     kind: z.enum(['install', 'update', 'restore']).nullable(),
   }),
 })
-const startType = z.object({
+const startType = z.looseObject({
   id: idType.optional(),
   method: z.literal('start'),
 })
-const stopType = z.object({
+const stopType = z.looseObject({
   id: idType.optional(),
   method: z.literal('stop'),
 })
-const exitType = z.object({
+const exitType = z.looseObject({
   id: idType.optional(),
   method: z.literal('exit'),
-  params: z.object({
+  params: z.looseObject({
     id: z.string(),
     target: z.string().nullable(),
   }),
 })
-const evalType = z.object({
+const evalType = z.looseObject({
   id: idType.optional(),
   method: z.literal('eval'),
-  params: z.object({
+  params: z.looseObject({
     script: z.string(),
   }),
 })
@@ -112,7 +112,13 @@ const isDevBuild = (process.env.STARTOS_ENVIRONMENT ?? '')
 
 const jsonParse = (x: string) => JSON.parse(x)
 
-const handleRpc = (id: IdType, result: Promise<RpcResult>) =>
+// codes are start-core ErrorKind discriminants; the OS localizes the message from the code
+const errorKind = {
+  invalidRequest: { code: 38, message: 'Invalid Request' },
+  serviceRuntime: { code: 59, message: 'Service Runtime Error' },
+} as const
+
+const handleRpc = (id: IdType, method: string, result: Promise<RpcResult>) =>
   result
     .then(result => {
       return {
@@ -129,17 +135,19 @@ const handleRpc = (id: IdType, result: Promise<RpcResult>) =>
         (x as any).result = null
       return x
     })
-    .catch(error => ({
-      jsonrpc,
-      id,
-      error: {
-        code: 0,
-        message: typeof error,
-        data: { details: '' + error, debug: error?.stack },
-      },
-    }))
+    .catch(error => {
+      console.error(`${method} failed`, utils.asError(error))
+      return {
+        jsonrpc,
+        id,
+        error: {
+          ...errorKind.serviceRuntime,
+          data: { details: '' + error, debug: error?.stack },
+        },
+      }
+    })
 
-const hasIdSchema = z.object({ id: idType })
+const hasIdSchema = z.looseObject({ id: idType })
 const hasId = (v: unknown): v is z.infer<typeof hasIdSchema> =>
   hasIdSchema.safeParse(v).success
 export class RpcListener {
@@ -181,12 +189,11 @@ export class RpcListener {
         jsonrpc,
         id,
         error: {
-          message: typeof error,
+          ...errorKind.invalidRequest,
           data: {
             details: error?.message ?? String(error),
             debug: error?.stack,
           },
-          code: 1,
         },
       })
       const writeDataToSocket = (x: SocketResponse) => {
@@ -244,7 +251,7 @@ export class RpcListener {
   }
 
   private dealWithInput(input: unknown): MaybePromise<SocketResponse> {
-    const parsed = z.object({ method: z.string() }).safeParse(input)
+    const parsed = z.looseObject({ method: z.string() }).safeParse(input)
     if (!parsed.success) {
       console.warn(
         `Couldn't parse the following input ${JSON.stringify(input)}`,
@@ -270,7 +277,7 @@ export class RpcListener {
         const { input: inp, timeout, id: eventId } = params
         const result = this.getResult(procedure, system, eventId, timeout, inp)
 
-        return handleRpc(id, result)
+        return handleRpc(id, 'execute', result)
       }
       case 'sandbox': {
         const { id, params } = sandboxRunType.parse(input)
@@ -279,7 +286,7 @@ export class RpcListener {
         const { input: inp, timeout, id: eventId } = params
         const result = this.getResult(procedure, system, eventId, timeout, inp)
 
-        return handleRpc(id, result)
+        return handleRpc(id, 'sandbox', result)
       }
       case 'callback': {
         const {
@@ -298,6 +305,7 @@ export class RpcListener {
         })
         return handleRpc(
           id,
+          'start',
           this.system.start(effects).then(result => ({ result })),
         )
       }
@@ -306,6 +314,7 @@ export class RpcListener {
         this.callbacks?.removeChild('main')
         return handleRpc(
           id,
+          'stop',
           this.system.stop().then(result => ({ result })),
         )
       }
@@ -313,6 +322,7 @@ export class RpcListener {
         const { id, params } = exitType.parse(input)
         return handleRpc(
           id,
+          'exit',
           (async () => {
             if (this._system) {
               let target = null
@@ -337,6 +347,7 @@ export class RpcListener {
         const { id, params } = initType.parse(input)
         return handleRpc(
           id,
+          'init',
           (async () => {
             if (!this._system) {
               const system = await this.getDependencies.system()
@@ -364,6 +375,7 @@ export class RpcListener {
         const { id, params } = evalType.parse(input)
         return handleRpc(
           id,
+          'eval',
           (async () => {
             const result = await new Function(
               `return (async () => { return (${params.script}) }).call(this)`,
@@ -389,7 +401,7 @@ export class RpcListener {
       }
       default: {
         const { id, method } = z
-          .object({ id: idType.optional(), method: z.string() })
+          .looseObject({ id: idType.optional(), method: z.string() })
           .passthrough()
           .parse(input)
         return {
@@ -436,6 +448,7 @@ export class RpcListener {
                 effects,
                 procedures[2],
                 input?.prefill ?? null,
+                input?.caller ?? null,
                 timeout || null,
               )
             case procedures[1] === 'actions' && procedures[3] === 'run':
@@ -443,22 +456,22 @@ export class RpcListener {
                 effects,
                 procedures[2],
                 input.input,
+                input.caller ?? null,
                 timeout || null,
               )
           }
       }
     })().then(ensureResultTypeShape, error => {
-      const errorSchema = z.object({
-        error: z.string(),
-        code: z.number().default(0),
-      })
-      const parsed = errorSchema.safeParse(error)
-      if (parsed.success) {
-        return {
-          error: { code: parsed.data.code, message: parsed.data.error },
-        }
+      const legacy = z.looseObject({ error: z.string() }).safeParse(error)
+      return {
+        error: {
+          ...errorKind.serviceRuntime,
+          data: {
+            details: legacy.success ? legacy.data.error : String(error),
+            debug: error?.stack,
+          },
+        },
       }
-      return { error: { code: 0, message: String(error) } }
     })
   }
 }
