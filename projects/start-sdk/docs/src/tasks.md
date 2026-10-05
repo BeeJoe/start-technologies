@@ -59,36 +59,36 @@ await sdk.action.createOwnTask(effects, manageSmtp, 'important', {
 
 ## Dependency Tasks
 
-Use `sdk.action.createTask()` to prompt the user to run an action on a dependency service. The action must be imported from the dependency's package.
+Use `sdk.action.createTask()` to prompt the user to run an action on a dependency service. The action must be imported from the dependency's package. While the dependency is not among the service's current dependencies, such as an optional dependency that is disabled, StartOS hides these tasks and a critical one does not prevent the service from starting.
 
 ```typescript
 import { someAction } from 'dependency-package/startos/actions/someAction'
 
-export const setDependencies = sdk.setupDependencies(async ({ effects }) => {
+const dependency = sdk.Dependency.required('dependency-id', {
+  description: i18n('Needed by this service'),
+  metadata: { title: 'Dependency', icon: 'https://example.com/icon.png' },
+  versionRange: '>=1.0.0:0',
+  kind: 'running',
+  healthChecks: ['dependency-id'],
+}).withInit(async effects => {
   await sdk.action.createTask(effects, 'dependency-id', someAction, 'critical', {
     input: {
       kind: 'partial',
       accept: [
         {
-          /* one or more acceptable partial inputs */
+          /* matching input */
         },
       ],
       set: {
-        /* the value to pre-fill when none are accepted */
+        /* prefill */
       },
     },
     when: { condition: 'input-not-matches', once: false },
     reason: i18n('Configure the dependency for use with this service'),
   })
-
-  return {
-    'dependency-id': {
-      kind: 'running',
-      versionRange: '>=1.0.0:0',
-      healthChecks: ['dependency-id'],
-    },
-  }
 })
+
+export const dependencies = sdk.Dependencies.of().addDependency(dependency)
 ```
 
 ### Parameters
@@ -159,3 +159,5 @@ A user already stuck in either state can only be recovered from the CLI, naming 
 ```bash
 start-cli package action clear-task <creating-package> '<replay-id>' --force
 ```
+
+Network state has the same shape and the same remedy — see [Retiring a Host or Binding](interfaces.md#retiring-a-host-or-binding).

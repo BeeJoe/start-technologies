@@ -32,7 +32,6 @@ export const manifest = setupManifest({
       arch: ['x86_64', 'aarch64'],
     },
   },
-  dependencies: {},
   userspaceFilesystems: true,
   virtualNetworking: true,
 })
@@ -47,7 +46,7 @@ With `userspaceFilesystems` and `virtualNetworking` set, the per-service LXC get
 
 Setting these flags does not change the container's capabilities. Each one adds a device node and nothing else.
 
-Both devices are bind-mounted from the host (via the same machinery that handles `hardwareAcceleration` for GPU nodes). The host's `fuse` and `tun` kernel modules are auto-loaded at boot.
+Both devices are re-created inside the container with the host node's device numbers and permissions, then bind-mounted onto their usual `/dev` paths (via the same machinery that handles `hardwareAcceleration` for GPU nodes). The host's `fuse` and `tun` kernel modules are auto-loaded at boot.
 
 The host-level sysctls `kernel.unprivileged_userns_clone=1` and `user.max_user_namespaces=28633` are pinned at install time so unprivileged user-namespace creation is allowed and headroom for nested namespaces is reserved.
 

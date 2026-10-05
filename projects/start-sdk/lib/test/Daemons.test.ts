@@ -3,8 +3,9 @@ import { cooldownTrigger } from '../trigger'
 import { Daemon } from '../mainFn/Daemon'
 import { Mounts } from '../mainFn/Mounts'
 import { setupMain } from '../mainFn'
-import { SubContainer } from '../util/SubContainer'
+import { SubContainer, SubContainerEager } from '../util/SubContainer'
 import * as T from '@start9labs/start-core/types'
+import { FileMounts } from '../util/fileMounts'
 
 type Manifest = {
   id: 'test'
@@ -28,6 +29,29 @@ const fakeEffects = (): T.Effects =>
       destroyFs: async () => null,
     },
   }) as any
+
+/** A SubContainerEager with its own hold and destroy logic and no runtime behind it. */
+const bareEager = (destroyFs: () => Promise<null>) =>
+  Object.assign(Object.create(SubContainerEager.prototype), {
+    destroyed: false,
+    destroyRequested: false,
+    holdCount: 0,
+    teardown: null,
+    fileMounts: new FileMounts(),
+    leaderExited: true,
+    guid: 'guid',
+    effects: { subcontainer: { destroyFs } },
+  }) as SubContainerEager<T.SDKManifest>
+
+const slowDestroyFs = () => {
+  const state = { done: false }
+  const destroyFs = async () => {
+    await new Promise(resolve => setTimeout(resolve, 20))
+    state.done = true
+    return null
+  }
+  return { state, destroyFs }
+}
 
 const baseReady = {
   display: 'Reg',
@@ -134,6 +158,102 @@ describe('configHash', () => {
     expect(configHash(a)).not.toEqual(configHash(b))
   })
 
+  it('changes when uses changes', () => {
+    const e = fakeEffects()
+    const make = (uses: unknown) =>
+      Daemons.of<Manifest>({ effects: e }).addDaemon('a', {
+        subcontainer: lazy(e),
+        exec: { command: ['cmd'] },
+        ready: baseReady,
+        requires: [],
+        uses,
+      }).entries[0]
+    expect(configHash(make({ port: 5959 }))).not.toEqual(
+      configHash(make({ port: 5960 })),
+    )
+    expect(configHash(make({ port: 5959 }))).toEqual(
+      configHash(make({ port: 5959 })),
+    )
+    // key order is irrelevant (canonicalized)
+    expect(configHash(make({ a: 1, b: 2 }))).toEqual(
+      configHash(make({ b: 2, a: 1 })),
+    )
+  })
+
+  it('uses participates for oneshots', () => {
+    const e = fakeEffects()
+    const oneshot = (uses: unknown) =>
+      Daemons.of<Manifest>({ effects: e }).addOneshot('a', {
+        subcontainer: lazy(e),
+        exec: { command: ['cmd'] },
+        requires: [],
+        uses,
+      }).entries[0]
+    expect(configHash(oneshot('x'))).not.toEqual(configHash(oneshot('y')))
+  })
+
+  it('normalizes non-JSON uses values to distinct sentinels instead of restarting', () => {
+    const e = fakeEffects()
+    const make = (uses: unknown) =>
+      Daemons.of<Manifest>({ effects: e }).addDaemon('a', {
+        subcontainer: lazy(e),
+        exec: { command: ['cmd'] },
+        ready: baseReady,
+        requires: [],
+        uses,
+      }).entries[0]
+    // unserializable kinds get their own sentinel, distinct from null and
+    // from each other — but two values of the same kind hash alike, so a
+    // change only visible there still triggers no restart
+    expect(configHash(make(() => 1))).not.toEqual(configHash(make(undefined)))
+    expect(configHash(make(() => 1))).not.toEqual(configHash(make(Symbol('x'))))
+    expect(configHash(make(() => 1))).toEqual(configHash(make(() => 2)))
+    expect(configHash(make(undefined))).not.toEqual(
+      configHash(make(null as any)),
+    )
+    expect(configHash(make(undefined))).toEqual(configHash(make(undefined)))
+  })
+
+  it('normalizes a circular uses instead of throwing', () => {
+    const e = fakeEffects()
+    const make = (uses: unknown) =>
+      Daemons.of<Manifest>({ effects: e }).addDaemon('a', {
+        subcontainer: lazy(e),
+        exec: { command: ['cmd'] },
+        ready: baseReady,
+        requires: [],
+        uses,
+      }).entries[0]
+    const circular = (port: number) => {
+      const o: any = { port }
+      o.self = o
+      return o
+    }
+    expect(() => configHash(make(circular(5959)))).not.toThrow()
+    expect(configHash(make(circular(5959)))).toEqual(
+      configHash(make(circular(5959))),
+    )
+    // the cycle collapses to a sentinel, the rest of the value still hashes
+    expect(configHash(make(circular(5959)))).not.toEqual(
+      configHash(make(circular(5960))),
+    )
+  })
+
+  it('hashes a bigint uses by value instead of throwing', () => {
+    const e = fakeEffects()
+    const make = (uses: unknown) =>
+      Daemons.of<Manifest>({ effects: e }).addDaemon('a', {
+        subcontainer: lazy(e),
+        exec: { command: ['cmd'] },
+        ready: baseReady,
+        requires: [],
+        uses,
+      }).entries[0]
+    expect(() => configHash(make({ n: 1n }))).not.toThrow()
+    expect(configHash(make({ n: 1n }))).toEqual(configHash(make({ n: 1n })))
+    expect(configHash(make({ n: 1n }))).not.toEqual(configHash(make({ n: 2n })))
+  })
+
   it('changes when command changes', () => {
     const e = fakeEffects()
     const a = Daemons.of<Manifest>({ effects: e }).addDaemon('a', {
@@ -224,6 +344,44 @@ describe('configHash', () => {
         requires: ['init'],
       })
     expect(configHash(a.entries[1])).not.toEqual(configHash(b.entries[1]))
+  })
+
+  it("changes when a fn-form exec's sigtermTimeout changes", () => {
+    const e = fakeEffects()
+    const make = (sigtermTimeout?: number) =>
+      Daemons.of<Manifest>({ effects: e }).addDaemon('a', {
+        subcontainer: lazy(e),
+        exec: { fn: async () => null, sigtermTimeout },
+        ready: baseReady,
+        requires: [],
+      }).entries[0]
+    expect(configHash(make(5000))).not.toEqual(configHash(make(6000)))
+    // different fn closures still hash alike — their contents are invisible
+    expect(configHash(make(5000))).toEqual(
+      configHash(
+        Daemons.of<Manifest>({ effects: e }).addDaemon('a', {
+          subcontainer: lazy(e),
+          exec: { fn: async () => null, sigtermTimeout: 5000 },
+          ready: baseReady,
+          requires: [],
+        }).entries[0],
+      ),
+    )
+  })
+
+  it('changes when an output callback is added to a command exec', () => {
+    const e = fakeEffects()
+    const make = (withCallback: boolean) =>
+      Daemons.of<Manifest>({ effects: e }).addDaemon('a', {
+        subcontainer: lazy(e),
+        exec: {
+          command: ['cmd'],
+          ...(withCallback ? { onStdout: () => {} } : {}),
+        },
+        ready: baseReady,
+        requires: [],
+      }).entries[0]
+    expect(configHash(make(true))).not.toEqual(configHash(make(false)))
   })
 
   it('is order-independent for requires (sorted before hash)', () => {
@@ -381,6 +539,169 @@ describe('SubContainerLazy.detach', () => {
       sub.detach()
       sub.detach()
     }).not.toThrow()
+  })
+})
+
+describe('SubContainerEager.destroy', () => {
+  it('shares one teardown between concurrent callers', async () => {
+    const { state, destroyFs } = slowDestroyFs()
+    const eager = bareEager(destroyFs)
+
+    const first = eager.destroy()
+    await eager.destroy()
+    expect(state.done).toBe(true)
+    await first
+  })
+})
+
+describe('SubContainerLazy.eager', () => {
+  let logged: jest.SpyInstance
+  beforeEach(() => {
+    logged = jest.spyOn(console, 'error').mockImplementation(() => {})
+  })
+  afterEach(() => jest.restoreAllMocks())
+
+  it('retries after a failed materialization and caches the success', async () => {
+    const failure = new Error('transient mount failure')
+    const eager = {} as SubContainerEager<T.SDKManifest>
+    const materialize = jest
+      .spyOn(SubContainerEager, '_of')
+      .mockRejectedValueOnce(failure)
+      .mockResolvedValue(eager)
+    const sub = SubContainer.of<Manifest>(
+      fakeEffects(),
+      { imageId: 'reg' },
+      null,
+      'name',
+    )
+
+    const failed = sub.eager()
+    expect(sub.eager()).toBe(failed)
+    await expect(failed).rejects.toBe(failure)
+
+    const succeeded = sub.eager()
+    expect(succeeded).not.toBe(failed)
+    await expect(succeeded).resolves.toBe(eager)
+    expect(sub.eager()).toBe(succeeded)
+    expect(materialize).toHaveBeenCalledTimes(2)
+    expect(logged.mock.calls).toEqual([[failure]])
+  })
+
+  it('keeps unreleased holds pending across a failed materialization', async () => {
+    const failure = new Error('transient mount failure')
+    const underlyingRelease = jest.fn(async () => {})
+    const eager = {
+      hold: jest.fn(() => underlyingRelease),
+    } as unknown as SubContainerEager<T.SDKManifest>
+    jest
+      .spyOn(SubContainerEager, '_of')
+      .mockRejectedValueOnce(failure)
+      .mockResolvedValue(eager)
+    const sub = SubContainer.of<Manifest>(
+      fakeEffects(),
+      { imageId: 'reg' },
+      null,
+      'name',
+    )
+
+    const release = sub.hold()
+    const cancel = sub.hold()
+    await expect(sub.eager()).rejects.toBe(failure)
+    await cancel()
+    await expect(sub.eager()).resolves.toBe(eager)
+    expect(eager.hold).toHaveBeenCalledTimes(1)
+
+    await release()
+    expect(underlyingRelease).toHaveBeenCalledTimes(1)
+    expect(logged.mock.calls).toEqual([[failure]])
+  })
+
+  it('stays materialized when a pending destroy throws', async () => {
+    const failure = new Error('destroyFs failed')
+    const eager = {
+      destroy: jest.fn(async () => {
+        throw failure
+      }),
+    } as unknown as SubContainerEager<T.SDKManifest>
+    const materialize = jest
+      .spyOn(SubContainerEager, '_of')
+      .mockResolvedValue(eager)
+    const sub = SubContainer.of<Manifest>(
+      fakeEffects(),
+      { imageId: 'reg' },
+      null,
+      'name',
+    )
+
+    await sub.destroy()
+    await expect(sub.eager()).resolves.toBe(eager)
+    await expect(sub.destroy()).rejects.toBe(failure)
+    expect(materialize).toHaveBeenCalledTimes(1)
+    expect(logged.mock.calls).toEqual([[failure]])
+  })
+
+  it('resolves without waiting for a pending destroy, which destroy() joins', async () => {
+    const { state, destroyFs } = slowDestroyFs()
+    jest.spyOn(SubContainerEager, '_of').mockResolvedValue(bareEager(destroyFs))
+    const sub = SubContainer.of<Manifest>(
+      fakeEffects(),
+      { imageId: 'reg' },
+      null,
+      'name',
+    )
+
+    const materialized = sub.eager()
+    const destroyed = sub.destroy()
+    await materialized
+    expect(state.done).toBe(false)
+    await destroyed
+    expect(state.done).toBe(true)
+  })
+
+  it('has nothing to destroy after a failed materialization', async () => {
+    const failure = new Error('transient mount failure')
+    const eager = {
+      destroy: jest.fn(async () => {}),
+    } as unknown as SubContainerEager<T.SDKManifest>
+    jest
+      .spyOn(SubContainerEager, '_of')
+      .mockRejectedValueOnce(failure)
+      .mockResolvedValue(eager)
+    const sub = SubContainer.of<Manifest>(
+      fakeEffects(),
+      { imageId: 'reg' },
+      null,
+      'name',
+    )
+
+    const failed = sub.eager()
+    sub.detach()
+    const destroyed = sub.destroy()
+    await expect(failed).rejects.toBe(failure)
+    await expect(destroyed).resolves.toBeUndefined()
+    expect(eager.destroy).not.toHaveBeenCalled()
+    expect(logged.mock.calls).toEqual([[failure]])
+
+    await expect(sub.eager()).resolves.toBe(eager)
+    expect(eager.destroy).toHaveBeenCalledTimes(1)
+  })
+
+  it('is logged once per failed attempt under a daemon', async () => {
+    const materialize = jest
+      .spyOn(SubContainerEager, '_of')
+      .mockImplementation(async () => {
+        throw new Error('transient mount failure')
+      })
+    const e = fakeEffects()
+    const daemon = Daemon.of<Manifest>()(e, lazy(e), { command: ['x'] })
+
+    await daemon.start()
+    while (materialize.mock.calls.length < 2) {
+      await new Promise(resolve => setTimeout(resolve, 10))
+    }
+    await daemon.term()
+
+    expect(logged).toHaveBeenCalledTimes(materialize.mock.calls.length)
   })
 })
 

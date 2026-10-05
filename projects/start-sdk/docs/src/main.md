@@ -76,7 +76,7 @@ const appSub = sdk.SubContainer.of(
 ```
 
 > [!NOTE]
-> `SubContainer.of()` is **lazy** — it returns immediately and only materializes the filesystem on first use, so you pass it straight to `addDaemon()` with no `await`. If you need a synchronous `.rootfs`, `.guid`, or `.subpath()` before running anything, `await` the accessor or create it eagerly with `sdk.SubContainer.eager(...)`.
+> `SubContainer.of()` is **lazy** — it returns immediately and only materializes the filesystem on first use, so you pass it straight to `addDaemon()` with no `await`. If materialization fails, the next use retries it. If you need a synchronous `.rootfs`, `.guid`, or `.subpath()` before running anything, `await` the accessor or create it eagerly with `sdk.SubContainer.eager(...)`.
 
 **`SubContainer.withTemp()`** -- creates a temporary subcontainer that is automatically destroyed after the callback completes. Use this for one-off commands in actions, init functions, or migrations:
 
@@ -297,7 +297,7 @@ Some images bundle their own init system or process supervisor — `s6-overlay` 
 - The image uses `s6-overlay` (any `linuxserver/*` image), `tini`, `dumb-init`, or `supervisord` as its entrypoint
 - The daemon starts but its supervisor immediately crashes complaining it is not PID 1
 
-Leave it off (the default) for images whose entrypoint is the application binary itself. (`runAsInit` is declared on the `exec` options in `Daemons.d.ts` — like many SDK options, it's easier to find by grepping the types than by searching the docs; see [Search the SDK before deciding something is impossible](workflow.md#search-the-sdk-before-deciding-something-is-impossible).) See [Package a Prebuilt Docker Image](recipe-prebuilt-image.md) for the full prebuilt-image workflow.
+Leave it off (the default) for images whose entrypoint is the application binary itself — StartOS's own init is PID 1 there and collects the processes your daemon orphans. With `runAsInit: true` that collecting is the entrypoint's job, which is why it belongs to images that supply a real init. (`runAsInit` is declared on the `exec` options in `Daemons.d.ts` — like many SDK options, it's easier to find by grepping the types than by searching the docs; see [Search the SDK before deciding something is impossible](workflow.md#search-the-sdk-before-deciding-something-is-impossible).) See [Package a Prebuilt Docker Image](recipe-prebuilt-image.md) for the full prebuilt-image workflow.
 
 ## Environment Variables
 
@@ -316,6 +316,8 @@ Pass environment variables to a daemon or oneshot via the `env` option on `exec`
   // ...
 })
 ```
+
+The process also receives the image's environment variables and the server's language as `LANG`; these `env` values override both. Set a variable to `undefined` to remove it, e.g. `env: { LANG: undefined }`.
 
 ## Health Checks
 
@@ -395,7 +397,7 @@ The `fn` returns an object with `result` and `message`:
 
 Available on `sdk.healthCheck`:
 
-- **`checkPortListening(effects, port, { successMessage, errorMessage })`** — checks if a TCP/UDP port is bound by reading `/proc/net`. Lightweight, no network I/O. Preferred for daemon readiness checks.
+- **`checkPortListening(effects, port, { successMessage, errorMessage })`** — checks if a TCP port has a listening socket, or a UDP port is bound, by reading `/proc/net`. A TCP connection left in `TIME_WAIT` after its process exits does not count. Lightweight, no network I/O. Preferred for daemon readiness checks.
 - **`checkWebUrl(effects, url, { successMessage, errorMessage })`** — fetches a URL, succeeds on any HTTP response.
 - **`runHealthScript(command, subcontainer, { errorMessage })`** — runs a command in a subcontainer, succeeds on exit code 0.
 
@@ -427,6 +429,8 @@ trigger: sdk.trigger.statusTrigger(30_000, {
 
 ## Volume Mounts
 
+Volume mounts declared `readonly: true` and all asset mounts are read-only; writes through them fail with `EROFS`. Copy assets that need modification into a writable volume and mount that copy. `type: 'infer'` detects existing regular files; use `type: 'file'` when the file may need to be created.
+
 ```typescript
 sdk.Mounts.of()
   // Mount entire volume (directory)
@@ -436,13 +440,13 @@ sdk.Mounts.of()
     mountpoint: '/data',
     readonly: false,
   })
-  // Mount specific file from volume (requires type: 'file')
+  // Mount a specific file from the volume
   .mountVolume({
     volumeId: 'main',
     subpath: 'config.py',
     mountpoint: '/app/config.py',
     readonly: true,
-    type: 'file', // Required when mounting a single file
+    type: 'file',
   })
 ```
 
@@ -525,7 +529,7 @@ if (result.exitCode !== 0) {
 
 // execFail() - throws on error (good for required commands)
 // Uses the default user from the Dockerfile (no need to specify { user: '...' })
-await appSub.execFail(['git', 'clone', 'https://github.com/user/repo.git'])
+await appSub.execFail(['myapp', 'check-config'])
 
 // Override user when needed (e.g., run as root)
 await appSub.exec(['update-ca-certificates'], { user: 'root' })
@@ -544,6 +548,26 @@ The `user` option is optional. If omitted, commands run as the default user defi
 - The command failure is not critical (warnings, optional setup)
 - You need to inspect the exit code or output regardless of success/failure
 - You want custom error handling logic
+
+### Commands That Run Longer Than 30 Seconds
+
+`exec` and `execFail` take a `timeout` option: how long the SDK waits before it gives up and fails the call. It defaults to **30 s**, so a command that legitimately takes longer — cloning a large repository, importing a database, copying a multi-gigabyte file — fails partway through unless you say otherwise. Pass `null` to wait as long as it takes:
+
+```typescript
+// Gives up after 30 s — fine for a command that either answers quickly or is stuck
+await appSub.execFail(['update-ca-certificates'], { user: 'root' })
+
+// No limit — takes as long as the database takes
+await appSub.execFail(['pg_restore', '-U', user, '-d', database, dumpFile], {
+  user: 'postgres',
+  timeout: null,
+})
+```
+
+Opt out whenever the runtime is set by something you cannot bound: the size of the data, the speed of a disk or backup target, or another process you are waiting on. Keep the default for commands that should answer promptly, where the timeout is what stops a wedged container from hanging the service.
+
+> [!NOTE]
+> On timeout the SDK sends `SIGKILL` to the process it spawned and reports `timed out after <n>ms and was killed with SIGKILL`; `exec()`'s result carries `timedOutAfter`, set to the limit that elapsed.
 
 ## PostgreSQL Sidecar
 
@@ -566,7 +590,7 @@ export function getDefaultPgPassword(): string {
 **Store schema** (in `fileModels/store.json.ts`):
 
 ```typescript
-const shape = z.object({
+const shape = z.looseObject({
   pgPassword: z.string().catch(''),
   // ...other fields
 })

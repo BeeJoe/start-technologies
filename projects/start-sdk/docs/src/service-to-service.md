@@ -63,6 +63,8 @@ Three things make this correct, and each matters:
 
 `getBridgeAddress` returns the same `Watchable` as `sdk.host.get`, so it carries every read strategy. Use `.const()` in `setupMain` and `setupOnInit`; use `.once()` only inside an action, where a live snapshot rather than a subscription is what you want.
 
+When a dependency [retires](interfaces.md#retiring-a-host-or-binding) the host or binding you resolve, it disappears from the database and `getBridgeAddress` resolves `null` — the same path as the dependency not being installed, so rule 3 above already covers it. With `fallbackPort` you get the fallback instead, as always.
+
 ## The Tor exception: always-on flags
 
 Some flags should be passed **unconditionally**, even when the dependency is absent — most commonly Bitcoin's `-onion=<tor SOCKS>`. A dead bridge address there is harmless (connection refused), and passing the flag always means Tor works the moment it's installed with no reconfiguration.
@@ -92,13 +94,13 @@ A package keeps StartOS state in a single `store.json` file model (see [File Mod
 
 ```typescript
 // store.json.ts — StartOS state, kept out of the upstream config
-const shape = z.object({
+const shape = z.looseObject({
   indexer: z.enum(['electrs', 'fulcrum']).optional().catch(undefined),
 })
 export const storeJson = FileHelper.json({ base: sdk.volumes.startos, subpath: '/store.json' }, shape)
 ```
 
-Declare the volume in the manifest (`volumes: [..., 'startos']`) and add it to the backup set if the choice must survive a restore. `setupDependencies` and the selection action read/write `store.json`; `init` reads the choice, resolves _that_ backend's bridge address, and writes only the real upstream keys into the app config. It is a bug to add a discriminator field (`INDEXER`, `BACKEND_CHOICE`, …) to a file model that maps the upstream service's own config file.
+Declare the volume in the manifest (`volumes: [..., 'startos']`) and add it to the backup set if the choice must survive a restore. the dependency `enabled` functions and the selection action read/write `store.json`; `init` reads the choice, resolves _that_ backend's bridge address, and writes only the real upstream keys into the app config. It is a bug to add a discriminator field (`INDEXER`, `BACKEND_CHOICE`, …) to a file model that maps the upstream service's own config file.
 
 ## Exposing a bridge-only port
 

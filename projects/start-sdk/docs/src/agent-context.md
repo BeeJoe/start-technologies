@@ -13,11 +13,13 @@ You are an AI assistant working in a **StartOS packaging workspace**. You help c
 ├── AGENTS.md              ← this file (symlink → start-technologies/projects/start-sdk/docs/src/agent-context.md)
 ├── AGENTS.local.md        ← your workspace-specific notes (never overwritten by a sync)
 ├── CLAUDE.md              ← loads AGENTS.md + AGENTS.local.md (Claude Code bridge)
-├── start-technologies/    ← checkout of the Start9 monorepo: the packaging guide, plus the SDK and OS source
+├── .claude/skills         ← the packaging skills (symlink → start-technologies/projects/start-sdk/docs/skills), where Claude Code looks
+├── .agents/skills         ← the same skills, where Codex looks
+├── start-technologies/    ← checkout of the Start9 monorepo on `live-docs` (what is published): the packaging guide, plus the SDK and OS source
 └── <id>-startos/ …        ← one or more package repos
 ```
 
-Each package repo holds: `README.md` (what it is / how it differs from upstream), `instructions.md` (end-user docs shown in StartOS), `UPDATING.md` (upstream-version tracking), `TODO.md` (pending work), and `startos/` (the SDK code).
+Each package repo holds: `README.md` (what it is / how it differs from upstream), `instructions.md` (end-user docs shown in StartOS), `UPDATING.md` (upstream-version tracking), and `startos/` (the SDK code).
 
 **The workspace root is not a git repository** — each package is its own repo, and commits, diffs, and pushes happen inside them. Files at the workspace root (`AGENTS.local.md`, `.startos/`, scripts of your own) are untracked; don't run `git status` against the root or try to fold a root-level change into a package's commit.
 
@@ -29,11 +31,15 @@ The guide, the package template, and this file all live in `start-technologies/`
 git -C start-technologies pull --ff-only
 ```
 
+**The checkout is on `live-docs`, the branch that carries what every product has published — never `master`.** That is what keeps the guide, the template, and the SDK source describing the `@start9labs/start-sdk` a package installs; `master` carries what hasn't shipped, where a page can document a call npm cannot resolve. It is also the branch docs.start9.com serves, so the pages on disk are the published ones. Don't move the checkout to `master` to see something newer — what is newer there is not what your package builds against.
+
+`start-cli` is installed outside the workspace, so the sync does not touch it. When an `s9pk` command warns that yours is behind the published release, update it before going further — the guide on disk describes the newer one.
+
 To track a different source (e.g. a fork), repoint `start-technologies`'s remote first — the sync follows whatever remote is configured.
 
 Keep workspace-specific notes in `AGENTS.local.md`; a sync never touches it. That file is for what is true of _your_ setup — your box, your registry, your packages, any departure from the scaffolded layout. Anything that would help **every** packager belongs in the guide instead: open a PR against `start-technologies` rather than letting it drift in one workspace.
 
-If `start-technologies/` is a **symlink** to a checkout maintained outside this workspace, skip the sync: that repo has its own branches and its own work in progress, so its state is the owner's to manage, not this workspace's.
+If `start-technologies/` is a **symlink** to a checkout maintained outside this workspace, skip the sync — its branches are the owner's to manage, not this workspace's. Say so rather than pulling it: a development checkout sits on `master`, so everything read through it is ahead of what packages install. The workspace wants its own (remove the symlink and re-run `start-cli s9pk init-workspace`).
 
 ## How to use the guide (local-first)
 
@@ -90,7 +96,7 @@ Read pages from your local checkout (`start-technologies/projects/start-sdk/docs
 
 Reach for them **only when the recipes, reference pages, real packages, and the installed SDK types (`node_modules/@start9labs/start-sdk`) don't answer the question** — e.g. to confirm exactly what an SDK call does, or how an OS effect behaves. Open one file to settle one question; don't browse the monorepo to "understand the system."
 
-If what you find there is a bug, say so. You are standing in a git repo you can branch from and open a pull request against.
+If what you find there is a bug, say so. You are standing in a git repo you can open a pull request against — branch from `origin/master`, not from the `live-docs` checkout, and switch back to `live-docs` when you're done.
 
 ## Key patterns
 
@@ -101,7 +107,7 @@ Understand these before writing any code (full detail on the pages above):
 - **Oneshot, init, or migration is decided by what determines _when_ the work runs**, not by whether it happens once. A oneshot runs on every start; `setupOnInit` runs per container init and knows _why_ (`kind`), and re-runs from the top on every change to anything it `.const()`s — an init handler is a live reactive context, not a one-shot script; `migrations.up` runs on a version edge and is the only one that knows which version wrote the data on disk. Relocating or repairing data an older release left behind is a migration — never a guarded oneshot. (`main.md` § Choosing Between a Oneshot, an Init, and a Migration)
 - **Health checks** come in two forms: the `ready` property on every daemon, and standalone `.addHealthCheck()` calls for ongoing conditions (sync progress, reachability). (`main.md`)
 - **runUntilSuccess** spins up a temporary daemon chain during install to bootstrap a service through its own API, then tears it down. (`recipe-run-until-success.md`)
-- **File models** are zod-typed representations of config files (JSON, YAML, TOML, …) providing defaults, validation, and reactive reads — the backbone of configuration. `merge(effects, {})` fills missing fields from their `.catch()` defaults and repairs invalid ones; it never strips a key you didn't name. It is not a way to clean or regenerate a config. (`file-models.md`)
+- **File models** are zod-typed representations of config files (JSON, YAML, TOML, …) providing defaults, validation, and reactive reads — the backbone of configuration. Build every shape with `z.looseObject`, never `z.object`, at every nesting level. `merge(effects, {})` fills missing fields from their `.catch()` defaults and repairs invalid ones; it never strips a key you didn't name. It is not a way to clean or regenerate a config. (`file-models.md`)
 - **Interfaces** declare what your service exposes; the **user** decides where it's reachable. `type` (`'ui'`/`'api'`/`'p2p'`) is a label, not a control, and Tor is a service the user installs and enables per interface. Never claim a service is on Tor or the public internet. (`interfaces.md`)
 
 ## Golden rules
@@ -118,7 +124,8 @@ The full rules are in `start-technologies/projects/start-sdk/docs/src/workflow.m
 - **Verify facts; don't assert from memory.** Image names, tags, version numbers, config formats, credential schemes — confirm each with a tool before you rely on it. "I know that X" is a cue to check X, not to write it down. Guessing an image that doesn't exist or a password format the app rejects fails silently.
 - **A comment is not evidence.** A comment claiming what an SDK call does — in a package, in a review, in this guide — is a claim to check against the reference page, the installed types, or the SDK source. Don't accept or repeat it unverified; wrong semantics propagate from package to package.
 - **Compiling is not working.** A green `tsc` and a clean `s9pk pack` prove the code builds, not that the service runs. Before reporting a feature done, exercise it against a running service (install, log in, write data, restart). To look inside one, `start-cli package attach <id> -n <subcontainer-name> -- <cmd>` — `-n` takes the subcontainer's name, while `-s` takes its internal Guid and fails on a name (`workflow.md`). State what you verified and what you didn't — never imply a feature works when you only compiled it.
-- **Don't fabricate; verify or flag.** Never ship an invented icon/logo, a config format you didn't confirm, or placeholder facts in the README. Fetch the real thing, or leave it and flag the gap in `TODO.md`.
+- **Don't fabricate; verify or flag.** Never ship an invented icon/logo, a config format you didn't confirm, or placeholder facts in the README. Fetch the real thing, or leave it and say plainly that the gap is still there.
+- **Fix what you find; file only what needs deciding.** A defect you spot with the package already open is a fix in the branch you are on, related to your task or not — you have the context to be sure and the next person won't. File **a GitHub issue on the package repo** when the call isn't yours: cause unpinned, two defensible fixes, or too large to ride along. Never both — the issue or the PR body, not the finding written out twice. Going the other way, an open issue is a report, not a queue: implement one when asked or when it is labelled `Approved`, then `Closes #<n>`. Don't create a `TODO.md`/`NOTES.md`/`PLAN.md` in place of any of this — a notes file is invisible to whoever can act on it and stale the moment the session ends. (`workflow.md`)
 - **Search before declaring impossible.** Before working around a limitation, grep the SDK types (`node_modules/@start9labs/start-sdk/**/*.d.ts`) and existing packages. "The SDK can't do X" is a claim to verify in the types, not a conclusion from the docs (this is how `runAsInit` is found).
 - **Refer to a multi-flavor dependency generically.** In user-facing text `bitcoind` is **Bitcoin** — never Bitcoin Core or Bitcoin Knots. (`dependencies.md`)
 - **Keep `README.md` and `instructions.md` in sync.** `README.md` is the package's technical reference — how it works, what its actions do, how to diagnose it — and the only technical file an AI support or administering agent reads; `instructions.md` tracks user-visible changes. Update each in the same change as the code. Content rules: `writing-readmes.md`, `writing-instructions.md`.
@@ -130,4 +137,4 @@ The full rules are in `start-technologies/projects/start-sdk/docs/src/workflow.m
 
 ## Starting a new package
 
-**Scaffold first — run `start-cli s9pk init-package "<Name>"`. Do not hand-assemble a package by copying files out of another one.** Scaffolding produces a barebones hello-world clone with a `TODO.md` checklist. **Then work `TODO.md` top to bottom** — it takes the package from clone to release-ready (descriptions, image, icon, interfaces, daemons, docs, first build, install-and-verify). Keep it as the live worklist: remove items as you complete them, add items when you defer work. Wrapping an existing upstream Docker image? Read `recipe-prebuilt-image.md` first.
+**Scaffold first — run `start-cli s9pk init-package "<Name>"`. Do not hand-assemble a package by copying files out of another one.** Scaffolding produces a barebones hello-world clone. **Then work `new-package-checklist.md` top to bottom** — it takes the package from clone to release-ready (descriptions, image, icon, interfaces, daemons, docs, first build, install-and-verify). The checklist is a guide page, not a file in the package: read it, don't copy it in. Wrapping an existing upstream Docker image? Read `recipe-prebuilt-image.md` first. Asked to package a named project end to end? That is the `package-service` skill (see [Skills](#skills)): it does the upstream research and the install-and-verify pass around this sequence.

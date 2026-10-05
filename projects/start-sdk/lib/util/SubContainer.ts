@@ -5,21 +5,24 @@ import { promisify } from 'util'
 import { Buffer } from 'node:buffer'
 import { once } from '@start9labs/start-core/util/once'
 import { Drop } from '@start9labs/start-core/util/Drop'
+import { logErrorOnce } from '@start9labs/start-core/util/logErrorOnce'
 import { Mounts } from '../mainFn/Mounts'
+import { FileMounts } from './fileMounts'
 
 export const execFile = promisify(cp.execFile)
 const False = () => false
 
 export type ExecOptions = {
   input?: string | Buffer
+  /** How long to wait before SIGKILL, in ms (default 30000). `null` waits as long as the command takes — use it whenever the runtime is set by the size of the data or the speed of a disk. */
+  timeout?: number | null
+  /** Aborting SIGKILLs the process */
+  abort?: AbortController
 }
 
 const TIMES_TO_WAIT_FOR_PROC = 100
 
-// Returns whether the bind target was prepared as a file (vs a directory),
-// so callers can pass the matching `--file` flag. For `infer` this resolves
-// against the source, so it must be the single source of truth — `bind()`
-// keys `--file` off this rather than re-deciding.
+/** Returns whether the prepared target is a file. */
 async function prepBind(
   from: string | null,
   to: string,
@@ -52,22 +55,31 @@ async function bind(
   to: string,
   type: 'file' | 'directory' | 'infer',
   idmap: IdMap[],
-) {
+  readonly: boolean,
+): Promise<boolean> {
   const isFile = await prepBind(from, to, type)
+  await attachBind(from, to, isFile, idmap, readonly)
+  return isFile
+}
 
-  // Inside the LXC subcontainer (which is itself idmapped), util-linux's
-  // `mount --bind -oX-mount.idmap=...` can't reliably set up a second,
-  // nested idmap. start-container's `bind-mount` subcommand performs the
-  // bind via direct syscalls (open_tree + mount_setattr + move_mount) so
-  // the SDK's idmap field on volume/asset/dependency mounts works.
+async function attachBind(
+  from: string,
+  to: string,
+  isFile: boolean,
+  idmap: IdMap[],
+  readonly: boolean,
+  beneath = false,
+  signal?: AbortSignal,
+): Promise<void> {
+  // Nested idmaps require start-container's syscall-based bind.
   const args = ['bind-mount', '--source', from, '--target', to, '--recursive']
-  if (isFile) {
-    args.push('--file')
-  }
+  if (isFile) args.push('--file')
+  if (readonly) args.push('--readonly')
+  if (beneath) args.push('--beneath')
   for (const i of idmap) {
     args.push('--idmap', `${i.fromId}:${i.toId}:${i.range}`)
   }
-  await execFile('start-container', args)
+  await execFile('start-container', args, { signal, killSignal: 'SIGKILL' })
 }
 
 /**
@@ -173,20 +185,17 @@ export interface SubContainer<
    * @description run a command inside this subcontainer
    * DOES NOT THROW ON NONZERO EXIT CODE (see execFail)
    * @param command an array representing the command and args to execute
-   * @param options
-   * @param timeoutMs how long to wait before killing the command in ms
-   * @param abort optional AbortController; aborting SIGKILLs the process
+   * @param options env, cwd, user, stdin, `timeout` (default 30 s, `null` for no timeout), and `abort`
    * @returns
    */
   exec(
     command: string[],
     options?: CommandOptions & ExecOptions,
-    timeoutMs?: number | null,
-    abort?: AbortController,
   ): Promise<{
     throw: () => { stdout: string | Buffer; stderr: string | Buffer }
     exitCode: number | null
     exitSignal: NodeJS.Signals | null
+    timedOutAfter: number | null
     stdout: string | Buffer
     stderr: string | Buffer
   }>
@@ -194,17 +203,13 @@ export interface SubContainer<
   /**
    * @description run a command inside this subcontainer, throwing on non-zero exit status
    * @param command an array representing the command and args to execute
-   * @param options
-   * @param timeoutMs how long to wait before killing the command in ms
-   * @param abort optional AbortController; aborting SIGKILLs the process
+   * @param options env, cwd, user, stdin, `timeout` (default 30 s, `null` for no timeout), and `abort`
    * @returns
    * @throws {@link ExitError} on non-zero exit code or signal termination
    */
   execFail(
     command: string[],
     options?: CommandOptions & ExecOptions,
-    timeoutMs?: number | null,
-    abort?: AbortController,
   ): Promise<{ stdout: string | Buffer; stderr: string | Buffer }>
 
   /**
@@ -421,8 +426,11 @@ export class SubContainerEager<
   implements SubContainer<Manifest, Effects>
 {
   private destroyed = false
-  private destroyPending = false
+  private destroyRequested = false
   private holdCount = 0
+  private teardown: Promise<void> | null = null
+  private readonly fileMounts = new FileMounts()
+  private sharedMounts = false
 
   private leader: cp.ChildProcess
   private leaderExited: boolean = false
@@ -564,7 +572,40 @@ export class SubContainerEager<
           : '/'
         const from = `/media/startos/volumes/${options.volumeId}${subpath}`
 
-        await bind(from, path, options.filetype, options.idmap)
+        const isFile = await bind(
+          from,
+          path,
+          options.filetype,
+          options.idmap,
+          options.readonly,
+        )
+        if (isFile) {
+          if (!this.sharedMounts) {
+            // Exec namespaces become slaves of this tree and receive its rebinds.
+            await execFile('mount', ['--make-rshared', this.rootfs])
+            this.sharedMounts = true
+          }
+          let staged = false
+          await this.fileMounts.add(from, path, async signal => {
+            if (!staged) {
+              await attachBind(
+                from,
+                path,
+                true,
+                options.idmap,
+                options.readonly,
+                true,
+                signal,
+              )
+              staged = true
+            }
+            await execFile('umount', ['--lazy', path], {
+              signal,
+              killSignal: 'SIGKILL',
+            })
+            staged = false
+          })
+        }
       } else if (options.type === 'assets') {
         const subpath = options.subpath
           ? options.subpath.startsWith('/')
@@ -573,7 +614,7 @@ export class SubContainerEager<
           : '/'
         const from = `/media/startos/assets/${subpath}`
 
-        await bind(from, path, options.filetype, options.idmap)
+        await bind(from, path, options.filetype, options.idmap, true)
       } else if (options.type === 'pointer') {
         await prepBind(null, path, 'directory')
         // The host-side mount effect applies the SDK idmap in startd, which
@@ -610,7 +651,7 @@ export class SubContainerEager<
       if (released) return
       released = true
       this.holdCount--
-      if (this.holdCount === 0 && this.destroyPending) {
+      if (this.holdCount === 0 && this.destroyRequested) {
         await this._destroyImmediate()
       }
     }
@@ -622,7 +663,7 @@ export class SubContainerEager<
    * it. Idempotent.
    */
   async destroy(): Promise<void> {
-    this.destroyPending = true
+    this.destroyRequested = true
     if (this.holdCount === 0) await this._destroyImmediate()
   }
 
@@ -636,13 +677,15 @@ export class SubContainerEager<
     unregisterFromContextCleanup(this.effects, this)
   }
 
-  private async _destroyImmediate(): Promise<void> {
-    if (this.destroyed) return
-    this.destroyed = true
-    unregisterFromContextCleanup(this.effects, this)
-    const guid = this.guid
-    await this.killLeader()
-    await this.effects.subcontainer.destroyFs({ guid })
+  private _destroyImmediate(): Promise<void> {
+    return (this.teardown ??= (async () => {
+      this.destroyed = true
+      unregisterFromContextCleanup(this.effects, this)
+      const guid = this.guid
+      await this.fileMounts.close()
+      await this.killLeader()
+      await this.effects.subcontainer.destroyFs({ guid })
+    })())
   }
 
   private async killLeader(): Promise<null> {
@@ -675,23 +718,21 @@ export class SubContainerEager<
    * Does NOT throw on non-zero exit (see {@link execFail}).
    *
    * @param command Argv array representing the command and its arguments
-   * @param options Optional environment, user, cwd, and stdin input
-   * @param timeoutMs How long to wait before SIGKILL (default 30 s, `null` for no timeout)
-   * @param abort Optional AbortController; aborting SIGKILLs the process
+   * @param options Optional environment, user, cwd, stdin input, `timeout` (default 30 s, `null` for no timeout), and `abort`
    */
   async exec(
     command: string[],
     options?: CommandOptions & ExecOptions,
-    timeoutMs: number | null = 30000,
-    abort?: AbortController,
   ): Promise<{
     throw: () => { stdout: string | Buffer; stderr: string | Buffer }
     exitCode: number | null
     exitSignal: NodeJS.Signals | null
+    timedOutAfter: number | null
     stdout: string | Buffer
     stderr: string | Buffer
   }> {
     await this.waitProc()
+    await this.fileMounts.sync()
     const imageMeta: T.ImageMetadata = await fs
       .readFile(`/media/startos/images/${this.imageId}.json`, {
         encoding: 'utf8',
@@ -699,21 +740,20 @@ export class SubContainerEager<
       .catch(() => '{}')
       .then(JSON.parse)
     let extra: string[] = []
+    // what's left of `spawnOptions` is forwarded to cp.spawn; copied so the
+    // deletes below can't strip the caller's object for its next call
+    const { timeout = 30000, abort, ...spawnOptions } = options ?? {}
     let user = imageMeta.user || 'root'
-    if (options?.user) {
-      user = options.user
-      delete options.user
+    if (spawnOptions.user) {
+      user = spawnOptions.user
+      delete spawnOptions.user
     }
     let workdir = imageMeta.workdir || '/'
-    if (options?.cwd) {
-      workdir = options.cwd
-      delete options.cwd
+    if (spawnOptions.cwd) {
+      workdir = spawnOptions.cwd
+      delete spawnOptions.cwd
     }
-    if (options?.env) {
-      for (let [k, v] of Object.entries(options.env)) {
-        extra.push(`--env=${k}=${v}`)
-      }
-    }
+    if (spawnOptions.env) extra.push(...envArgs(spawnOptions.env))
     const child = cp.spawn(
       'start-container',
       [
@@ -726,14 +766,14 @@ export class SubContainerEager<
         this.rootfs,
         ...command,
       ],
-      options || {},
+      spawnOptions,
     )
     abort?.signal.addEventListener('abort', () => child.kill('SIGKILL'))
-    if (options?.input) {
+    if (spawnOptions.input) {
       await new Promise<null>((resolve, reject) => {
         try {
           child.stdin.on('error', e => reject(e))
-          child.stdin.write(options.input, e => {
+          child.stdin.write(spawnOptions.input, e => {
             if (e) {
               reject(e)
             } else {
@@ -744,14 +784,21 @@ export class SubContainerEager<
           reject(e)
         }
       })
-      await new Promise<null>((resolve, reject) => {
-        try {
-          child.stdin.end(resolve)
-        } catch (e) {
-          reject(e)
-        }
-      })
     }
+    // Close stdin whether or not anything was written to it. No stdio override
+    // is passed to cp.spawn, so the child always gets a pipe; leaving it open
+    // makes any command that reads stdin to EOF block until `timeout` kills it,
+    // and the caller sees only a SIGKILL that points nowhere near stdin. That
+    // covers `input: ''` as much as no input at all — both are "this command
+    // gets nothing", not "this command gets a stdin that never ends".
+    await new Promise<null>((resolve, reject) => {
+      try {
+        if (!child.stdin) return resolve(null)
+        child.stdin.end(() => resolve(null))
+      } catch (e) {
+        reject(e)
+      }
+    })
     const stdout = { data: '' as string }
     const stderr = { data: '' as string }
     const appendData =
@@ -765,8 +812,12 @@ export class SubContainerEager<
     return new Promise((resolve, reject) => {
       child.on('error', reject)
       let killTimeout: NodeJS.Timeout | undefined
-      if (timeoutMs !== null && child.pid) {
-        killTimeout = setTimeout(() => child.kill('SIGKILL'), timeoutMs)
+      let timedOut = false
+      if (timeout !== null && child.pid) {
+        killTimeout = setTimeout(() => {
+          timedOut = true
+          child.kill('SIGKILL')
+        }, timeout)
       }
       child.stdout.on('data', appendData(stdout))
       child.stderr.on('data', appendData(stderr))
@@ -775,6 +826,8 @@ export class SubContainerEager<
         const result = {
           exitCode: code,
           exitSignal: signal,
+          // the deadline can elapse after something else already killed it
+          timedOutAfter: timedOut && signal === 'SIGKILL' ? timeout : null,
           stdout: stdout.data,
           stderr: stderr.data,
         }
@@ -795,20 +848,14 @@ export class SubContainerEager<
    * Run a command inside this subcontainer, throwing on non-zero exit.
    *
    * @param command Argv array representing the command and its arguments
-   * @param options Optional environment, user, cwd, and stdin input
-   * @param timeoutMs How long to wait before SIGKILL (default 30 s, `null` for no timeout)
-   * @param abort Optional AbortController; aborting SIGKILLs the process
+   * @param options Optional environment, user, cwd, stdin input, `timeout` (default 30 s, `null` for no timeout), and `abort`
    * @throws {@link ExitError} on non-zero exit code or signal termination
    */
   async execFail(
     command: string[],
     options?: CommandOptions & ExecOptions,
-    timeoutMs?: number | null,
-    abort?: AbortController,
   ): Promise<{ stdout: string | Buffer; stderr: string | Buffer }> {
-    return this.exec(command, options, timeoutMs, abort).then(res =>
-      res.throw(),
-    )
+    return this.exec(command, options).then(res => res.throw())
   }
 
   /**
@@ -823,6 +870,7 @@ export class SubContainerEager<
     options?: CommandOptions,
   ): Promise<cp.ChildProcessWithoutNullStreams> {
     await this.waitProc()
+    await this.fileMounts.sync()
     const imageMeta: T.ImageMetadata = await fs
       .readFile(`/media/startos/images/${this.imageId}.json`, {
         encoding: 'utf8',
@@ -840,13 +888,7 @@ export class SubContainerEager<
       workdir = options.cwd
       delete options.cwd
     }
-    if (options?.env) {
-      for (let [k, v] of Object.entries(options.env).filter(
-        ([_, v]) => v != undefined,
-      )) {
-        extra.push(`--env=${k}=${v}`)
-      }
-    }
+    if (options?.env) extra.push(...envArgs(options.env))
     await this.killLeader()
     this.leaderExited = false
     this.leader = cp.spawn(
@@ -880,6 +922,7 @@ export class SubContainerEager<
     options: CommandOptions & StdioOptions = { stdio: 'inherit' },
   ): Promise<cp.ChildProcess> {
     await this.waitProc()
+    await this.fileMounts.sync()
     const imageMeta: T.ImageMetadata = await fs
       .readFile(`/media/startos/images/${this.imageId}.json`, {
         encoding: 'utf8',
@@ -897,13 +940,7 @@ export class SubContainerEager<
       workdir = options.cwd
       delete options.cwd
     }
-    if (options?.env) {
-      for (let [k, v] of Object.entries(options.env).filter(
-        ([_, v]) => v != undefined,
-      )) {
-        extra.push(`--env=${k}=${v}`)
-      }
-    }
+    if (options?.env) extra.push(...envArgs(options.env))
     return cp.spawn(
       'start-container',
       [
@@ -972,8 +1009,11 @@ export class SubContainerLazy<
 
   private materialized: Promise<SubContainerEager<Manifest, Effects>> | null =
     null
-  private destroyPending = false
-  private detachPending = false
+  private destroyRequested = false
+  private detachRequested = false
+  private holds = new Set<{
+    release: (() => Promise<void>) | null
+  }>()
 
   constructor(
     readonly effects: Effects,
@@ -992,9 +1032,10 @@ export class SubContainerLazy<
   }
 
   /**
-   * Materialize the underlying eager subcontainer (idempotent) and return
-   * it. Subsequent calls return the same instance. Useful when you need
-   * the synchronous `SubContainerEager` interface (e.g. sync `rootfs` /
+   * Materialize the underlying eager subcontainer and return it. Concurrent
+   * calls share one attempt; successful materialization is cached, while a
+   * failed attempt is logged and retried by the next call. Useful when you
+   * need the synchronous `SubContainerEager` interface (e.g. sync `rootfs` /
    * `subpath()`) — for ordinary command execution, just call `.exec()` /
    * `.writeFile()` directly and the lazy handle materializes internally.
    */
@@ -1005,11 +1046,20 @@ export class SubContainerLazy<
       this.mounts,
       this.name,
       this.identity,
-    ).then(async eager => {
-      if (this.destroyPending) await eager.destroy()
-      else if (this.detachPending) eager.detach()
-      return eager
-    }))
+    )
+      .catch(e => {
+        this.materialized = null
+        logErrorOnce(e)
+        throw e
+      })
+      .then(eager => {
+        for (const hold of this.holds) {
+          if (!hold.release) hold.release = eager.hold()
+        }
+        if (this.destroyRequested) eager.destroy().catch(logErrorOnce)
+        else if (this.detachRequested) eager.detach()
+        return eager
+      }))
   }
 
   /** Absolute path to the materialized subcontainer's rootfs. Triggers materialization on first access. */
@@ -1050,49 +1100,37 @@ export class SubContainerLazy<
    * eager subcontainer asynchronously and places the hold on it.
    *
    * The returned release function is safe to call before materialization
-   * completes — it cancels the pending hold so a never-materialized lazy
-   * (the canonical "left alone" case in `Daemons.dynamic`) stays cheap.
+   * completes; it cancels the pending hold. Failed materializations keep the
+   * hold pending for the next attempt.
    *
    * @returns A release function — call it to drop this hold
    */
   hold(): () => Promise<void> {
-    // Acquire the hold on the eager once materialized. Until then we record
-    // a "pending" intent so destroy() honors any outstanding holds even on
-    // a never-materialized handle.
-    let released = false
-    let underlyingRelease: (() => Promise<void>) | null = null
-    const eagerPromise = this.eager()
-    const acquired = eagerPromise
+    const hold = { release: null as (() => Promise<void>) | null }
+    this.holds.add(hold)
+    this.eager()
       .then(eager => {
-        if (released) return
-        underlyingRelease = eager.hold()
+        if (this.holds.has(hold) && !hold.release) {
+          hold.release = eager.hold()
+        }
       })
-      .catch(e => {
-        released = true
-        throw e
-      })
+      .catch(logErrorOnce)
     return async () => {
-      if (released) return
-      released = true
-      try {
-        await acquired
-      } catch (_) {
-        // materialization failed; nothing to release
-        return
-      }
-      if (underlyingRelease) await underlyingRelease()
+      if (!this.holds.delete(hold)) return
+      if (hold.release) await hold.release()
     }
   }
 
   /**
    * Mark this subcontainer for destruction. If already materialized, the
    * underlying eager's destroy is invoked (which respects outstanding
-   * holds). If never materialized, the destroy pending flag is set so
-   * that any future materialization fires destroy immediately.
+   * holds), after any materialization in flight. Otherwise the request is
+   * recorded and applied on materialization.
    */
   async destroy(): Promise<void> {
-    this.destroyPending = true
-    if (this.materialized) await (await this.materialized).destroy()
+    this.destroyRequested = true
+    const eager = await this.materialized?.catch(logErrorOnce)
+    await eager?.destroy()
   }
 
   /**
@@ -1101,10 +1139,8 @@ export class SubContainerLazy<
    * so materialization detaches immediately. Idempotent.
    */
   detach(): void {
-    this.detachPending = true
-    if (this.materialized) {
-      this.materialized.then(e => e.detach()).catch(e => console.error(e))
-    }
+    this.detachRequested = true
+    this.materialized?.then(e => e.detach()).catch(logErrorOnce)
   }
 
   /**
@@ -1112,23 +1148,20 @@ export class SubContainerLazy<
    * Does NOT throw on non-zero exit (see {@link execFail}).
    *
    * @param command Argv array representing the command and its arguments
-   * @param options Optional environment, user, cwd, and stdin input
-   * @param timeoutMs How long to wait before SIGKILL (default 30 s, `null` for no timeout)
-   * @param abort Optional AbortController; aborting SIGKILLs the process
+   * @param options Optional environment, user, cwd, stdin input, `timeout` (default 30 s, `null` for no timeout), and `abort`
    */
   async exec(
     command: string[],
     options?: CommandOptions & ExecOptions,
-    timeoutMs: number | null = 30000,
-    abort?: AbortController,
   ): Promise<{
     throw: () => { stdout: string | Buffer; stderr: string | Buffer }
     exitCode: number | null
     exitSignal: NodeJS.Signals | null
+    timedOutAfter: number | null
     stdout: string | Buffer
     stderr: string | Buffer
   }> {
-    return (await this.eager()).exec(command, options, timeoutMs, abort)
+    return (await this.eager()).exec(command, options)
   }
 
   /**
@@ -1136,18 +1169,14 @@ export class SubContainerLazy<
    * (materializes on first call).
    *
    * @param command Argv array representing the command and its arguments
-   * @param options Optional environment, user, cwd, and stdin input
-   * @param timeoutMs How long to wait before SIGKILL (default 30 s, `null` for no timeout)
-   * @param abort Optional AbortController; aborting SIGKILLs the process
+   * @param options Optional environment, user, cwd, stdin input, `timeout` (default 30 s, `null` for no timeout), and `abort`
    * @throws {@link ExitError} on non-zero exit code or signal termination
    */
   async execFail(
     command: string[],
     options?: CommandOptions & ExecOptions,
-    timeoutMs?: number | null,
-    abort?: AbortController,
   ): Promise<{ stdout: string | Buffer; stderr: string | Buffer }> {
-    return (await this.eager()).execFail(command, options, timeoutMs, abort)
+    return (await this.eager()).execFail(command, options)
   }
 
   /**
@@ -1198,14 +1227,12 @@ export class SubContainerLazy<
   }
 
   onDrop(): void {
-    if (this.materialized) {
-      this.materialized.then(e => e.destroy()).catch(e => console.error(e))
-    }
+    this.materialized?.then(e => e.destroy()).catch(logErrorOnce)
   }
 }
 
 export type CommandOptions = {
-  /** Environment variables to set for this command */
+  /** Environment variables to set for this command; `undefined` unsets one */
   env?: { [variable in string]?: string }
   /** the working directory to run this command in */
   cwd?: string
@@ -1254,6 +1281,12 @@ export type MountOptionsPointer = {
   idmap: { fromId: number; toId: number; range: number }[]
 }
 
+function envArgs(env: NonNullable<CommandOptions['env']>): string[] {
+  return Object.entries(env).map(([k, v]) =>
+    v === undefined ? `--env=${k}` : `--env=${k}=${v}`,
+  )
+}
+
 function wait(time: number) {
   return new Promise(resolve => setTimeout(resolve, time))
 }
@@ -1269,6 +1302,7 @@ export class ExitError extends Error {
     readonly result: {
       exitCode: number | null
       exitSignal: T.Signals | null
+      timedOutAfter: number | null
       stdout: string | Buffer
       stderr: string | Buffer
     },
@@ -1276,6 +1310,8 @@ export class ExitError extends Error {
     let message: string
     if (result.exitCode) {
       message = `${command} failed with exit code ${result.exitCode}: ${result.stderr}`
+    } else if (result.timedOutAfter !== null) {
+      message = `${command} timed out after ${result.timedOutAfter}ms and was killed with ${result.exitSignal}: ${result.stderr}`
     } else if (result.exitSignal) {
       message = `${command} terminated with signal ${result.exitSignal}: ${result.stderr}`
     } else {

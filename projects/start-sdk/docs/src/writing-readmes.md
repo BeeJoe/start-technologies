@@ -38,7 +38,7 @@ Nothing here is about contributing to the package. Build workflow, repo conventi
 
 **Open every H2 with prose.** One or two sentences between the heading and the first table or subsection, describing what the section covers. This text is extracted as the section's summary in the generated index, and it is what an agent reads to decide whether to fetch the section at all.
 
-**No version numbers anywhere.** Not upstream versions, not image tags, not dependency version ranges. The manifest and `setupDependencies()` are the source of truth; a copy here is wrong from the next bump onward.
+**No version numbers anywhere.** Not upstream versions, not image tags, not dependency version ranges. The dependency builder in `dependencies.ts` is the source of truth; a copy here is wrong from the next bump onward.
 
 ## Required structure
 
@@ -163,13 +163,15 @@ Note `store.json` if the package keeps one — it holds StartOS-side state rathe
 
 Where a setting is delivered by environment variable instead of a file, say so and say why: a variable the application re-reads on every launch behaves nothing like one it consumes only on the launch that finds its value unset, and treating the second kind as authoritative is a common packaging bug. A configuration file the package writes without a model belongs in this section too.
 
+If the package writes no configuration at all, state "None" and say so plainly — that there is nothing on disk to inspect or correct is an answer, and a useful one.
+
 ### Dependencies
 
 What this service needs from other services.
 
 For each dependency: its name, whether it is required or optional, the health checks that must pass before this service starts, any mounted volume (with mount point and read-only status), and why it is needed.
 
-Do **not** restate the version range — `setupDependencies()` declares it, and a copy goes stale the first time you raise the floor. If the service has no dependencies, state "None" explicitly.
+Do **not** restate the version range — `dependencies.ts` declares it, and a copy goes stale the first time you raise the floor. If the service has no dependencies, state "None" explicitly.
 
 ### Network Access and Interfaces
 
@@ -194,7 +196,7 @@ The OS supplies each action's id, name, description, warning, visibility, `allow
 - **What happens next** — restarts, where to watch progress.
 - **Outputs** — credentials or values the caller receives.
 
-Flag actions with `visibility: 'hidden'` as not user-facing, so a support agent never tells a user to run one. Where an action exists to satisfy a task, leave the trigger and clearing rules to [Tasks](#tasks) rather than describing them twice.
+Flag actions with `visibility: 'hidden'` as not user-facing, so a support agent never tells a user to run one. Where an action exists to satisfy a task, leave the trigger and clearing rules to [Tasks](#tasks) rather than describing them twice. If the package declares no actions, state "None".
 
 ### Tasks
 
@@ -221,7 +223,7 @@ For each check: what it probes, its grace period, and — most importantly — *
 
 What survives a backup, and what a restored instance has to rebuild.
 
-Lead with the **strategy**, because it decides what the guarantee actually is: volumes copied wholesale (`ofVolumes`), a database dumped and replayed rather than copied (`withPgDump` / `withMysqlDump`), or a mix. A volume that is dumped is not a volume that is backed up — its files are never captured, and restore reconstructs it by starting the engine and replaying the dump. Saying only that it is "included" tells a reader the opposite of what happens.
+Lead with the **strategy**, because it decides what the guarantee actually is: volumes copied wholesale (`ofVolumes`), a database dumped and replayed rather than copied (`withPgDump` / `withMysqlDump` / `withMariadbDump`), or a mix. A volume that is dumped is not a volume that is backed up — its files are never captured, and restore reconstructs it by starting the engine and replaying the dump. Saying only that it is "included" tells a reader the opposite of what happens.
 
 Then: what is deliberately excluded and why (a cache or an index that rebuilds is a feature, not a gap), and what a restored instance still has to do before it is usable — a resync from a dependency, a credential to re-enter, a dependency that must be present first.
 
