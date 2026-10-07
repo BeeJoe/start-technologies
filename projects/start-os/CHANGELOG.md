@@ -8,6 +8,17 @@ This file tracks notable changes since the move to the monorepo, and is what eac
 [GitHub release](https://github.com/Start9Labs/start-technologies/releases) links to
 for the detail behind its highlights.
 
+## [0.4.0.3]
+
+### Changed
+
+- **NVIDIA images include driver 580.178.04**, with Linux 7.2 compatibility.
+
+### Fixed
+
+- **`s9pk pack` produces readable JavaScript even under a restrictive umask**, preserving
+  executable bits and leaving source permissions unchanged.
+
 ## [0.4.0.2]
 
 ### Security
@@ -15,9 +26,6 @@ for the detail behind its highlights.
 - **Update dependencies with security fixes**, including Angular, DOMPurify, networking libraries, and the service runtime. Replace the unmaintained YAML library while preserving configuration formats.
 
 ### Fixed
-
-- **`s9pk pack` produces readable JavaScript even under a restrictive umask**, preserving
-  executable bits and leaving source permissions unchanged.
 
 - **Large packages sideload successfully in the UI over slow connections.** A failed upload shows an error message.
 
