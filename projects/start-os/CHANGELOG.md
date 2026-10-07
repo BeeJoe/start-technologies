@@ -14,6 +14,11 @@ for the detail behind its highlights.
 
 - **NVIDIA images include driver 580.178.04**, with Linux 7.2 compatibility.
 
+### Fixed
+
+- **Services keep their internal IPv6 bridge address enabled.** Address switches
+  affect access from other networks while service-to-service access stays available.
+
 ## [0.4.0.2]
 
 ### Security
