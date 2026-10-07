@@ -29,6 +29,10 @@ for the detail behind its highlights.
 - **Services keep their internal IPv6 bridge address enabled.** Address switches
   affect access from other networks while service-to-service access stays available.
 
+### Fixed
+
+- **Large HTTP responses arrive complete through service HTTPS addresses when the backend closes the connection.**
+
 ## [0.4.0.2]
 
 ### Security
