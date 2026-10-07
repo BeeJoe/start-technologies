@@ -3,7 +3,7 @@ import * as child_process from 'child_process'
 import * as fs from 'fs/promises'
 import { Affine, asError } from '../util'
 import { InitKind, InitScript } from '@start9labs/start-core/inits'
-import { SubContainer, execFile } from '../util/SubContainer'
+import { CommandOptions, SubContainer, execFile } from '../util/SubContainer'
 import { Mounts } from '../mainFn/Mounts'
 import {
   FullProgressTracker,
@@ -12,8 +12,17 @@ import {
 
 const BACKUP_HOST_PATH = '/media/startos/backup'
 const BACKUP_CONTAINER_MOUNT = '/backup-target'
+const MARIADB_SHUTDOWN_TIMEOUT = 120_000
 
-/** A password value, or a function that returns one. Functions are resolved lazily (only during restore). */
+const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
+
+const settles = (p: Promise<unknown>, ms: number) =>
+  Promise.race([
+    p.then(() => true),
+    new Promise<boolean>(r => setTimeout(() => r(false), ms)),
+  ])
+
+/** A password value, or a function that returns one. Functions are resolved when a backup or restore hook runs. */
 export type LazyPassword = string | (() => string | Promise<string>) | null
 
 async function resolvePassword(pw: LazyPassword): Promise<string | null> {
@@ -41,33 +50,93 @@ export type PgDumpConfig<M extends T.SDKManifest> = {
   initdbArgs?: string[]
   /** Additional options passed to `pg_ctl start -o` (e.g. '-c shared_preload_libraries=vectorchord'). Appended after `-c listen_addresses=`. */
   pgOptions?: string
-  /** Milliseconds to wait for PostgreSQL to accept connections before failing (default 60000). Raise for large clusters that need longer to start or run crash recovery. */
+  /** Milliseconds to wait for PostgreSQL to accept connections before failing (default 60000). Also passed to `pg_ctl` as `-t`, bounding its own wait for startup and for the shutdown checkpoint. Raise for large clusters that need longer to start, run crash recovery, or shut down. */
   readyTimeout?: number
 }
 
-/** Configuration for MySQL/MariaDB dump-based backup */
+/** Options for rebuilding a MySQL data volume from a logical dump. */
 export type MysqlDumpConfig<M extends T.SDKManifest> = {
-  /** Image ID of the MySQL/MariaDB container (e.g. 'mysql', 'mariadb') */
+  /** Manifest image containing the MySQL server and client tools. */
   imageId: keyof M['images'] & T.ImageId
-  /** Volume ID containing the MySQL data directory */
+  /** Volume rebuilt from the logical dump during restore. */
   dbVolume: M['volumes'][number]
-  /** Path to MySQL data directory within the container (typically '/var/lib/mysql') */
+  /** Mount point for the database volume inside the image. */
   datadir: string
-  /** MySQL database name to dump */
+  /** Database included in the logical dump. */
   database: string
-  /** MySQL user for dump operations */
+  /** Account used to create the dump and recreated on restore. */
   user: string
-  /** MySQL password. Can be a string or a function that returns one — functions are resolved lazily after volumes are restored. */
+  /** Dump-account password, resolved after volumes return on restore. Non-null values also configure root. */
   password: LazyPassword
-  /** Database engine: 'mysql' uses --initialize-insecure, 'mariadb' uses mysql_install_db */
-  engine: 'mysql' | 'mariadb'
-  /** Custom readiness check command (default: ['mysqladmin', 'ping', ...]) */
+  /** Backup readiness probe; defaults to `mysqladmin ping` as the dump account. */
   readyCommand?: string[]
-  /** Additional options passed to `mysqld` on startup (e.g. '--innodb-buffer-pool-size=256M'). Appended after `--bind-address=127.0.0.1`. */
+  /** Appended after `--bind-address=127.0.0.1`. */
   mysqldOptions?: string[]
-  /** Milliseconds to wait for MySQL/MariaDB to become ready before failing (default 30000). Raise for large data directories that need longer to initialize or run crash recovery. */
+  /** Readiness timeout in milliseconds; defaults to 30,000. */
   readyTimeout?: number
+  engine?: 'mysql'
 }
+
+/** Options for rebuilding a MariaDB data volume from a logical dump. */
+export type MariadbDumpConfig<M extends T.SDKManifest> = {
+  /** Manifest image containing the MariaDB server and client tools. */
+  imageId: keyof M['images'] & T.ImageId
+  /** Volume rebuilt from the logical dump during restore. */
+  dbVolume: M['volumes'][number]
+  /** Mount point for the database volume inside the image. */
+  datadir: string
+  /** Database included in the logical dump. */
+  database: string
+  /** Account used to create the dump and recreated on restore. */
+  user: string
+  /** Dump-account password, resolved after volumes return on restore. Non-null values also configure root. */
+  password: LazyPassword
+  /** Backup readiness probe; defaults to `mariadb-admin ping` as the dump account. */
+  readyCommand?: string[]
+  /** Appended after `--bind-address=127.0.0.1`. */
+  mariadbdOptions?: string[]
+  /** Readiness timeout in milliseconds; defaults to 30,000. */
+  readyTimeout?: number
+  mysqldOptions?: never
+}
+
+const sqlString = (s: string) =>
+  `'${s.replace(/\\/g, '\\\\').replace(/'/g, "''")}'`
+const sqlIdent = (s: string) => `\`${s.replace(/`/g, '``')}\``
+
+/** SQL run as root on a freshly initialized data directory, before the dump is replayed into it. */
+function mysqlGrantSql(
+  database: string,
+  user: string,
+  password: string | null,
+) {
+  const account = `${sqlString(user)}@'localhost'`
+  return [
+    `SET @@SESSION.sql_mode = REPLACE(@@SESSION.sql_mode, 'NO_BACKSLASH_ESCAPES', '');`,
+    `CREATE DATABASE IF NOT EXISTS ${sqlIdent(database)};`,
+    `CREATE USER IF NOT EXISTS ${account}${password === null ? '' : ` IDENTIFIED BY ${sqlString(password)}`};`,
+    // A GRANT names a LIKE pattern.
+    `GRANT ALL ON ${sqlIdent(database.replace(/[\\_%]/g, '\\$&'))}.* TO ${account};`,
+    ...(password === null
+      ? []
+      : [
+          `ALTER USER 'root'@'localhost' IDENTIFIED BY ${sqlString(password)};`,
+        ]),
+    'FLUSH PRIVILEGES;',
+  ].join(' ')
+}
+
+const passwordEnv = (pw: string | null): CommandOptions['env'] =>
+  pw === null ? {} : { MYSQL_PWD: pw }
+
+const importSql = (client: string, database: string, file: string) => [
+  'sh',
+  '-c',
+  `exec ${client} -u root --database="$1" < "$2"`,
+  'sh',
+  database,
+  file,
+]
 
 /**
  * Bind-mount the host backup directory (`/media/startos/backup`) into a
@@ -193,7 +262,8 @@ export class Backups<M extends T.SDKManifest> implements InitScript {
    * this uses `pg_dump` to create a logical dump before backup and `pg_restore` to rebuild
    * the database after restore.
    *
-   * The dump file is written directly to the backup target — no data duplication on disk.
+   * The dump is staged in the subcontainer's `/tmp` and copied to the backup
+   * target, so it needs transient room for one copy of the dump.
    *
    * @returns A configured Backups instance with pre/post hooks. Chain `.addVolume()` or
    * `.addSync()` to include additional volumes/paths in the backup.
@@ -214,6 +284,7 @@ export class Backups<M extends T.SDKManifest> implements InitScript {
       readyTimeout = 60_000,
     } = config
     const pgdata = `${mountpoint}${pgdataPath}`
+    const pgCtlTimeout = String(Math.ceil(readyTimeout / 1000))
     const dumpFile = `${BACKUP_CONTAINER_MOUNT}/${database}-db.dump`
     // pg_dump's writes are silently dropped on the backup-fs FUSE mount —
     // pg_dump exits 0 but the file stays 0 bytes. `cp` writes through the
@@ -231,17 +302,7 @@ export class Backups<M extends T.SDKManifest> implements InitScript {
       })
     }
 
-    async function startPg(
-      sub: {
-        exec(cmd: string[], opts?: any): Promise<{ exitCode: number | null }>
-        execFail(
-          cmd: string[],
-          opts?: any,
-          timeout?: number | null,
-        ): Promise<any>
-      },
-      label: string,
-    ) {
+    async function startPg(sub: SubContainer<M>, label: string) {
       await sub.exec(['rm', '-f', `${pgdata}/postmaster.pid`], {
         user: 'postgres',
       })
@@ -255,9 +316,19 @@ export class Backups<M extends T.SDKManifest> implements InitScript {
       const pgStartOpts = pgOptions
         ? `-c listen_addresses= ${pgOptions}`
         : '-c listen_addresses='
-      await sub.execFail(['pg_ctl', 'start', '-D', pgdata, '-o', pgStartOpts], {
-        user: 'postgres',
-      })
+      await sub.execFail(
+        [
+          'pg_ctl',
+          'start',
+          '-D',
+          pgdata,
+          '-t',
+          pgCtlTimeout,
+          '-o',
+          pgStartOpts,
+        ],
+        { user: 'postgres', timeout: null },
+      )
       for (let elapsed = 0; elapsed < readyTimeout; elapsed += 1000) {
         const { exitCode } = await sub.exec(['pg_isready', '-U', user], {
           user: 'postgres',
@@ -291,15 +362,18 @@ export class Backups<M extends T.SDKManifest> implements InitScript {
             console.log('[pg-dump] dumping database')
             await sub.execFail(
               ['pg_dump', '-U', user, '-Fc', '-f', tmpDumpFile, database],
-              { user: 'postgres' },
-              null,
+              { user: 'postgres', timeout: null },
             )
             console.log('[pg-dump] copying dump to backup target')
-            await sub.execFail(['cp', tmpDumpFile, dumpFile], { user: 'root' })
-            console.log('[pg-dump] stopping postgres')
-            await sub.execFail(['pg_ctl', 'stop', '-D', pgdata, '-w'], {
-              user: 'postgres',
+            await sub.execFail(['cp', tmpDumpFile, dumpFile], {
+              user: 'root',
+              timeout: null,
             })
+            console.log('[pg-dump] stopping postgres')
+            await sub.execFail(
+              ['pg_ctl', 'stop', '-D', pgdata, '-w', '-t', pgCtlTimeout],
+              { user: 'postgres', timeout: null },
+            )
             console.log('[pg-dump] complete')
           },
         )
@@ -315,17 +389,20 @@ export class Backups<M extends T.SDKManifest> implements InitScript {
             await mountBackupTarget(sub.rootfs)
             // Stage the dump off the FUSE before pg_restore reads it — see
             // the comment on `tmpDumpFile` above.
-            await sub.execFail(['cp', dumpFile, tmpDumpFile], { user: 'root' })
+            await sub.execFail(['cp', dumpFile, tmpDumpFile], {
+              user: 'root',
+              timeout: null,
+            })
             await sub.execFail(['chown', 'postgres:postgres', tmpDumpFile], {
               user: 'root',
             })
             await sub.execFail(
               ['chown', '-R', 'postgres:postgres', mountpoint],
-              { user: 'root' },
+              { user: 'root', timeout: null },
             )
             await sub.execFail(
               ['initdb', '-D', pgdata, '-U', user, ...initdbArgs],
-              { user: 'postgres' },
+              { user: 'postgres', timeout: null },
             )
             await startPg(sub, 'pg-restore')
             await sub.execFail(['createdb', '-U', user, database], {
@@ -342,8 +419,7 @@ export class Backups<M extends T.SDKManifest> implements InitScript {
                 '--no-privileges',
                 tmpDumpFile,
               ],
-              { user: 'postgres' },
-              null,
+              { user: 'postgres', timeout: null },
             )
             if (resolvedPassword !== null) {
               await sub.execFail(
@@ -359,25 +435,19 @@ export class Backups<M extends T.SDKManifest> implements InitScript {
                 { user: 'postgres' },
               )
             }
-            await sub.execFail(['pg_ctl', 'stop', '-D', pgdata, '-w'], {
-              user: 'postgres',
-            })
+            await sub.execFail(
+              ['pg_ctl', 'stop', '-D', pgdata, '-w', '-t', pgCtlTimeout],
+              { user: 'postgres', timeout: null },
+            )
           },
         )
       })
   }
 
   /**
-   * Configure MySQL/MariaDB dump-based backup for a volume.
+   * Backs up a MySQL database as a logical dump and rebuilds it on restore.
    *
-   * Instead of rsyncing the raw MySQL data directory (which is slow and error-prone),
-   * this uses `mysqldump` to create a logical dump before backup and `mysql` to restore
-   * the database after restore.
-   *
-   * The dump file is stored temporarily in `dumpVolume` during backup and cleaned up afterward.
-   *
-   * @returns A configured Backups instance with pre/post hooks. Chain `.addVolume()` or
-   * `.addSync()` to include additional volumes/paths in the backup.
+   * Chain `.addVolume()` or `.addSync()` for additional backup content.
    */
   static withMysqlDump<M extends T.SDKManifest = never>(
     config: MysqlDumpConfig<M>,
@@ -389,7 +459,6 @@ export class Backups<M extends T.SDKManifest> implements InitScript {
       database,
       user,
       password,
-      engine,
       readyCommand,
       mysqldOptions = [],
       readyTimeout = 30_000,
@@ -398,7 +467,7 @@ export class Backups<M extends T.SDKManifest> implements InitScript {
     // See the comment on `tmpDumpFile` in withPgDump — backup-fs FUSE
     // silently drops mysqldump's writes, so stage the dump in the
     // subcontainer rootfs and `cp` through.
-    const tmpDumpFile = `/tmp/${database}-db.dump`
+    const tmpDumpFile = '/tmp/db.sql'
 
     function dbMounts() {
       return Mounts.of<M>().mountVolume({
@@ -410,64 +479,40 @@ export class Backups<M extends T.SDKManifest> implements InitScript {
     }
 
     async function waitForMysql(
-      sub: { exec(cmd: string[]): Promise<{ exitCode: number | null }> },
+      sub: SubContainer<M>,
       cmd: string[],
+      env: CommandOptions['env'],
     ) {
-      for (let elapsed = 0; elapsed < readyTimeout; elapsed += 1000) {
-        const { exitCode } = await sub.exec(cmd)
+      const deadline = Date.now() + readyTimeout
+      while (Date.now() < deadline) {
+        const { exitCode } = await sub.exec(cmd, {
+          env,
+          timeout: deadline - Date.now(),
+        })
         if (exitCode === 0) return
-        await new Promise(r => setTimeout(r, 1000))
+        await sleep(1000)
       }
       throw new Error(
-        `MySQL/MariaDB failed to become ready within ${readyTimeout / 1000} seconds`,
+        `MySQL failed to become ready within ${readyTimeout / 1000} seconds`,
       )
     }
 
-    async function startMysql(sub: {
-      exec(cmd: string[], opts?: any): Promise<{ exitCode: number | null }>
-      execFail(cmd: string[], opts?: any, timeout?: number | null): Promise<any>
-    }) {
-      if (engine === 'mariadb') {
-        // MariaDB doesn't support --daemonize; fire-and-forget the exec
-        sub
-          .exec(
-            [
-              'mysqld',
-              '--user=mysql',
-              `--datadir=${datadir}`,
-              '--bind-address=127.0.0.1',
-              ...mysqldOptions,
-            ],
-            { user: 'root' },
-          )
-          .catch(e =>
-            console.error('[mysql-backup] mysqld exited unexpectedly:', e),
-          )
-      } else {
-        await sub.execFail(
-          [
-            'mysqld',
-            '--user=mysql',
-            `--datadir=${datadir}`,
-            '--bind-address=127.0.0.1',
-            '--daemonize',
-            ...mysqldOptions,
-          ],
-          { user: 'root' },
-          null,
-        )
-      }
+    async function startMysql(sub: SubContainer<M>) {
+      await sub.execFail(
+        [
+          'mysqld',
+          '--user=mysql',
+          `--datadir=${datadir}`,
+          '--bind-address=127.0.0.1',
+          '--daemonize',
+          ...mysqldOptions,
+        ],
+        { user: 'root', timeout: null },
+      )
     }
 
-    async function stopMysql(sub: {
-      exec(cmd: string[], opts?: any): Promise<{ exitCode: number | null }>
-      execFail(cmd: string[], opts?: any, timeout?: number | null): Promise<any>
-    }) {
-      // SIGTERM mysqld and wait for it to finish flushing before teardown.
-      // A killed-but-unreaped mysqld lingers as a zombie that keeps its PID,
-      // so `tail --pid`/`kill -0` would block here forever — treat the zombie
-      // ('Z') state, or a vanished PID, as "fully exited". Bounded SIGKILL
-      // fallback guarantees we can never deadlock the backup.
+    async function stopMysql(sub: SubContainer<M>) {
+      // A zombie ('Z') or vanished PID is a stopped mysqld.
       await sub.execFail(
         [
           'sh',
@@ -484,20 +529,18 @@ export class Backups<M extends T.SDKManifest> implements InitScript {
             'done',
           ].join('\n'),
         ],
-        { user: 'root' },
-        null,
+        { user: 'root', timeout: null },
       )
     }
 
     return new Backups<M>()
       .setPreBackup(async effects => {
         const pw = await resolvePassword(password)
-        const readyCmd = readyCommand || [
+        const ready = readyCommand ?? [
           'mysqladmin',
           'ping',
           '-u',
           user,
-          ...(pw !== null ? [`-p${pw}`] : []),
           '--silent',
         ]
         await SubContainer.withTemp<M, void, BackupEffects>(
@@ -513,28 +556,32 @@ export class Backups<M extends T.SDKManifest> implements InitScript {
             await sub.exec(['chown', 'mysql:mysql', '/var/run/mysqld'], {
               user: 'root',
             })
-            if (engine === 'mysql') {
-              await sub.execFail(['chown', '-R', 'mysql:mysql', datadir], {
+            await sub.execFail(['chown', '-R', 'mysql:mysql', datadir], {
+              user: 'root',
+              timeout: null,
+            })
+            try {
+              await startMysql(sub)
+              await waitForMysql(sub, ready, passwordEnv(pw))
+              await sub.execFail(
+                [
+                  'mysqldump',
+                  '-u',
+                  user,
+                  '--single-transaction',
+                  `--result-file=${tmpDumpFile}`,
+                  '--',
+                  database,
+                ],
+                { user: 'root', env: passwordEnv(pw), timeout: null },
+              )
+              await sub.execFail(['cp', tmpDumpFile, dumpFile], {
                 user: 'root',
+                timeout: null,
               })
+            } finally {
+              await stopMysql(sub)
             }
-            await startMysql(sub)
-            await waitForMysql(sub, readyCmd)
-            await sub.execFail(
-              [
-                'mysqldump',
-                '-u',
-                user,
-                ...(pw !== null ? [`-p${pw}`] : []),
-                '--single-transaction',
-                `--result-file=${tmpDumpFile}`,
-                database,
-              ],
-              { user: 'root' },
-              null,
-            )
-            await sub.execFail(['cp', tmpDumpFile, dumpFile], { user: 'root' })
-            await stopMysql(sub)
           },
         )
       })
@@ -553,54 +600,231 @@ export class Backups<M extends T.SDKManifest> implements InitScript {
             await sub.exec(['chown', 'mysql:mysql', '/var/run/mysqld'], {
               user: 'root',
             })
-            // Initialize fresh data directory
-            if (engine === 'mariadb') {
-              await sub.execFail(
-                ['mysql_install_db', '--user=mysql', `--datadir=${datadir}`],
-                { user: 'root' },
+            await sub.execFail(
+              [
+                'mysqld',
+                '--initialize-insecure',
+                '--user=mysql',
+                `--datadir=${datadir}`,
+              ],
+              { user: 'root', timeout: null },
+            )
+            try {
+              await startMysql(sub)
+              // After fresh init, root has no password
+              await waitForMysql(
+                sub,
+                ['mysqladmin', 'ping', '-u', 'root', '--silent'],
+                {},
               )
-            } else {
               await sub.execFail(
                 [
-                  'mysqld',
-                  '--initialize-insecure',
-                  '--user=mysql',
-                  `--datadir=${datadir}`,
+                  'mysql',
+                  '-u',
+                  'root',
+                  '-e',
+                  mysqlGrantSql(database, user, pw),
                 ],
                 { user: 'root' },
               )
+              await sub.execFail(['cp', dumpFile, tmpDumpFile], {
+                user: 'root',
+                timeout: null,
+              })
+              await sub.execFail(importSql('mysql', database, tmpDumpFile), {
+                user: 'root',
+                env: passwordEnv(pw),
+                timeout: null,
+              })
+            } finally {
+              await stopMysql(sub)
             }
-            await startMysql(sub)
-            // After fresh init, root has no password
-            await waitForMysql(sub, [
-              'mysqladmin',
-              'ping',
-              '-u',
-              'root',
-              '--silent',
-            ])
-            // Create database, user, and set password
-            const grantSql =
-              pw !== null
-                ? `CREATE DATABASE IF NOT EXISTS \`${database}\`; CREATE USER IF NOT EXISTS '${user}'@'localhost' IDENTIFIED BY '${pw}'; GRANT ALL ON \`${database}\`.* TO '${user}'@'localhost'; ALTER USER 'root'@'localhost' IDENTIFIED BY '${pw}'; FLUSH PRIVILEGES;`
-                : `CREATE DATABASE IF NOT EXISTS \`${database}\`; CREATE USER IF NOT EXISTS '${user}'@'localhost'; GRANT ALL ON \`${database}\`.* TO '${user}'@'localhost'; FLUSH PRIVILEGES;`
-            await sub.execFail(['mysql', '-u', 'root', '-e', grantSql], {
-              user: 'root',
-            })
-            // Stage the dump off the FUSE before mysql reads it — see
-            // the comment on `tmpDumpFile` above.
-            await sub.execFail(['cp', dumpFile, tmpDumpFile], { user: 'root' })
-            // Restore from dump
-            await sub.execFail(
-              [
-                'sh',
-                '-c',
-                `mysql -u root ${pw !== null ? `-p'${pw}'` : ''} ${database} < ${tmpDumpFile}`,
-              ],
-              { user: 'root' },
-              null,
+          },
+        )
+      })
+  }
+
+  /**
+   * Backs up a MariaDB database as a compressed logical dump and rebuilds it on restore.
+   *
+   * Chain `.addVolume()` or `.addSync()` for additional backup content.
+   */
+  static withMariadbDump<M extends T.SDKManifest = never>(
+    config: MariadbDumpConfig<M>,
+  ): Backups<M> {
+    const {
+      imageId,
+      dbVolume,
+      datadir,
+      database,
+      user,
+      password,
+      readyCommand,
+      mariadbdOptions = [],
+      readyTimeout = 30_000,
+    } = config
+    const dumpFile = `${BACKUP_CONTAINER_MOUNT}/${database}.sql.gz`
+    const tmpSqlFile = '/tmp/db.sql'
+    const tmpDumpFile = `${tmpSqlFile}.gz`
+
+    function dbMounts() {
+      return Mounts.of<M>().mountVolume({
+        volumeId: dbVolume,
+        mountpoint: datadir,
+        readonly: false,
+        subpath: null,
+      })
+    }
+
+    async function runMariadb(
+      sub: SubContainer<M>,
+      ready: string[],
+      readyEnv: CommandOptions['env'],
+      fn: () => Promise<void>,
+    ) {
+      await sub.exec(['mkdir', '-p', '/var/run/mysqld'], { user: 'root' })
+      await sub.exec(['chown', 'mysql:mysql', '/var/run/mysqld'], {
+        user: 'root',
+      })
+      const deadline = Date.now() + readyTimeout
+      let exited: Error | null = null
+      const running = sub
+        .exec(
+          [
+            'mariadbd',
+            '--user=mysql',
+            `--datadir=${datadir}`,
+            '--bind-address=127.0.0.1',
+            ...mariadbdOptions,
+          ],
+          { user: 'root', timeout: null },
+        )
+        .then(
+          ({ exitCode, stderr }) => {
+            exited = new Error(
+              `mariadbd exited (${exitCode}): ${String(stderr)}`,
             )
-            await stopMysql(sub)
+          },
+          e => {
+            exited = asError(e)
+          },
+        )
+      try {
+        while (Date.now() < deadline) {
+          if (exited) throw exited
+          const { exitCode } = await sub.exec(ready, {
+            user: 'root',
+            env: readyEnv,
+            timeout: deadline - Date.now(),
+          })
+          if (exitCode === 0) return await fn()
+          await sleep(1000)
+        }
+        if (exited) throw exited
+        throw new Error(
+          `MariaDB failed to become ready within ${readyTimeout / 1000} seconds`,
+        )
+      } finally {
+        await sub.exec(['pkill', '-TERM', 'mariadbd'], { user: 'root' })
+        if (!(await settles(running, MARIADB_SHUTDOWN_TIMEOUT))) {
+          await sub.exec(['pkill', '-KILL', 'mariadbd'], { user: 'root' })
+          if (!(await settles(running, 10_000)))
+            throw new Error('mariadbd did not exit after SIGKILL')
+        }
+      }
+    }
+
+    return new Backups<M>()
+      .setPreBackup(async effects => {
+        const pw = await resolvePassword(password)
+        const ready = readyCommand ?? [
+          'mariadb-admin',
+          'ping',
+          '-u',
+          user,
+          '--silent',
+        ]
+        await SubContainer.withTemp<M, void, BackupEffects>(
+          effects,
+          { imageId },
+          dbMounts() as any,
+          'mariadb-dump',
+          async sub => {
+            await mountBackupTarget(sub.rootfs)
+            await runMariadb(sub, ready, passwordEnv(pw), async () => {
+              await sub.execFail(
+                [
+                  'mariadb-dump',
+                  '-u',
+                  user,
+                  '--single-transaction',
+                  `--result-file=${tmpSqlFile}`,
+                  '--',
+                  database,
+                ],
+                { user: 'root', env: passwordEnv(pw), timeout: null },
+              )
+              await sub.execFail(['gzip', '-1', tmpSqlFile], {
+                user: 'root',
+                timeout: null,
+              })
+              await sub.execFail(['cp', tmpDumpFile, dumpFile], {
+                user: 'root',
+                timeout: null,
+              })
+            })
+          },
+        )
+      })
+      .setPostRestore(async effects => {
+        const pw = await resolvePassword(password)
+        await SubContainer.withTemp<M, void, BackupEffects>(
+          effects,
+          { imageId },
+          dbMounts() as any,
+          'mariadb-restore',
+          async sub => {
+            await mountBackupTarget(sub.rootfs)
+            // mariadb-install-db requires an empty data directory.
+            await sub.execFail(['find', datadir, '-mindepth', '1', '-delete'], {
+              user: 'root',
+              timeout: null,
+            })
+            await sub.execFail(
+              ['mariadb-install-db', '--user=mysql', `--datadir=${datadir}`],
+              { user: 'root', timeout: null },
+            )
+            await sub.execFail(['cp', dumpFile, tmpDumpFile], {
+              user: 'root',
+              timeout: null,
+            })
+            await sub.execFail(['gunzip', tmpDumpFile], {
+              user: 'root',
+              timeout: null,
+            })
+            // The initialized root account authenticates over the local socket.
+            await runMariadb(
+              sub,
+              ['mariadb-admin', 'ping', '-u', 'root', '--silent'],
+              {},
+              async () => {
+                await sub.execFail(
+                  [
+                    'mariadb',
+                    '-u',
+                    'root',
+                    '-e',
+                    mysqlGrantSql(database, user, pw),
+                  ],
+                  { user: 'root' },
+                )
+                await sub.execFail(importSql('mariadb', database, tmpSqlFile), {
+                  user: 'root',
+                  env: passwordEnv(pw),
+                  timeout: null,
+                })
+              },
+            )
           },
         )
       })
@@ -898,11 +1122,7 @@ async function runRsync(rsyncOptions: {
   args.push('--inplace')
   args.push('--timeout=300')
   args.push('--info=progress2')
-  // --no-inc-recursive would give accurate progress percentages (since rsync
-  // knows the full file list up front), but it forces a full pre-scan that
-  // causes timeouts on large backups. If we start surfacing progress to users,
-  // do a raw file count up front and compute percentage from bytes/files seen
-  // instead of relying on rsync's own percentage.
+  // --no-inc-recursive's full pre-scan times out large backups.
   args.push(srcPath)
   args.push(dstPath)
   const spawned = child_process.spawn(command, args, { detached: true })
@@ -915,7 +1135,8 @@ async function runRsync(rsyncOptions: {
         if (line) console.log(line)
         continue
       }
-      percentage = Number.parseFloat(parsed)
+      // rsync's percentage falls as incremental recursion finds more files.
+      percentage = Math.max(percentage, Number.parseFloat(parsed))
     }
   })
 

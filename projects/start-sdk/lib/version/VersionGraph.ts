@@ -48,6 +48,19 @@ function isRange(v: ExtendedVersion | VersionRange): v is VersionRange {
   return 'satisfiedBy' in v
 }
 
+/** Stores a range reached as the exact version it was reached for. */
+async function settle(
+  effects: T.Effects,
+  reached: ExtendedVersion | VersionRange,
+  to: ExtendedVersion | VersionRange,
+): Promise<ExtendedVersion | VersionRange> {
+  if (isRange(reached) && isExver(to)) {
+    await setDataVersion(effects, to)
+    return to
+  }
+  return reached
+}
+
 /**
  * Check whether two version specifiers overlap (i.e. share at least one common version).
  * Works with any combination of ExtendedVersion and VersionRange.
@@ -221,7 +234,7 @@ export class VersionGraph<CurrentVersion extends string>
     to: ExtendedVersion | VersionRange
     progress?: FullProgressTracker
   }): Promise<ExtendedVersion | VersionRange> {
-    if (overlaps(from, to)) return from
+    if (overlaps(from, to)) return settle(effects, from, to)
     // Each migration step gets a FullProgressTracker. When invoked without one
     // (tests, direct calls) fall back to a sink-less tracker that no-ops sync.
     const reportProgress = progress ?? new FullProgressTracker()
@@ -257,11 +270,11 @@ export class VersionGraph<CurrentVersion extends string>
           dataVersion = edge.to.metadata
           await setDataVersion(effects, edge.to.metadata)
         }
-        return dataVersion
+        return settle(effects, dataVersion, to)
       }
     }
     throw new Error(
-      `cannot migrate from ${from.toString()} to ${to.toString()}`,
+      `this service has no migration path from ${from.toString()} to ${to.toString()}, so its data cannot be carried over`,
     )
   }
   /**
@@ -346,7 +359,7 @@ export class VersionGraph<CurrentVersion extends string>
     if (target) {
       if (isRange(target) && !target.satisfiable()) {
         throw new Error(
-          `uninit target range \`${target.toString()}\` is unsatisfiable — no version can satisfy it (host contract violation)`,
+          `this service has no migration path to the version being installed, so its data cannot be carried over`,
         )
       }
       const from = await getDataVersion(effects)

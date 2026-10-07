@@ -17,10 +17,11 @@ export const setAdminPassword = sdk.Action.withoutInput(
   'set-admin-password',
 
   // Metadata
-  async () => ({
+  async ({ effects }) => ({
     name: i18n('Set Admin Password'),
     description: i18n('Generate a new random password for the admin account. Replaces any existing password.'),
-    warning: null,
+    // A no-input action runs on click unless `warning` is set; then the UI confirms first.
+    warning: (await storeJson.read(s => s.adminPassword).const(effects)) ? i18n('Replaces the current admin password.') : null,
     allowedStatuses: 'any', // 'any', 'only-running', 'only-stopped'
     group: null,
     visibility: 'enabled', // 'enabled', 'disabled', 'hidden'
@@ -71,13 +72,59 @@ The action is paired with a `setupOnInit` watcher that surfaces a critical task 
 
 ### Controlling Access
 
-The optional **`access`** field on the metadata controls who may invoke the action **directly** via `effects.action.run({ packageId, actionId, input })`:
+The optional **`access`** field on the metadata controls who may invoke the action **directly**, with `sdk.action.run` (see [Running Another Service's Action](#running-another-services-action)):
 
 - `'user'` (default) — only the user; another service must request it through a task (`effects.action.createTask(...)`).
 - `'dependent'` — only services that declare this package as a current dependency.
 - `'public'` — any installed package.
 
 `access` is independent of `visibility` (whether the action is shown/enabled) and `allowedStatuses` (which run states permit it); a direct cross-package run is rejected if `access` denies the caller.
+
+### Knowing Who Is Calling
+
+`access` decides _whether_ another service may run the action. **`caller`** tells the action _which_ service is running it, so it can decide what that service is allowed to touch. The `run` handler, the prefill function, and an input spec written as a function each receive it:
+
+- a package id — the service that reached the action through `effects.action.run` or `effects.action.getInput`. A service that runs one of its own actions that way sees its own id.
+- `null` — the user ran it, or StartOS is reading the form to evaluate a task.
+
+StartOS supplies `caller`; the calling service cannot set or forge it. **Take identity from `caller`, never from the input.** An action that lets a service register something against "its own" host must not accept a package id as a field — any service allowed to call it could name another:
+
+```typescript
+export const registerEndpoint = sdk.Action.withInput(
+  'register-endpoint',
+  async () => ({
+    name: i18n('Register Endpoint'),
+    description: i18n('Register a host of the calling service'),
+    warning: null,
+    allowedStatuses: 'any',
+    group: null,
+    visibility: 'hidden',
+    access: 'dependent',
+  }),
+  InputSpec.of({ hostId: Value.text({ name: 'Host', required: true, default: null }) }),
+  async () => null,
+  async ({ effects, input, caller }) => {
+    if (caller === null) throw new Error('Only a service can register an endpoint')
+    // `caller` is who asked; `input.hostId` is which of its hosts.
+    await register(effects, { packageId: caller, hostId: input.hostId })
+  },
+)
+```
+
+### Running Another Service's Action
+
+`sdk.action.run` runs one of this service's own actions, or another service's that its `access` admits. An action that takes input is run the way the user runs it: its form is opened first, and the input is checked against that form. So `input` is a function. It receives the opened form — its `spec`, and the `value` the action's prefill function supplied — and returns the input to submit. `prefill` seeds the form, including the values its dynamic fields are computed from.
+
+```typescript
+await sdk.action.run({
+  effects,
+  packageId: 'directory',
+  actionId: 'register-endpoint',
+  input: ({ value }) => ({ ...value, hostId: 'api' }),
+})
+```
+
+An action without input takes no `input`, and runs without a form. Calling the effects directly works the same way: the target keys the form `effects.action.getInput` opens by the calling procedure's event id, so the `effects.action.run` that answers it must come from the same procedure, one form at a time.
 
 ## Registering Actions
 
@@ -94,13 +141,37 @@ export const actions = sdk.Actions.of().addAction(setAdminPassword)
 
 Actions return structured results that the StartOS UI renders for the user.
 
+`message` is prose shown under the title. It is rendered as **Markdown** — headings, lists, tables, code blocks, emphasis and links all work — and a single newline is kept as a line break, so text written as plain lines arrives as plain lines. Guidance and next steps go here.
+
+```typescript
+return {
+  version: '1',
+  title: 'Diagnostics',
+  message: `### Checks
+
+- database: **ok**
+- search index: **rebuilding**
+
+Restart the service once the rebuild finishes.`,
+  result: null,
+}
+```
+
+`result` holds the values the user acts on — copies, scans, or saves. It takes one of three types:
+
+| `type`      | Renders as                                                         | Takes                                                           |
+| ----------- | ------------------------------------------------------------------ | --------------------------------------------------------------- |
+| `single`    | a one-line field                                                   | `value`, plus optional `copyable`, `qr`, `masked`, `launchable` |
+| `multiline` | a read-only monospace box that keeps its line breaks               | `value`, plus optional `copyable`, `qr`, `masked`, `filename`   |
+| `group`     | an accordion of named members, each of which is any of these three | `value`, the array of members                                   |
+
+A newline in a `single` value is not rendered — the browser strips it from the field — so anything with its own line structure is a `multiline` value. `filename` is what separates "here is some text" from "here is a file": set it and the value is also offered as a download under that name; omit it for no download button.
+
 ### Single Value
 
 ```typescript
 result: {
   type: 'single',
-  name: 'API Key',
-  description: null,
   value: 'abc123',
   masked: true,
   copyable: true,
@@ -108,7 +179,36 @@ result: {
 }
 ```
 
+`copyable`, `qr`, `masked` and `launchable` are all optional and default to
+`false`. `launchable` puts an open-in-new-tab button beside the value, so a
+result that hands the user a link — an authorization URL, an admin panel — can
+be clicked straight through:
+
+```typescript
+result: {
+  type: 'single',
+  value: 'https://btcpay.example.com/api-keys/authorize?permissions=btcpay.store.cancreateinvoice',
+  copyable: true,
+  launchable: true,
+}
+```
+
+The value must be an `http(s)` URL for the button to go anywhere.
+
+### Multi-line Value
+
+```typescript
+result: {
+  type: 'multiline',
+  value: report,
+  copyable: true,
+  filename: 'vikunja-doctor.txt',
+}
+```
+
 ### Group of Values
+
+A member carries a `name`, and an optional `description`, on top of whatever its own type takes:
 
 ```typescript
 result: {
@@ -116,6 +216,7 @@ result: {
   value: [
     { type: 'single', name: 'Username', description: null, value: 'admin', masked: false, copyable: true, qr: false },
     { type: 'single', name: 'Password', description: null, value: 'secret', masked: true, copyable: true, qr: false },
+    { type: 'multiline', name: 'Device Config', description: null, value: config, masked: true, copyable: true, qr: true, filename: 'start-tunnel.conf' },
   ],
 }
 ```
@@ -159,7 +260,7 @@ export const toggleRegistrations = sdk.Action.withoutInput(
     return {
       name: allowed ? i18n('Disable Registrations') : i18n('Enable Registrations'),
       description: allowed ? i18n('Registrations are currently enabled. Run this action to disable them.') : i18n('Registrations are currently disabled. Run this action to enable them.'),
-      warning: allowed ? null : i18n('Anyone with your URL will be able to create an account.'),
+      warning: allowed ? i18n('New accounts can no longer be created. Existing accounts are unaffected.') : i18n('Anyone with your URL will be able to create an account.'),
       allowedStatuses: 'any',
       group: null,
       visibility: 'enabled',
@@ -221,6 +322,31 @@ export const configure = sdk.Action.withInput(
 
 The five arguments to `withInput` are: action ID, metadata (static object or async function), input spec, prefill function, and handler.
 
+### Validating Input
+
+A text field's `patterns` are checked before your handler runs, on **every** path into the action — the form, `start-cli package action run`, and a direct RPC call alike. A value that fails one is rejected with that pattern's `description`, so the caller sees the same message wherever they came from.
+
+```typescript
+sessionTimeout: Value.text({
+  name: i18n('Session Timeout'),
+  required: false,
+  default: null,
+  patterns: [
+    {
+      regex: '^([0-9]+(s|m|h))+$',
+      description: i18n('Must be a number followed by s, m, or h'),
+    },
+  ],
+}),
+```
+
+Two details worth knowing, both inherited from how the form has always behaved:
+
+- **A pattern is anchored.** `[a-z]+` matches the whole value, not a substring — write it as though `^` and `$` were there, because they are added if you leave them off.
+- **An empty value skips its patterns**, and is left to `required`. An optional field the user leaves blank is not made invalid by a pattern it could never satisfy.
+
+Anything a pattern can't express — a cross-field rule, a value that has to exist on disk — still belongs in the handler, where a `throw` surfaces to the caller the same way.
+
 ### Generating Values in a Form
 
 When a form field holds a secret, don't generate it in package code. `Value.text` accepts a `RandomString` spec — `{ charset, len }` — in two places, and StartOS does the generating:
@@ -242,11 +368,27 @@ password: Value.text({
 
 ## Conventions
 
+### Confirm Before a No-Input Action Changes State
+
+A no-input action runs on click, so one that changes state sets `warning`, and the UI asks the user to confirm first. That holds for a reversible toggle too: the point is to prevent unexpected execution, not only damage. The warning names what changes — what is replaced, stops working, restarts or becomes exposed — never just "Are you sure?". An action with input needs no warning, since the form is the confirmation, and an action that only reports (credentials, node info) needs neither.
+
+A create-or-update action, such as setting an admin password or token, warns only when it replaces an existing value and sets `warning: null` on first creation, as [Action Without Input](#action-without-input) shows.
+
 ### Wrap User-Facing Strings in `i18n()`
 
 Every string that a user will see — action `name`, `description`, `warning`, `reason` on tasks, messages on health checks and action results — must be wrapped in `i18n()`. Raw strings bypass translation and leak English into non-English locales. The existing examples on this page illustrate the pattern: `name: i18n('Configure SMTP')`, not `name: 'Configure SMTP'`.
 
-Thrown errors are the exception. `throw new Error(...)` messages are developer-facing diagnostics that surface in logs and stack traces, not translated UI copy — leave them as plain strings and do **not** wrap them in `i18n()`.
+**That includes what a handler throws.** An error out of an action handler is not a log line the user never sees — StartOS catches it and renders the message as the alert that tells them the action failed, so it is the only feedback they get and it needs a dictionary entry like any other:
+
+```typescript
+if (!apiKey) {
+  throw new Error(i18n('An API key is required. Create one under Settings → API Keys.'))
+}
+```
+
+Wrapping it works because `setupI18n` resolves eagerly against the container's locale and hands back a finished string; StartOS renders an unrecognized string verbatim, so a translated message reaches the user in their language and an untranslated one leaks English into the alert.
+
+Errors thrown outside an action are a different matter. A throw from `setupMain`, `setupInit`, or a migration reaches the user as a **Service Launch Error** — a crash report shown next to Rebuild and Uninstall buttons, not copy anyone composed. Those are diagnostics: leave them as plain strings, and keep them specific enough to debug from.
 
 ### Don't `as const` What the SDK Already Types
 
@@ -316,13 +458,13 @@ Use the SDK's `smtpShape` zod schema in your store's shape definition. See [File
 import { FileHelper, smtpShape, z } from '@start9labs/start-sdk'
 import { sdk } from '../sdk'
 
-const shape = z.object({
+const shape = z.looseObject({
   adminPassword: z.string().optional(),
   secretKey: z.string().optional(),
   smtp: smtpShape,
 })
 
-export const storeJson = FileHelper.json({ base: sdk.volumes.main, subpath: './store.json' }, shape)
+export const storeJson = FileHelper.json({ base: sdk.volumes.startos, subpath: 'store.json' }, shape)
 ```
 
 ### 2. Create the manageSmtp Action

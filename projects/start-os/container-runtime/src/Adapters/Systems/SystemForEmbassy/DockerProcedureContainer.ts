@@ -10,7 +10,6 @@ import {
   SubContainer as SubContainerNS,
 } from '@start9labs/start-sdk/lib/util/SubContainer'
 import { Mounts } from '@start9labs/start-sdk/lib/mainFn/Mounts'
-import { Manifest } from '@start9labs/start-core/osBindings'
 import {
   BackupEffects,
   mountBackupTarget,
@@ -93,6 +92,11 @@ export class DockerProcedureContainer extends Drop {
             ...new Set(
               Object.values(hostInfo?.bindings || {})
                 .flatMap(b => b.addresses.available)
+                .filter(
+                  h =>
+                    (h.ssl || h.hostname.endsWith('.onion')) &&
+                    !(h.public && h.metadata.kind === 'ipv4'),
+                )
                 .map(h => h.hostname),
             ).values(),
           ]
@@ -138,7 +142,10 @@ export class DockerProcedureContainer extends Drop {
     timeoutMs?: number | null,
   ) {
     try {
-      return await this.subcontainer.exec(commands, options, timeoutMs)
+      return await this.subcontainer.exec(commands, {
+        ...options,
+        timeout: timeoutMs,
+      })
     } finally {
       await this.subcontainer.destroy?.()
     }
@@ -150,7 +157,10 @@ export class DockerProcedureContainer extends Drop {
     options?: CommandOptions & ExecOptions,
   ) {
     try {
-      const res = await this.subcontainer.exec(commands, options, timeoutMs)
+      const res = await this.subcontainer.exec(commands, {
+        ...options,
+        timeout: timeoutMs,
+      })
       if (res.exitCode !== 0) {
         const codeOrSignal =
           res.exitCode !== null

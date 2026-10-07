@@ -28,6 +28,74 @@ describe('host', () => {
     }
   })
 
+  describe('Origin.export', () => {
+    async function uiOrigin(effects: Effects) {
+      return sdk.MultiHost.of(effects, 'ui').bindPort(80, {
+        protocol: 'http' as const,
+        preferredExternalPort: 80,
+      })
+    }
+
+    // Inline literals preserve excess-property checking.
+    test('carries a nominated launcher address through to the effect', async () => {
+      const exportServiceInterface = jest.fn(async () => null)
+      const effects = {
+        bind: jest.fn(async () => null),
+        exportServiceInterface,
+      } as unknown as Effects
+      const origin = await uiOrigin(effects)
+
+      await origin.export([
+        sdk.createInterface(effects, {
+          name: 'Web UI',
+          id: 'ui',
+          description: 'The web interface',
+          type: 'ui',
+          masked: false,
+          schemeOverride: null,
+          username: null,
+          path: '',
+          query: {},
+          preferredLauncherAddress: 'https://pad.example.com',
+        }),
+      ])
+
+      expect(exportServiceInterface).toHaveBeenCalledWith(
+        expect.objectContaining({
+          preferredLauncherAddress: 'https://pad.example.com',
+        }),
+      )
+    })
+
+    test('nominates nothing when the option is omitted', async () => {
+      const exportServiceInterface = jest.fn(async () => null)
+      const effects = {
+        bind: jest.fn(async () => null),
+        exportServiceInterface,
+      } as unknown as Effects
+      const origin = await uiOrigin(effects)
+
+      await origin.export([
+        sdk.createInterface(effects, {
+          name: 'Web UI',
+          id: 'ui',
+          description: 'The web interface',
+          type: 'ui',
+          masked: false,
+          schemeOverride: null,
+          username: null,
+          path: '',
+          query: {},
+        }),
+      ])
+
+      const [params] = exportServiceInterface.mock.calls[0] as unknown as [
+        Record<string, unknown>,
+      ]
+      expect(params['preferredLauncherAddress']).toBeUndefined()
+    })
+  })
+
   test('host.get returns interfaces whose addressInfo is pre-filled', () => {
     async function _typecheck(effects: Effects) {
       const host = await sdk.host.getOwn(effects, 'ui').const()
@@ -42,6 +110,29 @@ describe('host', () => {
       void domains
     }
     void _typecheck
+  })
+
+  describe('MultiHost.retire / retirePort', () => {
+    test('retire forwards the host id', async () => {
+      const retireHost = jest.fn(async () => true)
+      const host = sdk.MultiHost.of({ retireHost } as unknown as Effects, 'ui')
+      await expect(host.retire()).resolves.toBe(true)
+      expect(retireHost).toHaveBeenCalledWith({ id: 'ui' })
+    })
+
+    // The positional port becomes a named field — the shape most likely to rot.
+    test('retirePort forwards the host id and the port', async () => {
+      const retireBinding = jest.fn(async () => false)
+      const host = sdk.MultiHost.of(
+        { retireBinding } as unknown as Effects,
+        'api',
+      )
+      await expect(host.retirePort(9090)).resolves.toBe(false)
+      expect(retireBinding).toHaveBeenCalledWith({
+        id: 'api',
+        internalPort: 9090,
+      })
+    })
   })
 
   describe('MultiHost.bindPortRange', () => {

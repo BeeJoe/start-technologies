@@ -5,8 +5,26 @@ import {
   SDKImageInputSpec,
 } from '@start9labs/start-core/types/ManifestTypes'
 import { OSVersion } from '../StartSdk'
+import { Dependencies } from '../dependencies'
 import { VersionGraph } from '../version/VersionGraph'
 import { version as sdkVersion } from '../../package.json'
+
+/**
+ * Retypes every key the SDK does not define, so declaring one is a compile
+ * error at that key rather than a field that silently does nothing. The
+ * replacement is a string literal rather than `never` purely so the error names
+ * what went wrong.
+ *
+ * TypeScript applies its excess-property check only when a fresh object literal
+ * meets a non-generic target, and `Manifest` is inferred from the argument — so
+ * without this an unknown field joins the inferred type, typechecks, and is
+ * then dropped on the way to the built manifest.
+ */
+type NoExtraKeys<Manifest> = {
+  [K in keyof Manifest]: K extends keyof SDKManifest
+    ? Manifest[K]
+    : 'Unknown manifest field — not declared in SDKManifest'
+}
 
 /**
  * @description Use this function to define critical information about your package
@@ -20,7 +38,7 @@ export function setupManifest<
     id: Id
     volumes: VolumesTypes[]
   } & SDKManifest,
->(manifest: Manifest & SDKManifest): Manifest {
+>(manifest: Manifest & SDKManifest & NoExtraKeys<Manifest>): Manifest {
   return manifest
 }
 
@@ -36,11 +54,10 @@ export function setupManifest<
 export function buildManifest<
   Id extends string,
   Version extends string,
-  Dependencies extends Record<string, unknown>,
+  DependencyIds extends string,
   VolumesTypes extends VolumeId,
   ImagesTypes extends ImageId,
   Manifest extends {
-    dependencies: Dependencies
     id: Id
     images: Record<ImagesTypes, SDKImageInputSpec>
     volumes: VolumesTypes[]
@@ -48,14 +65,12 @@ export function buildManifest<
 >(
   versions: VersionGraph<Version>,
   manifest: SDKManifest & Manifest,
+  dependencies: Dependencies<DependencyIds>,
 ): Manifest & T.Manifest {
   const images = Object.entries(manifest.images).reduce(
     (images, [k, v]) => {
       v.arch = v.arch ?? ['aarch64', 'x86_64', 'riscv64']
-      if (v.emulateMissingAs === undefined)
-        v.emulateMissingAs = (v.arch as string[]).includes('x86_64')
-          ? 'x86_64'
-          : (v.arch[0] ?? null)
+      v.emulateMissing = v.emulateMissing ?? true
       v.nvidiaContainer = !!v.nvidiaContainer
       images[k] = v as ImageConfig
       return images
@@ -64,6 +79,7 @@ export function buildManifest<
   )
   return {
     ...manifest,
+    dependencies: dependencies.manifestDependencies(),
     gitHash: null,
     osVersion: manifest.osVersion ?? OSVersion,
     sdkVersion,
@@ -78,7 +94,7 @@ export function buildManifest<
       ram: manifest.hardwareRequirements?.ram || null,
       arch: Object.values(images).reduce(
         (arch, inputSpec) => {
-          if (inputSpec.emulateMissingAs) {
+          if (inputSpec.emulateMissing) {
             return arch
           }
           if (arch === null) {
@@ -92,6 +108,7 @@ export function buildManifest<
     hardwareAcceleration: manifest.hardwareAcceleration ?? false,
     userspaceFilesystems: manifest.userspaceFilesystems ?? false,
     virtualNetworking: manifest.virtualNetworking ?? false,
+    hardwareVirtualization: manifest.hardwareVirtualization ?? false,
     plugins: manifest.plugins ?? [],
   }
 }
