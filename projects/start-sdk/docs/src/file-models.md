@@ -437,11 +437,9 @@ export const confFile = FileHelper.ini(
 A file model must **preserve** unknown keys, not strip them: upstream config files carry keys your schema doesn't model (auto-generated secrets, internal state, plugin settings), and dropping them breaks the service.
 
 > [!IMPORTANT]
-> **Use `z.looseObject`, at every nesting level, in a file model.** When the validator parses the supplied shape directly, `z.object` discards undeclared keys and a subsequent write can lose them without an error or warning.
+> **Never use `z.object` in a file model. Use `z.looseObject`, at every nesting level.** A `z.object` shape deletes every key it doesn't declare the next time the file is written — by `merge()`, `write()`, or `update()` — with no error and no warning.
 >
 > The one exception is a file you have **fully** modeled — every key it can ever hold — and will **always** keep fully modeled, so that a key added later by an upstream release, a plugin, or a user's edit lands in your shape before it lands in the file. That is the only case in which deleting unknown keys is what you want. If you are not certain, it is `z.looseObject`.
-
-The installed SDK determines how your shape is applied. SDK 2.0.9's format helpers deep-loosen shapes internally, so an explicit `z.object(...).strip()` does not by itself prove that its JSON model loses unknown keys. SDK 3.0.3's helpers parse the supplied shape directly. Keep the shape explicit with `z.looseObject` and verify the installed helper plus a read/merge round trip before attributing data loss to schema syntax.
 
 Preserving unknown keys has two consequences:
 
@@ -501,7 +499,7 @@ const shape = z.looseObject({
 
 ### Don't Call `.strip()` on Your Shape
 
-Keep the schema permissive with `z.looseObject`. Calling `.strip()` changes it to discard undeclared keys when the shape is parsed directly, so the next `merge()` can lose those fields. Whether a FileHelper normalizes the shape first depends on the installed SDK version — see [Unknown Key Preservation](#unknown-key-preservation). Use `.strict()` only if you have a specific reason to reject unknowns.
+`.strip()` undoes `z.looseObject` (see [Unknown Key Preservation](#unknown-key-preservation)) and will silently destroy user data on the next `merge()` — keys outside your schema get discarded. Use `.strict()` only if you have a specific reason to reject unknowns.
 
 ## Migration Gotchas
 
