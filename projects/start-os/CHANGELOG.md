@@ -14,6 +14,10 @@ for the detail behind its highlights.
 
 - **NVIDIA images include driver 580.178.04**, with Linux 7.2 compatibility.
 
+- **StartOS publishes a private domain's record to a router over TCP when it
+  has no WireGuard key to sign the update with.** A router that accepts DNS
+  UPDATE only over UDP no longer receives these records.
+
 ### Fixed
 
 - **Services keep their internal IPv6 bridge address enabled.** Address switches
