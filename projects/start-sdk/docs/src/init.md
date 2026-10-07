@@ -1,13 +1,25 @@
 # Initialization
 
-`setupOnInit` runs during container initialization. The `kind` parameter indicates why init is running:
+`setupOnInit` registers a handler that runs when the container initializes — and runs again, from the top, whenever a `.const()` read inside it sees a new value. An init handler is a live reactive context for the life of the container, the same as `setupMain`. It is not a script that runs once and exits. Read [Init Handlers Are Reactive](#init-handlers-are-reactive) before writing one.
 
-| Kind        | When                              | Use For                                                                                                              |
-| ----------- | --------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| `'install'` | Fresh install                     | Generate internal secrets, seed file-model defaults, create critical tasks for user setup actions, bootstrap via API |
-| `'update'`  | After a package version upgrade   | Re-apply config, handle post-migration setup                                                                         |
-| `'restore'` | Restoring from backup             | Re-register triggers; credentials are already present from the restored store                                        |
-| `null`      | Container rebuild, server restart | Register long-lived triggers (e.g., `.const()` watchers)                                                             |
+`kind` identifies the lifecycle event on the first pass of each handler. Reactive re-runs receive `null`:
+
+| Kind        | The container came up because                         | Use For                                                                                                              |
+| ----------- | ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `'install'` | It was freshly installed                              | Generate internal secrets, seed file-model defaults, create critical tasks for user setup actions, bootstrap via API |
+| `'update'`  | The package version changed                           | Re-apply config, handle post-migration setup                                                                         |
+| `'restore'` | A backup was restored                                 | Re-establish external state; credentials are already present from the restored store                                 |
+| `null`      | Container rebuild, server restart, or reactive re-run | The work that has to happen every time, watchers included                                                            |
+
+## Init Handlers Are Reactive
+
+`setupInit` gives each handler its own effects context and points that context's retry at the handler. A `.const()` read subscribes to its value and **re-invokes the whole handler** when it changes, for as long as the container lives.
+
+The reactivity is opt-in, and `.const()` is the opt-in: a handler that reads nothing reactively runs once per container init and is done. Once one is present, three consequences follow:
+
+- **A watcher is not registered and left behind — the handler body _is_ the watcher.** Everything above the `.const()` runs again on every change, so a handler that watches something must be cheap and idempotent.
+- **`kind` is `null` on a re-run.** Install, update, and restore work guarded by `kind` runs once for that event; reactive synchronization continues with `null`.
+- **Reacting to another package's state belongs here as readily as in `setupMain`.** An init handler observes a dependency's files, bindings, and addresses changing exactly as `main` does. Re-running it does not rebuild your daemon spec, so prefer init for work that only has to keep a file, a task, or a registration correct.
 
 ## Init Kinds
 
@@ -44,17 +56,18 @@ export const reRegisterWebhook = sdk.setupOnInit(async (effects, kind) => {
 
 ### Always (Container Lifetime)
 
-For registering `.const()` triggers that need to persist for the container's lifetime. These re-register on container rebuild:
+An unguarded handler runs on every kind — and, once it reads something with `.const()`, on every change to that value as well:
 
 ```typescript
 export const registerWatchers = sdk.setupOnInit(async (effects, kind) => {
-  // Runs on install, restore, AND container rebuild
+  // Runs on install, restore, and container rebuild — and again from here on
+  // every change to `setting`, which re-invokes this handler from the top.
+  const setting = await someConfig.read(c => c.setting).const(effects)
+  await applySetting(effects, setting)
 
-  // Register a watcher that lives for the container lifetime
-  someConfig.read(c => c.setting).const(effects)
-
-  // Install-specific setup
-  if (kind === 'install') {
+  // Re-runs receive null; preserve a secret already present on install.
+  const store = await storeJson.read().once()
+  if (kind === 'install' && !store?.jwtSecret) {
     await storeJson.merge(effects, {
       jwtSecret: utils.getDefaultString({ charset: 'a-z,A-Z,0-9', len: 64 }),
     })
@@ -62,9 +75,11 @@ export const registerWatchers = sdk.setupOnInit(async (effects, kind) => {
 })
 ```
 
+Put install-only work in a handler of its own when you can. A handler with no `.const()` runs once, so the guard is the only thing it needs — which is what [Install Only](#install-only) above shows.
+
 ## Watch State and Prompt (the admin-credentials pattern)
 
-For state the user owns — admin passwords, API tokens, primary URL — pair a `setupOnInit` watcher with an action. The watcher reads the store and, when the field is unset, surfaces a critical task pointing to the action. The action handles generation, storage, and display, so first-set and later rotation share one code path.
+For state the user owns — admin passwords, API tokens — pair a `setupOnInit` watcher with an action. The watcher reads the store and, when the field is unset, surfaces a critical task pointing to the action. The action handles generation, storage, and display, so first-set and later rotation share one code path. The primary URL comes with this pair built in: [Set a Primary URL](recipe-primary-url.md).
 
 ```typescript
 // init/watchCredentials.ts
@@ -152,7 +167,7 @@ Add your custom init function to `init/index.ts`:
 
 ```typescript
 import { sdk } from '../sdk'
-import { setDependencies } from '../dependencies'
+import { dependencies } from '../dependencies'
 import { setInterfaces } from '../interfaces'
 import { versionGraph } from '../versions'
 import { actions } from '../actions'
@@ -163,8 +178,8 @@ export const init = sdk.setupInit(
   restoreInit,
   versionGraph,
   setInterfaces,
-  setDependencies,
   actions,
+  dependencies,
   seedFiles, // Add this
 )
 
@@ -173,11 +188,11 @@ export const uninit = sdk.setupUninit(versionGraph)
 
 ## runUntilSuccess Pattern
 
-Use `runUntilSuccess(timeout)` to run daemons and oneshots during init, waiting for completion before continuing. This is essential for setup tasks that need a running server.
+Use `runUntilSuccess(timeout)` to run daemons and oneshots during init, waiting for completion before continuing. This is essential for setup steps that need a running server.
 
 ### Oneshots Only
 
-For simple sequential tasks (like database migrations):
+For simple sequential steps (like the app's own database migrations):
 
 ```typescript
 await sdk.Daemons.of(effects)
@@ -305,7 +320,7 @@ urllib.request.urlopen(req)`,
 
 Init progress is surfaced in the **Installing** / **Updating** phase of the install, so a long first-run setup (migrations, bootstrapping a server, downloading assets) shows a moving bar instead of an apparent stall. This mirrors backup progress reporting.
 
-You never call the progress effect directly. The init harness builds one `FullProgressTracker` and passes it to **every** init handler as a third argument. Each handler adds its own phases (with its own names) to the shared tracker, unaware of the others. Add phases and update them — **every update auto-reports to the host in the background**, so there's nothing to flush by hand.
+You never call the progress effect directly. The init harness builds one `FullProgressTracker` and passes it to **every** init handler as a third argument. Each handler adds its own phases (with its own names) to the shared tracker, unaware of the others. Add phases and update them — **every update auto-reports to StartOS in the background**, so there's nothing to flush by hand.
 
 `progress.addPhase(name, contribution)` returns a `PhaseHandle` with `start()`, `setTotal(n)`, `setDone(n)`, `setUnits('steps' | 'bytes')`, and `complete()`. Just update the handle; the report follows automatically.
 
@@ -364,7 +379,7 @@ export const v2_0_0 = VersionInfo.of({
 
 ### Multi-phase Handlers
 
-For a handler with several distinct sub-tasks, add one phase per task. The tracker weights them by their `contribution` and reports a combined percentage:
+For a handler with several distinct steps, add one phase per step. The tracker weights them by their `contribution` and reports a combined percentage:
 
 ```typescript
 export const bootstrap = sdk.setupOnInit(async (effects, kind, progress) => {
@@ -415,7 +430,7 @@ export const seedFiles = sdk.setupOnInit(async (effects, kind) => {
   // kind === 'install': Fresh install
   // kind === 'update': After version upgrade
   // kind === 'restore': Restoring from backup
-  // kind === null: Container rebuild / server restart
+  // kind === null: Container rebuild / server restart / reactive re-run
 
   if (kind === 'install') {
     // Generate new passwords, bootstrap server
@@ -429,7 +444,7 @@ export const seedFiles = sdk.setupOnInit(async (effects, kind) => {
 ```
 
 > [!TIP]
-> `if (!kind) return` is the common guard for "install, update, or restore — but not a plain container rebuild." The inverse (`if (kind) return`) would mean "only on rebuild" — almost never what you want.
+> `if (!kind) return` runs a handler only on its initial install, update, or restore pass. The inverse (`if (kind) return`) runs on container rebuilds and reactive re-runs.
 
 ### Empty-Seed Inits: Drop the `kind` Parameter
 

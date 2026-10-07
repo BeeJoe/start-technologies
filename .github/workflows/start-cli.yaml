@@ -33,7 +33,7 @@ on:
   push:
     branches:
       - master
-      - next/*
+      - integration/*
     paths:
       - 'projects/start-cli/**'
       - 'shared-libs/crates/**'
@@ -46,10 +46,15 @@ on:
       # Doc-only edits shouldn't trigger a build. (start-cli has no docs/ subtree
       # today, but this guards a README or future docs added under the allowlist.)
       - '!**/*.md'
+      # A release tags alpha's commit, which must contain its notes.
+      - 'projects/start-cli/release-notes/**'
   pull_request:
+    # The jobs below skip drafts, and `ready_for_review` is not a default
+    # activity type, so without it a draft marked ready is never checked.
+    types: [opened, synchronize, reopened, ready_for_review]
     branches:
       - master
-      - next/*
+      - integration/*
     paths:
       - 'projects/start-cli/**'
       - 'shared-libs/crates/**'
@@ -64,14 +69,25 @@ on:
       - '!**/*.md'
 
 # The group is scoped by event so a master push can't cancel an in-flight
-# dispatched release build; dispatches queue behind each other, never cancel.
+# dispatched release build. Only pull requests cancel: a push to master
+# publishes to alpha, so master pushes queue behind each other rather than
+# aborting a publish half-done.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.head_ref || github.ref }}
-  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
+  group: start-cli-${{ github.event_name }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   NODEJS_VERSION: '24.11.0'
-  ENVIRONMENT: '${{ fromJson(format(''["{0}", ""]'', github.event.inputs.environment || ''dev''))[github.event.inputs.environment == ''NONE''] }}'
+  # Empty (release-equivalent) on master, `dev` everywhere else a build happens
+  # without an explicit input — PRs and integration/* branches. Continuous
+  # deployment must not ship dev-flavoured artifacts.
+  ENVIRONMENT: >-
+    ${{
+      fromJson(format('["{0}", ""]', github.event.inputs.environment || 'dev'))[
+        github.event.inputs.environment == 'NONE'
+        || (github.event_name == 'push' && github.ref == 'refs/heads/master')
+      ]
+    }}
 
 jobs:
   compile:

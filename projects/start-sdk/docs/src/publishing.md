@@ -20,8 +20,8 @@ The community registries, in promotion order:
 ### Initial Submission
 
 1. **Email <submissions@start9.com>** with a link to your public GitHub repository.
-2. Start9 **forks** your repo into the [Start9-Community GitHub organization](https://github.com/Start9-Community) and replies with any feedback.
-3. Address feedback by opening PRs **against the Start9-Community fork**, not your original repo. The fork becomes the upstream for the community pipeline from that point on.
+2. Start9 **forks** your repo into the [Start9-Community GitHub organization](https://github.com/Start9-Community) and reviews it against this guide — correctness, conformance, docs, localization, CI. The review lands as a pull request on the fork, so you see every change before it merges.
+3. **The fork is the upstream from that point on.** Anything left for you to fix, and every later version, is a PR against the fork — not your original repo.
 
 ### The Pipeline
 
@@ -33,9 +33,6 @@ Once your fork exists inside Start9-Community:
 4. **Promote to production** — when you're ready to ship broadly, email <submissions@start9.com> or open an issue on the fork. Start9 promotes the current beta build to **community**. The go-ahead is yours to give, not Start9's.
 
 Every subsequent change or version bump is another PR through the same cycle — merge publishes to beta, email/issue promotes onward.
-
-> [!NOTE]
-> The email / issue loop is clunky — we know. A developer portal with self-service submission management and one-click promotion is actively being built. Until it ships, email and issues are how the pipeline is operated.
 
 ## Pre-Publish Checklist
 

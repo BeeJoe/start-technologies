@@ -2,7 +2,17 @@
 # This file is imported by ./Makefile. Make edits there
 
 PACKAGE_ID := $(shell awk -F"'" '/id:/ {print $$2}' startos/manifest/index.ts)
-INGREDIENTS := $(shell start-cli s9pk list-ingredients 2>/dev/null)
+# INGREDIENTS is the whole source-dependency list, javascript/index.js included —
+# nothing else ties the s9pk to your TypeScript. $(shell) discards exit status,
+# so a failure here would leave it empty, detaching every source file from the
+# s9pk's prerequisites; make would then call an existing s9pk up to date and
+# print "Build Complete" over the *previous* build. The sentinel turns that into
+# an error. Not $(.SHELLSTATUS): it is undefined on the GNU Make 3.81 that
+# macOS still ships, where the guard would fire on every build instead.
+INGREDIENTS := $(shell start-cli s9pk list-ingredients 2>/dev/null || echo __LIST_INGREDIENTS_FAILED__)
+ifneq ($(filter __LIST_INGREDIENTS_FAILED__,$(INGREDIENTS)),)
+$(error `start-cli s9pk list-ingredients` failed, so make cannot tell which files the s9pk depends on and would silently repack the previous build. Run it directly to see the error.)
+endif
 # Resolve the actual git dir so this works inside git worktrees, where .git
 # is a file pointing at <main>/.git/worktrees/<name> rather than a directory.
 GIT_DIR := $(shell git rev-parse --git-dir 2>/dev/null)
@@ -23,9 +33,19 @@ else
 BASE_NAME := $(PACKAGE_ID)
 endif
 
-.PHONY: all arches aarch64 x86_64 riscv64 arm arm64 x86 riscv arch/* clean install check-deps check-init package ingredients
+.PHONY: all arches aarch64 x86_64 riscv64 arm arm64 x86 riscv arch/* clean install check-deps check-init package ingredients format
 .DELETE_ON_ERROR:
 .SECONDARY:
+
+SDK_DIR := node_modules/@start9labs/start-sdk
+PRETTIER_CONFIG := $(SDK_DIR)/prettier.config.json
+
+# The SDK supplies typescript, prettier and ncc, so these resolve from your
+# node_modules without the package declaring them. Override any of them in
+# ./Makefile above the include to customize a step.
+TS_CHECK ?= npx tsc --noEmit
+FORMAT_CHECK ?= npx prettier --config $(PRETTIER_CONFIG) --check startos
+JS_BUNDLE ?= rm -rf javascript && npx ncc build startos/index.ts -o javascript
 
 define SUMMARY
 	@manifest=$$(start-cli s9pk inspect $(1) manifest); \
@@ -118,9 +138,13 @@ check-init:
 	@start-cli init-key
 
 javascript/index.js: $(shell find startos -type f) tsconfig.json node_modules
-	npm run check
-	@if [ -f node_modules/@start9labs/start-sdk/lint.mjs ]; then node node_modules/@start9labs/start-sdk/lint.mjs; else echo "   ⚠ SDK lint runner not found; skipping (update @start9labs/start-sdk)"; fi
-	npm run build
+	$(TS_CHECK)
+	@if [ -f $(SDK_DIR)/lint.mjs ]; then node $(SDK_DIR)/lint.mjs; else echo "   ⚠ SDK lint runner not found; skipping (update @start9labs/start-sdk)"; fi
+	$(FORMAT_CHECK)
+	$(JS_BUNDLE)
+
+format: | node_modules
+	npx prettier --config $(PRETTIER_CONFIG) --write startos
 
 node_modules: package-lock.json package.json
 	npm ci

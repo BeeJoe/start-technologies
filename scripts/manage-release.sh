@@ -19,7 +19,7 @@ if [ -z "${BASH_VERSINFO:-}" ] || [ "${BASH_VERSINFO[0]}" -lt 4 ] \
 fi
 
 set -euo pipefail
-# Without this, a failure inside $(release_notes) is silently swallowed and the
+# Without this, a failure inside $(release_body) is silently swallowed and the
 # release is created with broken notes.
 shopt -s inherit_errexit
 
@@ -37,13 +37,25 @@ S3_BUCKET="s3://startos-images"
 S3_CDN="https://startos-images.nyc3.cdn.digitaloceanspaces.com"
 START9_GPG_KEY="2D63C217"
 SDK_NPM_PACKAGE="@start9labs/start-sdk"
-# The first heading release_notes() emits. cmd_create_gh_release splits an
-# existing release body on it to keep hand-written notes above it, so the two
-# must agree — hence one constant rather than the string in both places.
-NOTES_MARKER="## What's Changed"
+# The changelog link sits inside the notes' Highlights section rather than at a
+# fixed position, so place_changelog_link finds it by this prefix.
+CHANGELOG_LINK_PREFIX="**[Full changelog"
 
-APT_BASE_URL="https://start9-debs.nyc3.digitaloceanspaces.com"
+# The S3 origin, deliberately NOT the `*.cdn.*` host that apt/start9*.list point
+# clients at. Do not "harmonize" the two. A promotion has to see the suite as it
+# is right now: a cached InRelease is still a validly signed InRelease, so every
+# signature and hash check below would pass while quietly promoting whatever
+# build the edge happened to be holding. Signatures prove authenticity, not
+# freshness. End users keep the CDN — apt is built to tolerate a stale mirror.
+APT_BASE_URL="${APT_BASE_URL:-https://start9-debs.nyc3.digitaloceanspaces.com}"
+# Belt and braces for any intermediary between here and the origin.
+APT_NO_CACHE=(-H 'Cache-Control: no-cache' -H 'Pragma: no-cache')
 APT_SUITE="stable"
+# CI publishes every master build into `alpha` (.github/workflows/apt-publish-alpha.yml).
+# A deb release promotes from there rather than rebuilding trust from a CI run,
+# so the bytes testers have been running are the bytes that reach stable — the
+# same source -> target promotion the OS and StartWRT releases use.
+APT_ALPHA_SUITE="alpha"
 APT_COMPONENT="main"
 
 # StartWRT publishes flashable images to its own registry pair + S3 bucket. The
@@ -111,7 +123,7 @@ derive_version() {
     if [ "$project" = start-wrt ]; then
         toml="$REPO_ROOT/projects/start-wrt/backend/ctrl/Cargo.toml"
     fi
-    version=$(grep -m1 'VERSION_BUMP' "$toml" 2>/dev/null | sed -E 's/.*version *= *"([^"]+)".*/\1/')
+    version=$(grep -m1 'VERSION_BUMP' "$toml" 2>/dev/null | sed -E 's/.*version *= *"([^"]+)".*/\1/' || true)
     if [ -z "$version" ]; then
         version=$(sed -nE '/^\[package\]/,/^\[/{s/^version *= *"([^"]+)".*/\1/p}' "$toml" | head -1)
     fi
@@ -119,6 +131,62 @@ derive_version() {
 }
 
 changelog_path() { echo "$REPO_ROOT/projects/$1/CHANGELOG.md"; }
+
+notes_path() { echo "$REPO_ROOT/projects/$1/release-notes/${VERSION}.md"; }
+
+pre_update_notes_path() {
+    local notes
+    notes=$(notes_path "$1")
+    echo "${notes%.md}.pre-update.md"
+}
+
+# CHANGELOG_REF is what the link resolves against — the tag for a release, and
+# the built commit for a CI registration, whose tag does not exist yet.
+changelog_link() {
+    echo "${CHANGELOG_LINK_PREFIX} for v${VERSION}](https://github.com/${REPO}/blob/${CHANGELOG_REF}/projects/${PROJECT}/CHANGELOG.md)** — every change in this release."
+}
+
+curated_notes() {
+    local notes pre_update
+    notes=$(notes_path "$PROJECT")
+    if [ ! -f "$notes" ]; then
+        >&2 echo "No release notes at ${notes#"$REPO_ROOT/"} — write them before releasing ${PROJECT} v${VERSION}."
+        return 1
+    fi
+    pre_update=$(pre_update_notes_path "$PROJECT")
+    {
+        if [ -s "$pre_update" ]; then
+            cat "$pre_update"
+            printf '\n\n'
+        fi
+        cat "$notes"
+    } | place_changelog_link
+}
+
+# Put the changelog link at the end of stdin's Highlights section, dropping any
+# copy already there. Notes with no Highlights section take it at the end.
+place_changelog_link() {
+    awk -v link="$(changelog_link)" -v prefix="$CHANGELOG_LINK_PREFIX" '
+        index($0, prefix) == 1 { dropped = 1; next }
+        dropped { dropped = 0; if ($0 == "") next }
+        /^## / {
+            if (in_highlights) { print link; print ""; placed = 1; in_highlights = 0 }
+            if (tolower($0) ~ /^## highlights/) in_highlights = 1
+        }
+        { print }
+        END { if (!placed) { if (NR) print ""; print link } }
+    '
+}
+
+project_display_name() {
+    case "$1" in
+        start-os) echo "StartOS" ;;
+        start-wrt) echo "StartWRT" ;;
+        start-tunnel) echo "StartTunnel" ;;
+        start-sdk) echo "Start SDK" ;;
+        *) echo "$1" ;;
+    esac
+}
 
 cli_asset_name() {
     case "$1" in
@@ -140,20 +208,31 @@ deb_arch() {
     esac
 }
 
-os_platform_label() {
-    case "$1" in
-        x86_64-nonfree) echo "x86_64/AMD64" ;;
-        x86_64-nvidia) echo "x86_64/AMD64 + NVIDIA" ;;
-        x86_64) echo "x86_64/AMD64-slim (FOSS-only)" ;;
-        aarch64-nonfree) echo "aarch64/ARM64" ;;
-        aarch64-nvidia) echo "aarch64/ARM64 + NVIDIA" ;;
-        aarch64) echo "aarch64/ARM64-slim (FOSS-only)" ;;
-        raspberrypi) echo "Raspberry Pi (aarch64)" ;;
-        riscv64-nonfree) echo "RISCV64 (RVA23)" ;;
-        riscv64) echo "RISCV64 (RVA23)-slim (FOSS-only)" ;;
-        *) echo "$1" ;;
-    esac
-}
+# One row of the release notes' download table, in the order they are offered:
+# hardware | image | platform. A reader knows what they own, not which platform
+# tuple it is, so the hardware column leads and names the Start9 product where
+# there is one. generated_sections fails on a platform with no row here, so a new
+# image variant cannot ship undescribed.
+OS_DOWNLOAD_ROWS=(
+    "**Server One**, and most other Intel and AMD desktops, laptops, and mini PCs|x86_64 (AMD64), standard|x86_64-nonfree"
+    "**Server Pure**, and other hardware that runs without proprietary firmware|x86_64 (AMD64), slim|x86_64"
+    "An Intel or AMD server with an NVIDIA GPU|x86_64 (AMD64), NVIDIA|x86_64-nvidia"
+    "ARM64 servers and single-board computers|aarch64 (ARM64), standard|aarch64-nonfree"
+    "ARM64 hardware that runs without proprietary firmware|aarch64 (ARM64), slim|aarch64"
+    "**NVIDIA DGX Spark**, and other ARM64 servers with an NVIDIA GPU|aarch64 (ARM64), NVIDIA|aarch64-nvidia"
+    "**Raspberry Pi 4** — flashed to a microSD card, not a USB drive|Raspberry Pi|raspberrypi"
+    "RISC-V servers and boards|RISC-V (RVA23), standard|riscv64-nonfree"
+    "RISC-V hardware that runs without proprietary firmware|RISC-V (RVA23), slim|riscv64"
+)
+
+# One row of the StartWRT download table: hardware | image | asset slot |
+# tooltip. The K1 is the only platform it builds for, so the rows differ by slot
+# rather than by hardware — img is the fresh-install sdcard image, squashfs the
+# sysupgrade payload. Mirrors OS_DOWNLOAD_ROWS.
+WRT_DOWNLOAD_ROWS=(
+    "**Start9 router**, and other BananaPi BPI-F3 boards (SpaceMiT K1, RISC-V)|microSD card — fresh install or reflash|img|gzip-compressed — balenaEtcher flashes it without unpacking"
+    "A router already running StartWRT|Sysupgrade — the payload an in-app update fetches for itself|squashfs|"
+)
 
 # The image extensions a platform ships: squashfs everywhere, plus iso (most) or
 # a flashable img (raspberrypi).
@@ -191,6 +270,23 @@ asset_url() {
     load_registry_index "$1"
     jq -r --arg v "$VERSION" --arg s "$2" --arg p "$3" \
         '.versions[$v][$s][$p].urls[0] // empty' <<< "$_INDEX_JSON"
+}
+
+# CI registers a build before its notes are written, so set them on the source
+# registry from the working tree before promoting. The compat range is whatever
+# that registration used; `version add` upserts the entry.
+refresh_registry_notes() {
+    local registry=$1 range
+    load_registry_index "$registry"
+    range=$(jq -r --arg v "$VERSION" '.versions[$v].sourceVersion // empty' <<< "$_INDEX_JSON")
+    if [ -z "$range" ]; then
+        >&2 echo "  ✗ ${registry} has no ${VERSION} entry to carry release notes"
+        return 1
+    fi
+    echo "Setting ${VERSION} release notes on ${registry}..."
+    start-cli --registry="$registry" registry os version add \
+        "$VERSION" "v${VERSION}" "$(curated_notes)" "$range"
+    _INDEX_REGISTRY=""
 }
 
 # The signed blake3 commitment of an indexed asset, as hex (b3sum's output
@@ -298,7 +394,16 @@ release_files() {
 
 resolve_gh_user() {
     GH_USER=${GH_USER:-$(gh api user -q .login 2>/dev/null || true)}
-    GH_GPG_KEY=$(git config user.signingkey 2>/dev/null || true)
+    if [ "${GH_USER,,}" = start9 ]; then
+        >&2 echo "Error: GitHub user '$GH_USER' is reserved for Start9 signatures"
+        exit 1
+    fi
+    GH_GPG_KEY=$(git -C "$REPO_ROOT" config user.signingkey 2>/dev/null || true)
+    case "$(git -C "$REPO_ROOT" config gpg.format 2>/dev/null)" in
+        '' | openpgp) ;;
+        *) GH_GPG_KEY= ;;
+    esac
+    [ -z "$GH_GPG_KEY" ] || gpg --list-secret-keys "$GH_GPG_KEY" >/dev/null 2>&1 || GH_GPG_KEY=
 }
 
 require_kind() {
@@ -310,20 +415,246 @@ require_kind() {
     exit 2
 }
 
-# Print the CHANGELOG body for $VERSION (between its heading and the next `## `).
-changelog_section() {
-    awk -v v="$VERSION" '
-        /^## / {
-            if (started) exit
-            if (index($0, v) > 0) { started = 1; next }
-        }
-        started { print }
-    ' "$(changelog_path "$PROJECT")"
-}
-
 # --- Deb helpers (shared by the deb and cli kinds) ---
 
 # Download this project's per-arch debs from a GitHub Actions run into the cwd.
+# Download this project's debs for the commit being tagged from the alpha suite.
+#
+# Selection is by the Git-Hash control field (written by debian/build.sh), which
+# dpkg-scanpackages carries into the Packages index — so the build is identified
+# and verified before a byte is downloaded. Version alone would not do: every
+# master build of a version publishes under the same Version, and the apt pool
+# holds exactly one deb per package/arch, so `alpha` always carries the newest
+# master build of that version and nothing older.
+#
+# A mismatch therefore means master moved past the commit being tagged. That is
+# a real stop, not a nuisance: releasing then would ship bytes no one soaked.
+# Cut the release from an up-to-date master, or fall back to `pull-gha` for a
+# repair.
+# Verify the alpha suite's signed Release and return a verified Packages file
+# for one architecture. Alpha is signed with the CI key precisely so its
+# consumers can verify it, and a releaser promoting into stable is one: reading
+# the index over plain HTTPS would let anyone able to write the bucket (without
+# holding the signing key) get bytes stable-signed by the releaser.
+# macOS ships shasum, not coreutils' sha256sum — same as checksum_block, which
+# has carried this fallback all along. Prints the bare hash.
+sha256_of() {
+    if command -v sha256sum > /dev/null 2>&1; then
+        sha256sum "$1" | cut -d' ' -f1
+    else
+        shasum -a 256 "$1" | cut -d' ' -f1
+    fi
+}
+
+verify_alpha_release() {
+    local keyring="$1" tmp="$2"
+    curl -fsSL "${APT_NO_CACHE[@]}" "${APT_BASE_URL}/dists/${APT_ALPHA_SUITE}/InRelease" -o "$tmp/InRelease"
+    if ! gpg --no-default-keyring --keyring "$keyring" --batch --yes \
+        --output "$tmp/Release" --decrypt "$tmp/InRelease" 2> "$tmp/gpg.err"; then
+        >&2 echo "  ✗ the ${APT_ALPHA_SUITE} InRelease is not signed by the key in ${keyring}"
+        >&2 sed 's/^/    /' "$tmp/gpg.err"
+        return 1
+    fi
+
+    # No freshness bound is enforced here, deliberately. A signature proves
+    # authenticity and not recency, so replaying older signed metadata is
+    # possible for anyone who can write the bucket — but the defence against
+    # promoting the wrong build is that the operator is told which commit is
+    # being tagged (resolve_alpha_commit prints it, and a replay shows up as an
+    # unexpectedly old hash), not metadata that expires on a timer unrelated to
+    # this project's release cadence.
+}
+
+verify_alpha_packages() {
+    local tmp="$1" darch="$2" rel_path idx_sha got
+    rel_path="${APT_COMPONENT}/binary-${darch}/Packages"
+    idx_sha=$(awk -v p="$rel_path" '
+        /^SHA256:/ { in_sha = 1; next }
+        /^[^ ]/    { in_sha = 0 }
+        in_sha && $3 == p { print $1; exit }
+    ' "$tmp/Release")
+    if [ -z "$idx_sha" ]; then
+        >&2 echo "  ✗ the signed Release does not list ${rel_path}"
+        return 1
+    fi
+    curl -fsSL "${APT_NO_CACHE[@]}" "${APT_BASE_URL}/dists/${APT_ALPHA_SUITE}/${rel_path}" -o "$tmp/Packages.${darch}"
+    got=$(sha256_of "$tmp/Packages.${darch}")
+    if [ "$got" != "$idx_sha" ]; then
+        >&2 echo "  ✗ ${rel_path} does not match the hash the signed Release commits to"
+        return 1
+    fi
+}
+
+# Print "<git-hash>\t<sha256>\t<filename>" for this project's deb in a verified
+# Packages file. Emitted at the stanza boundary rather than on a particular
+# field: the index guarantees no order, and Git-Hash follows Filename in practice.
+alpha_stanza() {
+    local entry
+    entry=$(awk -v pkg="$PROJECT" -v ver="$VERSION" '
+        function flush() {
+            if (p == pkg && index(v, ver) > 0 && f != "") print h "\t" s "\t" f
+            p = ""; v = ""; h = ""; s = ""; f = ""
+        }
+        /^$/         { flush(); next }
+        /^Package:/  { p = $2 }
+        /^Version:/  { v = $2 }
+        /^Git-Hash:/ { h = $2 }
+        /^SHA256:/   { s = $2 }
+        /^Filename:/ { f = $2 }
+        END { flush() }
+    ' "$1")
+    # First line taken in the shell rather than piped through `head -1`, which
+    # would close the pipe early and take SIGPIPE under `pipefail`.
+    echo "${entry%%$'\n'*}"
+}
+
+# Verify the alpha suite and collect this project's debs for every architecture.
+# Populates ALPHA_COMMIT / ALPHA_SHAS / ALPHA_FILES and leaves the verified
+# metadata in ALPHA_TMP, which the caller removes.
+#
+# One function so every consumer gets the same guarantees: `alpha-commit` used to
+# read a single arch and accept a missing Git-Hash, so it could print a commit
+# that `pull-alpha` then refused.
+alpha_collect() {
+    local keyring arch darch stanza h
+    keyring="$REPO_ROOT/apt/start9-alpha.gpg"
+    if [ ! -f "$keyring" ]; then
+        >&2 echo "Cannot verify the ${APT_ALPHA_SUITE} suite: ${keyring} is missing."
+        return 1
+    fi
+    ALPHA_TMP=$(mktemp -d)
+    declare -gA ALPHA_SHAS=() ALPHA_FILES=()
+    ALPHA_COMMIT=""
+
+    verify_alpha_release "$keyring" "$ALPHA_TMP" || return 1
+
+    for arch in $DEB_ARCHES; do
+        darch=$(deb_arch "$arch")
+        verify_alpha_packages "$ALPHA_TMP" "$darch" || return 1
+        stanza=$(alpha_stanza "$ALPHA_TMP/Packages.${darch}")
+        if [ -z "$stanza" ]; then
+            >&2 echo "  ✗ ${darch}: no ${PROJECT} ${VERSION} deb in the ${APT_ALPHA_SUITE} suite"
+            return 1
+        fi
+        h=${stanza%%$'\t'*}
+        stanza=${stanza#*$'\t'}
+        ALPHA_SHAS[$arch]=${stanza%%$'\t'*}
+        ALPHA_FILES[$arch]=${stanza#*$'\t'}
+
+        if [ -z "$h" ]; then
+            >&2 echo "  ✗ ${arch}: this deb predates the Git-Hash control field — use 'pull-gha'"
+            return 1
+        fi
+        # Every arch must come from one build: a half-published suite would
+        # otherwise ship a release assembled from two different commits.
+        if [ -z "$ALPHA_COMMIT" ]; then
+            ALPHA_COMMIT=$h
+        elif [ "$h" != "$ALPHA_COMMIT" ]; then
+            >&2 echo "  ✗ ${APT_ALPHA_SUITE} holds different commits per architecture (${ALPHA_COMMIT} vs ${h})."
+            >&2 echo "    Wait for the build to finish publishing every arch, or use 'pull-gha'."
+            return 1
+        fi
+    done
+}
+
+# Download the collected debs, each verified against the hash the signed index
+# commits to, and stage them only once every one has passed.
+# Decide which commit the tag points at. The tag is a claim that a commit
+# produced the artifact, so when we are promoting, alpha's build is what decides
+# it — this adopts that commit rather than making the operator notice a mismatch
+# and re-run by hand.
+#
+# Each product's workflow is path-filtered, so master routinely advances without
+# producing a new build of that product: insisting on HEAD would demand a build
+# that will never exist. Adoption is confined to a commit already in this
+# branch's history, and an explicit COMMIT is never second-guessed.
+resolve_alpha_commit() {
+    local alpha_hash="$1" tag_sha behind
+    tag_sha=$(tag_commit_sha)
+    [ "$alpha_hash" != "$tag_sha" ] || return 0
+
+    if [ -n "${COMMIT:-}" ]; then
+        >&2 echo "  ✗ ${APT_ALPHA_SUITE} holds a build of ${alpha_hash}, but COMMIT=${COMMIT} is ${tag_sha}."
+        >&2 echo "    The tag has to point at the commit that produced the artifacts. Drop COMMIT"
+        >&2 echo "    to take alpha's, or use 'pull-gha' with the run that built ${tag_sha}."
+        return 1
+    fi
+
+    if ! (cd "$REPO_ROOT" && git rev-parse --verify --quiet "${alpha_hash}^{commit}" > /dev/null); then
+        >&2 echo "  ✗ ${APT_ALPHA_SUITE} holds a build of ${alpha_hash}, which is not in this repository."
+        >&2 echo "    git fetch origin, then re-run."
+        return 1
+    fi
+    if ! (cd "$REPO_ROOT" && git merge-base --is-ancestor "$alpha_hash" HEAD); then
+        >&2 echo "  ✗ ${APT_ALPHA_SUITE} holds a build of ${alpha_hash}, which is not an ancestor of HEAD."
+        >&2 echo "    That build did not come from the branch you are releasing. Check out the"
+        >&2 echo "    branch that contains it, or use 'pull-gha'."
+        return 1
+    fi
+
+    behind=$(cd "$REPO_ROOT" && git rev-list --count "${alpha_hash}..HEAD")
+    COMMIT="$alpha_hash"
+    echo "  Tagging ${alpha_hash}, the commit alpha built — HEAD is ${behind} commit(s) further on."
+    echo "  (${PROJECT}'s workflow is path-filtered, so master advances without rebuilding it.)"
+    echo "  To work from that tree: git checkout ${alpha_hash}"
+}
+
+# cmd_pre_check validates, and the release body is composed from, the *working
+# tree* — but an adopted commit can be behind it. Where the notes and changelog
+# are identical the distinction is immaterial, so the common case stays
+# frictionless; where it is not, the release would publish and link files the
+# tag does not point at, so stop and ask for the checkout.
+assert_metadata_matches_adopted() {
+    local adopted head file
+    adopted=$(tag_commit_sha)
+    head=$(cd "$REPO_ROOT" && git rev-parse --verify HEAD)
+    [ "$adopted" != "$head" ] || return 0
+    for file in "$(changelog_path "$PROJECT")" "$(notes_path "$PROJECT")" "$(pre_update_notes_path "$PROJECT")"; do
+        (cd "$REPO_ROOT" && git diff --quiet "$adopted" HEAD -- "$file") && continue
+
+        >&2 echo "  ✗ ${file#"$REPO_ROOT/"} differs between HEAD and the"
+        >&2 echo "    commit being tagged (${adopted}). The release is composed from"
+        >&2 echo "    the working tree, so it would not match the tag."
+        >&2 echo
+        >&2 echo "      git checkout ${adopted}"
+        >&2 echo "      ./scripts/manage-release.sh release ${PROJECT}"
+        return 1
+    done
+}
+
+# Clear every payload this staging path produces, both halves. Clearing only the
+# debs left the reverse partial set possible: binaries from a failed cli download
+# sitting beside a fresh marker, or a previous attempt's debs beside new
+# binaries. The marker is written by the caller before either half is fetched.
+clear_alpha_staging() {
+    rm -f ./*.deb
+    [ "$KIND" != cli ] || rm -f ./start-cli_*
+}
+
+promote_alpha_debs() {
+    local want arch darch base got
+    want=$(tag_commit_sha)
+    echo "Promoting ${PROJECT} debs from the ${APT_ALPHA_SUITE} suite (commit ${want})..."
+
+    for arch in $DEB_ARCHES; do
+        darch=$(deb_arch "$arch")
+        base=$(basename "${ALPHA_FILES[$arch]}")
+        echo "  ${arch}: ${base}"
+        curl -fsSL "${APT_NO_CACHE[@]}" "${APT_BASE_URL}/${ALPHA_FILES[$arch]}" -o "$ALPHA_TMP/$base"
+        # The pool key is stable across builds, so without this an alpha
+        # republish between the index read and this download would swap the
+        # bytes after the commit check had already passed.
+        got=$(sha256_of "$ALPHA_TMP/$base")
+        if [ "$got" != "${ALPHA_SHAS[$arch]}" ]; then
+            >&2 echo "  ✗ ${darch}: ${base} does not match the hash the signed index commits to"
+            >&2 echo "    (the suite was republished mid-promotion, or the object was tampered with)"
+            return 1
+        fi
+    done
+
+    mv "$ALPHA_TMP"/*.deb .
+}
+
 pull_gha_debs() {
     local arch
     for arch in $DEB_ARCHES; do
@@ -338,7 +669,7 @@ pull_apt_debs() {
     for arch in $DEB_ARCHES; do
         darch=$(deb_arch "$arch")
         idx="${APT_BASE_URL}/dists/${APT_SUITE}/${APT_COMPONENT}/binary-${darch}/Packages"
-        filename=$(curl -fsSL "$idx" 2>/dev/null | awk -v pkg="$PROJECT" -v ver="$VERSION" '
+        filename=$(curl -fsSL "${APT_NO_CACHE[@]}" "$idx" 2>/dev/null | awk -v pkg="$PROJECT" -v ver="$VERSION" '
             /^$/ { p=""; v="" }
             /^Package:/ { p=$2 }
             /^Version:/ { v=$2 }
@@ -346,7 +677,7 @@ pull_apt_debs() {
         ' | head -1)
         if [ -n "$filename" ]; then
             echo "  ${arch}: ${filename}"
-            curl -fsSL "${APT_BASE_URL}/${filename}" -o "$(basename "$filename")"
+            curl -fsSL "${APT_NO_CACHE[@]}" "${APT_BASE_URL}/${filename}" -o "$(basename "$filename")"
         else
             >&2 echo "  ! no ${PROJECT} ${arch} deb for ${VERSION} in apt repo"
         fi
@@ -407,6 +738,15 @@ cmd_pre_check() {
             >&2 echo "  ✗ top CHANGELOG.md heading must be ${VERSION} (found: ${first_heading:-none}); a bare '## [Unreleased]' top heading is not allowed — see root AGENTS.md"
             errors=1
         fi
+    fi
+
+    local notes
+    notes=$(notes_path "$PROJECT")
+    if [ -s "$notes" ]; then
+        echo "  ✓ release notes at ${notes#"$REPO_ROOT/"}"
+    else
+        >&2 echo "  ✗ no release notes at ${notes#"$REPO_ROOT/"} — write this release's notes (lede, '## Highlights', optional '## Important'); put pre-update warnings in $(basename "$(pre_update_notes_path "$PROJECT")")"
+        errors=1
     fi
 
     # 1b. StartOS install/update docs pin the GitHub release link to the version
@@ -652,9 +992,9 @@ cmd_pre_check() {
     echo "Pre-check passed."
 }
 
-cmd_pull_gha() {
-    require_kind os cli deb wrt
-
+# Resolve RUN_ID (prompting when unset), assert the run built the commit being
+# tagged, and stage the release dir. Sets RUN_ID and RUN_SHA for the caller.
+resolve_gha_run() {
     if [ -z "${RUN_ID:-}" ]; then
         read -rp "RUN_ID (GitHub Actions run for ${PROJECT}): " RUN_ID
     fi
@@ -665,19 +1005,38 @@ cmd_pull_gha() {
     fi
 
     # The tag must point at the commit these artifacts were built from.
-    local run_sha tag_sha
-    run_sha=$(gh run view -R "$REPO" "$RUN_ID" --json headSha -q .headSha)
+    local tag_sha
+    RUN_SHA=$(gh run view -R "$REPO" "$RUN_ID" --json headSha -q .headSha)
     tag_sha=$(tag_commit_sha)
-    if [ "$run_sha" != "$tag_sha" ]; then
-        >&2 echo "Run ${RUN_ID} built commit ${run_sha},"
+    if [ "$RUN_SHA" != "$tag_sha" ]; then
+        >&2 echo "Run ${RUN_ID} built commit ${RUN_SHA},"
         >&2 echo "but tag ${TAG} would be cut at ${COMMIT:-HEAD} (${tag_sha})."
-        >&2 echo "Pass the run for that commit, or set COMMIT=${run_sha}."
+        >&2 echo "Pass the run for that commit, or set COMMIT=${RUN_SHA}."
         exit 1
     fi
 
     ensure_release_dir
-    echo "$run_sha" > "$(gha_commit_file)"
-    echo "Downloading ${PROJECT} artifacts from run ${RUN_ID} (commit ${run_sha})..."
+    echo "$RUN_SHA" > "$(gha_commit_file)"
+}
+
+# The per-triple start-cli binaries. Unlike the debs these are published only as
+# GitHub release assets, so there is no channel to promote them from and a
+# release still needs the run that built the tagged commit.
+pull_gha_cli_binaries() {
+    local triple name
+    for triple in $CLI_TRIPLES; do
+        name=$(cli_asset_name "$triple")
+        echo "  start-cli_${triple} -> start-cli_${name}"
+        gh run download -R "$REPO" "$RUN_ID" -n "start-cli_${triple}" -D "$(pwd)"
+        mv start-cli "start-cli_${name}"
+    done
+}
+
+cmd_pull_gha() {
+    require_kind os cli deb wrt
+
+    resolve_gha_run
+    echo "Downloading ${PROJECT} artifacts from run ${RUN_ID} (commit ${RUN_SHA})..."
 
     case "$KIND" in
         os)
@@ -690,13 +1049,7 @@ cmd_pull_gha() {
             ensure_img_gz
             ;;
         cli)
-            for triple in $CLI_TRIPLES; do
-                local name
-                name=$(cli_asset_name "$triple")
-                echo "  start-cli_${triple} -> start-cli_${name}"
-                gh run download -R "$REPO" "$RUN_ID" -n "start-cli_${triple}" -D "$(pwd)"
-                mv start-cli "start-cli_${name}"
-            done
+            pull_gha_cli_binaries
             pull_gha_debs
             ;;
         deb)
@@ -707,6 +1060,50 @@ cmd_pull_gha() {
             gh run download -R "$REPO" "$RUN_ID" -n "$STARTWRT_BUILD_ARTIFACT" -D "$(pwd)"
             ;;
     esac
+}
+
+# Stage a deb release from the alpha suite. For start-cli the per-triple
+# binaries have no channel to come from, so the run that built the tagged commit
+# is still needed for those — both halves are pinned to that commit, so mixing
+# the two sources cannot mix builds.
+# Print the commit alpha's current build of this project came from, so a tree
+# can be put on it without hand-copying a hash out of an error message:
+#   git checkout "$(./scripts/manage-release.sh alpha-commit start-tunnel)"
+cmd_alpha_commit() {
+    require_kind cli deb
+    alpha_collect || { rm -rf "${ALPHA_TMP:-}"; exit 1; }
+    echo "$ALPHA_COMMIT"
+    rm -rf "$ALPHA_TMP"
+}
+
+cmd_pull_alpha() {
+    require_kind cli deb
+    ensure_release_dir
+
+    # Adopt alpha's commit FIRST. For start-cli the per-triple binaries come from
+    # a CI run, and resolving that run before adoption validated it against HEAD
+    # while the debs (and the tag) ended up on alpha's older commit — binaries
+    # from one commit, debs and tag from another, with the marker agreeing.
+    alpha_collect || { rm -rf "${ALPHA_TMP:-}"; exit 1; }
+    resolve_alpha_commit "$ALPHA_COMMIT" || { rm -rf "$ALPHA_TMP"; exit 1; }
+    assert_metadata_matches_adopted || { rm -rf "$ALPHA_TMP"; exit 1; }
+
+    # Marker and clear before either half is fetched, so a failure anywhere
+    # leaves an empty staging dir rather than one half of a release beside a
+    # marker that vouches for both. `push` then fails on the empty dir.
+    tag_commit_sha > "$(gha_commit_file)"
+    clear_alpha_staging
+
+    if [ "$KIND" = cli ]; then
+        # Resolved after adoption, so the run is validated against the commit
+        # actually being tagged and both halves really are pinned to it.
+        resolve_gha_run
+        echo "Downloading start-cli binaries from run ${RUN_ID} (commit ${RUN_SHA})..."
+        pull_gha_cli_binaries
+    fi
+
+    promote_alpha_debs || { rm -rf "$ALPHA_TMP"; exit 1; }
+    rm -rf "$ALPHA_TMP"
 }
 
 cmd_pull() {
@@ -749,7 +1146,7 @@ cmd_pull() {
             stale=$(comm -23 <(release_files | sort -u) <(printf '%s\n' "${expected[@]}" | sort -u))
             if [ -n "$stale" ]; then
                 >&2 echo "  ! not published ${VERSION} assets, but release_files would still hash and sign them — re-run with CLEAN=1 to drop them:"
-                printf '      %s\n' $stale >&2
+                printf '%s\n' "$stale" | sed 's/^/      /' >&2
             fi
             ;;
         cli)
@@ -812,36 +1209,19 @@ cmd_tag() {
 cmd_create_gh_release() {
     require_kind os cli deb npm wrt
     # os/cli/deb/wrt reference their pulled artifacts in the notes; npm (the SDK)
-    # ships to npm and its notes are just the changelog, so it needs no release dir.
+    # ships to npm and its notes are just the changelog link, so it needs no
+    # release dir.
     if [ "$KIND" != npm ]; then
         enter_release_dir
         ensure_img_gz
     fi
-    local notes body preamble
-    notes=$(release_notes)
+    local notes
+    notes=$(release_body)
     echo "Creating GitHub release ${TAG}..."
     if gh release view -R "$REPO" "$TAG" >/dev/null 2>&1; then
-        # release_notes() starts at $NOTES_MARKER and can regenerate nothing
-        # above it, but a body may carry hand-written material there that exists
-        # nowhere else — 0.4.0's "Before You Update" warning and highlights, for
-        # one. `gh release edit --notes` replaces the whole body, so lift that
-        # block off the live release and put it back on top. GitHub stores
-        # bodies with CRLF; strip it or the splice reintroduces \r.
-        body=$(gh release view -R "$REPO" "$TAG" --json body -q .body 2>/dev/null | tr -d '\r')
-        preamble=$(printf '%s\n' "$body" | awk -v marker="$NOTES_MARKER" 'index($0, marker) == 1 { exit } { print }')
-        if [ -n "$preamble" ]; then
-            # No marker at all means the whole body is hand-written; keeping it
-            # can duplicate what the generated sections say, but dropping it
-            # loses the only copy, so keep and say so.
-            if ! printf '%s\n' "$body" | grep -qF "$NOTES_MARKER"; then
-                >&2 echo "  ! existing ${TAG} notes have no \"${NOTES_MARKER}\" heading — keeping the whole body above the generated sections; review the result"
-            fi
-            echo "  preserving $(printf '%s\n' "$preamble" | wc -l | tr -d ' ') hand-written line(s) above \"${NOTES_MARKER}\""
-            notes="${preamble}"$'\n\n'"${notes}"
-        fi
-        gh release edit -R "$REPO" "$TAG" --notes "$notes"
+        gh release edit -R "$REPO" "$TAG" --title "$(project_display_name "$PROJECT") v${VERSION}" --notes "$notes"
     else
-        gh release create -R "$REPO" "$TAG" --title "${PROJECT} v${VERSION}" --notes "$notes"
+        gh release create -R "$REPO" "$TAG" --title "$(project_display_name "$PROJECT") v${VERSION}" --notes "$notes"
     fi
 }
 
@@ -960,6 +1340,7 @@ cmd_index() {
             # registry into production. This copies the index entries and re-signs
             # the commitments with the developer key — the images stay on the
             # shared S3 bucket, so nothing is re-uploaded.
+            refresh_registry_notes "$STARTOS_SOURCE_REGISTRY"
             echo "Promoting OS ${VERSION}: ${STARTOS_SOURCE_REGISTRY} -> ${STARTOS_TARGET_REGISTRY} ..."
             start-cli registry os promote --from "$STARTOS_SOURCE_REGISTRY" --to "$STARTOS_TARGET_REGISTRY" "$VERSION"
             ;;
@@ -968,6 +1349,7 @@ cmd_index() {
             # (beta) registry into production — the same index-copy +
             # developer-key re-sign as the OS; the images stay on the StartWRT
             # S3 bucket, so nothing is re-uploaded.
+            refresh_registry_notes "$STARTWRT_SOURCE_REGISTRY"
             echo "Promoting StartWRT ${VERSION}: ${STARTWRT_SOURCE_REGISTRY} -> ${STARTWRT_TARGET_REGISTRY} ..."
             start-cli registry os promote --from "$STARTWRT_SOURCE_REGISTRY" --to "$STARTWRT_TARGET_REGISTRY" "$VERSION"
             ;;
@@ -986,7 +1368,7 @@ cmd_register() {
     enter_release_dir
     echo "Registering StartWRT ${VERSION} in ${STARTWRT_SOURCE_REGISTRY}..."
     start-cli --registry="$STARTWRT_SOURCE_REGISTRY" registry os version add \
-        "$VERSION" "v$VERSION" '' "${STARTWRT_COMPAT_FLOOR} <=$VERSION"
+        "$VERSION" "v$VERSION" "$(curated_notes)" "${STARTWRT_COMPAT_FLOOR} <=$VERSION"
 
     # start-cli infers the asset slot from the file extension and only accepts
     # iso/img/squashfs. Both images ship gzipped, so present each under a
@@ -1018,11 +1400,12 @@ cmd_sign() {
 
     local files file
     mapfile -t files < <(release_files)
-    mkdir -p signatures
+    rm -rf signatures
+    mkdir signatures
     for file in "${files[@]}"; do
-        gpg -u $START9_GPG_KEY --detach-sign --armor -o "signatures/${file}.start9.asc" "$file"
+        gpg -u $START9_GPG_KEY --yes --detach-sign --armor -o "signatures/${file}.start9.asc" "$file"
         if [ -n "$GH_USER" ] && [ -n "$GH_GPG_KEY" ]; then
-            gpg -u "$GH_GPG_KEY" --detach-sign --armor -o "signatures/${file}.${GH_USER}.asc" "$file"
+            gpg -u "$GH_GPG_KEY" --yes --detach-sign --armor -o "signatures/${file}.${GH_USER}.asc" "$file"
         fi
     done
 
@@ -1045,20 +1428,22 @@ cmd_cosign() {
 
     if [ -z "$GH_USER" ] || [ -z "$GH_GPG_KEY" ]; then
         >&2 echo 'Error: could not determine GitHub user or GPG signing key'
-        >&2 echo "Set GH_USER and/or configure git user.signingkey"
+        >&2 echo "Set GH_USER and/or configure an OpenPGP git user.signingkey"
         exit 1
     fi
 
     echo "Downloading existing signatures..."
     gh release download -R "$REPO" "$TAG" -p "signatures.tar.gz" -D "$(pwd)" --clobber
-    mkdir -p signatures
+    rm -rf signatures
+    mkdir signatures
     tar -xzf signatures.tar.gz -C signatures
+    rm -f "signatures/"*".${GH_USER}.asc" "signatures/${GH_USER}.key.asc"
 
     echo "Adding personal signatures as $GH_USER..."
     local files file
     mapfile -t files < <(release_files)
     for file in "${files[@]}"; do
-        gpg -u "$GH_GPG_KEY" --detach-sign --armor -o "signatures/${file}.${GH_USER}.asc" "$file"
+        gpg -u "$GH_GPG_KEY" --yes --detach-sign --armor -o "signatures/${file}.${GH_USER}.asc" "$file"
     done
     gpg --export -a "$GH_GPG_KEY" > "signatures/${GH_USER}.key.asc"
 
@@ -1067,32 +1452,47 @@ cmd_cosign() {
     echo "Done. Personal signatures for $GH_USER added to ${TAG}."
 }
 
-# Compose the release-notes body for the current project.
-release_notes() {
-    echo "$NOTES_MARKER"
+# The GitHub release body: the curated notes, then the artifact sections.
+release_body() {
+    echo "<!-- Generated by scripts/manage-release.sh from projects/${PROJECT}/release-notes/${VERSION}.md and its optional .pre-update.md companion — edits made here are overwritten. -->"
     echo
-    changelog_section
+    curated_notes
     echo
+    generated_sections
+}
+
+# The download and checksum sections for the current project.
+generated_sections() {
 
     local platform
     case "$KIND" in
         os)
             echo "## Image Downloads"
             echo
-            local ext url
+            echo "| Hardware | Image | Download |"
+            echo "| --- | --- | --- |"
+            local ext url row hardware image described
             load_registry_index "$STARTOS_SOURCE_REGISTRY"
-            for platform in $OS_PLATFORMS; do
+            described=""
+            for row in "${OS_DOWNLOAD_ROWS[@]}"; do
+                IFS='|' read -r hardware image platform <<< "$row"
+                described="${described}${platform} "
                 for ext in $(os_image_exts "$platform"); do
                     # squashfs is the over-the-air update asset, not a download.
                     [ "$ext" != squashfs ] || continue
                     url=$(asset_url "$STARTOS_SOURCE_REGISTRY" "$ext" "$platform")
                     [ -n "$url" ] || continue
                     if [ "$ext" = img ]; then
-                        echo "- [$(os_platform_label "$platform")](${url}.gz \"gzip-compressed — Raspberry Pi Imager and balenaEtcher flash it without unpacking\")"
-                    else
-                        echo "- [$(os_platform_label "$platform")]($url)"
+                        url="${url}.gz \"gzip-compressed — Raspberry Pi Imager and balenaEtcher flash it without unpacking\""
                     fi
+                    echo "| ${hardware} | ${image} | [${ext^^}](${url}) |"
                 done
+            done
+            for platform in $OS_PLATFORMS; do
+                case "$described" in
+                    *"${platform} "*) ;;
+                    *) >&2 echo "No OS_DOWNLOAD_ROWS entry for ${platform} — it would be missing from the release notes" ; return 1 ;;
+                esac
             done
             echo
             local imgs
@@ -1114,16 +1514,16 @@ release_notes() {
         wrt)
             echo "## Image Downloads"
             echo
-            local sdcard sysupgrade imgs
+            echo "| Hardware | Image | Download |"
+            echo "| --- | --- | --- |"
+            local row hardware image slot tip url imgs
             load_registry_index "$STARTWRT_SOURCE_REGISTRY"
-            sdcard=$(asset_url "$STARTWRT_SOURCE_REGISTRY" img "$STARTWRT_PLATFORM")
-            sysupgrade=$(asset_url "$STARTWRT_SOURCE_REGISTRY" squashfs "$STARTWRT_PLATFORM")
-            if [ -n "$sdcard" ]; then
-                echo "- [SD card image (fresh install)]($sdcard \"Write to microSD/eMMC to flash a new device\")"
-            fi
-            if [ -n "$sysupgrade" ]; then
-                echo "- [Sysupgrade image (OTA update)]($sysupgrade \"In-place upgrade via OpenWrt sysupgrade\")"
-            fi
+            for row in "${WRT_DOWNLOAD_ROWS[@]}"; do
+                IFS='|' read -r hardware image slot tip <<< "$row"
+                url=$(asset_url "$STARTWRT_SOURCE_REGISTRY" "$slot" "$STARTWRT_PLATFORM")
+                [ -n "$url" ] || continue
+                echo "| ${hardware} | ${image} | [IMG](${url}${tip:+ \"${tip}\"}) |"
+            done
             echo
             mapfile -t imgs < <(release_files)
             checksum_block "StartWRT" "${imgs[@]}"
@@ -1155,11 +1555,16 @@ checksum_block() {
 
 cmd_notes() {
     require_kind os cli deb npm wrt
+    curated_notes
+}
+
+cmd_body() {
+    require_kind os cli deb npm wrt
     if [ "$KIND" != npm ]; then
         enter_release_dir
         ensure_img_gz
     fi
-    release_notes
+    release_body
 }
 
 cmd_release() {
@@ -1180,8 +1585,13 @@ cmd_release() {
             cmd_sign
             ;;
         cli | deb)
+            # Promote the debs CI published to alpha rather than rebuilding
+            # trust from a CI run: what testers have been running is what ships.
+            # (start-cli's per-triple binaries still come from the run — they are
+            # published only as release assets, so there is no channel to promote
+            # them from. Both halves are pinned to the tagged commit.)
             cmd_pre_check
-            cmd_pull_gha
+            cmd_pull_alpha
             cmd_tag
             cmd_create_gh_release
             cmd_push
@@ -1234,6 +1644,21 @@ crate's — or package.json for start-sdk); the git tag / GitHub release is
 Subcommands:
   pre-check          Verify the changelog documents this version and that the
                      version is not already tagged/released.
+  alpha-commit       Print the commit alpha's current build of this project came
+                     from. `git checkout "$(... alpha-commit <project>)"` puts a
+                     tree on it. (cli/deb.)
+  pull-alpha         Stage a deb release by promoting the `alpha` apt suite's
+                     current build — what CI published and testers have been
+                     running. The whole chain is verified against the suite
+                     signature (apt/start9-alpha.gpg).
+                     The tag follows the artifact: with COMMIT unset this adopts
+                     the commit alpha built and tags there, which is usually not
+                     HEAD, since each product's workflow is path-filtered. It
+                     says which commit, and prints the matching `git checkout`.
+                     Set COMMIT to assert a different one and it fails instead of
+                     overriding you. This is what `release` uses. For start-cli
+                     it also pulls the per-triple binaries from a run, which have
+                     no channel to promote from. (cli/deb.)
   pull-gha           Download build artifacts from a GitHub Actions run.
                      Fails unless the run built the commit being tagged
                      (COMMIT, default HEAD).
@@ -1263,11 +1688,17 @@ Subcommands:
                      available) and upload signatures.tar.gz. (os/cli/deb/wrt.)
   cosign             Add your personal GPG signature to an existing release's
                      signatures.tar.gz. (os/cli/deb/wrt; run 'pull' first.)
-  notes              Print the release notes to stdout. (all projects.)
+  notes              Print this release's curated notes, prefixed by the optional
+                     release-notes/<version>.pre-update.md — what the registries
+                     serve to the in-product update screens. (all projects.)
+  body               Print the whole GitHub release body: the notes plus the
+                     download and checksum sections. (all projects.)
   release            Run the full applicable pipeline for the project.
 
 Environment variables:
   VERSION                  Override the version (default: read from the manifest)
+  CHANGELOG_REF            Git ref the notes' changelog link resolves against
+                           (default: the release tag; CI passes the built commit)
   RUN_ID                   GitHub Actions run id/url for pull-gha
   COMMIT                   Commit to tag (default: HEAD)
   FORCE                    Set to 1 to re-release an already-released version:
@@ -1307,16 +1738,20 @@ if ! KIND=$(project_kind "$PROJECT"); then
     exit 2
 fi
 
-VERSION="${VERSION:-$(derive_version "$PROJECT")}"
-if [ -z "$VERSION" ]; then
-    >&2 echo "Could not derive version for ${PROJECT}"
+# Without the `!`, errexit takes a failing derivation at the assignment itself
+# and the script exits mute — the state this message exists to describe.
+if ! VERSION="${VERSION:-$(derive_version "$PROJECT")}" || [ -z "$VERSION" ]; then
+    >&2 echo "Could not derive ${PROJECT}'s version from its manifest; pass VERSION=<version> to override."
     exit 1
 fi
 TAG="${PROJECT}/v${VERSION}"
+CHANGELOG_REF="${CHANGELOG_REF:-$TAG}"
 
 case "$SUBCOMMAND" in
     pre-check) cmd_pre_check ;;
     pull-gha) cmd_pull_gha ;;
+    pull-alpha) cmd_pull_alpha ;;
+    alpha-commit) cmd_alpha_commit ;;
     pull) cmd_pull ;;
     tag) cmd_tag ;;
     create-gh-release) cmd_create_gh_release ;;
@@ -1327,6 +1762,7 @@ case "$SUBCOMMAND" in
     sign) cmd_sign ;;
     cosign) cmd_cosign ;;
     notes) cmd_notes ;;
+    body) cmd_body ;;
     release) cmd_release ;;
     *)
         >&2 echo "Unknown subcommand: '${SUBCOMMAND}'"

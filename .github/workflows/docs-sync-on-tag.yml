@@ -1,0 +1,175 @@
+name: Sync a release onto live-docs
+
+# live-docs is what each product has published — the branch docs.start9.com
+# serves, and the branch a packaging workspace checks out. Cutting
+# `<project>/v<version>` is what makes a product current, so the tag is what
+# advances it: this takes the tagged tree whole, then puts every *other*
+# product back on the release it is on. A tag therefore speaks for its own
+# project, the shared libraries beneath it, and the repo root — and for nothing
+# another product owns. The push then triggers docs-deploy.yml on its own — no
+# explicit dispatch needed, because an App installation token raises real
+# events.
+#
+# The shared site tree (projects/start-docs) rides along only with a product
+# that ships a book: a bookless release (start-cli, start-registry) has nothing
+# to redeploy, and docs-deploy.yml's paths filter is what keeps it from firing.
+# projects/start-docs/versions.conf rides along with the rest of that tree, so
+# the version each book is published under is whatever the tagged tree said. It
+# is a deliberate, hand-maintained file: set it in master before you tag.
+#
+# Two guards protect live-docs: the tagged commit must be an ancestor of master,
+# and nothing moves backwards. A product's own tree is judged against that
+# product's earlier releases and the shared trees against every product's, so a
+# deb release that tags the older commit alpha built still advances its own
+# project, while a backfilled or re-cut tag cannot roll anything back.
+on:
+  push:
+    tags: ['*/v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docs-sync-on-tag
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    name: Sync ${{ github.ref_name }} onto live-docs
+    runs-on: ubuntu-latest
+    # live-docs is PR-protected with no bypass for github-actions[bot], so this
+    # needs the docs bot App, which IS a bypass actor. Its private key is an
+    # environment secret whose deployment policy admits only `*/v*` tags — a
+    # workflow run on any other ref is refused the secret and so cannot mint a
+    # token that bypasses anything. Keep that policy in step with the trigger.
+    environment: docs-publish
+    steps:
+      - uses: actions/create-github-app-token@v2
+        id: app-token
+        with:
+          app-id: ${{ secrets.DOCS_BOT_APP_ID }}
+          private-key: ${{ secrets.DOCS_BOT_PRIVATE_KEY }}
+
+      - uses: actions/checkout@v6
+        with:
+          ref: live-docs
+          fetch-depth: 0
+          fetch-tags: true
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Copy the tagged tree onto live-docs
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          PROJECT="${TAG%%/v*}"
+          SRC=$(git rev-list -n1 "$TAG")
+          echo "Tag $TAG -> project $PROJECT, commit $SRC"
+
+          HAS_BOOK=0
+          if git cat-file -e "$TAG:projects/$PROJECT/docs" 2>/dev/null; then
+            HAS_BOOK=1
+          fi
+
+          git fetch --no-tags origin master
+
+          # A tag cut off an unmerged branch would publish content master has no
+          # copy of, and [skip-backport] stops the backport from reconciling it.
+          if ! git merge-base --is-ancestor "$SRC" origin/master; then
+            echo "::error::$TAG points at $SRC, which is not an ancestor of master. Merge the branch and re-cut the tag before publishing its docs."
+            exit 1
+          fi
+
+          # Every sync records the commit it published from as a Source-Commit
+          # trailer. A tag is behind a tree when its commit is a proper ancestor
+          # of any commit that tree was already synced from — any, not the
+          # newest, because releases land out of ancestry order: a deb release
+          # tags the commit alpha built, which can be older than a tag cut
+          # before it. Ancestry, not dates — tag order is not chronology. Hand
+          # PRs to live-docs carry no trailer and drop out of the scan.
+          # (Necessarily inert until the first sync writes one.)
+          # Captured whole rather than piped through `head -n1`: head closes the
+          # pipe after one line, and once enough trailers exist for sed to flush
+          # a second time it takes SIGPIPE and `pipefail` aborts the sync.
+          behind() {
+            local synced
+            for synced in $(git log --format=%B "$@" | sed -n 's/^Source-Commit: *//p'); do
+              if [ "$synced" != "$SRC" ] && git cat-file -e "${synced}^{commit}" 2>/dev/null \
+                && git merge-base --is-ancestor "$SRC" "$synced"; then
+                echo "$synced"
+                return 0
+              fi
+            done
+            return 1
+          }
+
+          # Two watermarks. Only a product's own tags write projects/$PROJECT, so
+          # that tree is behind only when an older release of the same product is
+          # already on live-docs. shared-libs, the repo root and the site tree are
+          # written by every product's tag, so they are behind whenever any
+          # release synced from a newer commit — and then they stay where that
+          # release put them.
+          OWN_BEHIND=$(behind -- "projects/$PROJECT" || true)
+          ALL_BEHIND=$(behind || true)
+
+          git config user.name "start9-docs-bot[bot]"
+          git config user.email "start9-docs-bot[bot]@users.noreply.github.com"
+
+          # Put a path back to what live-docs has: gone if live-docs lacks it.
+          hold() {
+            git rm -rfq --ignore-unmatch -- "$1"
+            if git cat-file -e "HEAD:$1" 2>/dev/null; then
+              git checkout HEAD -- "$1"
+            fi
+          }
+
+          if [ -n "$OWN_BEHIND" ]; then
+            if [ "$HAS_BOOK" = 0 ]; then
+              echo "::notice::$TAG ($SRC) predates $PROJECT's published release ($OWN_BEHIND) and ships no docs/ book — nothing to publish."
+              exit 0
+            fi
+            echo "::warning::$TAG ($SRC) predates $PROJECT's published release ($OWN_BEHIND) — publishing its book alone, leaving the rest of live-docs untouched."
+            # Remove then restore from the tag, so files the release removed are
+            # actually gone rather than left behind by a copy-over.
+            git rm -rfq --ignore-unmatch -- "projects/$PROJECT/docs"
+            git checkout "$TAG" -- "projects/$PROJECT/docs"
+          else
+            if [ -n "$ALL_BEHIND" ]; then
+              echo "::warning::$TAG ($SRC) predates the tree already published ($ALL_BEHIND) — advancing projects/$PROJECT alone, leaving the shared trees where the newer release put them."
+            fi
+            # read-tree, not a copy-over: it deletes what the release removed.
+            # HEAD stays on live-docs, so hold() can put back what this tag does
+            # not speak for.
+            git read-tree -u --reset "$TAG"
+            for p in $( { git ls-tree --name-only HEAD; git ls-tree --name-only "$TAG"; } | sort -u ); do
+              if [ "$p" != projects ]; then
+                if [ -n "$ALL_BEHIND" ]; then hold "$p"; fi
+                continue
+              fi
+              for d in $( { git ls-tree --name-only HEAD projects/
+                            git ls-tree --name-only "$TAG" projects/; } | sort -u ); do
+                case "$d" in
+                  "projects/$PROJECT") ;;
+                  projects/start-docs)
+                    if [ "$HAS_BOOK" = 0 ] || [ -n "$ALL_BEHIND" ]; then hold "$d"; fi ;;
+                  *) hold "$d" ;;
+                esac
+              done
+            done
+          fi
+
+          git add -A
+          if git diff --cached --quiet; then
+            echo "::notice::live-docs already matches $TAG."
+            exit 0
+          fi
+
+          # [skip-backport] is load-bearing, not a nicety: this push DOES raise a
+          # push event (App tokens are exempt from the GITHUB_TOKEN no-recursion
+          # rule), so docs-backport.yml will see it. The content came from master
+          # already, so it must not be bounced back. Source-Commit is what the
+          # next run's rollback guard reads.
+          git commit -m "chore: publish $PROJECT from $TAG [skip-backport]" \
+                     -m "Source-Commit: $SRC"
+          git push origin HEAD:live-docs

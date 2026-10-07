@@ -11,12 +11,20 @@ StartOS uses Extended Versioning (ExVer) to manage package versions, allowing do
 | Component             | Description                          | Example       |
 | --------------------- | ------------------------------------ | ------------- |
 | `flavor`              | Optional variant for diverging forks | `#libre:`     |
-| `upstream`            | Upstream project version (SemVer)    | `26.0.0`      |
+| `upstream`            | Full upstream project version        | `26.0.0`      |
 | `upstream-prerelease` | Upstream prerelease suffix           | `-beta.1`     |
 | `downstream`          | StartOS wrapper revision             | `0`, `1`, `2` |
 
 > [!NOTE]
 > ExVer allows a prerelease suffix on the downstream revision too (e.g. `:0-beta.0`), but Start9 packages don't use it — the downstream revision is always a plain integer. Prerelease suffixes appear only on the upstream side, when wrapping an upstream alpha/beta/rc.
+
+### Preserve the upstream version
+
+ExVer does not require SemVer's three numeric components. Its numeric portion supports any number of dot-separated components, with an optional prerelease suffix. Preserve every upstream component, including build or patch counters beyond the third position. Do not truncate, pad to three components, or reinterpret an upstream version as SemVer.
+
+For example, Collabora's `26.04.4.2.1` becomes `26.4.4.2.1:0`, not `26.4.4:0`. ExVer normalizes numeric leading zeros; that normalization does not discard a component. Keep the exact upstream spelling where an artifact requires it, such as a Docker tag.
+
+Some projects use CalVer, a single build number, or another release scheme rather than SemVer. If an upstream identifier cannot be represented directly in ExVer, document an order-preserving mapping in `UPDATING.md`, retaining the original identifier in the artifact pin and release notes. Distinct upstream releases must remain distinct package versions. Review scope follows [upstream's versioning scheme and release impact](maintaining-a-package.md#scale-scrutiny-to-the-size-of-the-jump), not the number of components.
 
 ### Flavor
 
@@ -27,12 +35,15 @@ Flavors are for diverging forks of a project that maintain separate version hist
 
 ### Examples
 
-| Version String  | Upstream        | Downstream |
-| --------------- | --------------- | ---------- |
-| `26.0.0:0`      | 26.0.0 (stable) | 0          |
-| `26.0.0-rc.1:0` | 26.0.0-rc.1     | 0          |
-| `0.13.5:0`      | 0.13.5 (stable) | 0          |
-| `2.3.2:1`       | 2.3.2 (stable)  | 1          |
+| Version String  | Upstream            | Downstream |
+| --------------- | ------------------- | ---------- |
+| `26.0.0:0`      | 26.0.0 (stable)     | 0          |
+| `26.0.0-rc.1:0` | 26.0.0-rc.1         | 0          |
+| `0.13.5:0`      | 0.13.5 (stable)     | 0          |
+| `2.3.2:1`       | 2.3.2 (stable)      | 1          |
+| `26.4.4.2.1:0`  | 26.4.4.2.1 (stable) | 0          |
+| `2026.9:0`      | 2026.9 (stable)     | 0          |
+| `9982:0`        | 9982 (stable)       | 0          |
 
 ### Version Ordering
 
@@ -62,12 +73,12 @@ When creating a new package:
 
 ### Version Consistency Checklist
 
-Ensure these all match for upstream version `X.Y.Z`:
+Ensure these all identify the same complete upstream release:
 
 - The current version lives in `startos/versions/current.ts`
-- Version string matches: `version: 'X.Y.Z:0'` in VersionInfo
-- Docker tag matches: `dockerTag: 'image:X.Y.Z'` in `manifest/index.ts` (if using pre-built image)
-- Git submodule checked out to `vX.Y.Z` tag (if applicable)
+- `VersionInfo.version` preserves the full upstream version, followed by `:<revision>`
+- `images.*.source.dockerTag` in `manifest/index.ts` resolves to that release (if using a pre-built image); retain artifact-specific padding, prefixes, and suffixes here
+- The git submodule is checked out to that release's exact tag or commit (if applicable)
 
 ## File Structure
 
@@ -134,17 +145,22 @@ A historical file's export is renamed to match the version, with every `.`, `:`,
 
 ### When to Create a New Version File
 
-The deciding question is **does this bump need a migration?**
+**A migration belongs to the version that introduced it, permanently.** It is never carried forward into a successor, and never justified by being idempotent — correctness here must not rest on a migration body being safe to apply twice.
 
-**No migration (the common case): bump `current.ts` in place.** Edit `version` and `releaseNotes` in `startos/versions/current.ts` and you're done. Don't rename the file, don't touch the export name, don't touch `index.ts`, leave `other` as it is. Git history of `current.ts` preserves the prior release notes automatically, so there is no separate "keep the old notes" step.
+That principle decides the file layout, so the deciding question is **does the version currently in `current.ts` carry a migration?** — not whether the bump you are making needs one. That only decides what you write into the new `current.ts`.
 
-**Migration needed: spin the old version off, then write a fresh `current.ts`.**
+**The outgoing version's migration is empty (the common case): bump `current.ts` in place.** Empty means the `up` body does nothing. The template's `up: async ({ effects }) => {}` with `down: IMPOSSIBLE` is empty — `down: IMPOSSIBLE` is not a migration, it only forbids downgrades — so it earns the version no file, and the block stays as it is on the bump. Edit `version` and `releaseNotes` in `startos/versions/current.ts`, adding the new version's own migration if it needs one. Don't rename the file, don't touch the export name, don't touch `index.ts`, leave `other` as it is. Git history of `current.ts` preserves the prior release notes automatically, so there is no separate "keep the old notes" step.
+
+**The outgoing version carries a migration: spin it off, then write a fresh `current.ts`.**
 
 1. **Rename `current.ts` to the version it currently holds** — e.g. `v2.3.2_1.ts` (see [Historical Version File Naming](#historical-version-file-naming)), and rename its export from `current` to the matching `v_2_3_2_1`.
-2. **Add that historical version to the `other` array** in `index.ts` so its migration runs when users upgrade through it.
-3. **Create a new `startos/versions/current.ts`** exporting `current` with the new version string, release notes, and the `up`/`down` migration.
+2. **Add that historical version to the `other` array** in `index.ts` so its migration still runs for users upgrading through it.
+3. **Create a new `startos/versions/current.ts`** exporting `current` with the new version string, release notes, and its own migration if it needs one — never the one you just spun off.
 
-This keeps `versions/` lean: only versions that a migration upgrades _from_ survive as their own files; everything else is just the latest state of `current.ts`.
+> [!WARNING]
+> Bumping in place over a version that carries a migration **deletes that migration from the graph**, and nothing will tell you. Every user still below that version upgrades to the new `current` in one hop — the range vertex below covers them — so the update succeeds normally, having silently skipped the data migration. Whether the migration happens to be safe to re-run is beside the point: don't fold it into the successor, spin it off.
+
+This keeps `versions/` lean: only versions that introduced a migration survive as their own files; everything else is just the latest state of `current.ts`.
 
 ### Why Released Versions Don't Need to Be Declared
 
@@ -156,9 +172,9 @@ A released version is **not** a reason to add it to `other`. Only a migration is
 <1.0.0:3  --[up]-->  1.0.0:3
 ```
 
-Any installed version below `current` falls inside that range and migrates to `current` **in a single hop**, running `current`'s `up` migration once. This holds whether or not that version was ever declared, and whether or not it was ever released — including versions you shipped as sideloadable `.s9pk`s outside a registry. Most packages in the Start9 registry carry `other: []` and have upgraded across dozens of downstream revisions on exactly this path.
+Any installed version below `current` falls inside that range and migrates to `current` **in a single hop**, running `current`'s `up` migration once. This holds whether or not that version was ever declared, and whether or not it was ever released — including versions you shipped as sideloadable `.s9pk`s outside a registry.
 
-A version earns a declared node **only** when it has its own migration that must run in sequence on the way up. Declaring migration-less versions adds files that must be read, kept compiling, and reasoned about forever, and buys no behavior. Don't do it to record release history — git history of `current.ts` already is that record.
+A version earns a declared node **only** when it introduced a migration. Declaring migration-less versions adds files that must be read, kept compiling, and reasoned about forever, and buys no behavior. Don't do it to record release history — git history of `current.ts` already is that record.
 
 > [!NOTE]
 > A corollary: to make an update reachable for users on a version you shipped elsewhere, you only need `current`'s version string to sort _above_ theirs. You do not need to declare the intervening revisions.
@@ -173,7 +189,7 @@ When the upstream project releases a new version:
 
 1. Update git submodule to new tag
 2. Update `dockerTag` in [manifest/index.ts](./manifest.md)
-3. Update `current.ts` to the new upstream version (spin off a historical file only if the bump needs a migration — see above)
+3. Update `current.ts` to the new upstream version (spin off a historical file first if the version it currently holds carries a migration — see above)
 4. Reset downstream to 0
 
 ### Wrapper-Only Changes
@@ -182,7 +198,7 @@ When making changes to the StartOS wrapper without upstream changes:
 
 1. Keep upstream version the same
 2. Increment downstream revision
-3. Apply the [migration rule](#when-to-create-a-new-version-file) — most wrapper-only bumps need no migration, so just edit `current.ts` in place
+3. Apply the [migration rule](#when-to-create-a-new-version-file) — edit `current.ts` in place unless the version it currently holds carries a migration
 
 ## Release Notes
 
@@ -250,6 +266,8 @@ Use `IMPOSSIBLE` for the `down` migration when:
 
 - It is the initial version (nothing to roll back to)
 - The migration involves breaking changes that cannot be reversed
+
+`IMPOSSIBLE` keeps the version out of `canMigrateTo`, and StartOS refuses a downgrade it cannot reach — telling the user to uninstall and restore a backup instead.
 
 ```typescript
 migrations: {

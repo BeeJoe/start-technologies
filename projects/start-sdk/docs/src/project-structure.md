@@ -11,10 +11,12 @@ my-service-startos/
 ├── .github/
 │   └── workflows/
 │       ├── build.yml          # CI build on PR
+│       ├── pr-retarget.yml    # CI rebuild when a PR's base changes
 │       ├── tagAndRelease.yml  # Version check, tag, and release on merge
-│       └── release.yml        # Release on manual tag push
+│       ├── release.yml        # Release on manual tag push
+│       └── syncNext.yml       # Carry the base branch onto `next` on merge
 ├── assets/                 # Supplementary files (required, can be empty)
-│   └── ABOUT.md
+│   └── .gitkeep
 ├── startos/                # Primary development directory
 │   ├── actions/            # User-facing action scripts
 │   ├── fileModels/         # Type-safe config file representations
@@ -30,11 +32,12 @@ my-service-startos/
 │   ├── backups.ts          # Backup volumes and exclusions
 │   ├── dependencies.ts     # Service dependencies
 │   ├── index.ts            # Exports (boilerplate)
-│   ├── interfaces.ts       # Network interface definitions (optional - not in barebones scaffold)
+│   ├── interfaces.ts       # Network interface definitions (optional)
 │   ├── main.ts             # Daemon runtime and health checks
 │   ├── sdk.ts              # SDK initialization (boilerplate)
-│   ├── utils.ts            # Package-specific utilities (empty in barebones scaffold)
+│   ├── utils.ts            # Package-specific utilities
 │   └── versions/           # Version management and migrations
+├── .dockerignore           # Build-context filter (see below)
 ├── .gitignore
 ├── AGENTS.md               # Agent context: repo identity + how to work in this repo
 ├── CLAUDE.md               # One-line `@AGENTS.md` import for Claude Code
@@ -45,12 +48,35 @@ my-service-startos/
 ├── Makefile                # Project config (includes the SDK's s9pk.mk from node_modules)
 ├── package.json
 ├── package-lock.json
+├── .prettierrc             # One line pointing at the SDK's Prettier config
 ├── README.md               # Service documentation (see Writing READMEs)
-├── TODO.md                 # Pending work on the package
 ├── tsconfig.json
 ├── UPDATING.md             # Per-package upstream-version tracking
 └── upstream-project/       # Git submodule (optional)
 ```
+
+## The Package Repo Is Not a Fork of the Application
+
+A package repo holds **packaging** — `startos/`, the manifest, the docs, the CI. The
+application itself comes from one of three sources, and `UPDATING.md` records which one:
+
+- **A published upstream image**, pinned at `images.<id>.source.dockerTag`. The default, and
+  what most packages use — see [Package a Prebuilt Docker Image](recipe-prebuilt-image.md).
+- **A git submodule** at `upstream-project/`, built by the package's own `Dockerfile`, when
+  upstream publishes no image, or none for an architecture StartOS needs.
+- **A Start9-built image**, when the software needs a build only we produce.
+
+**Copying the application's source into the package repo and merging upstream releases into it
+is not a fourth option.** A fork turns every upstream release into a hand-merge, moves the
+application's tests, lockfiles, CI and dependency churn into a repo whose reviewers are
+packagers, and leaves the packaged version defined by a merge result instead of a pinned ref.
+It also breaks the property the layout exists for: every package reads the same way, so a
+reviewer or a tool that knows one knows all of them.
+
+Carrying a fix upstream has not taken does not require a fork. Use the submodule with a
+`patches/` directory, each patch stating the condition under which it retires —
+[`electrs-startos`](https://github.com/Start9-Community/electrs-startos) is the reference
+implementation.
 
 ## Core Files
 
@@ -59,17 +85,21 @@ my-service-startos/
 These files typically require minimal modification:
 
 - `.gitignore`
+- `.dockerignore` - Docker does not read `.gitignore`, so a package that builds from source needs this to keep `node_modules`, `.git`, and built `.s9pk`s out of the build context that `s9pk pack` uploads on every arch
 - `Makefile` - Includes the SDK's `s9pk.mk` from `node_modules` (see [Makefile](./makefile.md))
-- `package.json` / `package-lock.json`
+- `package.json` / `package-lock.json` - the SDK is the only dependency; it supplies TypeScript, Prettier, ESLint and ncc
+- `.prettierrc` - one line naming the SDK's shared Prettier config, so editors format the way the build gate checks
 - `tsconfig.json`
 
 ### .github/workflows/
 
-Every package should include three GitHub Actions workflows that delegate to the reusable CI workflows in this monorepo (`.github/workflows/`, migrated from the old `shared-workflows` repo). The CI pipeline has two automatic stages, plus an optional manual path:
+Every package should include five GitHub Actions workflows that delegate to the reusable CI workflows in this monorepo (`.github/workflows/`). The CI pipeline has two automatic stages, plus an optional manual path, a retarget build, and a branch-hygiene job:
 
 ```
-PR opened/updated ──> Build
+PR opened/updated/marked ready ──> Build
+PR base changed ──> Retarget Build
 PR merged to master ──> Version check ──> Tag ──> Build ──> Release ──> Publish
+                    └─> Sync next
 Manual tag push ──> Build ──> Release ──> Publish (bypasses version check)
 ```
 
@@ -83,20 +113,62 @@ name: Build
 on:
   workflow_dispatch:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     branches: ['master']
     paths-ignore: ['*.md']
 
+permissions: {}
+
 concurrency:
-  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  group: package-build-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
   build:
-    if: github.event.pull_request.draft == false
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    permissions:
+      contents: read
     uses: Start9Labs/start-technologies/.github/workflows/build.yml@master
-    secrets:
-      DEV_KEY: ${{ secrets.DEV_KEY }}
+    # No DEV_KEY — a PR build doesn't publish, so it doesn't need the signing key.
 ```
+
+GitHub's default `pull_request` activities cover opened, updated, and reopened PRs.
+`ready_for_review` is listed explicitly so a draft's first ready state runs the build.
+The job gate keeps subsequent draft updates out of the build matrix.
+
+**pr-retarget.yml** -- rebuilds the `.s9pk` against a PR's new base:
+
+```yaml
+name: Retarget Build
+
+on:
+  pull_request:
+    types: [edited]
+
+permissions: {}
+
+concurrency:
+  group: package-build-${{ github.event.changes.base && github.event.pull_request.number || format('metadata-{0}', github.event.pull_request.number) }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    if: github.event.changes.base && github.event.pull_request.draft == false
+    permissions:
+      contents: read
+    uses: Start9Labs/start-technologies/.github/workflows/build.yml@master
+```
+
+A base change is an `edited` event. The unfiltered listener receives it even when the new
+base or changed paths fall outside `build.yml`'s trigger filters. Base changes share the
+ordinary build's `package-build-<PR>` concurrency group, so the newest run replaces work
+against an obsolete base. Title and body edits use a separate metadata group and leave an
+active build alone.
+
+A PR build only compiles and packs; it never publishes. The reusable workflow falls back to
+`start-cli init-key` when no signing key is present, so passing `DEV_KEY` here would put the
+real key on a runner executing branch-authored code for no benefit. **release.yml** and
+**tagAndRelease.yml** do publish, and still need it.
 
 **tagAndRelease.yml** -- on merge to master, checks the version against the registry named by `REFERENCE_REGISTRY`. That is whichever registry the track treats as already-shipped — it is configured per repo/org and is not necessarily production. If that registry already serves the version, the workflow exits gracefully without building. Otherwise it force-moves the release tag onto the new commit, then builds and publishes to the test registry, replacing the release's same-named assets. If a new commit arrives while a previous run is still in progress, the old run is cancelled:
 
@@ -113,7 +185,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  tag-and-release:
+  tag:
     uses: Start9Labs/start-technologies/.github/workflows/tagAndRelease.yml@master
     with:
       REFERENCE_REGISTRY: ${{ vars.REFERENCE_REGISTRY }}
@@ -151,11 +223,45 @@ jobs:
       contents: write
 ```
 
+**syncNext.yml** -- carries every change that lands on the base branch onto the paired `next` iteration branch, so `next` never falls behind what has already shipped:
+
+```yaml
+name: Sync next
+
+on:
+  push:
+    branches: ['master']
+  workflow_dispatch:
+
+jobs:
+  sync:
+    uses: Start9Labs/start-technologies/.github/workflows/syncNext.yml@master
+    permissions:
+      contents: write
+      pull-requests: write
+```
+
+The paired branch is derived rather than configured: an explicit `next/<base>` is used where one exists — that is how the multi-branch packages keep one iteration branch per major line or flavor — and otherwise the repo's default branch pairs with a plain `next`. **A repo with no `next` gets one created at the base tip on the first run**, so a package never has to be seeded by hand.
+
+Neither `next` nor the base branch is force-pushed or rewritten. `next` is fast-forwarded when it is merely behind, given a merge commit when it carries unmerged work, and left untouched with a pull request opened for a human only when that merge conflicts. That pull request is headed by a throwaway `sync-next/<base>` branch rather than the base itself, so resolving its conflicts in GitHub's web editor — which commits to the head branch — cannot land on the base. **Merge it with a merge commit rather than a squash**, so `next` comes out with the base as an ancestor; a squash leaves equivalent content under a fresh commit and the following sync conflicts all over again. `workflow_dispatch` is there so a package can be brought into line without waiting for its next merge.
+
+List every base branch the package maintains under `branches:`, and note this is one of the two workflows whose branch list must match the branch the repo actually uses — a package on `main` that still says `master` here silently never syncs.
+
 ### AGENTS.md and CLAUDE.md
 
-`AGENTS.md` is the package's agent-context file. Generic packaging knowledge — SDK patterns, the disciplines on the [Development Workflow](./workflow.md) page, the rules throughout this guide — lives in one canonical place: the packaging guide, **not** copied into each package repo where 40+ duplicates would drift out of sync. `AGENTS.md` carries only what's specific to _this_ repo.
+`AGENTS.md` is the package's agent-context file. Generic packaging knowledge — SDK patterns, the disciplines on the [Development Workflow](./workflow.md) page, the rules throughout this guide — lives in one canonical place: the packaging guide, **not** copied into each package repo where duplicates would drift out of sync. `AGENTS.md` carries only what's specific to _this_ repo.
 
-Keep it short and repo-specific: state that this is a StartOS service package, point at the repo's `TODO.md` as the worklist, give the doc-sync rule (keep `README.md` and `instructions.md` in step with every change), and capture any package-specific gotchas — in short, how to work in _this_ repo. Do **not** restate generic guide content or turn it into a web-fetch driver (don't instruct the agent to pull guide pages over the web up front). Developers work with the guide checked out locally alongside the package (see [Environment Setup](./environment-setup.md)); the local-first navigation — read `start-technologies/projects/start-sdk/docs/src/` directly, fall back to <https://docs.start9.com/packaging> only when no local copy exists — is set up once by the workspace-level `CLAUDE.md`, not repeated per repo.
+Keep it short and repo-specific: state that this is a StartOS service package, give the doc-sync rule (keep `README.md` and `instructions.md` in step with every change), and capture any package-specific gotchas — in short, how to work in _this_ repo. Do **not** restate generic guide content or turn it into a web-fetch driver (don't instruct the agent to pull guide pages over the web up front).
+
+It is also the one package document with a single reader, so it must not restate `README.md` or `instructions.md` either — anyone changing the package has both. That leaves it carrying only what has no home in them:
+
+- **Repo mechanics** — parallel version branches, a worktree layout, a vendored tree.
+- **Prohibitions** — a change that looks right and is not, with the one clause that says why. Inline these rather than linking: an imperative behind a pointer is a suggestion.
+- **Extension points** — where the next backend, interface, or migration gets added.
+- **Naming traps** — a package id that differs from the repo directory, for instance.
+- **Build or test invocations** specific to this package.
+
+Most packages need one to four bullets here; a simple one needs none. Explaining _how the package works_ is `README.md`'s job — see [Writing READMEs — Who reads this file](./writing-readmes.md#who-reads-this-file) for who reads which file. Developers work with the guide checked out locally alongside the package (see [Environment Setup](./environment-setup.md)); the local-first navigation — read `start-technologies/projects/start-sdk/docs/src/` directly, fall back to <https://docs.start9.com/packaging> only when no local copy exists — is set up once by the workspace-level `CLAUDE.md`, not repeated per repo.
 
 `CLAUDE.md` is a one-line import of that same file:
 
@@ -193,9 +299,7 @@ If you are pulling a pre-built Docker image (no submodule), copy the license tex
 
 Service documentation following the structure described in [Writing READMEs](./writing-readmes.md). Every README should document how the StartOS package differs from the upstream service.
 
-### TODO.md
-
-A running list of pending work on this package. Add items when you defer work; remove them when complete. An empty `TODO.md` (just the `# TODO` heading) is fine — keep the file present so contributors know where to record items.
+It is **packed into the `.s9pk`** alongside `instructions.md`, so an AI assistant administering the server reads the README for the version actually installed, offline, rather than fetching whatever a repository's default branch has since moved to. Unlike `instructions.md` it is optional — a package without one still builds — but nothing on the server can fall back to a copy that isn't there, so ship one.
 
 ### UPDATING.md
 
@@ -210,7 +314,7 @@ Packages with multiple upstream sources (e.g. a service plus its database sideca
 
 ## assets/
 
-Stores supplementary files and scripts needed by the service, such as configuration generators or entrypoint scripts. **Required** -- the `assets/` directory must exist and contain at least one file (e.g. `ABOUT.md`) for git to track it and for the build to succeed.
+Stores supplementary files and scripts needed by the service, such as configuration generators or entrypoint scripts. **Required** -- the `assets/` directory must exist and contain at least one file for git to track it and for the build to succeed, so it carries a `.gitkeep` even when the package has no assets of its own. Keep the `.gitkeep` when you add real assets; it costs nothing and keeps every package's layout identical.
 
 ## startos/
 
@@ -234,7 +338,7 @@ The `startos/` directory is where you take advantage of the StartOS SDK and APIs
 
 #### dependencies.ts
 
-`setupDependencies()` is where you define any dependencies of this package, including their versions, whether or not they need to be running or simply installed, and which health checks, if any, need to be passing for this package to be satisfied.
+Define each dependency with `sdk.Dependency.required()` or `.optional()` and add it to `sdk.Dependencies.of()`. The builder supplies both the published manifest requirements and reactive runtime requirements. See [Dependencies](dependencies.md).
 
 #### index.ts
 
@@ -243,8 +347,6 @@ This file is plumbing, used for exporting package functions to StartOS.
 #### interfaces.ts (optional)
 
 `setupInterfaces()` is where you define the service interfaces and determine how they are exposed. This function executes on service install, update, and config save. It takes the user's config input as an argument, which will be `null` for install and update.
-
-The barebones scaffold ships no `interfaces.ts` — many services (background workers, sidecars) expose nothing on the network. When a service does, add this file and wire its `setInterfaces` into `init/index.ts` (conventionally before `setDependencies`).
 
 #### main.ts
 
@@ -260,7 +362,7 @@ This file is plumbing, used to imbue the generic Start SDK with package-specific
 
 #### utils.ts
 
-This file is for defining constants and functions specific to your package that are used throughout the code base. Many packages will not make use of this file.
+This file holds the package's own constants and helper functions. **A constant or function that doesn't belong in one of the files above goes here, not in a new file of its own.** A new top-level file under `startos/` is warranted only for a large, self-contained unit — a subsystem of several cooperating functions, or a long generated table — never for a single function or constant. Many packages will not make use of this file.
 
 ### Subdirectories
 
@@ -292,9 +394,12 @@ Each action receives its own file and is also passed into `Actions.of()` in `act
 
 ```
 fileModels/
+├── .gitkeep
 ├── store.json.ts
 └── config.json.ts
 ```
+
+Like `assets/`, this directory carries a `.gitkeep` so it survives in git when a package declares no file models.
 
 In the `fileModels/` directory, you can create separate `.ts` files from which you export a file model for each file from the file system you want to represent. Supported file formats are `.yaml`, `.toml`, `.json`, `.env`, `.ini`, `.txt`. For alternative file formats, you can use the `raw` method and provide custom serialization and parser functions.
 
@@ -327,7 +432,7 @@ Container initialization takes place under the following circumstances:
 `setupInit()` is where you define the specific order in which functions will be executed when your container initializes.
 
 - `restoreInit` and `versionGraph` must remain first and second. Do not move them.
-- `setInterfaces`, `setDependencies`, `actions` are recommended to remain in this order, but could be rearranged if necessary.
+- Put `actions` before `dependencies` so dependency init handlers can create tasks for registered actions; `setInterfaces` precedes both.
 - Any custom init functions can be appended to the list of built-in functions, or even inserted between them. Most custom init functions are simply appended to the list.
 
 It is possible to limit the execution of custom init functions to specific _kinds_ of initialization. For example, if you only wanted to run a particular init function on fresh install and ignore it for updates and restores, `setupOnInit()` provides a `kind` variable (one of `install`, `update`, `restore`) that you can use for conditional logic. `kind` can also be null, which means the container is being initialized due to a server restart or manual container rebuild, rather than installation.

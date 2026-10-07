@@ -12,8 +12,36 @@ admin credentials", "expose a web UI") to the constructs, the reference pages, a
 package to copy. Find the recipe before you read this package's neighbours: a package you reach by
 grepping may be non-conformant, and the recipe outranks it.
 
-Work this package's `TODO.md` from top to bottom. Keep `README.md` (architecture, for developers and LLMs) and `instructions.md` (end-user docs) in sync with your changes.
+Freshly scaffolded? Work the
+[New Package Checklist](../start-technologies/projects/start-sdk/docs/src/new-package-checklist.md)
+(or <https://docs.start9.com/packaging/new-package-checklist.html>) from top to bottom. It is a
+guide page, not a file in this repo — read it, don't copy it in.
 
-## Inspecting a running install
+Keep `README.md` (technical reference for an AI support or administering agent) and
+`instructions.md` (end-user docs) in sync with your changes. This file restates neither:
+whoever changes the package has both, so it carries only what they don't — repo mechanics,
+a change that looks right and is not, where the next thing gets added, a naming trap, a
+build or test invocation particular to this repo.
 
-To run a command inside a service's container (read its generated config, grep app logs), use `start-cli package attach <id> -n <subcontainer-name> -- <cmd>`. Select the subcontainer by **name** with `-n` (the name passed to `SubContainer.of` in `main.ts`, e.g. `-n web`) or by image with `-i`. Note: `-s/--subcontainer` matches the internal **Guid**, not the name, so passing a name to `-s` fails with "no matching subcontainers". A service with more than one subcontainer requires a selector; with none given, `attach` falls back to an interactive picker that panics in a non-TTY shell — that's the missing selector, not a TTY requirement.
+**Fix a defect you spot rather than reporting it** — you have the package open and the
+context to be sure. File **a GitHub issue on this repo** only when the call isn't yours to
+make: you can't pin the cause down, two defensible fixes exist, or it's too large to ride on
+the work in hand. An open issue is a report, not a queue — implement one when you're asked
+to or when it's labelled `Approved`, then close it with `Closes #<n>`.
+
+Don't record work in the repo instead: no `TODO.md`, no `NOTES.md`, no `PLAN.md`. What you
+verified, tried, and decided belongs in the commit message and the PR body.
+
+## This repo
+
+<!--
+TODO: write the bullets for this package, then delete this comment.
+
+Only what someone *changing* this package needs and cannot get from README.md or
+instructions.md. What belongs here, and what does not, is set out under
+"AGENTS.md and CLAUDE.md":
+
+  ../start-technologies/projects/start-sdk/docs/src/project-structure.md
+
+A simple package needs none of this — delete the section rather than padding it.
+-->

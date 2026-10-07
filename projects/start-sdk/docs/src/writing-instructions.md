@@ -2,7 +2,7 @@
 
 `instructions.md` is a required file at the root of every StartOS package, alongside `README.md`. Its contents are packed into the s9pk archive and surfaced to the user under the **Instructions** tab on the service details page in StartOS.
 
-Instructions are **for the human running the service** — not for developers, not for AI assistants. They pick up where the marketplace listing left off: by the time someone reads this tab they have seen the short and long description and clicked Install, so don't reintroduce the service. Orient them to what it does _on StartOS_, walk them through getting it usefully running, and point them at upstream documentation when they need to go deeper.
+Instructions are **written for the human running the service** — not for developers, and not a place for the package's internals. AI agents do read this file, but only to learn what the user has been shown: a support agent answers in the terms the user sees here, and an assistant administering the server relies on it to know what the user was walked through. Writing for anyone but the human is what makes it useless to all three. They pick up where the marketplace listing left off: by the time someone reads this tab they have seen the short and long description and clicked Install, so don't reintroduce the service. Orient them to what it does _on StartOS_, walk them through getting it usefully running, and point them at upstream documentation when they need to go deeper.
 
 ## Instructions vs. README — they are not the same file
 
@@ -10,14 +10,16 @@ It is tempting to treat `instructions.md` as a copy of the README. Resist this. 
 
 |                           | README                                                                                           | instructions.md                                                 |
 | ------------------------- | ------------------------------------------------------------------------------------------------ | --------------------------------------------------------------- |
-| **Audience**              | Developers, AI assistants, contributors                                                          | End users running the service on StartOS                        |
+| **Audience**              | AI support and administering agents; developers                                                  | End users running the service on StartOS                        |
 | **Question it answers**   | "How does this package work, and how does it differ from running the upstream service directly?" | "I just installed this — now what? How do I use it on StartOS?" |
 | **Tone**                  | Technical, structured, scannable for parsing                                                     | Practical, instructional, written in second person              |
 | **Versions / image tags** | Avoided (manifest is source of truth)                                                            | Avoided for the same reason                                     |
 | **Upstream behavior**     | "Anything not listed here behaves as upstream documents"                                         | Linked from the Documentation section; never duplicated         |
-| **Surfaced where**        | The package repository on GitHub                                                                 | Inside the StartOS UI, post-install                             |
+| **Surfaced where**        | The package repository, and packed into the `.s9pk`                                              | Inside the StartOS UI, post-install                             |
 
 If your README is a reference manual, your instructions are a quick-start guide for a non-developer who just clicked Install.
+
+A package carries a third documentation file, `AGENTS.md`, for whoever changes the package. Nothing that belongs in it belongs here. For which reader gets which file, see [Who reads this file](writing-readmes.md#who-reads-this-file).
 
 ## What belongs in instructions
 
@@ -25,7 +27,7 @@ A good `instructions.md` covers, roughly in this order:
 
 1. **A brief orientation — usually skip it.** The reader already saw the marketplace short and long description before clicking Install, so don't restate them. The default is to omit this section and go straight to **Documentation**. Add a line only if there is genuinely new context the listing did not cover — a hard ordering constraint, a permanent decision the user is about to make, or similar. "You've installed X" framing is _not_ useful; the reader knows. Don't pad.
 
-2. **Documentation links.** A `## Documentation` section. Port exactly the URLs the manifest previously carried in its `docsUrls` array, each with a few words on what it is ("the upstream admin guide", "the official Foo configuration reference"). Do not add marketing, donation, project-home, or support-channel links — those live elsewhere and were deliberately omitted from `docsUrls`. Link to canonical, stable URLs the upstream maintains — not specific commits, not your own README.
+2. **Documentation links.** A `## Documentation` section. List the upstream documentation URLs, each with a few words on what it is ("the upstream admin guide", "the official Foo configuration reference"). Do not add marketing, donation, project-home, or support-channel links — those live elsewhere. Link to canonical, stable URLs the upstream maintains — not specific commits, not your own README. These bullets are also machine-read; see [Choosing documentation URLs](#choosing-documentation-urls) before writing them.
 
 3. **What it gives you on StartOS** — the practical answer to "why did I just install this?" Keep it concrete: the interfaces it exposes, the data it manages, the experience the StartOS package adds on top of upstream.
 
@@ -35,8 +37,33 @@ A good `instructions.md` covers, roughly in this order:
 
 6. **Important limitations — usually omit.** The default is no Limitations section at all. Add one only if there is a specific, consequential thing the user will be surprised by: a deliberately disabled feature they may go looking for, a hard data caveat, an incompatibility worth flagging up front. Generic caveats ("performance depends on your hardware", "encryption keys are sensitive") are not limitations and do not belong here.
 
-> [!NOTE]
-> Older StartOS manifests carried a `docsUrls` array for upstream documentation links. That field has been removed — those links belong in the `## Documentation` section of this file now, where you can give each one the context a bare URL in the manifest never had.
+### Choosing documentation URLs
+
+The `## Documentation` bullets have a second reader: Start9's support indexer parses them and crawls each URL into the package's upstream-documentation index, and it looks nowhere else. What you list decides what a support agent can answer about the service — and a URL that classifies badly costs a wasted crawl on every indexing run, silently.
+
+**The bullet must parse.** Exactly `- [Title](URL)`, optionally followed by ` — a few words` (em-dash, en-dash, or hyphen), and nothing else on the line. A bullet that opens with prose and puts the link mid-sentence is skipped. The heading is matched as `Documentation` at any depth, and the section ends at the next heading of equal or shallower depth. A package with no parseable bullet gets **no** upstream docs and no instructions indexed at all.
+
+**How a URL is treated:**
+
+| URL                                                                                                                                   | Treated as | What is fetched                                                                                                                                                      |
+| ------------------------------------------------------------------------------------------------------------------------------------- | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GitHub `/blob/` or `/tree/` ending in a file extension; Gitea/Forgejo `/src/branch/…/file.ext`; anything ending `.md`, `.txt`, `.rst` | a file     | that one page                                                                                                                                                        |
+| A bare repo URL, or `/tree/<ref>/<subdir>`                                                                                            | a repo     | every `.md` in the tree, scoped to the subdir (`CONTRIBUTING`, `CHANGELOG`, `LICENSE`, `SECURITY`, `CODE_OF_CONDUCT`, and dot- or underscore-prefixed paths skipped) |
+| Anything else, GitHub wikis included                                                                                                  | a site     | `llms-full.txt`, probed at the URL and then at each parent path; failing that, a breadth-first crawl of the site, bounded only by time                               |
+
+Append `/*` to a site URL — `https://example.org/docs/*` — to confine the crawl to that path.
+
+**Choose accordingly:**
+
+- **A repo docs tree is the best link when the tree _is_ the doc set** — one bounded, canonical fetch. List what it would pull first: a `docs/` folder is often mostly developer documentation, and a hundred pages on internals bury the three on email and admin. When that is the case, link the pages a self-hoster needs instead.
+- **Leave out docs that don't apply to the package.** Upstream install guides describe a deployment the package deliberately does not use, and indexing them teaches support to recommend steps that break a StartOS install.
+- **A dedicated docs site is fine when it publishes `llms-full.txt`** — `curl -sI https://docs.example.org/llms-full.txt` returns 200. Without it the site is crawled, which is acceptable for a small static site and bad for anything large or dynamic. `llms.txt` alone does not help.
+- **Never link a forum, a wiki-as-community, or anything with unbounded user content.** It crawls topic pages, user profiles, and category listings for as long as the crawler runs.
+- **Never link a JS-rendered page.** The crawler is a plain fetch: a ReDoc, Swagger, or single-page-app docs site returns an empty shell. `curl` it and look for prose.
+- **One bullet per distinct source**, aimed at the root the crawler should walk — two bullets into the same site index the same pages twice. A specific page worth citing goes in the prose of the step that needs it.
+- **Avoid commit-pinned URLs.** A `blob/<sha>/` link freezes the index at that commit forever.
+
+One good link beats three that muddy the index.
 
 ## What does not belong in instructions
 
@@ -77,7 +104,7 @@ Use the sections that apply — a trivial service might be two paragraphs and a 
 
 - [Upstream documentation](https://docs.example.org) — what it is in a few words (the config reference, the upstream README, etc.).
 
-(Port exactly the URLs the manifest previously carried in `docsUrls`. Don't add marketing, project-home, donation, or support links here.)
+(Don't add marketing, project-home, donation, or support links here.)
 
 ## What you get on StartOS
 
@@ -124,5 +151,5 @@ Use the sections that apply — a trivial service might be two paragraphs and a 
 - [ ] Every sentence is something the user could act on — no "this is typically triggered automatically by …" plumbing notes.
 - [ ] No hard-coded version numbers, image tags, or secrets.
 - [ ] Limitations section is omitted unless there is a specific, consequential surprise to flag.
-- [ ] A `## Documentation` section ports the URLs the manifest's `docsUrls` previously carried, each with a few words of context. No added marketing / donation / project-home / support links.
+- [ ] A `## Documentation` section lists the upstream documentation URLs, each with a few words of context, one `- [Title](URL) — context` bullet per line, each URL checked against [Choosing documentation URLs](#choosing-documentation-urls). No added marketing / donation / project-home / support links.
 - [ ] Renders cleanly in the StartOS Instructions tab on a real install.

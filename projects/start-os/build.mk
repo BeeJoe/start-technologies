@@ -6,8 +6,9 @@ FIRMWARE_ROMS := projects/start-os/build/firmware/$(PLATFORM) $(shell jq --raw-o
 BUILD_SRC := $(call ls-files, projects/start-os/build/lib) build/lib/scripts/forward-port build/lib/scripts/forward-port6 projects/start-os/build/lib/depends projects/start-os/build/lib/conflicts $(FIRMWARE_ROMS) projects/start-os/build/lib/migration-images/.done
 IMAGE_RECIPE_SRC := $(call ls-files, projects/start-os/build/image-recipe/)
 STARTD_SRC := projects/start-os/startd.service projects/start-os/services.slice projects/start-os/startos-shutdown.service projects/start-os/startos-restart.service $(BUILD_SRC)
+STARTOS_RELEASE_NOTES := projects/start-os/release-notes/$(shell cat $(VERSION_FILE)).md
 COMPILED_TARGETS := target/$(RUST_ARCH)-unknown-linux-musl/$(PROFILE)/startbox target/$(RUST_ARCH)-unknown-linux-musl/release/start-container projects/start-os/container-runtime/rootfs.$(ARCH).squashfs
-STARTOS_TARGETS := $(STARTD_SRC) $(ENVIRONMENT_FILE) $(GIT_HASH_FILE) $(VERSION_FILE) $(COMPILED_TARGETS) target/$(RUST_ARCH)-unknown-linux-musl/release/startos-backup-fs $(PLATFORM_FILE) \
+STARTOS_TARGETS := $(STARTD_SRC) $(ENVIRONMENT_FILE) $(GIT_HASH_FILE) $(VERSION_FILE) $(STARTOS_RELEASE_NOTES) $(COMPILED_TARGETS) target/$(RUST_ARCH)-unknown-linux-musl/release/startos-backup-fs $(PLATFORM_FILE) \
 	$(shell if [ "$(PLATFORM)" = "raspberrypi" ]; then \
 		echo target/aarch64-unknown-linux-musl/release/pi-beep; \
 	fi) \
@@ -22,8 +23,15 @@ STARTOS_TARGETS := $(STARTD_SRC) $(ENVIRONMENT_FILE) $(GIT_HASH_FILE) $(VERSION_
 # Build all StartOS OS-product artifacts (bins + web + container-runtime image).
 start-os: $(STARTOS_TARGETS)
 
+backup-fs-test: $(call ls-files, projects/start-os/backup-fs/src) projects/start-os/backup-fs/Cargo.toml
+	cargo test -p startos-backup-fs --lib -- --skip mount_tests
+
 container-runtime-test: projects/start-os/container-runtime/node_modules/.package-lock.json $(call ls-files, projects/start-os/container-runtime/src) projects/start-os/container-runtime/package.json projects/start-os/container-runtime/tsconfig.json
 	cd projects/start-os/container-runtime && npm test
+
+start-os-scripts-test: projects/start-os/build/lib/scripts/normalize-fstab projects/start-os/build/tests/normalize-fstab-test.sh projects/start-os/build/image-recipe/raspberrypi/img/usr/lib/startos/scripts/init_resize.sh projects/start-os/build/tests/init-resize-test.sh
+	./projects/start-os/build/tests/normalize-fstab-test.sh
+	./projects/start-os/build/tests/init-resize-test.sh
 
 projects/start-os/build/lib/migration-images/.done: projects/start-os/build/save-migration-images.sh
 	ARCH=$(ARCH) ./projects/start-os/build/save-migration-images.sh projects/start-os/build/lib/migration-images
@@ -95,6 +103,7 @@ start-os-install: $(STARTOS_TARGETS)
 	$(call cp,build/env/ENVIRONMENT.txt,$(DESTDIR)/usr/lib/startos/ENVIRONMENT.txt)
 	$(call cp,build/env/GIT_HASH.txt,$(DESTDIR)/usr/lib/startos/GIT_HASH.txt)
 	$(call cp,build/env/VERSION.txt,$(DESTDIR)/usr/lib/startos/VERSION.txt)
+	$(call cp,$(STARTOS_RELEASE_NOTES),$(DESTDIR)/usr/lib/startos/release-notes.md)
 
 start-os-update-overlay: $(STARTOS_TARGETS)
 	@echo "\033[33m!!! THIS WILL ONLY REFLASH YOUR DEVICE IN MEMORY !!!\033[0m"
@@ -120,7 +129,7 @@ start-os-wormhole-squashfs: results/$(BASENAME).squashfs
 	$(eval SQFS_SIZE := $(shell du -s --bytes results/$(BASENAME).squashfs | awk '{print $$1}'))
 	@echo "Paste the following command into the shell of your StartOS server:"
 	@echo
-	@wormhole send results/$(BASENAME).squashfs 2>&1 | awk -Winteractive '/wormhole receive/ { printf "sudo sh -c '"'"'/usr/lib/startos/scripts/prune-images $(SQFS_SIZE) && /usr/lib/startos/scripts/prune-boot && cd /media/startos/images && wormhole receive --accept-file %s && CHECKSUM=$(SQFS_SUM) /usr/lib/startos/scripts/upgrade ./$(BASENAME).squashfs'"'"'\n", $$3 }'
+	@wormhole send results/$(BASENAME).squashfs 2>&1 | awk -Winteractive '/wormhole receive/ { printf "sudo sh -c '"'"'/usr/lib/startos/scripts/prune-images $(SQFS_SIZE) && /usr/lib/startos/scripts/prune-boot && cd /media/startos/images && wormhole receive --accept-file %s && CHECKSUM=$(SQFS_SUM) /usr/lib/startos/scripts/upgrade ./$(BASENAME).squashfs $(SQFS_SUM)'"'"'\n", $$3 }'
 
 start-os-update: $(STARTOS_TARGETS)
 	@if [ -z "$(REMOTE)" ]; then >&2 echo "Must specify REMOTE" && false; fi
@@ -148,7 +157,11 @@ start-os-update-squashfs: results/$(BASENAME).squashfs
 	$(call ssh,'sudo /usr/lib/startos/scripts/prune-images $(SQFS_SIZE)')
 	$(call ssh,'sudo /usr/lib/startos/scripts/prune-boot')
 	$(call cp,results/$(BASENAME).squashfs,/media/startos/images/next.rootfs)
-	$(call ssh,'sudo CHECKSUM=$(SQFS_SUM) /usr/lib/startos/scripts/upgrade /media/startos/images/next.rootfs')
+	$(call ssh,'sudo CHECKSUM=$(SQFS_SUM) /usr/lib/startos/scripts/upgrade /media/startos/images/next.rootfs $(SQFS_SUM)')
+
+start-os-update-from-gha: # update from a CI build rather than a local one (RUN_ID=<id|url>, or BRANCH=<name> for that branch's latest)
+	@if [ -z "$(REMOTE)" ]; then >&2 echo "Must specify REMOTE" && false; fi
+	./scripts/update-from-gha.sh $(if $(RUN_ID),--run "$(RUN_ID)") $(if $(BRANCH),--branch "$(BRANCH)") $(REMOTE)
 
 start-os-emulate-reflash: $(STARTOS_TARGETS)
 	@if [ -z "$(REMOTE)" ]; then >&2 echo "Must specify REMOTE" && false; fi

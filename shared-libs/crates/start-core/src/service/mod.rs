@@ -29,12 +29,12 @@ use url::Url;
 
 use crate::context::{CliContext, RpcContext};
 use crate::db::model::package::{
-    InstalledState, ManifestPreference, PackageState, PackageStateMatchModelRef, TaskSeverity,
-    UpdatingState,
+    InstalledState, ManifestPreference, PackageState, PackageStateMatchModelRef, UpdatingState,
 };
 use crate::disk::mount::filesystem::ReadOnly;
 use crate::disk::mount::guard::{GenericMountGuard, MountGuard};
 use crate::lxc::ContainerId;
+use crate::notifications::{NotificationLevel, notify};
 use crate::prelude::*;
 use crate::rpc_continuations::{Guid, RpcContinuation};
 use crate::s9pk::S9pk;
@@ -42,6 +42,7 @@ use crate::service::action::update_tasks;
 use crate::service::rpc::{ExitParams, InitKind};
 use crate::service::service_map::InstallProgressHandles;
 use crate::service::uninstall::cleanup;
+use crate::status::StatusInfo;
 use crate::util::Never;
 use crate::util::actor::concurrent::ConcurrentActor;
 use crate::util::future::NonDetachingJoinHandle;
@@ -94,6 +95,35 @@ pub async fn get_data_version(id: &PackageId) -> Result<Option<String>, Error> {
     Ok(s.map(|s| s.trim().to_string()))
 }
 
+/// Notify and propagate: a failed rollback must stop the load, not pass for a clean revert.
+async fn report_failed_rollback(
+    ctx: &RpcContext,
+    id: &PackageId,
+    res: Result<(), Error>,
+) -> Result<(), Error> {
+    let Err(e) = res else {
+        return Ok(());
+    };
+    tracing::error!("Failed to restore volumes for {id}: {e}");
+    tracing::debug!("{e:?}");
+    let message = e.to_string();
+    ctx.db
+        .mutate(|db| {
+            notify(
+                db,
+                Some(id.clone()),
+                NotificationLevel::Error,
+                t!("service.mod.rollback-failed-title").to_string(),
+                t!("service.mod.rollback-failed-message", error = message).to_string(),
+                (),
+            )
+        })
+        .await
+        .result
+        .log_err();
+    Err(e)
+}
+
 struct RootCommand(pub String);
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default, TS)]
@@ -127,6 +157,37 @@ impl ServiceRef {
     pub fn weak(&self) -> Weak<Service> {
         Arc::downgrade(&self.0)
     }
+
+    /// Stops the main chain through the actor, which owns run state: marks the status
+    /// Updating and waits for the actor to report the stop. `init()` maps Updating back
+    /// to the recorded run state, so the replacement service — or the old one after a
+    /// crash — comes back the way it was.
+    pub async fn quiesce(&self) -> Result<(), Error> {
+        let id = &self.seed.id;
+        let db = &self.seed.ctx.db;
+        db.mutate(|db| {
+            db.as_public_mut()
+                .as_package_data_mut()
+                .as_idx_mut(id)
+                .or_not_found(id)?
+                .as_status_info_mut()
+                .as_desired_mut()
+                .map_mutate(|s| Ok(s.updating()))
+        })
+        .await
+        .result?;
+        let mut watch = db
+            .watch(
+                format!("/public/packageData/{id}/statusInfo")
+                    .parse()
+                    .unwrap(),
+            )
+            .await
+            .typed::<StatusInfo>();
+        watch.wait_for(|s| s.started.is_none()).await?;
+        Ok(())
+    }
+
     pub async fn uninstall(
         self,
         uninit: ExitParams,
@@ -266,10 +327,10 @@ impl Service {
             .flatten_ok()
             .map(|a| a.and_then(|a| a))
             .try_collect()?;
-        let procedure_id = Guid::new();
+        let event_id = Guid::new();
         for action_id in tasks {
             if let Some(input) = self
-                .get_action_input(procedure_id.clone(), action_id.clone(), Value::Null)
+                .get_action_input(event_id.clone(), action_id.clone(), Value::Null, None)
                 .await
                 .log_err()
                 .flatten()
@@ -289,13 +350,8 @@ impl Service {
                         })?;
                     }
                 }
-                for (_, pde) in db.as_public_mut().as_package_data_mut().as_entries_mut()? {
-                    if pde
-                        .as_tasks()
-                        .de()?
-                        .into_iter()
-                        .any(|(_, t)| t.active && t.task.severity == TaskSeverity::Critical)
-                    {
+                for (id, pde) in db.as_public_mut().as_package_data_mut().as_entries_mut()? {
+                    if pde.has_blocking_task(&id)? {
                         pde.as_status_info_mut().stop()?;
                     }
                 }
@@ -310,7 +366,7 @@ impl Service {
     async fn new(
         ctx: RpcContext,
         s9pk: S9pk,
-        procedure_id: Guid,
+        event_id: Guid,
         init_kind: Option<InitKind>,
         recovery_source: Option<impl GenericMountGuard>,
         init_progress: Option<crate::progress::PhaseProgressTrackerHandle>,
@@ -328,6 +384,19 @@ impl Service {
             .await
             .result?;
         let persistent_container = PersistentContainer::new(&ctx, s9pk).await?;
+        let required =
+            effects::dependency::required_base_dependencies(&persistent_container.s9pk).await?;
+        ctx.db
+            .mutate(|db| {
+                db.as_public_mut()
+                    .as_package_data_mut()
+                    .as_idx_mut(&id)
+                    .or_not_found(&id)?
+                    .as_current_dependencies_mut()
+                    .ser(&required)
+            })
+            .await
+            .result?;
         let seed = Arc::new(ServiceActorSeed {
             id,
             persistent_container,
@@ -355,7 +424,7 @@ impl Service {
         service
             .seed
             .persistent_container
-            .init(service.weak(), procedure_id, init_kind)
+            .init(service.weak(), event_id, init_kind)
             .await?;
         service.recheck_tasks().await?;
         if let Some(recovery_guard) = recovery_guard {
@@ -426,15 +495,21 @@ impl Service {
                             tracing::error!("Error installing service: {e}");
                             tracing::debug!("{e:?}")
                         }) {
-                            crate::volume::remove_install_backup(id).await.log_err();
+                            crate::volume::InstallBackup::of(id)
+                                .remove()
+                                .await
+                                .log_err();
                             return Ok(Some(service));
                         }
                     }
                 }
-                cleanup(ctx, id, false).await.log_err();
-                crate::volume::restore_volumes_from_install_backup(id)
-                    .await
-                    .log_err();
+                let backup = crate::volume::InstallBackup::of(id);
+                backup.resolve_pending().await.log_err();
+                // Data that predates the install can lack a backup.
+                let keep_volumes = !backup.is_fresh().await;
+                cleanup(ctx, id, keep_volumes).await.log_err();
+                report_failed_rollback(ctx, id, backup.restore().await).await?;
+                backup.remove().await.log_err();
                 ctx.db
                     .mutate(|v| v.as_public_mut().as_package_data_mut().remove(id))
                     .await
@@ -469,7 +544,10 @@ impl Service {
                             tracing::error!("Error installing service: {e}");
                             tracing::debug!("{e:?}")
                         }) {
-                            crate::volume::remove_install_backup(id).await.log_err();
+                            crate::volume::InstallBackup::of(id)
+                                .remove()
+                                .await
+                                .log_err();
                             return Ok(Some(service));
                         }
                     }
@@ -505,17 +583,23 @@ impl Service {
                         })
                         .await
                         .result?;
-                    // Roll the filesystem back before reloading the old service, so its
-                    // init sees old-version data instead of an impossible new->old migration.
-                    crate::volume::restore_volumes_from_install_backup(id)
-                        .await
-                        .log_err();
+                    // Roll the filesystem back before reloading the old service; a failed
+                    // rollback is fatal — the old service must not start on new-version data.
+                    report_failed_rollback(
+                        ctx,
+                        id,
+                        crate::volume::InstallBackup::of(id).restore().await,
+                    )
+                    .await?;
                     handle_installed(s9pk).await
                 }
                 .await
                 {
                     Ok(service) => {
-                        crate::volume::remove_install_backup(id).await.log_err();
+                        crate::volume::InstallBackup::of(id)
+                            .remove()
+                            .await
+                            .log_err();
                         Ok(service)
                     }
                     Err(e) => {
@@ -621,7 +705,7 @@ impl Service {
         crate::volume::ensure_volume_root(&manifest.id).await?;
         let developer_key = s9pk.as_archive().signer();
         let icon = s9pk.icon_data_url().await?;
-        let procedure_id = Guid::new();
+        let event_id = Guid::new();
         let (finalization_progress, overall_progress) = match progress {
             Some(InstallProgressHandles {
                 finalization_progress,
@@ -632,7 +716,7 @@ impl Service {
         let service = Self::new(
             ctx.clone(),
             s9pk,
-            procedure_id.clone(),
+            event_id.clone(),
             Some(kind),
             recovery_source,
             finalization_progress,
@@ -647,7 +731,7 @@ impl Service {
                     .as_idx_mut(&manifest.id)
                     .or_not_found(&manifest.id)?;
                 let actions = entry.as_actions().keys()?;
-                if entry.as_tasks_mut().mutate(|t| {
+                entry.as_tasks_mut().mutate(|t| {
                     t.retain(|id, v| {
                         v.task.package_id != manifest.id
                             || if actions.contains(&v.task.action_id) {
@@ -663,9 +747,9 @@ impl Service {
                                 false
                             }
                     });
-                    Ok(t.iter()
-                        .any(|(_, t)| t.active && t.task.severity == TaskSeverity::Critical))
-                })? {
+                    Ok(())
+                })?;
+                if entry.has_blocking_task(&manifest.id)? {
                     entry.as_status_info_mut().stop()?;
                 }
                 entry

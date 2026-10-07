@@ -3,7 +3,7 @@ use std::future::Future;
 use std::io::Cursor;
 use std::mem::MaybeUninit;
 use std::os::unix::prelude::MetadataExt;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::pin::Pin;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -243,13 +243,33 @@ pub async fn copy_and_shutdown<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
     Ok(())
 }
 
-pub fn dir_size<'a, P: AsRef<Path> + 'a + Send + Sync>(
+pub fn dir_size<'a, P: AsRef<Path>>(
     path: P,
     ctr: Option<&'a Counter>,
 ) -> BoxFuture<'a, Result<u64, std::io::Error>> {
+    dir_size_inner(path.as_ref().to_owned(), None, ctr)
+}
+
+pub(crate) fn dir_size_excluding<'a, P: AsRef<Path>>(
+    path: P,
+    excluded: &'a Path,
+    ctr: Option<&'a Counter>,
+) -> BoxFuture<'a, Result<u64, std::io::Error>> {
+    dir_size_inner(path.as_ref().to_owned(), Some(excluded), ctr)
+}
+
+fn dir_size_inner<'a>(
+    path: PathBuf,
+    excluded: Option<&'a Path>,
+    ctr: Option<&'a Counter>,
+) -> BoxFuture<'a, Result<u64, std::io::Error>> {
     async move {
-        tokio_stream::wrappers::ReadDirStream::new(tokio::fs::read_dir(path.as_ref()).await?)
+        tokio_stream::wrappers::ReadDirStream::new(tokio::fs::read_dir(&path).await?)
             .try_fold(0, |acc, e| async move {
+                let path = e.path();
+                if excluded.is_some_and(|excluded| excluded == path) {
+                    return Ok(acc);
+                }
                 let m = e.metadata().await?;
                 Ok(acc
                     + if m.is_file() {
@@ -258,7 +278,7 @@ pub fn dir_size<'a, P: AsRef<Path> + 'a + Send + Sync>(
                         }
                         m.len()
                     } else if m.is_dir() {
-                        dir_size(e.path(), ctr).await?
+                        dir_size_inner(path, excluded, ctr).await?
                     } else {
                         0
                     })
@@ -658,14 +678,37 @@ impl<'a, R: AsyncRead> AsyncRead for CountingReader<'a, R> {
     }
 }
 
-pub fn dir_copy<'a, P0: AsRef<Path> + 'a + Send + Sync, P1: AsRef<Path> + 'a + Send + Sync>(
+pub fn dir_copy<'a, P0: AsRef<Path>, P1: AsRef<Path>>(
     src: P0,
     dst: P1,
     ctr: Option<&'a Counter>,
 ) -> BoxFuture<'a, Result<(), crate::Error>> {
+    dir_copy_inner(src.as_ref().to_owned(), dst.as_ref().to_owned(), None, ctr)
+}
+
+pub(crate) fn dir_copy_excluding<'a, P0: AsRef<Path>, P1: AsRef<Path>>(
+    src: P0,
+    dst: P1,
+    excluded: &'a Path,
+    ctr: Option<&'a Counter>,
+) -> BoxFuture<'a, Result<(), crate::Error>> {
+    dir_copy_inner(
+        src.as_ref().to_owned(),
+        dst.as_ref().to_owned(),
+        Some(excluded),
+        ctr,
+    )
+}
+
+fn dir_copy_inner<'a>(
+    src: PathBuf,
+    dst: PathBuf,
+    excluded: Option<&'a Path>,
+    ctr: Option<&'a Counter>,
+) -> BoxFuture<'a, Result<(), crate::Error>> {
     async move {
         let m = tokio::fs::metadata(&src).await?;
-        let dst_path = dst.as_ref();
+        let dst_path = dst.as_path();
         tokio::fs::create_dir_all(&dst_path).await.with_ctx(|_| {
             (
                 crate::ErrorKind::Filesystem,
@@ -696,19 +739,24 @@ pub fn dir_copy<'a, P0: AsRef<Path> + 'a + Send + Sync, P1: AsRef<Path> + 'a + S
                 format!("chown {}", dst_path.display()),
             )
         })?;
-        tokio_stream::wrappers::ReadDirStream::new(tokio::fs::read_dir(src.as_ref()).await?)
+        tokio_stream::wrappers::ReadDirStream::new(tokio::fs::read_dir(&src).await?)
             .map_err(|e| crate::Error::new(e, crate::ErrorKind::Filesystem))
             .try_for_each(|e| async move {
-                let m = e.metadata().await?;
                 let src_path = e.path();
+                if excluded.is_some_and(|excluded| excluded == src_path) {
+                    return Ok(());
+                }
+                let m = e.metadata().await?;
                 let dst_path = dst_path.join(e.file_name());
                 if m.is_file() {
-                    let mut dst_file = create_file(&dst_path).await.with_ctx(|_| {
-                        (
-                            crate::ErrorKind::Filesystem,
-                            format!("create {}", dst_path.display()),
-                        )
-                    })?;
+                    let mut dst_file = create_file_mod(&dst_path, m.mode() & 0o7777)
+                        .await
+                        .with_ctx(|_| {
+                            (
+                                crate::ErrorKind::Filesystem,
+                                format!("create {}", dst_path.display()),
+                            )
+                        })?;
                     let mut rdr = open_file(&src_path).await.with_ctx(|_| {
                         (
                             crate::ErrorKind::Filesystem,
@@ -730,6 +778,7 @@ pub fn dir_copy<'a, P0: AsRef<Path> + 'a + Send + Sync, P1: AsRef<Path> + 'a + S
                     dst_file.shutdown().await?;
                     dst_file.sync_all().await?;
                     drop(dst_file);
+                    let permissions = m.permissions();
                     let tmp_dst_path = dst_path.clone();
                     tokio::task::spawn_blocking(move || {
                         nix::unistd::chown(
@@ -746,8 +795,17 @@ pub fn dir_copy<'a, P0: AsRef<Path> + 'a + Send + Sync, P1: AsRef<Path> + 'a + S
                             format!("chown {}", dst_path.display()),
                         )
                     })?;
+                    // Creation and chown can clear source mode bits.
+                    tokio::fs::set_permissions(&dst_path, permissions)
+                        .await
+                        .with_ctx(|_| {
+                            (
+                                crate::ErrorKind::Filesystem,
+                                format!("chmod {}", dst_path.display()),
+                            )
+                        })?;
                 } else if m.is_dir() {
-                    dir_copy(src_path, dst_path, ctr).await?;
+                    dir_copy_inner(src_path, dst_path, excluded, ctr).await?;
                 } else if m.file_type().is_symlink() {
                     tokio::fs::symlink(
                         tokio::fs::read_link(&src_path).await.with_ctx(|_| {
@@ -765,7 +823,6 @@ pub fn dir_copy<'a, P0: AsRef<Path> + 'a + Send + Sync, P1: AsRef<Path> + 'a + S
                             format!("cp -P {} -> {}", src_path.display(), dst_path.display()),
                         )
                     })?;
-                    // Do not set permissions (see https://unix.stackexchange.com/questions/87200/change-permissions-for-a-symbolic-link)
                 }
                 Ok(())
             })
@@ -1719,22 +1776,39 @@ fn canonicalize_rec(path: &Path, create_parent: bool) -> BoxFuture<'_, Result<Pa
         match tokio::fs::canonicalize(path).await {
             Ok(canonical) => Ok(canonical),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                let Some(file_name) = path.file_name() else {
+                let mut components = path.components();
+                let Some(last) = components.next_back() else {
                     return Err(e).with_ctx(|_| {
                         (ErrorKind::Filesystem, lazy_format!("canonicalize {path:?}"))
                     });
                 };
-                let parent = path.parent().unwrap_or(Path::new("."));
+                let parent = components.as_path();
+                let parent = if parent.as_os_str().is_empty() {
+                    Path::new(".")
+                } else {
+                    parent
+                };
                 if create_parent {
                     // short-circuit: create the whole missing chain at once
                     tokio::fs::create_dir_all(parent).await.with_ctx(|_| {
                         (ErrorKind::Filesystem, lazy_format!("mkdir -p {parent:?}"))
                     })?;
                 }
-                // resolve the first existing ancestor, then re-append the tail
-                Ok(canonicalize_rec(parent, create_parent)
-                    .await?
-                    .join(file_name))
+                // resolve the first existing ancestor, then re-append the tail.
+                // A `..` hidden behind a not-yet-existing component cannot be
+                // resolved now, but the kernel would resolve it at use time —
+                // fold it lexically instead of re-appending it verbatim.
+                let mut resolved = canonicalize_rec(parent, create_parent).await?;
+                match last {
+                    Component::ParentDir => {
+                        resolved.pop();
+                    }
+                    Component::Normal(name) => {
+                        resolved.push(name);
+                    }
+                    _ => {}
+                }
+                Ok(resolved)
             }
             Err(e) => {
                 Err(e).with_ctx(|_| (ErrorKind::Filesystem, lazy_format!("canonicalize {path:?}")))
@@ -1815,5 +1889,124 @@ impl Drop for AtomicFile {
             let path = std::mem::take(&mut self.tmp_path);
             tokio::spawn(async move { tokio::fs::remove_file(path).await.log_err() });
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[tokio::test]
+    async fn directory_helpers_exclude_source_path() {
+        let root = PathBuf::from(format!(
+            "/tmp/dir-copy-test-{}-{}",
+            std::process::id(),
+            rand::random::<u64>()
+        ));
+        let src = root.join("src");
+        let dst = root.join("dst");
+        let excluded = src.join("tmp");
+        tokio::fs::create_dir_all(&excluded).await.unwrap();
+        tokio::fs::write(src.join("keep"), b"keep").await.unwrap();
+        tokio::fs::write(excluded.join("skip"), b"skip")
+            .await
+            .unwrap();
+
+        let size = Counter::new(0, std::sync::atomic::Ordering::Relaxed);
+        assert_eq!(
+            dir_size_excluding(&src, &excluded, Some(&size))
+                .await
+                .unwrap(),
+            4
+        );
+        assert_eq!(size.load(), 4);
+
+        let copied = Counter::new(0, std::sync::atomic::Ordering::Relaxed);
+        dir_copy_excluding(&src, &dst, &excluded, Some(&copied))
+            .await
+            .unwrap();
+        assert_eq!(tokio::fs::read(dst.join("keep")).await.unwrap(), b"keep");
+        assert_eq!(copied.load(), 4);
+        assert_eq!(
+            tokio::fs::metadata(dst.join("tmp"))
+                .await
+                .unwrap_err()
+                .kind(),
+            std::io::ErrorKind::NotFound
+        );
+
+        tokio::fs::remove_dir_all(root).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn dir_copy_preserves_file_modes() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let root = PathBuf::from(format!(
+            "/tmp/dir-copy-mode-test-{}-{}",
+            std::process::id(),
+            rand::random::<u64>()
+        ));
+        let src = root.join("src");
+        let dst = root.join("dst");
+        let modes = [
+            ("secret", 0o600),
+            ("script", 0o755),
+            ("plain", 0o644),
+            ("umask", 0o666),
+            ("special", 0o6755),
+        ];
+        tokio::fs::create_dir_all(&src).await.unwrap();
+        for (name, mode) in modes {
+            let path = src.join(name);
+            tokio::fs::write(&path, name).await.unwrap();
+            tokio::fs::set_permissions(&path, std::fs::Permissions::from_mode(mode))
+                .await
+                .unwrap();
+        }
+
+        dir_copy(&src, &dst, None).await.unwrap();
+
+        for (name, mode) in modes {
+            let copied = tokio::fs::metadata(dst.join(name)).await.unwrap();
+            assert_eq!(copied.permissions().mode() & 0o7777, mode, "{name}");
+        }
+
+        tokio::fs::remove_dir_all(root).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn canonicalize_folds_parent_components_in_missing_tails() {
+        let tmp = PathBuf::from(format!("/tmp/canonicalize-test-{}", std::process::id()));
+        let base = tmp.join("base");
+        tokio::fs::create_dir_all(base.join("inner")).await.unwrap();
+        let canonical_base = tokio::fs::canonicalize(&base).await.unwrap();
+
+        // a `..` hidden behind a missing component folds lexically
+        assert_eq!(
+            canonicalize(base.join("missing/../inner"), false)
+                .await
+                .unwrap(),
+            canonical_base.join("inner")
+        );
+        // folding can climb above missing components into the existing prefix
+        assert_eq!(
+            canonicalize(base.join("missing/../../x"), false)
+                .await
+                .unwrap(),
+            canonical_base.parent().unwrap().join("x")
+        );
+        // terminal `..`
+        assert_eq!(
+            canonicalize(base.join("missing/.."), false).await.unwrap(),
+            canonical_base
+        );
+        // existing paths are still kernel-resolved
+        assert_eq!(
+            canonicalize(base.join("inner"), false).await.unwrap(),
+            canonical_base.join("inner")
+        );
+
+        tokio::fs::remove_dir_all(&tmp).await.ok();
     }
 }

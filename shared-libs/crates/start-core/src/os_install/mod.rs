@@ -54,11 +54,43 @@ pub fn partition_for(disk: impl AsRef<Path>, idx: u32) -> PathBuf {
     } else {
         return Default::default();
     };
-    if leaf.ends_with(|c: char| c.is_ascii_digit()) {
+    if root.parent() == Some(Path::new("/dev/disk")) {
+        root.join(format!("{}-part{}", leaf, idx))
+    } else if leaf.ends_with(|c: char| c.is_ascii_digit()) {
         root.join(format!("{}p{}", leaf, idx))
     } else {
         root.join(format!("{}{}", leaf, idx))
     }
+}
+
+pub fn same_device(a: &Path, b: &Path) -> bool {
+    match (std::fs::canonicalize(a), std::fs::canonicalize(b)) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => false,
+    }
+}
+
+fn parse_partuuid(output: &[u8]) -> Option<&str> {
+    let partuuid = std::str::from_utf8(output).ok()?.trim();
+    (!partuuid.is_empty() && !partuuid.contains(char::is_whitespace)).then_some(partuuid)
+}
+
+async fn fstab_source(partition: &Path) -> Result<String, Error> {
+    let output = Command::new("blkid")
+        .args(["-p", "-s", "PART_ENTRY_UUID", "-o", "value"])
+        .arg(partition)
+        .invoke(ErrorKind::BlockDevice)
+        .await?;
+    let partuuid = parse_partuuid(&output).ok_or_else(|| {
+        Error::new(
+            eyre!(t!(
+                "os-install.invalid-partuuid",
+                partition = partition.display()
+            )),
+            ErrorKind::BlockDevice,
+        )
+    })?;
+    Ok(format!("PARTUUID={partuuid}"))
 }
 
 async fn partition(
@@ -78,34 +110,6 @@ async fn partition(
     }
 }
 
-async fn get_block_device_size(path: impl AsRef<Path>) -> Result<u64, Error> {
-    let path = path.as_ref();
-    let device_name = path.file_name().and_then(|s| s.to_str()).ok_or_else(|| {
-        Error::new(
-            eyre!("Invalid block device path: {}", path.display()),
-            ErrorKind::BlockDevice,
-        )
-    })?;
-    let size_path = Path::new("/sys/block").join(device_name).join("size");
-    let sectors: u64 = tokio::fs::read_to_string(&size_path)
-        .await
-        .with_ctx(|_| {
-            (
-                ErrorKind::BlockDevice,
-                format!("reading {}", size_path.display()),
-            )
-        })?
-        .trim()
-        .parse()
-        .map_err(|e| {
-            Error::new(
-                eyre!("Failed to parse block device size: {}", e),
-                ErrorKind::BlockDevice,
-            )
-        })?;
-    Ok(sectors * 512)
-}
-
 #[derive(Deserialize, Serialize, Parser, TS)]
 #[group(skip)]
 #[serde(rename_all = "camelCase")]
@@ -123,7 +127,7 @@ pub struct InstallOsParams {
 #[command(rename_all = "kebab-case")]
 struct DataDrive {
     #[arg(long = "data-drive", help = "help.arg.data-drive-path")]
-    logicalname: PathBuf,
+    stable_path: PathBuf,
     #[arg(long, help = "help.arg.wipe-drive")]
     wipe: bool,
 }
@@ -142,14 +146,24 @@ enum DataDrivePlan {
     Attach(InternedString),
 }
 
-/// Resolve a "Preserve" selection to the pool it will attach, or fail fast.
-///
-/// The drive pickers only offer whole disks, but a 0.3.x single-drive install
-/// keeps its pool on a *partition* of the disk, which the installer can only
-/// preserve when the OS shares the drive (it rewrites the OS partitions around
-/// the protected data partition). The old behavior fell through to creating a
-/// fresh pool whenever the lookup missed — silently reformatting the very
-/// drive the user asked to preserve.
+fn unknown_disk(requested: &Path) -> Error {
+    Error::new(
+        eyre!(t!("os-install.unknown-disk", disk = requested.display())),
+        ErrorKind::DiskManagement,
+    )
+}
+
+fn is_listed(disks: &[DiskInfo], requested: &Path) -> bool {
+    disks.iter().any(|disk| {
+        disk.stable_path == requested
+            || disk
+                .partitions
+                .iter()
+                .any(|partition| partition.stable_path == requested)
+    })
+}
+
+/// Resolves preservation before installation mutates disks.
 fn plan_data_drive(
     disks: &[DiskInfo],
     os_drive: Option<&Path>,
@@ -158,8 +172,8 @@ fn plan_data_drive(
     if data_drive.wipe {
         return Ok(DataDrivePlan::Create);
     }
-    let target = data_drive.logicalname.as_path();
-    let disk = disks.iter().find(|d| d.logicalname == target);
+    let target = data_drive.stable_path.as_path();
+    let disk = disks.iter().find(|d| d.stable_path == target);
     let disk_pool = disk.and_then(|d| d.guid.as_ref().filter(|g| is_startos_pool_guid(g)).cloned());
     let partition_pool = disk.and_then(|d| {
         d.partitions.iter().find_map(|p| {
@@ -167,7 +181,7 @@ fn plan_data_drive(
                 .as_ref()
                 .filter(|g| is_startos_pool_guid(g))
                 .cloned()
-                .map(|g| (p.logicalname.clone(), g))
+                .map(|g| (p.stable_path.clone(), g))
         })
     });
 
@@ -179,7 +193,7 @@ fn plan_data_drive(
         if let Some(guid) = disks.iter().find_map(|d| {
             d.partitions
                 .iter()
-                .find(|p| p.logicalname == target)
+                .find(|p| p.stable_path == target)
                 .and_then(|p| p.guid.as_ref().filter(|g| is_startos_pool_guid(g)).cloned())
         }) {
             return Ok(DataDrivePlan::Attach(guid));
@@ -245,6 +259,107 @@ pub struct InstallOsResult {
     pub mok_enrolled: bool,
 }
 
+/// The OS root of a previous install on this disk: the first partition whose
+/// `config` completed setup (carries a `disk.guid`, written on setup completion).
+/// Identified by content rather than by label, so that an install predating any
+/// particular labelling scheme is still found. A config without `disk.guid` never
+/// reached setup — including the fresh default a failed earlier attempt of this
+/// very install left behind, which must not be mistaken for the real config.
+/// Only valid before `partition`, which rewrites the OS partitions and takes that
+/// filesystem with them.
+async fn previous_os_root(disk_path: &Path) -> Option<PathBuf> {
+    for idx in 1..=16 {
+        let part = partition_for(disk_path, idx);
+        if tokio::fs::metadata(&part).await.is_err() {
+            continue;
+        }
+        let guard =
+            match TmpMountGuard::mount(&BlockDev::new(part.clone()), MountType::ReadOnly).await {
+                Ok(guard) => guard,
+                Err(e) => {
+                    // Most partitions on the disk legitimately are not a StartOS root.
+                    tracing::debug!("not a previous StartOS root: {}: {e}", part.display());
+                    continue;
+                }
+            };
+        let has_guid = tokio::fs::metadata(guard.path().join("config/disk.guid"))
+            .await
+            .map_or(false, |m| m.is_file());
+        guard.unmount().await.log_err();
+        if has_guid {
+            return Some(part);
+        }
+    }
+    None
+}
+
+const CONFIG_BAK: &str = "/tmp/config.bak";
+const CONFIG_BAK_STAGED: &str = "/tmp/config.bak.staged";
+/// Records which disk CONFIG_BAK was preserved from: /tmp survives a failed install
+/// attempt within one boot, and only a leftover from this same disk may be restored.
+const CONFIG_BAK_SRC: &str = "/tmp/config.bak.src";
+
+async fn clear_config_bak() -> Result<(), Error> {
+    delete_dir(CONFIG_BAK).await?;
+    delete_file(CONFIG_BAK_SRC).await
+}
+
+async fn config_bak_matches(disk_path: &Path) -> bool {
+    tokio::fs::read_to_string(CONFIG_BAK_SRC)
+        .await
+        .map_or(false, |s| Path::new(s.trim()) == disk_path)
+}
+
+/// Copy the previous install's config aside, for `install_os_to` to restore once the
+/// disk has been rewritten.
+///
+/// Errors fail the install. This runs before `partition` touches a byte, so aborting
+/// costs the user a retry, whereas continuing would let `mkfs` destroy the only copy
+/// of a config we were asked to keep.
+async fn preserve_config(disk_path: &Path) -> Result<(), Error> {
+    let Some(old_root) = previous_os_root(disk_path).await else {
+        tracing::info!(
+            "no previous StartOS root on {}; nothing to preserve",
+            disk_path.display()
+        );
+        // A leftover backup from an earlier attempt in this boot is only this disk's
+        // if the marker says so — anything else would restore another disk's config.
+        if !config_bak_matches(disk_path).await {
+            clear_config_bak().await?;
+        }
+        return Ok(());
+    };
+    tracing::info!("preserving config from {}", old_root.display());
+
+    let guard = TmpMountGuard::mount(&BlockDev::new(old_root), MountType::ReadOnly).await?;
+    let res = async {
+        // Staged, then renamed: the restore takes whatever sits at CONFIG_BAK, so a
+        // half-copied tree must never occupy it. Pruning the copy rather than the
+        // original also leaves the previous install untouched if this fails.
+        // Anything added here must leave overlay/var/lib/dkms and overlay/etc/shadow
+        // alone — they hold the Secure Boot MOK key and the password that enrolls it.
+        delete_dir(CONFIG_BAK_STAGED).await?;
+        clear_config_bak().await?;
+        Command::new("cp")
+            .arg("-r")
+            .arg(guard.path().join("config"))
+            .arg(CONFIG_BAK_STAGED)
+            .invoke(crate::ErrorKind::Filesystem)
+            .await?;
+        delete_file(Path::new(CONFIG_BAK_STAGED).join("upgrade")).await?;
+        delete_file(Path::new(CONFIG_BAK_STAGED).join("overlay/etc/hostname")).await?;
+        delete_file(Path::new(CONFIG_BAK_STAGED).join("disk.guid")).await?;
+        delete_dir(Path::new(CONFIG_BAK_STAGED).join("overlay/lib")).await?;
+        delete_dir(Path::new(CONFIG_BAK_STAGED).join("overlay/usr/lib")).await?;
+        tokio::fs::rename(CONFIG_BAK_STAGED, CONFIG_BAK).await?;
+        write_file_atomic(CONFIG_BAK_SRC, format!("{}\n", disk_path.display())).await?;
+        Ok::<_, Error>(())
+    }
+    .await;
+    guard.unmount().await?;
+    res
+}
+
 pub async fn install_os_to(
     squashfs_path: impl AsRef<Path>,
     disk_path: impl AsRef<Path>,
@@ -257,6 +372,19 @@ pub async fn install_os_to(
     let squashfs_path = squashfs_path.as_ref();
     let disk_path = disk_path.as_ref();
     let protect = protect.as_ref().map(|p| p.as_ref());
+
+    // Must precede `partition`, which rewrites the OS partitions: afterwards the
+    // previous root is gone, so the backup finds nothing and a preserve install comes
+    // back with an empty config — taking with it, among other things, the MOK key whose
+    // certificate is already enrolled in firmware, leaving Secure Boot refusing every
+    // module signed with its replacement.
+    if protect.is_some() {
+        preserve_config(disk_path).await?;
+    } else {
+        // The restore below is unconditional, so a run that preserves nothing must not
+        // inherit a backup an earlier attempt in this boot left behind.
+        clear_config_bak().await?;
+    }
 
     let part_info = partition(disk_path, capacity, partition_table, protect, use_efi).await?;
 
@@ -282,34 +410,6 @@ pub async fn install_os_to(
         .invoke(crate::ErrorKind::DiskManagement)
         .await?;
 
-    if protect.is_some() {
-        if let Ok(guard) =
-            TmpMountGuard::mount(&BlockDev::new(part_info.root.clone()), MountType::ReadWrite).await
-        {
-            if let Err(e) = async {
-                // cp -r ${guard}/config /tmp/config
-                delete_file(guard.path().join("config/upgrade")).await?;
-                delete_file(guard.path().join("config/overlay/etc/hostname")).await?;
-                delete_file(guard.path().join("config/disk.guid")).await?;
-                delete_dir(guard.path().join("config/overlay/lib")).await?;
-                delete_dir(guard.path().join("config/overlay/usr/lib")).await?;
-                Command::new("cp")
-                    .arg("-r")
-                    .arg(guard.path().join("config"))
-                    .arg("/tmp/config.bak")
-                    .invoke(crate::ErrorKind::Filesystem)
-                    .await?;
-                Ok::<_, Error>(())
-            }
-            .await
-            {
-                tracing::error!("Error recovering previous config: {e}");
-                tracing::debug!("{e:?}");
-            }
-            guard.unmount().await?;
-        }
-    }
-
     Command::new("mkfs.btrfs")
         .arg("-f")
         .arg(&part_info.root)
@@ -327,11 +427,11 @@ pub async fn install_os_to(
 
     let config_path = rootfs.path().join("config");
 
-    if tokio::fs::metadata("/tmp/config.bak").await.is_ok() {
+    if tokio::fs::metadata(CONFIG_BAK).await.is_ok() {
         crate::util::io::delete_dir(&config_path).await?;
         Command::new("cp")
             .arg("-r")
-            .arg("/tmp/config.bak")
+            .arg(CONFIG_BAK)
             .arg(&config_path)
             .invoke(crate::ErrorKind::Filesystem)
             .await?;
@@ -432,17 +532,17 @@ pub async fn install_os_to(
         None
     };
 
+    let boot_source = fstab_source(&part_info.boot).await?;
+    let efi_source = match part_info.extra_boot.get("efi") {
+        Some(efi) => fstab_source(efi).await?,
+        None => "# N/A".to_owned(),
+    };
     tokio::fs::write(
         overlay.path().join("etc/fstab"),
         format!(
             include_str!("fstab.template"),
-            boot = part_info.boot.display(),
-            efi = part_info
-                .extra_boot
-                .get("efi")
-                .map(|p| p.display().to_string())
-                .unwrap_or_else(|| "# N/A".to_owned()),
-            root = part_info.root.display(),
+            boot = boot_source,
+            efi = efi_source,
         ),
     )
     .await?;
@@ -475,10 +575,9 @@ pub async fn install_os_to(
 
         crate::util::mok::sign_unsigned_modules(overlay.path()).await?;
 
-        let mok_pub = overlay
-            .path()
-            .join(crate::util::mok::DKMS_MOK_PUB.trim_start_matches('/'));
-        match crate::util::mok::enroll_mok(&mok_pub).await {
+        // Only stages an enrollment if the target already carries a password; a fresh
+        // install has none until setup, which enrolls it then.
+        match crate::util::mok::enroll_mok(overlay.path()).await {
             Ok(enrolled) => mok_enrolled = enrolled,
             Err(e) => tracing::warn!("MOK enrollment failed: {e}"),
         }
@@ -492,6 +591,7 @@ pub async fn install_os_to(
             _ => &mut install,
         };
     } else {
+        install.arg("--force-extra-removable");
         match arch {
             "x86_64" => install.arg("--target=x86_64-efi"),
             "aarch64" => install.arg("--target=arm64-efi"),
@@ -570,6 +670,20 @@ async fn install_os_inner(
     }: InstallOsParams,
 ) -> Result<SetupInfo, Error> {
     let disks = crate::disk::util::list(&Default::default(), None).await?;
+    let os_disk = os_drive
+        .as_deref()
+        .map(|requested| {
+            disks
+                .iter()
+                .find(|disk| disk.stable_path == requested)
+                .ok_or_else(|| unknown_disk(requested))
+        })
+        .transpose()?;
+    if let Some(dd) = &data_drive {
+        if !is_listed(&disks, &dd.stable_path) {
+            return Err(unknown_disk(&dd.stable_path));
+        }
+    }
 
     // Decide the data-drive plan before any disk is written: if "Preserve"
     // can't resolve to an existing pool, fail here — never fall through to
@@ -583,7 +697,7 @@ async fn install_os_inner(
     // booted from the installed OS, so we load the running setup.json and just
     // provision the data drive into it. `data_part` is the data partition the
     // installer carved on the OS drive (install path only).
-    let (mut setup_info, data_part) = if let Some(os_drive) = &os_drive {
+    let (mut setup_info, data_part) = if let Some(disk) = os_disk {
         // Drop any rootfs/config mounts a prior install left pinned, so a retry
         // doesn't fight itself for the target partition.
         let prior = ctx.install_rootfs.mutate(|s| s.take());
@@ -596,16 +710,6 @@ async fn install_os_inner(
             }
         }
 
-        let disk = disks
-            .iter()
-            .find(|d| &d.logicalname == os_drive)
-            .ok_or_else(|| {
-                Error::new(
-                    eyre!("Unknown disk {}", os_drive.display()),
-                    crate::ErrorKind::DiskManagement,
-                )
-            })?;
-
         let protect: Option<PathBuf> = data_drive.as_ref().and_then(|dd| {
             if dd.wipe {
                 return None;
@@ -614,14 +718,14 @@ async fn install_os_inner(
                 .guid
                 .as_ref()
                 .map_or(false, |g| is_startos_pool_guid(g))
-                && disk.logicalname == dd.logicalname
+                && disk.stable_path == dd.stable_path
             {
-                return Some(disk.logicalname.clone());
+                return Some(disk.stable_path.clone());
             }
             disk.partitions
                 .iter()
                 .find(|p| p.guid.as_ref().map_or(false, |g| is_startos_pool_guid(g)))
-                .map(|p| p.logicalname.clone())
+                .map(|p| p.stable_path.clone())
         });
 
         let use_efi = tokio::fs::metadata("/sys/firmware/efi").await.is_ok();
@@ -632,7 +736,7 @@ async fn install_os_inner(
             mok_enrolled,
         } = install_os_to(
             "/run/live/medium/live/filesystem.squashfs",
-            &disk.logicalname,
+            &disk.stable_path,
             disk.capacity,
             disk.partition_table,
             protect.as_ref(),
@@ -650,7 +754,7 @@ async fn install_os_inner(
 
         let mut info = SetupInfo::default();
         info.mok_enrolled = mok_enrolled;
-        info.os_drive = Some(os_drive.clone());
+        info.os_drive = os_drive.clone();
         ctx.install_rootfs.replace(Some((rootfs, config)));
 
         (info, part_info.data)
@@ -673,7 +777,7 @@ async fn install_os_inner(
                 setup_info.attach = true;
             }
             _ => {
-                let mut logicalname = &*data_drive.logicalname;
+                let mut logicalname = &*data_drive.stable_path;
                 if Some(logicalname) == os_drive.as_deref() {
                     logicalname = data_part.as_deref().ok_or_else(|| {
                         Error::new(
@@ -718,7 +822,7 @@ pub async fn cli_install_os(
         efi,
     }: CliInstallOsParams,
 ) -> Result<OsPartitionInfo, Error> {
-    let capacity = get_block_device_size(&disk).await?;
+    let capacity = crate::disk::util::get_capacity(&disk).await?;
     let partition_table = crate::disk::util::get_partition_table(&disk).await?;
 
     let arch = probe_squashfs_arch(&squashfs).await?;
@@ -753,8 +857,17 @@ mod tests {
     use crate::disk::util::PartitionInfo;
 
     fn partition(logicalname: &str, guid: Option<&str>) -> PartitionInfo {
+        partition_with_stable(logicalname, logicalname, guid)
+    }
+
+    fn partition_with_stable(
+        logicalname: &str,
+        stable_path: &str,
+        guid: Option<&str>,
+    ) -> PartitionInfo {
         PartitionInfo {
             logicalname: PathBuf::from(logicalname),
+            stable_path: PathBuf::from(stable_path),
             label: None,
             capacity: 0,
             used: None,
@@ -767,8 +880,18 @@ mod tests {
     }
 
     fn disk(logicalname: &str, guid: Option<&str>, partitions: Vec<PartitionInfo>) -> DiskInfo {
+        disk_with_stable(logicalname, logicalname, guid, partitions)
+    }
+
+    fn disk_with_stable(
+        logicalname: &str,
+        stable_path: &str,
+        guid: Option<&str>,
+        partitions: Vec<PartitionInfo>,
+    ) -> DiskInfo {
         DiskInfo {
             logicalname: PathBuf::from(logicalname),
+            stable_path: PathBuf::from(stable_path),
             partition_table: None,
             vendor: None,
             model: None,
@@ -781,7 +904,7 @@ mod tests {
 
     fn preserve(logicalname: &str) -> DataDrive {
         DataDrive {
-            logicalname: PathBuf::from(logicalname),
+            stable_path: PathBuf::from(logicalname),
             wipe: false,
         }
     }
@@ -799,6 +922,71 @@ mod tests {
                 partition("/dev/sda4", Some("EMBASSY_AAAA")),
             ],
         )
+    }
+
+    #[test]
+    fn partition_paths_follow_device_namespace() {
+        assert_eq!(partition_for("/dev/sda", 2), PathBuf::from("/dev/sda2"));
+        assert_eq!(
+            partition_for("/dev/nvme0n1", 2),
+            PathBuf::from("/dev/nvme0n1p2")
+        );
+        assert_eq!(
+            partition_for("/dev/disk/by-path/pci-0000:00:17.0-ata-2", 2),
+            PathBuf::from("/dev/disk/by-path/pci-0000:00:17.0-ata-2-part2")
+        );
+        assert_eq!(
+            partition_for("/dev/disk/by-id/nvme-eui.0025385b21b0e6a1", 2),
+            PathBuf::from("/dev/disk/by-id/nvme-eui.0025385b21b0e6a1-part2")
+        );
+    }
+
+    #[test]
+    fn install_selection_requires_stable_device_path() {
+        let disk = disk_with_stable(
+            "/dev/sda",
+            "/dev/disk/by-path/pci-0000:00:17.0-ata-2",
+            None,
+            vec![partition_with_stable(
+                "/dev/sda4",
+                "/dev/disk/by-path/pci-0000:00:17.0-ata-2-part4",
+                None,
+            )],
+        );
+        let disks = [disk];
+
+        assert!(!is_listed(&disks, Path::new("/dev/sda")));
+        assert!(is_listed(
+            &disks,
+            Path::new("/dev/disk/by-path/pci-0000:00:17.0-ata-2")
+        ));
+        assert!(!is_listed(&disks, Path::new("/dev/sda4")));
+        assert!(is_listed(
+            &disks,
+            Path::new("/dev/disk/by-path/pci-0000:00:17.0-ata-2-part4")
+        ));
+    }
+
+    #[test]
+    fn partuuid_parser_accepts_one_value() {
+        assert_eq!(
+            parse_partuuid(b"01234567-89ab-cdef\n").unwrap(),
+            "01234567-89ab-cdef"
+        );
+    }
+
+    #[test]
+    fn partuuid_parser_rejects_invalid_output() {
+        for output in [
+            &b""[..],
+            &b"\n"[..],
+            &b"  \n"[..],
+            &b"01234567-01 extra\n"[..],
+            &b"01234567-01\n89abcdef-02\n"[..],
+            &[0xff][..],
+        ] {
+            assert!(parse_partuuid(output).is_none());
+        }
     }
 
     #[test]
@@ -863,7 +1051,7 @@ mod tests {
             (None, "/dev/sda"),
         ] {
             let dd = DataDrive {
-                logicalname: PathBuf::from(target),
+                stable_path: PathBuf::from(target),
                 wipe: true,
             };
             assert_eq!(

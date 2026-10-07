@@ -63,8 +63,7 @@ Three things make this correct, and each matters:
 
 `getBridgeAddress` returns the same `Watchable` as `sdk.host.get`, so it carries every read strategy. Use `.const()` in `setupMain` and `setupOnInit`; use `.once()` only inside an action, where a live snapshot rather than a subscription is what you want.
 
-> [!NOTE]
-> Packages written before start-sdk 2.0.8 carry a local `bridgeAddress` helper in their `utils.ts` doing this by hand. Delete it and call `sdk.host.getBridgeAddress` instead.
+When a dependency [retires](interfaces.md#retiring-a-host-or-binding) the host or binding you resolve, it disappears from the database and `getBridgeAddress` resolves `null` — the same path as the dependency not being installed, so rule 3 above already covers it. With `fallbackPort` you get the fallback instead, as always.
 
 ## The Tor exception: always-on flags
 
@@ -95,13 +94,13 @@ A package keeps StartOS state in a single `store.json` file model (see [File Mod
 
 ```typescript
 // store.json.ts — StartOS state, kept out of the upstream config
-const shape = z.object({
+const shape = z.looseObject({
   indexer: z.enum(['electrs', 'fulcrum']).optional().catch(undefined),
 })
 export const storeJson = FileHelper.json({ base: sdk.volumes.startos, subpath: '/store.json' }, shape)
 ```
 
-Declare the volume in the manifest (`volumes: [..., 'startos']`) and add it to the backup set if the choice must survive a restore. `setupDependencies` and the selection action read/write `store.json`; `init` reads the choice, resolves _that_ backend's bridge address, and writes only the real upstream keys into the app config. It is a bug to add a discriminator field (`INDEXER`, `BACKEND_CHOICE`, …) to a file model that maps the upstream service's own config file.
+Declare the volume in the manifest (`volumes: [..., 'startos']`) and add it to the backup set if the choice must survive a restore. the dependency `enabled` functions and the selection action read/write `store.json`; `init` reads the choice, resolves _that_ backend's bridge address, and writes only the real upstream keys into the app config. It is a bug to add a discriminator field (`INDEXER`, `BACKEND_CHOICE`, …) to a file model that maps the upstream service's own config file.
 
 ## Exposing a bridge-only port
 
