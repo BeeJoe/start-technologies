@@ -1,1 +1,0 @@
-- **`sdk.action.run` can run actions with input from init, dependency init handlers, and main**, as well as action handlers.
