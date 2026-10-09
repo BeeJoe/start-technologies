@@ -45,7 +45,6 @@ export type Effects = {
     options: { only: number[] } | { except: number[] },
   ) => Promise<null>
 
-  // action
   action: {
     /** Define an action that can be invoked by a user or service */
     export(options: { id: ActionId; metadata: ActionMetadata }): Promise<null>
