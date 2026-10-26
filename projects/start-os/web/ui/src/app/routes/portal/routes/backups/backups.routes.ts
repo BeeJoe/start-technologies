@@ -14,7 +14,7 @@ export default [
   ...['', 'automatic', 'manual', 'restore', 'locations', 'history'].map(
     panel => ({
       path: panel,
-      data: { panel: panel || null },
+      data: { defaultPanel: panel || null },
       title: titleResolver,
       loadComponent: () => import('./backups.component'),
       canDeactivate: [confirmBackupExit],

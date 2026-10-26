@@ -220,12 +220,13 @@ import { BackupStatusComponent } from './status.component'
 })
 export class BackupPhysicalComponent {
   private readonly dialog = inject(DialogService)
-  protected readonly type = inject(ActivatedRoute).snapshot.data['type']
-
   private readonly i18n = inject(i18nPipe)
 
+  protected readonly type = inject(ActivatedRoute).snapshot.data['type']
   protected readonly service = inject(BackupService)
-  readonly physicalFolders = output<MappedBackupTarget<DiskBackupTarget>>()
+
+  public readonly physicalFolders =
+    output<MappedBackupTarget<DiskBackupTarget>>()
 
   protected driveName(entry: DiskBackupTarget): string {
     return (

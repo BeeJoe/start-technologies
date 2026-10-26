@@ -1325,14 +1325,7 @@ class JobEditor
 })
 export class ScheduledBackups {
   private readonly formBuilder = inject(NonNullableFormBuilder)
-  readonly mode = input.required<'manage' | 'restore'>()
-  readonly createRequest = input(false)
-  readonly reviewPackageId = input('')
-  readonly createRequestHandled = output<void>()
-  readonly collapseRequested = output<string | null>()
-
   private readonly api = inject(ApiService)
-  protected readonly backupService = inject(BackupService)
   private readonly dialogs = inject(DialogService)
   private readonly deleteSchedule = inject(DeleteScheduleService)
   private readonly errors = inject(ErrorService)
@@ -1345,10 +1338,16 @@ export class ScheduledBackups {
   private readonly patch = inject<PatchDB<DataModel>>(PatchDB)
   private readonly packageData = toSignal(this.patch.watch$('packageData'))
   private readonly tasks = inject(TaskService)
-
   private readonly liveJobs = toSignal(
     this.patch.watch$('scheduledBackups', 'jobs'),
   )
+  private showSingleJobList = false
+  private estimateRequest = 0
+  private editorBaseline: string | null = null
+  private pendingReview: T.NewServiceBackupReview | null = null
+  private readonly reviewDecisions = new Map<string, Record<string, boolean>>()
+
+  protected readonly backupService = inject(BackupService)
   protected readonly jobs = computed(() =>
     Object.values(this.liveJobs() || {}).sort((a, b) =>
       a.createdAt.localeCompare(b.createdAt),
@@ -1363,16 +1362,13 @@ export class ScheduledBackups {
   )
   protected readonly loading = signal(true)
   protected readonly editor = signal<JobEditor | null>(null)
-  private showSingleJobList = false
   protected readonly selectedJobId = signal('')
   protected readonly showServices = signal(false)
   protected readonly reassigning = signal<T.BackupJob | null>(null)
   protected readonly estimates = signal<T.BackupServiceCapacityEstimate[]>([])
-  private estimateRequest = 0
   protected readonly capacityDetailsOpen = signal<ReadonlySet<string>>(
     new Set(),
   )
-
   protected readonly reassignForm = this.formBuilder.group({
     targetId: ['', Validators.required],
     password: ['', Validators.required],
@@ -1380,24 +1376,9 @@ export class ScheduledBackups {
   })
   protected passwordMasked = true
   protected reassignPasswordMasked = true
-  private editorBaseline: string | null = null
-  private pendingReview: T.NewServiceBackupReview | null = null
-
-  constructor() {
-    void this.initialize()
-    effect(() => {
-      if (!this.createRequest() || this.loading()) return
-      this.createRequestHandled.emit()
-      void this.create(this.visibleReviews()[0])
-    })
-  }
-
-  private readonly reviewDecisions = new Map<string, Record<string, boolean>>()
   protected readonly systemPackageId = SYSTEM_PACKAGE_ID
-
   protected readonly stringifyTarget = (targetId: string) =>
     this.backupService.targetName(targetId)
-
   protected readonly packages = computed(() => [
     {
       id: SYSTEM_PACKAGE_ID,
@@ -1414,6 +1395,22 @@ export class ScheduledBackups {
   protected readonly selectedJob = computed(() =>
     this.jobs().find(job => job.id === this.selectedJobId()),
   )
+  protected readonly pauseLabel = backupPauseLabel
+
+  public readonly mode = input.required<'manage' | 'restore'>()
+  public readonly createRequest = input(false)
+  public readonly reviewPackageId = input('')
+  public readonly createRequestHandled = output<void>()
+  public readonly collapseRequested = output<string | null>()
+
+  constructor() {
+    void this.initialize()
+    effect(() => {
+      if (!this.createRequest() || this.loading()) return
+      this.createRequestHandled.emit()
+      void this.create(this.visibleReviews()[0])
+    })
+  }
 
   isEditorOpen(): boolean {
     return this.editor() !== null
@@ -2048,7 +2045,6 @@ export class ScheduledBackups {
     return this.packages().find(pkg => pkg.id === id)?.name || id
   }
 
-  protected readonly pauseLabel = backupPauseLabel
   protected scheduleSummary(form: JobEditor): string {
     return formatBackupScheduleSummary(form, label =>
       this.i18n.transform(label),

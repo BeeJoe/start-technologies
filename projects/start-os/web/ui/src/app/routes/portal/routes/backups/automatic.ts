@@ -579,10 +579,6 @@ class AutomaticEditor
     :host {
       display: grid;
       gap: 1rem;
-      inline-size: 100%;
-      min-inline-size: 0;
-      max-inline-size: 64rem;
-      margin-inline: auto;
       container-type: inline-size;
     }
 
@@ -849,7 +845,6 @@ class AutomaticEditor
   ],
 })
 export default class AutomaticBackups {
-  protected readonly breakpoint = inject(TUI_BREAKPOINT)
   private readonly formBuilder = inject(NonNullableFormBuilder)
   private readonly api = inject(ApiService)
   private readonly backupService = inject(BackupService)
@@ -861,15 +856,10 @@ export default class AutomaticBackups {
   private readonly packageData = toSignal(this.patch.watch$('packageData'))
   private readonly state = toSignal(this.patch.watch$('scheduledBackups'))
   private readonly scheduled = viewChild(ScheduledBackups)
-
-  readonly mode = input<'setup' | 'manage'>()
-  readonly embedded = input(false)
-  readonly createRequest = input(false)
-  readonly reviewPackageId = input('')
-  readonly manageLocations = output<void>()
-  readonly createRequestHandled = output<void>()
-  readonly collapseRequested = output<string | null>()
   private readonly route = inject(ActivatedRoute)
+  private setupBaseline = ''
+
+  protected readonly breakpoint = inject(TUI_BREAKPOINT)
   protected readonly setupMode = computed(
     () =>
       (this.mode() || this.route.snapshot.data['mode']) === ('setup' as const),
@@ -879,13 +869,11 @@ export default class AutomaticBackups {
   protected readonly targetId = signal('')
   protected readonly showSchedule = signal(false)
   protected readonly showServices = signal(false)
-
   protected readonly setupSteps = [
     { number: 1, label: 'Location' as const },
     { number: 2, label: 'Schedule and services' as const },
     { number: 3, label: 'Review' as const },
   ]
-
   protected readonly jobs = computed(() =>
     Object.values(this.state()?.jobs || {}).sort((a, b) =>
       a.createdAt.localeCompare(b.createdAt),
@@ -910,8 +898,15 @@ export default class AutomaticBackups {
   protected editor: AutomaticEditor = this.defaultEditor()
   protected readonly allServicesControl = this.formBuilder.control(true)
   protected passwordMasked = true
-  private setupBaseline = ''
   protected readonly estimates = signal<T.BackupServiceCapacityEstimate[]>([])
+
+  public readonly mode = input<'setup' | 'manage'>()
+  public readonly embedded = input(false)
+  public readonly createRequest = input(false)
+  public readonly reviewPackageId = input('')
+  public readonly manageLocations = output<void>()
+  public readonly createRequestHandled = output<void>()
+  public readonly collapseRequested = output<string | null>()
 
   constructor() {
     void this.initialize()

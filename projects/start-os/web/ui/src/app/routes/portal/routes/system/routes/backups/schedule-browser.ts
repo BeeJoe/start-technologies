@@ -7,6 +7,7 @@ import {
   TuiAppearance,
   TuiButton,
   TuiCell,
+  TuiCellStretch,
   TuiDataList,
   TuiDropdown,
   TuiIcon,
@@ -28,7 +29,7 @@ import {
     <section class="schedule-browser">
       <div class="schedule-list">
         @for (job of jobs(); track job.id) {
-          <div tuiCell class="schedule-job">
+          <div tuiCell tuiCellStretch class="schedule-job">
             @let selection = jobSelectionSummary(job);
             <tui-icon icon="@tui.calendar-clock" />
             <span tuiTitle>
@@ -130,6 +131,10 @@ import {
       min-inline-size: 0;
     }
 
+    .schedule-list {
+      --tui-padding-inline: 0.5rem;
+    }
+
     .schedule-list > * {
       min-inline-size: 0;
       overflow-wrap: anywhere;
@@ -139,9 +144,8 @@ import {
       display: flex;
       align-items: center;
       gap: 0.75rem;
-      inline-size: 100%;
       min-inline-size: 0;
-      padding: 0.75rem 0;
+      padding-block: 0.75rem;
       border-block-end: 1px solid var(--tui-border-normal);
       text-align: start;
       box-sizing: border-box;
@@ -246,6 +250,7 @@ import {
     TuiBadge,
     TuiButton,
     TuiCell,
+    TuiCellStretch,
     TuiDataList,
     TuiDropdown,
     TuiIcon,
@@ -257,18 +262,21 @@ import {
 export class BackupScheduleBrowser {
   private readonly i18n = inject(i18nPipe)
 
-  readonly jobs = input.required<readonly T.BackupJob[]>()
-  readonly packageIds = input.required<readonly string[]>()
-  readonly targets = input.required<readonly BackupTargetName[]>()
-  readonly enabledChange = output<{ job: T.BackupJob; enabled: boolean }>()
-  readonly runRequested = output<T.BackupJob>()
-  readonly editRequested = output<T.BackupJob>()
-  readonly deleteRequested = output<T.BackupJob>()
-  readonly createRequested = output<void>()
-
   protected readonly pauseLabel = backupPauseLabel
   protected readonly targetName = (id: string) =>
     backupTargetName(this.targets(), id)
+
+  public readonly jobs = input.required<readonly T.BackupJob[]>()
+  public readonly packageIds = input.required<readonly string[]>()
+  public readonly targets = input.required<readonly BackupTargetName[]>()
+  public readonly enabledChange = output<{
+    job: T.BackupJob
+    enabled: boolean
+  }>()
+  public readonly runRequested = output<T.BackupJob>()
+  public readonly editRequested = output<T.BackupJob>()
+  public readonly deleteRequested = output<T.BackupJob>()
+  public readonly createRequested = output<void>()
 
   protected jobSelectionSummary(job: T.BackupJob): {
     serviceCount: number

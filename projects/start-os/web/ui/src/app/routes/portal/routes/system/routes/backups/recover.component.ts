@@ -274,7 +274,6 @@ export class BackupsRecoverComponent {
 
   protected readonly unavailableSources =
     this.context.data.unavailableSources || []
-
   protected readonly packageData = toSignal(
     inject<PatchDB<DataModel>>(PatchDB)
       .watch$('packageData')
@@ -342,9 +341,7 @@ export class BackupsRecoverComponent {
         }),
       ),
   )
-
   protected bulkSelection = 'latest'
-
   protected readonly stringifyBulkSelection = (options: RecoverOption[]) => {
     return (selection: string) => {
       if (selection === 'latest') {
@@ -364,7 +361,6 @@ export class BackupsRecoverComponent {
         : selection
     }
   }
-
   protected readonly stringifyCheckpoint = (option: RecoverOption) => {
     return (key: string) => {
       const checkpoint = option.checkpoints.find(item => item.key === key)
@@ -374,28 +370,6 @@ export class BackupsRecoverComponent {
       )} ${this.compactDate(checkpoint.timestamp)}`
     }
   }
-
-  private compactDate(timestamp: string): string {
-    return new Intl.DateTimeFormat(undefined, {
-      month: 'numeric',
-      day: 'numeric',
-    }).format(new Date(timestamp))
-  }
-
-  protected checkpointLabel(checkpoint: RecoverCheckpoint | undefined): string {
-    if (!checkpoint) return ''
-    const parts = [
-      this.i18n.transform(
-        checkpoint.source === 'manual' ? 'Manual' : 'Automatic',
-      ),
-      checkpoint.jobName,
-      new Date(checkpoint.timestamp).toLocaleString(),
-      checkpoint.version,
-      checkpoint.archived ? this.i18n.transform('Archived') : '',
-    ]
-    return parts.filter(Boolean).join(' — ')
-  }
-
   protected readonly toMessage = ({
     newerOs,
     installed,
@@ -419,6 +393,27 @@ export class BackupsRecoverComponent {
       text: 'Ready to restore',
       color: 'var(--tui-status-positive)',
     }
+  }
+
+  private compactDate(timestamp: string): string {
+    return new Intl.DateTimeFormat(undefined, {
+      month: 'numeric',
+      day: 'numeric',
+    }).format(new Date(timestamp))
+  }
+
+  protected checkpointLabel(checkpoint: RecoverCheckpoint | undefined): string {
+    if (!checkpoint) return ''
+    const parts = [
+      this.i18n.transform(
+        checkpoint.source === 'manual' ? 'Manual' : 'Automatic',
+      ),
+      checkpoint.jobName,
+      new Date(checkpoint.timestamp).toLocaleString(),
+      checkpoint.version,
+      checkpoint.archived ? this.i18n.transform('Archived') : '',
+    ]
+    return parts.filter(Boolean).join(' — ')
   }
 
   protected isDisabled(options: RecoverOption[]): boolean {

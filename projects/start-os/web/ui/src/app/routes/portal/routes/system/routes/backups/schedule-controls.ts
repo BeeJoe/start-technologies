@@ -164,8 +164,6 @@ import {
 export class BackupScheduleControls {
   private readonly i18n = inject(i18nPipe)
 
-  readonly schedule = input.required<BackupScheduleFormValue>()
-  readonly scheduleChange = output<BackupScheduleFormValue>()
   protected readonly form = inject(NonNullableFormBuilder).group({
     frequency: ['daily' as BackupScheduleFrequency, Validators.required],
     minute: [0, [Validators.required, Validators.min(0), Validators.max(59)]],
@@ -180,7 +178,6 @@ export class BackupScheduleControls {
   protected readonly formValue = toSignal(this.form.valueChanges, {
     initialValue: this.form.getRawValue(),
   })
-
   protected readonly frequencies = BACKUP_FREQUENCIES
   protected readonly weekdays = BACKUP_WEEKDAYS
   protected readonly hours = BACKUP_HOURS
@@ -195,9 +192,12 @@ export class BackupScheduleControls {
   protected readonly timezones = computed(() =>
     backupTimezones(this.schedule().timezone),
   )
-  private readonly scheduleChangesSubscription = this.form.valueChanges
+  protected readonly scheduleChangesSubscription = this.form.valueChanges
     .pipe(takeUntilDestroyed())
     .subscribe(() => this.scheduleChange.emit(this.form.getRawValue()))
+
+  public readonly schedule = input.required<BackupScheduleFormValue>()
+  public readonly scheduleChange = output<BackupScheduleFormValue>()
 
   constructor() {
     effect(() => this.form.reset(this.schedule()))

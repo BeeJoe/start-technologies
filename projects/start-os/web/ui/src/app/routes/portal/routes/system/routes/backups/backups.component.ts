@@ -124,24 +124,27 @@ import { BACKUP_RESTORE } from './restore.component'
   ],
 })
 export default class SystemBackupComponent {
-  readonly mode = input<'create' | 'restore'>()
-  readonly embedded = input(false)
-  readonly operationActive = input<boolean>()
-  readonly manageLocations = output<void>()
-  protected readonly dialog = inject(DialogService)
   private readonly route = inject(ActivatedRoute)
+  private readonly os = inject(OSService)
+  private readonly progressActive = toSignal(this.os.backingUp$, {
+    initialValue: false,
+  })
+
+  protected readonly dialog = inject(DialogService)
   protected readonly type = computed(
     () =>
       this.mode() || (this.route.snapshot.data['type'] as 'create' | 'restore'),
   )
   protected readonly service = inject(BackupService)
-  private readonly os = inject(OSService)
-  private readonly progressActive = toSignal(this.os.backingUp$, {
-    initialValue: false,
-  })
   protected readonly busy = computed(
     () => this.operationActive() ?? this.progressActive(),
   )
+
+  public readonly mode = input<'create' | 'restore'>()
+  public readonly embedded = input(false)
+  public readonly operationActive = input<boolean>()
+  public readonly manageLocations = output<void>()
+
   constructor() {
     this.service.getBackupTargets()
   }

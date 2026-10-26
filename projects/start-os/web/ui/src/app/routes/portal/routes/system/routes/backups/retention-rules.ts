@@ -137,20 +137,12 @@ export class BackupRetentionRules {
   private readonly formBuilder = inject(NonNullableFormBuilder)
   private readonly i18n = inject(i18nPipe)
 
-  readonly rules = input.required<readonly BackupRetentionRuleValue[]>()
-  readonly ruleChange = output<{
-    index: number
-    value: BackupRetentionRuleValue
-  }>()
-  readonly addRequested = output<void>()
-  readonly removeRequested = output<number>()
-
   protected readonly intervals = BACKUP_RETENTION_INTERVALS
   protected readonly ruleForms = linkedSignal<
     readonly BackupRetentionRuleValue[],
     ReturnType<BackupRetentionRules['createRuleForm']>[]
   >({
-    source: this.rules,
+    source: () => this.rules(),
     computation: (rules, previous) =>
       previous &&
       rules.length === previous.source.length &&
@@ -161,7 +153,7 @@ export class BackupRetentionRules {
   protected readonly stringifyInterval = (
     interval: BackupRetentionRuleValue['interval'],
   ) => this.i18n.transform(backupRetentionIntervalLabel(interval))
-  private readonly ruleChangesSubscription = toObservable(this.ruleForms)
+  protected readonly ruleChangesSubscription = toObservable(this.ruleForms)
     .pipe(
       switchMap(forms =>
         merge(
@@ -178,6 +170,14 @@ export class BackupRetentionRules {
         value: { ...this.rules()[index], ...form.getRawValue() },
       })
     })
+
+  public readonly rules = input.required<readonly BackupRetentionRuleValue[]>()
+  public readonly ruleChange = output<{
+    index: number
+    value: BackupRetentionRuleValue
+  }>()
+  public readonly addRequested = output<void>()
+  public readonly removeRequested = output<number>()
 
   protected customRule(rule: BackupRetentionRuleValue) {
     return formatBackupRetentionRule(rule, label => this.i18n.transform(label))

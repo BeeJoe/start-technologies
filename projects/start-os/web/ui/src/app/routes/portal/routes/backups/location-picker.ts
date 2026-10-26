@@ -231,11 +231,6 @@ type Location = MappedBackupTarget<CifsBackupTarget | DiskBackupTarget>
 export class BackupLocationPicker {
   private readonly backupService = inject(BackupService)
 
-  readonly mode = input.required<'automatic' | 'manual' | 'restore'>()
-  readonly selectedId = input('')
-  readonly selected = output<Location>()
-  readonly manage = output<void>()
-
   protected readonly targets = computed(() =>
     this.backupService.locations().map(target => ({
       ...target,
@@ -245,4 +240,9 @@ export class BackupLocationPicker {
       reason: target.available ? 'No backups found' : 'Unavailable',
     })),
   )
+
+  public readonly mode = input.required<'automatic' | 'manual' | 'restore'>()
+  public readonly selectedId = input('')
+  public readonly selected = output<Location>()
+  public readonly manage = output<void>()
 }

@@ -150,12 +150,11 @@ const NETWORK_DELETE = new PolymorpheusComponent(NetworkDeleteDialog)
                 size="s"
                 appearance="flat-grayscale"
                 iconStart="@tui.ellipsis-vertical"
-                [tuiDropdownOpen]="!!opens[$index]"
-                (tuiDropdownOpenChange)="opens[$index] = $event"
+                tuiDropdownAuto
                 (click)="$event.stopPropagation()"
               >
                 {{ 'More' | i18n }}
-                <tui-data-list *tuiDropdown>
+                <tui-data-list *tuiDropdown="let close" (click)="close()">
                   <button tuiOption (click)="edit(target)">
                     {{ 'Edit' | i18n }}
                   </button>
@@ -406,11 +405,10 @@ export class BackupNetworkComponent {
   private readonly i18n = inject(i18nPipe)
 
   protected readonly type = inject(ActivatedRoute).snapshot.data['type']
-
   protected readonly service = inject(BackupService)
-  readonly networkFolders = output<MappedBackupTarget<CifsBackupTarget>>()
 
-  protected opens: Record<number, boolean> = {}
+  public readonly networkFolders =
+    output<MappedBackupTarget<CifsBackupTarget>>()
 
   protected select(target: MappedBackupTarget<CifsBackupTarget>) {
     if (!target.entry.mountable) {

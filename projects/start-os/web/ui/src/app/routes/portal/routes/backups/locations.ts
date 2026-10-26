@@ -51,9 +51,6 @@ import { BackupPhysicalComponent } from '../system/routes/backups/physical.compo
     :host {
       display: grid;
       gap: 1rem;
-      inline-size: 100%;
-      min-inline-size: 0;
-      max-inline-size: none;
       margin-inline: auto;
     }
 
@@ -84,8 +81,9 @@ import { BackupPhysicalComponent } from '../system/routes/backups/physical.compo
   ],
 })
 export default class BackupLocations {
-  readonly embedded = input(false)
   private readonly service = inject(BackupService)
+
+  public readonly embedded = input(false)
 
   constructor() {
     void this.service.getBackupTargets()

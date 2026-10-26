@@ -45,6 +45,7 @@ import { TuiIcon } from '@taiga-ui/core'
 })
 export class BackupStatusComponent {
   protected readonly type = inject(ActivatedRoute).snapshot.data['type']
-  readonly backupStatus = input(false)
-  readonly physical = input(false)
+
+  public readonly backupStatus = input(false)
+  public readonly physical = input(false)
 }

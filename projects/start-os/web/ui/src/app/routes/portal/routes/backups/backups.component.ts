@@ -5,6 +5,8 @@ import {
   effect,
   ElementRef,
   inject,
+  input,
+  linkedSignal,
   Injector,
   signal,
   viewChild,
@@ -228,7 +230,7 @@ type BackupPanel = (typeof BACKUP_PANELS)[number]
             [embedded]="true"
             [mode]="jobs().length ? 'manage' : 'setup'"
             [createRequest]="createScheduleRequest()"
-            [reviewPackageId]="reviewPackageId"
+            [reviewPackageId]="addService() || ''"
             (manageLocations)="openLocations()"
             (createRequestHandled)="createScheduleRequest.set(false)"
             (collapseRequested)="collapseAutomatic($event)"
@@ -373,7 +375,13 @@ type BackupPanel = (typeof BACKUP_PANELS)[number]
       </header>
       @if (expanded() === 'history') {
         <div class="card-body">
-          <backup-history />
+          <backup-history
+            [historyKind]="historyKind() || ''"
+            [historyStatus]="historyStatus() || ''"
+            [historySearch]="historySearch() || ''"
+            [historyPage]="historyPage() || ''"
+            (filtersChange)="updateHistoryParams($event)"
+          />
         </div>
       }
     </section>
@@ -382,10 +390,6 @@ type BackupPanel = (typeof BACKUP_PANELS)[number]
     :host {
       display: grid;
       gap: 0.75rem;
-      inline-size: 100%;
-      min-inline-size: 0;
-      max-inline-size: 64rem;
-      margin-inline: auto;
       container-type: inline-size;
     }
 
@@ -605,36 +609,62 @@ export default class BackupsComponent {
   private readonly os = inject(OSService)
   private readonly router = inject(Router)
   private readonly route = inject(ActivatedRoute)
-  private readonly queryParams = toSignal(this.route.queryParamMap, {
-    initialValue: this.route.snapshot.queryParamMap,
-  })
   private readonly injector = inject(Injector)
   private readonly state = toSignal(
     inject<PatchDB<DataModel>>(PatchDB).watch$('scheduledBackups'),
   )
-
-  protected readonly reviewPackageId =
-    this.route.snapshot.queryParamMap.get('addService') || ''
-  protected readonly expanded = computed<BackupPanel | null>(() => {
-    const panel = this.queryParams().get('panel')
-    return panel === 'overview'
-      ? null
-      : (BACKUP_PANELS.find(value => value === panel) ??
-          (this.reviewPackageId
-            ? 'automatic'
-            : this.route.snapshot.data['panel']))
-  })
   private readonly progressRequest = signal<{
     jobId: string
     previousActivityId: string | null
   } | null>(null)
-  protected readonly createScheduleRequest = signal(
-    this.route.snapshot.queryParamMap.has('createSchedule'),
+
+  protected readonly expanded = computed<BackupPanel | null>(() => {
+    const panel = this.panel()
+    return panel === 'overview'
+      ? null
+      : (BACKUP_PANELS.find(value => value === panel) ??
+          (this.addService() ? 'automatic' : this.defaultPanel()))
+  })
+  protected readonly createScheduleRequest = linkedSignal(() =>
+    this.createSchedule(),
   )
   protected readonly manualRunning = toSignal(this.os.backingUp$, {
     initialValue: false,
   })
   protected readonly changingAutomatic = signal(false)
+  protected readonly jobs = computed(() =>
+    Object.values(this.state()?.jobs || {}).sort((a, b) =>
+      a.createdAt.localeCompare(b.createdAt),
+    ),
+  )
+  protected readonly primary = computed(() => this.jobs()[0])
+  protected readonly activities = computed(() =>
+    Object.values(this.state()?.activities || {}).sort((a, b) =>
+      b.startedAt.localeCompare(a.startedAt),
+    ),
+  )
+  protected readonly operationActivity = computed(() => {
+    const latest = this.activities()[0]
+    return latest?.state === 'running' ? latest : null
+  })
+  protected readonly progressActive = computed(() => !!this.operationActivity())
+  protected readonly automaticOn = computed(() =>
+    this.jobs().some(job => job.enabled && !job.pause),
+  )
+  protected readonly needsAttention = computed(() =>
+    this.jobs().some(backupJobNeedsAttention),
+  )
+
+  public readonly panel = input('')
+  public readonly defaultPanel = input<BackupPanel | null>(null)
+  public readonly addService = input('')
+  public readonly createSchedule = input(false, {
+    transform: (value: string | undefined) => value !== undefined,
+  })
+  public readonly historyKind = input('')
+  public readonly historyStatus = input('')
+  public readonly historySearch = input('')
+  public readonly historyPage = input('')
 
   constructor() {
     void this.backupService.getBackupTargets()
@@ -661,28 +691,16 @@ export default class BackupsComponent {
     })
   }
 
-  protected readonly jobs = computed(() =>
-    Object.values(this.state()?.jobs || {}).sort((a, b) =>
-      a.createdAt.localeCompare(b.createdAt),
-    ),
-  )
-  protected readonly primary = computed(() => this.jobs()[0])
-  protected readonly activities = computed(() =>
-    Object.values(this.state()?.activities || {}).sort((a, b) =>
-      b.startedAt.localeCompare(a.startedAt),
-    ),
-  )
-  protected readonly operationActivity = computed(() => {
-    const latest = this.activities()[0]
-    return latest?.state === 'running' ? latest : null
-  })
-  protected readonly progressActive = computed(() => !!this.operationActivity())
-  protected readonly automaticOn = computed(() =>
-    this.jobs().some(job => job.enabled && !job.pause),
-  )
-  protected readonly needsAttention = computed(() =>
-    this.jobs().some(backupJobNeedsAttention),
-  )
+  protected updateHistoryParams(
+    queryParams: Record<string, string | number | null>,
+  ) {
+    void this.router.navigate([], {
+      relativeTo: this.route,
+      queryParams,
+      queryParamsHandling: 'merge',
+      replaceUrl: true,
+    })
+  }
 
   protected async togglePanel(panel: BackupPanel) {
     if (

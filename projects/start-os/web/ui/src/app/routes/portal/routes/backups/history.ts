@@ -1,8 +1,14 @@
 import { DatePipe, DecimalPipe, KeyValuePipe } from '@angular/common'
-import { Component, computed, inject, signal } from '@angular/core'
-import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop'
+import {
+  Component,
+  computed,
+  inject,
+  input,
+  linkedSignal,
+  output,
+} from '@angular/core'
+import { toSignal } from '@angular/core/rxjs-interop'
 import { FormsModule } from '@angular/forms'
-import { ActivatedRoute, Router } from '@angular/router'
 import { convertBytes, i18nPipe } from '@start9labs/shared'
 import { T } from '@start9labs/start-core'
 import {
@@ -22,7 +28,6 @@ import {
   TuiSelect,
 } from '@taiga-ui/kit'
 import { PatchDB } from 'patch-db-client'
-import { tap } from 'rxjs'
 
 import { DataModel } from 'src/app/services/patch-db/data-model'
 import { getManifest } from 'src/app/utils/get-package-data'
@@ -216,8 +221,6 @@ const STATUS_FILTERS: StatusFilter[] = [
     .timeline {
       display: grid;
       gap: 0.75rem;
-      inline-size: 100%;
-      min-inline-size: 0;
     }
 
     :host {
@@ -382,22 +385,13 @@ const STATUS_FILTERS: StatusFilter[] = [
   ],
 })
 export class BackupHistory {
-  protected readonly breakpoint = inject(TUI_BREAKPOINT)
-  protected readonly backupService = inject(BackupService)
   private readonly i18n = inject(i18nPipe)
-  private readonly route = inject(ActivatedRoute)
-  private readonly router = inject(Router)
   private readonly state = toSignal(
     inject<PatchDB<DataModel>>(PatchDB).watch$('scheduledBackups'),
   )
   private readonly packageData = toSignal(
     inject<PatchDB<DataModel>>(PatchDB).watch$('packageData'),
   )
-
-  protected readonly historyFilter = signal<HistoryFilter>('all')
-  protected readonly statusFilter = signal<StatusFilter>('all')
-  protected readonly query = signal('')
-  protected readonly page = signal(0)
   private readonly pageSize = 20
   private readonly activityStatuses = {
     running: { label: 'In progress', appearance: 'neutral' },
@@ -408,6 +402,42 @@ export class BackupHistory {
     T.BackupRunState,
     { label: string; appearance: string }
   >
+  private readonly snapshotsByTarget = computed(() => {
+    const targets = new Map<
+      string,
+      Map<string, Map<string, T.ServiceSnapshot[]>>
+    >()
+    for (const history of Object.values(this.state()?.histories || {})) {
+      let packages = targets.get(history.targetId)
+      if (!packages) targets.set(history.targetId, (packages = new Map()))
+      let runs = packages.get(history.packageId)
+      if (!runs) packages.set(history.packageId, (runs = new Map()))
+      for (const snapshot of history.snapshots) {
+        const snapshots = runs.get(snapshot.runId)
+        if (snapshots) snapshots.push(snapshot)
+        else runs.set(snapshot.runId, [snapshot])
+      }
+    }
+    return targets
+  })
+
+  protected readonly breakpoint = inject(TUI_BREAKPOINT)
+  protected readonly backupService = inject(BackupService)
+  protected readonly historyFilter = linkedSignal<HistoryFilter>(() =>
+    HISTORY_FILTERS.includes(this.historyKind() as HistoryFilter)
+      ? (this.historyKind() as HistoryFilter)
+      : 'all',
+  )
+  protected readonly statusFilter = linkedSignal<StatusFilter>(() =>
+    STATUS_FILTERS.includes(this.historyStatus() as StatusFilter)
+      ? (this.historyStatus() as StatusFilter)
+      : 'all',
+  )
+  protected readonly query = linkedSignal(() => this.historySearch() || '')
+  protected readonly page = linkedSignal(() => {
+    const page = Number(this.historyPage()) - 1
+    return Number.isInteger(page) && page >= 0 ? page : 0
+  })
   protected readonly historyFilters = HISTORY_FILTERS
   protected readonly stringifyFilter = (filter: HistoryFilter) =>
     this.i18n.transform(
@@ -429,25 +459,6 @@ export class BackupHistory {
       b.startedAt.localeCompare(a.startedAt),
     ),
   )
-  private readonly snapshotsByTarget = computed(() => {
-    const targets = new Map<
-      string,
-      Map<string, Map<string, T.ServiceSnapshot[]>>
-    >()
-    for (const history of Object.values(this.state()?.histories || {})) {
-      let packages = targets.get(history.targetId)
-      if (!packages) targets.set(history.targetId, (packages = new Map()))
-      let runs = packages.get(history.packageId)
-      if (!runs) packages.set(history.packageId, (runs = new Map()))
-      for (const snapshot of history.snapshots) {
-        const snapshots = runs.get(snapshot.runId)
-        if (snapshots) snapshots.push(snapshot)
-        else runs.set(snapshot.runId, [snapshot])
-      }
-    }
-    return targets
-  })
-
   protected readonly filteredActivities = computed(() => {
     const query = this.query().trim().toLocaleLowerCase()
     return this.activities().filter(activity => {
@@ -468,28 +479,13 @@ export class BackupHistory {
       (page + 1) * this.pageSize,
     )
   })
-  private readonly queryParamsSubscription = this.route.queryParamMap
-    .pipe(
-      takeUntilDestroyed(),
-      tap(params => {
-        const historyFilter = params.get('historyKind')
-        const statusFilter = params.get('historyStatus')
-        const page = Number(params.get('historyPage')) - 1
-        this.query.set(params.get('historySearch') || '')
-        this.historyFilter.set(
-          HISTORY_FILTERS.includes(historyFilter as HistoryFilter)
-            ? (historyFilter as HistoryFilter)
-            : 'all',
-        )
-        this.statusFilter.set(
-          STATUS_FILTERS.includes(statusFilter as StatusFilter)
-            ? (statusFilter as StatusFilter)
-            : 'all',
-        )
-        this.page.set(Number.isInteger(page) && page >= 0 ? page : 0)
-      }),
-    )
-    .subscribe()
+
+  public readonly historyKind = input('')
+  public readonly historyStatus = input('')
+  public readonly historySearch = input('')
+  public readonly historyPage = input('')
+  public readonly filtersChange =
+    output<Record<string, string | number | null>>()
 
   constructor() {
     void this.backupService.getBackupTargets()
@@ -497,12 +493,12 @@ export class BackupHistory {
 
   protected setQuery(query: string) {
     this.query.set(query)
-    this.updateQueryParams({ historySearch: query || null, historyPage: null })
+    this.filtersChange.emit({ historySearch: query || null, historyPage: null })
   }
 
   protected setHistoryFilter(filter: HistoryFilter) {
     this.historyFilter.set(filter)
-    this.updateQueryParams({
+    this.filtersChange.emit({
       historyKind: filter === 'all' ? null : filter,
       historyPage: null,
     })
@@ -510,7 +506,7 @@ export class BackupHistory {
 
   protected setStatusFilter(filter: StatusFilter) {
     this.statusFilter.set(filter)
-    this.updateQueryParams({
+    this.filtersChange.emit({
       historyStatus: filter === 'all' ? null : filter,
       historyPage: null,
     })
@@ -518,18 +514,7 @@ export class BackupHistory {
 
   protected setPage(page: number) {
     this.page.set(page)
-    this.updateQueryParams({ historyPage: page ? page + 1 : null })
-  }
-
-  private updateQueryParams(
-    queryParams: Record<string, string | number | null>,
-  ) {
-    void this.router.navigate([], {
-      relativeTo: this.route,
-      queryParams,
-      queryParamsHandling: 'merge',
-      replaceUrl: true,
-    })
+    this.filtersChange.emit({ historyPage: page ? page + 1 : null })
   }
 
   protected activityLabel(activity: T.BackupActivity): string {
