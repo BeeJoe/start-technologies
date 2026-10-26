@@ -7737,6 +7737,7 @@ dependencies = [
  "http",
  "http-body-util",
  "hyper",
+ "hyper-tls",
  "hyper-util",
  "id-pool",
  "iddqd",

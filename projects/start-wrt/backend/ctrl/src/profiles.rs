@@ -1093,9 +1093,7 @@ async fn reload_system_inner(restart_network: bool) -> Result<(), Error> {
     let _ =
         crate::run_quiet_async(tokio::process::Command::new("/etc/init.d/firewall").arg("restart"))
             .await;
-    let _ =
-        crate::run_quiet_async(tokio::process::Command::new("/etc/init.d/dnsmasq").arg("restart"))
-            .await;
+    crate::devices::reload_dnsmasq_now().await;
     // Re-apply WAN schedules — firewall restart rebuilds the nftables ruleset
     reapply_schedules_after_reload().await;
     Ok(())
@@ -1145,9 +1143,7 @@ async fn reload_system_and_wifi_inner(restart_network: bool) -> Result<(), Error
     let _ =
         crate::run_quiet_async(tokio::process::Command::new("/etc/init.d/firewall").arg("restart"))
             .await;
-    let _ =
-        crate::run_quiet_async(tokio::process::Command::new("/etc/init.d/dnsmasq").arg("restart"))
-            .await;
+    crate::devices::reload_dnsmasq_now().await;
     // Re-apply WAN schedules — firewall restart rebuilds the nftables ruleset
     reapply_schedules_after_reload().await;
     Ok(())
@@ -1784,6 +1780,7 @@ pub async fn create<C: CtrlContext>(
                     let smartdns_groups = dns::load_smartdns_groups(ctx.uci_root()).await?;
                     dns::apply_smartdns_groups(smartdns_groups).await?;
 
+                    crate::dns_inject::ensure_hosts_file(&out.interface).await;
                     // Full network restart (not reload) so netifd re-runs IPv6
                     // prefix distribution and the new profile's VLAN gets its /64.
                     reload_system_and_wifi_full().await?;
@@ -2420,6 +2417,10 @@ pub fn rewrite_dhcp(
                 dhcp.limit = 198;
                 changed = true;
             }
+            if dhcp.force != Some(true) {
+                dhcp.force = Some(true);
+                changed = true;
+            }
             if changed {
                 section.set(&dhcp)?;
             }
@@ -2437,6 +2438,7 @@ pub fn rewrite_dhcp(
                 dhcpv6: Some(dhcpv6_value),
                 ra_management: None,
                 ra_default: ra_default_value,
+                force: Some(true),
             },
             Some(&profile.id.interface),
         )?;
@@ -7815,7 +7817,9 @@ config dhcp 'guest'
         assert_eq!(lan.dhcpv6.as_deref(), Some("server"));
         // The rest of rewrite_dhcp still applies to the admin LAN.
         assert_eq!((lan.start, lan.limit), (2, 198));
+        assert_eq!(lan.force, Some(true));
         let guest = dhcp_of("guest");
+        assert_eq!(guest.force, Some(true));
         assert_eq!(
             guest.ra.as_deref(),
             Some("disabled"),

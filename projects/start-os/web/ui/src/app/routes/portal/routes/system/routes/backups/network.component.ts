@@ -146,6 +146,7 @@ const NETWORK_DELETE = new PolymorpheusComponent(NetworkDeleteDialog)
               <button
                 tuiIconButton
                 tuiDropdown
+                tuiDropdownAlign="end"
                 size="s"
                 appearance="flat-grayscale"
                 iconStart="@tui.ellipsis-vertical"

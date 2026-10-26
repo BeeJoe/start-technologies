@@ -177,6 +177,7 @@ type BackupPanel = (typeof BACKUP_PANELS)[number]
               <button
                 tuiIconButton
                 tuiDropdown
+                tuiDropdownAlign="end"
                 tuiDropdownAuto
                 type="button"
                 size="s"
