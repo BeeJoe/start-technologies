@@ -150,89 +150,76 @@ type BackupPanel = (typeof BACKUP_PANELS)[number]
               }
             </span>
           </span>
+          @if (jobs().length !== 1) {
+            <tui-icon
+              icon="@tui.chevron-down"
+              [class._rotated]="expanded() === 'automatic'"
+            />
+          }
         </button>
 
-        <span tuiAccessories class="card-accessories">
-          @if (needsAttention()) {
-            <button tuiLink type="button" (click)="openHistory()">
-              {{ 'See more' | i18n }}
-            </button>
-          }
-
-          @if (jobs().length === 1) {
-            <span class="automatic-controls">
-              @if (!primary()?.enabled) {
-                <span tuiBadge>{{ 'Paused' | i18n }}</span>
-              }
-              <label class="simple-switch">
-                <input
-                  tuiSwitch
-                  type="checkbox"
-                  [attr.aria-label]="'Automatic backups' | i18n"
-                  [ngModel]="primary()?.enabled ?? false"
-                  [disabled]="changingAutomatic()"
-                  (ngModelChange)="setAutomatic($event)"
-                />
-              </label>
-              <button
-                tuiIconButton
-                tuiDropdown
-                tuiDropdownAlign="end"
-                tuiDropdownAuto
-                type="button"
-                size="s"
-                appearance="flat-grayscale"
-                iconStart="@tui.ellipsis-vertical"
-              >
-                {{ 'More' | i18n }}
-                <tui-data-list *tuiDropdown="let close" (click)="close()">
-                  <button
-                    tuiOption
-                    tuiAppearance="flat"
-                    [disabled]="!canRunNow()"
-                    (click)="runNow()"
-                  >
-                    {{ 'Run now' | i18n }}
-                  </button>
-                  <button tuiOption (click)="openAutomaticEditor()">
-                    {{ 'View/Edit' | i18n }}
-                  </button>
-                  <button tuiOption (click)="addSchedule()">
-                    {{ 'Add schedule' | i18n }}
-                  </button>
-                  <button
-                    tuiOption
-                    tuiAppearance="flat-destructive"
-                    (click)="deleteSchedule()"
-                  >
-                    {{ 'Delete schedule' | i18n }}
-                  </button>
-                </tui-data-list>
+        @if (needsAttention() || jobs().length === 1) {
+          <span tuiAccessories class="card-accessories">
+            @if (needsAttention()) {
+              <button tuiLink type="button" (click)="openHistory()">
+                {{ 'See more' | i18n }}
               </button>
-            </span>
-          } @else {
-            <button
-              tuiIconButton
-              type="button"
-              size="m"
-              appearance="flat-grayscale"
-              [iconStart]="
-                expanded() === 'automatic'
-                  ? '@tui.chevron-up'
-                  : '@tui.chevron-down'
-              "
-              [attr.aria-expanded]="expanded() === 'automatic'"
-              (click)="togglePanel('automatic')"
-            >
-              {{
-                (expanded() === 'automatic'
-                  ? 'Collapse automatic backups'
-                  : 'Expand automatic backups'
-                ) | i18n
-              }}
-            </button>
-          }
-        </span>
+            }
+
+            @if (jobs().length === 1) {
+              <span class="automatic-controls">
+                @if (!primary()?.enabled) {
+                  <span tuiBadge>{{ 'Paused' | i18n }}</span>
+                }
+                <label class="simple-switch">
+                  <input
+                    tuiSwitch
+                    type="checkbox"
+                    [attr.aria-label]="'Automatic backups' | i18n"
+                    [ngModel]="primary()?.enabled ?? false"
+                    [disabled]="changingAutomatic()"
+                    (ngModelChange)="setAutomatic($event)"
+                  />
+                </label>
+                <button
+                  tuiIconButton
+                  tuiDropdown
+                  tuiDropdownAlign="end"
+                  tuiDropdownAuto
+                  type="button"
+                  size="s"
+                  appearance="flat-grayscale"
+                  iconStart="@tui.ellipsis-vertical"
+                >
+                  {{ 'More' | i18n }}
+                  <tui-data-list *tuiDropdown="let close" (click)="close()">
+                    <button
+                      tuiOption
+                      tuiAppearance="flat"
+                      [disabled]="!canRunNow()"
+                      (click)="runNow()"
+                    >
+                      {{ 'Run now' | i18n }}
+                    </button>
+                    <button tuiOption (click)="openAutomaticEditor()">
+                      {{ 'View/Edit' | i18n }}
+                    </button>
+                    <button tuiOption (click)="addSchedule()">
+                      {{ 'Add schedule' | i18n }}
+                    </button>
+                    <button
+                      tuiOption
+                      tuiAppearance="flat-destructive"
+                      (click)="deleteSchedule()"
+                    >
+                      {{ 'Delete schedule' | i18n }}
+                    </button>
+                  </tui-data-list>
+                </button>
+              </span>
+            }
+          </span>
+        }
       </header>
 
       @if (expanded() === 'automatic') {
@@ -426,6 +413,7 @@ type BackupPanel = (typeof BACKUP_PANELS)[number]
     }
 
     .card-heading {
+      align-items: center;
       min-inline-size: 0;
     }
 
@@ -552,12 +540,12 @@ type BackupPanel = (typeof BACKUP_PANELS)[number]
     }
 
     @container card (max-inline-size: 44rem) {
-      .card-heading {
+      .automatic-heading._single-job {
         align-items: stretch;
         flex-direction: column;
       }
 
-      .card-accessories {
+      .automatic-heading._single-job .card-accessories {
         inline-size: 100%;
       }
 
@@ -567,10 +555,6 @@ type BackupPanel = (typeof BACKUP_PANELS)[number]
     }
 
     @container (max-inline-size: 30rem) {
-      .card-toggle {
-        align-items: flex-start;
-      }
-
       .operation {
         align-items: stretch;
         flex-direction: column;
