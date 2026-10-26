@@ -37,16 +37,6 @@ import {
           {{ 'Back' | i18n }}
         </a>
         {{ 'Network UPS Tools' | i18n }}
-        <a
-          tuiIconButton
-          size="xs"
-          docsLink
-          path="/start-os/network-ups-tools.html"
-          appearance="icon"
-          iconStart="@tui.book-open-text"
-        >
-          {{ 'Documentation' | i18n }}
-        </a>
       </div>
     </ng-container>
 
