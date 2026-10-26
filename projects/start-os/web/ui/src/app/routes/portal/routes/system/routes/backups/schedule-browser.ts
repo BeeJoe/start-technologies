@@ -173,6 +173,7 @@ import {
     }
 
     .job-switch {
+      display: flex;
       inline-size: fit-content;
     }
 
