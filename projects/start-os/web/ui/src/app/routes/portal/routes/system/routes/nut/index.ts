@@ -6,13 +6,12 @@ import { DocsLinkDirective, i18nPipe, TaskService } from '@start9labs/shared'
 import { T } from '@start9labs/start-core'
 import {
   TuiButton,
-  TuiCell,
-  TuiIcon,
   TuiLoader,
   TuiNotificationService,
   TuiTitle,
 } from '@taiga-ui/core'
-import { TuiButtonLoading, TuiTooltip } from '@taiga-ui/kit'
+import { TuiButtonLoading } from '@taiga-ui/kit'
+import { TuiCardLarge, TuiHeader, TuiList } from '@taiga-ui/layout'
 import { PatchDB } from 'patch-db-client'
 import { map } from 'rxjs'
 import { FormComponent } from 'src/app/routes/portal/components/form.component'
@@ -45,79 +44,77 @@ import {
           path="/start-os/network-ups-tools.html"
           appearance="icon"
           iconStart="@tui.book-open-text"
-        ></a>
-      </div>
-    </ng-container>
-
-    <section class="g-card">
-      <header>
-        {{ 'Network UPS Tools' | i18n }}
-        <tui-icon
-          [tuiTooltip]="
-            'NUT shuts down StartOS when the UPS battery is low' | i18n
-          "
-        />
-        <a
-          tuiIconButton
-          size="xs"
-          docsLink
-          path="/start-os/network-ups-tools.html"
-          appearance="icon"
-          iconStart="@tui.book-open-text"
         >
           {{ 'Documentation' | i18n }}
         </a>
-        <button
-          tuiIconButton
-          size="xs"
-          type="button"
-          iconStart="@tui.settings"
-          [style.margin-inline-start]="'auto'"
-          (click)="configure()"
-        >
-          {{ 'Configure' | i18n }}
-        </button>
-        <button
-          tuiIconButton
-          size="xs"
-          type="button"
-          iconStart="@tui.refresh-cw"
-          [disabled]="!data().enabled || !data().settings"
-          [loading]="refreshing()"
-          (click)="refreshStatus()"
-        >
-          {{ 'Refresh' | i18n }}
-        </button>
+      </div>
+    </ng-container>
+
+    <section tuiCardLarge="compact" appearance="floating">
+      <header tuiHeader>
+        <hgroup tuiTitle>
+          <h2>{{ 'Network UPS Tools' | i18n }}</h2>
+          <p tuiSubtitle>
+            {{ 'NUT shuts down StartOS when the UPS battery is low' | i18n }}
+          </p>
+        </hgroup>
+        <aside tuiAccessories>
+          <a
+            tuiIconButton
+            size="xs"
+            docsLink
+            path="/start-os/network-ups-tools.html"
+            appearance="icon"
+            iconStart="@tui.book-open-text"
+          >
+            {{ 'Documentation' | i18n }}
+          </a>
+          <button
+            tuiIconButton
+            size="xs"
+            type="button"
+            iconStart="@tui.settings"
+            (click)="configure()"
+          >
+            {{ 'Configure' | i18n }}
+          </button>
+          <button
+            tuiIconButton
+            size="xs"
+            type="button"
+            iconStart="@tui.refresh-cw"
+            [disabled]="!data().enabled || !data().settings"
+            [loading]="refreshing()"
+            (click)="refreshStatus()"
+          >
+            {{ 'Refresh' | i18n }}
+          </button>
+        </aside>
       </header>
 
       @if (status()?.target || target(); as url) {
-        <div tuiCell>
-          <div tuiTitle>
-            <div tuiSubtitle>
-              <code>{{ 'Configured target' | i18n }}</code>
-            </div>
-            <b>{{ url }}</b>
-          </div>
-        </div>
+        <dl tuiList="s">
+          <dt>{{ 'Configured target' | i18n }}</dt>
+          <dd>
+            <code>{{ url }}</code>
+          </dd>
+          @if (status(); as current) {
+            @for (row of current.variables | keyvalue; track row.key) {
+              <dt>
+                <code>{{ row.key }}</code>
+              </dt>
+              <dd>{{ row.value }}</dd>
+            }
+          }
+        </dl>
       }
       @if (!data().enabled) {
         <app-placeholder icon="@tui.zap">
           {{ 'Network UPS Tools is disabled' | i18n }}
         </app-placeholder>
-      } @else if (status(); as current) {
-        @for (row of current.variables | keyvalue; track row.key) {
-          <div tuiCell>
-            <div tuiTitle>
-              <div tuiSubtitle>
-                <code>{{ row.key }}</code>
-              </div>
-              <b>{{ row.value }}</b>
-            </div>
-          </div>
-        }
       } @else if (refreshing()) {
         <tui-loader [style.height.rem]="5" />
-      } @else {
+      } @else if (!status()) {
         <app-placeholder icon="@tui.zap">
           {{ 'No UPS data available' | i18n }}
         </app-placeholder>
@@ -125,8 +122,18 @@ import {
     </section>
   `,
   styles: `
-    :host {
-      max-width: 36rem;
+    header {
+      flex-wrap: wrap;
+    }
+
+    aside {
+      margin-inline-start: auto;
+    }
+
+    dt,
+    dd {
+      min-inline-size: 0;
+      overflow-wrap: anywhere;
     }
   `,
   imports: [
@@ -137,11 +144,11 @@ import {
     i18nPipe,
     TuiButton,
     TuiButtonLoading,
-    TuiCell,
-    TuiIcon,
+    TuiCardLarge,
+    TuiHeader,
+    TuiList,
     TuiLoader,
     TuiTitle,
-    TuiTooltip,
     PlaceholderComponent,
   ],
 })
@@ -153,6 +160,9 @@ export default class Nut {
   private readonly api = inject(ApiService)
   private readonly i18n = inject(i18nPipe)
   private refreshGeneration = 0
+  private readonly refreshOnConfigChange = effect(() => {
+    void this.refreshStatus(this.data())
+  })
 
   protected readonly status = signal<T.NutStatus | null>(null)
   protected readonly refreshing = signal(false)
@@ -172,10 +182,6 @@ export default class Nut {
       case 'client':
         return `${config.settings.upsName}@${config.settings.host}:${config.settings.port}`
     }
-  })
-
-  private readonly refreshOnConfigChange = effect(() => {
-    void this.refreshStatus(this.data())
   })
 
   protected async refreshStatus(config = this.data()): Promise<void> {
