@@ -1,1 +1,5 @@
+---
+user-facing: true
+---
+
 - The Start menu and the More menus in Backups and Certificate Authorities close after you choose an item.
