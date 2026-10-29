@@ -857,4 +857,8 @@ export default {
   975: 'Synchronisierung',
   973: 'Cache der Benutzeroberfläche zurücksetzen',
   974: 'Die zwischengespeicherte Benutzeroberfläche zurücksetzen und die Seite neu laden? Deine Anmeldung und Einstellungen bleiben erhalten.',
+  976: 'Browser-Push nicht verfügbar',
+  977: 'Benachrichtigungseinstellungen',
+  978: 'Push',
+  979: 'Benachrichtigungen sind blockiert. Erlauben Sie sie in den Browsereinstellungen.',
 } satisfies i18n

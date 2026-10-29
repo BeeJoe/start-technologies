@@ -857,4 +857,8 @@ export default {
   975: 'Synchronizacja',
   973: 'Zresetuj pamięć podręczną interfejsu',
   974: 'Zresetować interfejs w pamięci podręcznej i odświeżyć stronę? Dane logowania i ustawienia zostaną zachowane.',
+  976: 'Powiadomienia push są niedostępne w tej przeglądarce',
+  977: 'Ustawienia powiadomień',
+  978: 'Push',
+  979: 'Powiadomienia są zablokowane. Zezwól na nie w ustawieniach przeglądarki.',
 } satisfies i18n

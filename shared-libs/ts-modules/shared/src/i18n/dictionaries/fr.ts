@@ -857,4 +857,8 @@ export default {
   975: 'Synchronisation',
   973: 'Réinitialiser le cache de l’interface',
   974: 'Réinitialiser l’interface en cache et recharger la page ? Votre connexion et vos paramètres seront conservés.',
+  976: 'Notifications push indisponibles dans ce navigateur',
+  977: 'Paramètres des notifications',
+  978: 'Push',
+  979: 'Les notifications sont bloquées. Autorisez-les dans les paramètres du navigateur.',
 } satisfies i18n

@@ -637,7 +637,10 @@ export const Api = {
         vhost: { _PARAMS: /* @__PURE__ */ empty, _CHILDREN: {} },
       },
     },
-    notification: { _PARAMS: /* @__PURE__ */ empty, _CHILDREN: {} },
+    notification: {
+      _PARAMS: /* @__PURE__ */ empty,
+      _CHILDREN: { push: { _PARAMS: /* @__PURE__ */ empty, _CHILDREN: {} } },
+    },
     package: {
       _PARAMS: /* @__PURE__ */ empty,
       _CHILDREN: {

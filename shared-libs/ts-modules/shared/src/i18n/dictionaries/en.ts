@@ -858,4 +858,8 @@ export const ENGLISH: Record<string, number> = {
   'Syncing': 975,
   'Reset UI cache': 973,
   'Reset the cached interface and reload? Your login and settings will be kept.': 974,
+  'Browser push unavailable': 976,
+  'Notification settings': 977,
+  'Push': 978,
+  'Notifications are blocked. Allow them in your browser settings.': 979,
 }
