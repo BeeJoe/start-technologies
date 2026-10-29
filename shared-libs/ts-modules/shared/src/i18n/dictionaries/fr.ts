@@ -851,4 +851,10 @@ export default {
   966: 'Disque formaté. Il figure sous « Disques physiques ».',
   967: 'Doit faire 255 octets au maximum (les lettres accentuées et les symboles en occupent plusieurs)',
   968: 'Ne doit pas contenir de caractères de contrôle',
+  969: 'Interface utilisateur synchronisée. Rafraîchissez la page pour continuer.',
+  970: 'Synchronisation de l’interface avec votre serveur...',
+  971: 'Impossible de synchroniser l’interface utilisateur. Réessayez ou réinitialisez le cache de l’interface.',
+  975: 'Synchronisation',
+  973: 'Réinitialiser le cache de l’interface',
+  974: 'Réinitialiser l’interface en cache et recharger la page ? Votre connexion et vos paramètres seront conservés.',
 } satisfies i18n
