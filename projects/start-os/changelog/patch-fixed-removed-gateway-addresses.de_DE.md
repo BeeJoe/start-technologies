@@ -1,0 +1,1 @@
+- Beim Entfernen eines Gateways werden auch die Adressauswahlen gelöscht, die Dienste für dieses Gateway getroffen haben.
