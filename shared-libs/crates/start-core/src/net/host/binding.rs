@@ -2519,7 +2519,7 @@ mod test {
             ),
         ]);
         info.enabled.extend([
-            "64.23.194.12:3478".parse().unwrap(),
+            "64.23.194.12:3478".parse::<SocketAddr>().unwrap(),
             "[2604:a880:4:1d0:0:3:145f:5]:3478".parse().unwrap(),
             "73.34.87.9:3478".parse().unwrap(),
         ]);
