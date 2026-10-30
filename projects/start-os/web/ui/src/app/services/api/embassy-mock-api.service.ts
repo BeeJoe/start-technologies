@@ -135,6 +135,7 @@ export class MockApiService extends ApiService {
   >()
   sequence = 1
   private readonly handlers: RpcHandlers<Api> = {
+    'git-info': async () => 'mock-os-build',
     state: async () => {
       await pauseFor(1000)
 
