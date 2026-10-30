@@ -203,12 +203,19 @@ impl DerivedAddressInfo {
             .collect();
     }
 
-    /// Drop every override keyed on an IP address of `gateway`.
+    /// Drops IP overrides whose available addresses belong exclusively to this gateway.
     pub fn forget_gateway(&mut self, gateway: &GatewayId) {
-        for address in self
-            .available
+        let available = &self.available;
+        for address in available
             .iter()
             .filter(|a| a.metadata.is_ip() && a.metadata.gateways().any(|g| g == gateway))
+            .filter(|address| {
+                !available.iter().any(|other| {
+                    other.metadata.is_ip()
+                        && override_key(other) == override_key(address)
+                        && !other.metadata.gateways().any(|g| g == gateway)
+                })
+            })
         {
             if let Some(sa) = address.to_socket_addr() {
                 self.enabled.remove(&sa);
@@ -2535,6 +2542,52 @@ mod test {
             info.disabled,
             BTreeSet::from([(InternedString::intern("demo.local"), 3478)])
         );
+    }
+
+    #[test]
+    fn forget_gateway_preserves_overrides_shared_with_another_gateway() {
+        let mut info = DerivedAddressInfo::default();
+        let enabled = BTreeSet::from(["64.23.194.12:3478".parse().unwrap()]);
+        let gua_wan = BTreeSet::from(["[2001:db8::1]:3478".parse().unwrap()]);
+        let disabled = BTreeSet::from([(InternedString::intern("10.0.0.1"), 3478)]);
+        let lan_enabled = BTreeSet::from([(InternedString::intern("10.0.0.2"), 3478)]);
+        info.enabled = enabled.clone();
+        info.gua_wan = gua_wan.clone();
+        info.disabled = disabled.clone();
+        info.lan_enabled = lan_enabled.clone();
+        for gateway in ["wg0", "eno0"] {
+            let gateway = GatewayId::from(InternedString::intern(gateway));
+            for (hostname, public) in [
+                ("64.23.194.12", true),
+                ("10.0.0.1", false),
+                ("10.0.0.2", false),
+                ("2001:db8::1", true),
+            ] {
+                info.available.insert(HostnameInfo {
+                    ssl: false,
+                    public,
+                    hostname: InternedString::intern(hostname),
+                    port: Some(3478),
+                    metadata: if hostname.contains(':') {
+                        HostnameMetadata::Ipv6 {
+                            gateway: gateway.clone(),
+                            scope_id: 4,
+                        }
+                    } else {
+                        HostnameMetadata::Ipv4 {
+                            gateway: gateway.clone(),
+                        }
+                    },
+                });
+            }
+        }
+
+        info.forget_gateway(&GatewayId::from(InternedString::intern("wg0")));
+
+        assert_eq!(info.enabled, enabled);
+        assert_eq!(info.gua_wan, gua_wan);
+        assert_eq!(info.disabled, disabled);
+        assert_eq!(info.lan_enabled, lan_enabled);
     }
 
     fn range_info(external_start_port: u16, number_of_ports: u16, enabled: bool) -> RangeBindInfo {
