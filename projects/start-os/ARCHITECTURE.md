@@ -95,6 +95,11 @@ turns the compiled bins + UIs + runtime squashfs into a `.deb`, `.squashfs`, and
 finally the `.iso`/`.img` for the target platform (x86_64, aarch64/Raspberry Pi,
 rockchip, riscv64).
 
+`build/nut/` rebuilds the pinned, signature-verified Debian NUT source against
+Trixie for amd64, arm64 and riscv64. Image assembly and full local updates install
+the resulting matching runtime packages; the StartOS `.deb` depends on their
+exact version and must travel with them. See the [package inputs and delivery path](build/nut/README.md).
+
 Persistent administrator GRUB drop-ins live in `/media/startos/config/grub.d/*.cfg`.
 The packaged `build/lib/grub-user.cfg` loader is installed as
 `/etc/default/grub.d/zz-startos-user.cfg` and sources them after image/platform

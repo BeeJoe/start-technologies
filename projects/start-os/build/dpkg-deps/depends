@@ -31,6 +31,10 @@ iptables
 iw
 jq
 libyajl2
+libnutclient2t64
+libnutscan4
+libupsclient7
+libusb-1.0-0
 linux-cpupower
 lm-sensors
 lshw

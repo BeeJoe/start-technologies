@@ -50,5 +50,15 @@ for type in conflicts depends; do
             pkgs+=($pkg)
         fi
     done
+    if [ "$type" = depends ]; then
+        source ../nut/version.env
+        for index in "${!pkgs[@]}"; do
+            for package in $NUT_PACKAGES; do
+                if [ "${pkgs[$index]}" = "$package" ]; then
+                    pkgs[$index]="$package=$NUT_PACKAGE_VERSION"
+                fi
+            done
+        done
+    fi
     (IFS=$'\n'; echo "${pkgs[*]}") | sort -u > ../lib/$type
 done

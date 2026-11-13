@@ -5,6 +5,9 @@ IMAGE_TYPE=$(shell if [ "$(PLATFORM)" = raspberrypi ]; then echo img; else echo 
 FIRMWARE_ROMS := projects/start-os/build/firmware/$(PLATFORM) $(shell jq --raw-output '.[] | select(.platform[] | contains("$(PLATFORM)")) | "./projects/start-os/build/firmware/$(PLATFORM)/" + .id + ".rom.gz"' projects/start-os/build/lib/firmware.json)
 BUILD_SRC := $(call ls-files, projects/start-os/build/lib projects/start-os/build/etc) build/lib/scripts/forward-port build/lib/scripts/forward-port6 projects/start-os/build/lib/depends projects/start-os/build/lib/conflicts $(FIRMWARE_ROMS) projects/start-os/build/lib/migration-images/.done
 IMAGE_RECIPE_SRC := $(call ls-files, projects/start-os/build/image-recipe/)
+NUT_DEB_ARCH := $(if $(filter x86_64,$(ARCH)),amd64,$(if $(filter aarch64,$(ARCH)),arm64,$(ARCH)))
+NUT_PACKAGE_DIR := results/nut/$(NUT_DEB_ARCH)
+NUT_PACKAGE_SRC := projects/start-os/build/nut/build.sh projects/start-os/build/nut/build-packages.sh projects/start-os/build/nut/version.env
 STARTD_SRC := projects/start-os/startd.service projects/start-os/services.slice projects/start-os/startos-shutdown.service projects/start-os/startos-restart.service $(BUILD_SRC)
 STARTOS_RELEASE_NOTES := projects/start-os/release-notes/$(shell cat $(VERSION_FILE)).md
 STARTOS_RELEASE_NOTES_SRC := scripts/changelog.mjs scripts/changelog-version.mjs shared-libs/crates/start-core/locales/release-notes.json .prettierrc.json package.json $(wildcard $(STARTOS_RELEASE_NOTES)) $(call ls-files, projects/start-os/changelog)
@@ -21,8 +24,8 @@ STARTOS_TARGETS := $(STARTD_SRC) $(ENVIRONMENT_FILE) $(GIT_HASH_FILE) $(VERSION_
 	fi')
 
 .PHONY: start-os
-# Build all StartOS OS-product artifacts (bins + web + container-runtime image).
-start-os: $(STARTOS_TARGETS)
+# Build StartOS bins, UIs, runtime image and host NUT packages.
+start-os: $(STARTOS_TARGETS) $(NUT_PACKAGE_DIR)/.done
 
 backup-fs-test: $(call ls-files, projects/start-os/backup-fs/src) projects/start-os/backup-fs/Cargo.toml $(BACKUP_PROTOCOL_SRC) Cargo.toml Cargo.lock
 	cargo test -p startos-backup-fs --lib -- --skip mount_tests
@@ -34,7 +37,9 @@ container-runtime-test: projects/start-os/container-runtime/node_modules/.packag
 start-os-grub-test: projects/start-os/build/tests/grub-overrides-test.sh projects/start-os/build/lib/grub-user.cfg projects/start-os/build/lib/scripts/nvme-isolation-test projects/start-os/debian/postinst projects/start-os/build/image-recipe/raspberrypi/squashfs/etc/default/grub.d/raspberrypi.cfg
 	./projects/start-os/build/tests/grub-overrides-test.sh
 
-start-os-scripts-test: start-os-grub-test projects/start-os/build/tests/dns-config-test.sh projects/start-os/build/lib/resolved.conf projects/start-os/container-runtime/deb-install.sh projects/start-os/container-runtime/update-image.sh projects/start-os/build/lib/scripts/normalize-fstab projects/start-os/build/tests/normalize-fstab-test.sh projects/start-os/build/image-recipe/raspberrypi/img/usr/lib/startos/scripts/init_resize.sh projects/start-os/build/tests/init-resize-test.sh projects/start-os/build/image-recipe/build.sh projects/start-os/build/tests/backports-pref-test.sh projects/start-os/build/lib/scripts/gather-debug-info projects/start-os/debian/postinst projects/start-os/build/tests/crash-diagnostics-test.sh projects/start-os/build/tests/btrfsmaintenance-test.sh projects/start-os/build/dpkg-deps/depends projects/start-os/build/tests/runtime-package-upgrade-test.sh projects/start-os/build/tests/migration-images-test.sh projects/start-os/build/save-migration-images.sh
+start-os-scripts-test: projects/start-os/build/tests/nut-package-selection-test.sh $(NUT_PACKAGE_SRC) projects/start-os/build/dpkg-deps/generate.sh
+start-os-scripts-test: start-os-grub-test projects/start-os/build/tests/dns-config-test.sh projects/start-os/build/lib/resolved.conf projects/start-os/container-runtime/deb-install.sh projects/start-os/container-runtime/update-image.sh projects/start-os/build/lib/scripts/normalize-fstab projects/start-os/build/tests/normalize-fstab-test.sh projects/start-os/build/tests/init-resize-test.sh projects/start-os/build/image-recipe/raspberrypi/img/usr/lib/startos/scripts/init_resize.sh projects/start-os/build/lib/scripts/gather-debug-info projects/start-os/debian/postinst projects/start-os/build/tests/crash-diagnostics-test.sh projects/start-os/build/tests/btrfsmaintenance-test.sh projects/start-os/build/dpkg-deps/depends projects/start-os/build/tests/runtime-package-upgrade-test.sh projects/start-os/build/tests/migration-images-test.sh projects/start-os/build/save-migration-images.sh projects/start-os/build/image-recipe/build.sh projects/start-os/build/tests/backports-pref-test.sh
+	./projects/start-os/build/tests/nut-package-selection-test.sh
 	./projects/start-os/build/tests/migration-images-test.sh
 	./projects/start-os/build/tests/normalize-fstab-test.sh
 	./projects/start-os/build/tests/init-resize-test.sh
@@ -48,9 +53,29 @@ projects/start-os/build/lib/migration-images/.done: projects/start-os/build/save
 	./projects/start-os/build/save-migration-images.sh projects/start-os/build/lib/migration-images
 	touch $@
 
-start-os-deb: results/$(BASENAME).deb
+start-os-deb: results/$(BASENAME).debs.tar
 
-results/$(BASENAME).deb: debian/build.sh build/common.mk build/bash-completion projects/start-os/build.mk $(call ls-files,projects/start-os/debian) $(STARTOS_TARGETS)
+results/$(BASENAME).debs.tar: results/$(BASENAME).deb $(NUT_PACKAGE_DIR)/.done projects/start-os/build/nut/install-bundle.sh
+	cd $(NUT_PACKAGE_DIR) && sha256sum --check SHA256SUMS
+	tar -cf $@ -C results $(BASENAME).deb nut/$(NUT_DEB_ARCH) -C $(CURDIR)/projects/start-os/build/nut install-bundle.sh
+
+.PHONY: start-os-nut start-os-nut-test start-os-stage-nut
+start-os-nut: $(NUT_PACKAGE_DIR)/.done
+
+start-os-nut-test: $(NUT_PACKAGE_DIR)/.done
+	@for mode in fresh upgrade; do \
+		. projects/start-os/build/nut/version.env; \
+		docker run --rm --platform=linux/$(NUT_DEB_ARCH) \
+			-v "$(CURDIR)/$(NUT_PACKAGE_DIR):/packages:ro" \
+			-v "$(CURDIR)/projects/start-os/build/nut/test-installed.sh:/test-installed.sh:ro" \
+			"$$NUT_BUILD_IMAGE" \
+			bash /test-installed.sh $$mode || exit $$?; \
+	done
+
+$(NUT_PACKAGE_DIR)/.done: $(NUT_PACKAGE_SRC)
+	ARCH=$(ARCH) ./projects/start-os/build/nut/build.sh
+
+results/$(BASENAME).deb: debian/build.sh build/common.mk build/bash-completion projects/start-os/build.mk $(call ls-files,projects/start-os/debian) $(STARTOS_TARGETS) $(NUT_PACKAGE_DIR)/.done
 	PLATFORM=$(PLATFORM) REQUIRES=debian ./build/os-compat/run-compat.sh ./debian/build.sh
 
 start-os-$(IMAGE_TYPE): results/$(BASENAME).$(IMAGE_TYPE)
@@ -136,10 +161,10 @@ start-os-wormhole: target/$(RUST_ARCH)-unknown-linux-musl/$(PROFILE)/startbox
 	@echo
 	@wormhole send target/$(RUST_ARCH)-unknown-linux-musl/$(PROFILE)/startbox 2>&1 | awk -Winteractive '/wormhole receive/ { printf "sudo /usr/lib/startos/scripts/chroot-and-upgrade \"cd /usr/bin && rm startbox && wormhole receive --accept-file %s && chmod +x startbox\"\n", $$3 }'
 
-start-os-wormhole-deb: results/$(BASENAME).deb
+start-os-wormhole-deb: results/$(BASENAME).debs.tar
 	@echo "Paste the following command into the shell of your StartOS server:"
 	@echo
-	@wormhole send results/$(BASENAME).deb 2>&1 | awk -Winteractive '/wormhole receive/ { printf "sudo /usr/lib/startos/scripts/chroot-and-upgrade '"'"'cd $$(mktemp -d) && wormhole receive --accept-file %s && apt-get install -y --reinstall ./$(BASENAME).deb'"'"'\n", $$3 }'
+	@wormhole send results/$(BASENAME).debs.tar 2>&1 | awk -Winteractive '/wormhole receive/ { printf "sudo /usr/lib/startos/scripts/chroot-and-upgrade '"'"'cd $$(mktemp -d) && wormhole receive --accept-file %s && tar -xf $(BASENAME).debs.tar && bash ./install-bundle.sh'"'"'\n", $$3 }'
 
 start-os-wormhole-squashfs: results/$(BASENAME).squashfs
 	$(eval SQFS_SUM := $(shell b3sum results/$(BASENAME).squashfs | head -c 32))
@@ -148,11 +173,18 @@ start-os-wormhole-squashfs: results/$(BASENAME).squashfs
 	@echo
 	@wormhole send results/$(BASENAME).squashfs 2>&1 | awk -Winteractive '/wormhole receive/ { printf "sudo sh -c '"'"'/usr/lib/startos/scripts/prune-images $(SQFS_SIZE) && /usr/lib/startos/scripts/prune-boot && cd /media/startos/images && wormhole receive --accept-file %s && CHECKSUM=$(SQFS_SUM) /usr/lib/startos/scripts/upgrade ./$(BASENAME).squashfs $(SQFS_SUM)'"'"'\n", $$3 }'
 
-start-os-update: $(STARTOS_TARGETS)
+start-os-update: $(STARTOS_TARGETS) $(NUT_PACKAGE_DIR)/.done
 	@if [ -z "$(REMOTE)" ]; then >&2 echo "Must specify REMOTE" && false; fi
 	$(call ssh,'sudo /usr/lib/startos/scripts/chroot-and-upgrade --create')
 	$(MAKE) start-os-install REMOTE=$(REMOTE) SSHPASS=$(SSHPASS) DESTDIR=/media/startos/next PLATFORM=$(PLATFORM)
-	$(call ssh,'sudo /media/startos/next/usr/lib/startos/scripts/chroot-and-upgrade --no-sync "apt-get install -y $(shell cat ./projects/start-os/build/lib/depends)"')
+	$(MAKE) start-os-stage-nut REMOTE=$(REMOTE) SSHPASS=$(SSHPASS) PLATFORM=$(PLATFORM)
+	$(call ssh,'sudo /media/startos/next/usr/lib/startos/scripts/chroot-and-upgrade --no-sync "apt-get update && DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::=--force-confold install -y /var/tmp/startos-nut/*.deb $(shell cat ./projects/start-os/build/lib/depends) && rm -rf /var/tmp/startos-nut"')
+
+start-os-stage-nut: $(NUT_PACKAGE_DIR)/.done
+	@if [ -z "$(REMOTE)" ]; then >&2 echo "Must specify REMOTE" && false; fi
+	cd $(NUT_PACKAGE_DIR) && sha256sum --check SHA256SUMS
+	$(call mkdir,/media/startos/next/var/tmp/startos-nut)
+	$(call cp,$(NUT_PACKAGE_DIR),/media/startos/next/var/tmp/startos-nut)
 
 start-os-update-startbox: target/$(RUST_ARCH)-unknown-linux-musl/$(PROFILE)/startbox # only update binary (faster than full update)
 	@if [ -z "$(REMOTE)" ]; then >&2 echo "Must specify REMOTE" && false; fi
@@ -165,7 +197,8 @@ start-os-update-deb: results/$(BASENAME).deb # better than update, but only avai
 	$(call ssh,'sudo /usr/lib/startos/scripts/chroot-and-upgrade --create')
 	$(call mkdir,/media/startos/next/var/tmp/startos-deb)
 	$(call cp,results/$(BASENAME).deb,/media/startos/next/var/tmp/startos-deb/$(BASENAME).deb)
-	$(call ssh,'sudo /media/startos/next/usr/lib/startos/scripts/chroot-and-upgrade --no-sync "apt-get install -y --reinstall /var/tmp/startos-deb/$(BASENAME).deb"')
+	$(MAKE) start-os-stage-nut REMOTE=$(REMOTE) SSHPASS=$(SSHPASS) PLATFORM=$(PLATFORM)
+	$(call ssh,'sudo /media/startos/next/usr/lib/startos/scripts/chroot-and-upgrade --no-sync "apt-get update && DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::=--force-confold install -y --reinstall /var/tmp/startos-nut/*.deb /var/tmp/startos-deb/$(BASENAME).deb && rm -rf /var/tmp/startos-nut /var/tmp/startos-deb"')
 
 start-os-update-squashfs: results/$(BASENAME).squashfs
 	@if [ -z "$(REMOTE)" ]; then >&2 echo "Must specify REMOTE" && false; fi
@@ -180,12 +213,13 @@ start-os-update-from-gha: # update from a CI build rather than a local one (RUN_
 	@if [ -z "$(REMOTE)" ]; then >&2 echo "Must specify REMOTE" && false; fi
 	./scripts/update-from-gha.sh $(if $(RUN_ID),--run "$(RUN_ID)") $(if $(BRANCH),--branch "$(BRANCH)") $(REMOTE)
 
-start-os-emulate-reflash: $(STARTOS_TARGETS)
+start-os-emulate-reflash: $(STARTOS_TARGETS) $(NUT_PACKAGE_DIR)/.done
 	@if [ -z "$(REMOTE)" ]; then >&2 echo "Must specify REMOTE" && false; fi
 	$(call ssh,'sudo /usr/lib/startos/scripts/chroot-and-upgrade --create')
 	$(MAKE) start-os-install REMOTE=$(REMOTE) SSHPASS=$(SSHPASS) DESTDIR=/media/startos/next PLATFORM=$(PLATFORM)
 	$(call ssh,'sudo rm -f /media/startos/config/disk.guid /media/startos/config/overlay/etc/hostname')
-	$(call ssh,'sudo /media/startos/next/usr/lib/startos/scripts/chroot-and-upgrade --no-sync "apt-get install -y $(shell cat ./projects/start-os/build/lib/depends)"')
+	$(MAKE) start-os-stage-nut REMOTE=$(REMOTE) SSHPASS=$(SSHPASS) PLATFORM=$(PLATFORM)
+	$(call ssh,'sudo /media/startos/next/usr/lib/startos/scripts/chroot-and-upgrade --no-sync "apt-get update && DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::=--force-confold install -y /var/tmp/startos-nut/*.deb $(shell cat ./projects/start-os/build/lib/depends) && rm -rf /var/tmp/startos-nut"')
 
 projects/start-os/container-runtime/debian.$(ARCH).squashfs: ./projects/start-os/container-runtime/download-base-image.sh
 	ARCH=$(ARCH) ./projects/start-os/container-runtime/download-base-image.sh
@@ -212,7 +246,7 @@ projects/start-os/container-runtime/dist/node_modules/.package-lock.json project
 projects/start-os/container-runtime/rootfs.$(ARCH).squashfs: projects/start-os/build/lib/resolved.conf projects/start-os/container-runtime/debian.$(ARCH).squashfs projects/start-os/container-runtime/container-runtime.service projects/start-os/container-runtime/update-image.sh projects/start-os/container-runtime/update-image-local.sh projects/start-os/container-runtime/deb-install.sh projects/start-os/container-runtime/dist/index.js projects/start-os/container-runtime/dist/node_modules/.package-lock.json target/$(RUST_ARCH)-unknown-linux-musl/release/start-container
 	ARCH=$(ARCH) ./projects/start-os/container-runtime/update-image-local.sh
 
-projects/start-os/build/lib/depends projects/start-os/build/lib/conflicts: $(ENVIRONMENT_FILE) $(PLATFORM_FILE) $(shell ls projects/start-os/build/dpkg-deps/*)
+projects/start-os/build/lib/depends projects/start-os/build/lib/conflicts: $(ENVIRONMENT_FILE) $(PLATFORM_FILE) $(shell ls projects/start-os/build/dpkg-deps/*) projects/start-os/build/nut/version.env
 	PLATFORM=$(PLATFORM) ARCH=$(ARCH) projects/start-os/build/dpkg-deps/generate.sh
 
 $(FIRMWARE_ROMS): projects/start-os/build/lib/firmware.json ./projects/start-os/build/download-firmware.sh $(PLATFORM_FILE)
@@ -227,8 +261,8 @@ target/$(RUST_ARCH)-unknown-linux-musl/release/start-container: $(CORE_SRC) $(EN
 	touch target/$(RUST_ARCH)-unknown-linux-musl/release/start-container
 
 # used by github actions
-compiled-$(ARCH).tar: $(COMPILED_TARGETS) $(ENVIRONMENT_FILE) $(GIT_HASH_FILE) $(VERSION_FILE)
-	tar -cvf $@ $^
+compiled-$(ARCH).tar: $(COMPILED_TARGETS) $(ENVIRONMENT_FILE) $(GIT_HASH_FILE) $(VERSION_FILE) $(NUT_PACKAGE_DIR)/.done
+	tar -cvf $@ $(filter-out $(NUT_PACKAGE_DIR)/.done,$^) $(NUT_PACKAGE_DIR)
 
 target/$(RUST_ARCH)-unknown-linux-musl/release/startos-backup-fs: $(call ls-files, projects/start-os/backup-fs) $(BACKUP_PROTOCOL_SRC) Cargo.toml Cargo.lock $(ENVIRONMENT_FILE)
 	ARCH=$(ARCH) PROFILE=release ./projects/start-os/backup-fs/build-backup-fs.sh

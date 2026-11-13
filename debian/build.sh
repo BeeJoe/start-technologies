@@ -40,7 +40,7 @@ if [ -f dpkg-workdir/$BASENAME/usr/lib/$PROJECT/depends ]; then
     if [ -n "$DEPENDS" ]; then
         DEPENDS="$DEPENDS,"
     fi
-    DEPENDS="${DEPENDS}$(cat dpkg-workdir/$BASENAME/usr/lib/$PROJECT/depends | tr $'\n' ',' | sed 's/,,\+/,/g' | sed 's/,$//')"
+    DEPENDS="${DEPENDS}$(sed -E 's/^([^=]+)=(.+)$/\1 (= \2)/' dpkg-workdir/$BASENAME/usr/lib/$PROJECT/depends | tr $'\n' ',' | sed 's/,,\+/,/g' | sed 's/,$//')"
 fi
 if [ -f dpkg-workdir/$BASENAME/usr/lib/$PROJECT/conflicts ]; then
     if [ -n "$CONFLICTS" ]; then
