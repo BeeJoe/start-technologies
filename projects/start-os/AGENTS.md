@@ -35,6 +35,12 @@ monorepo-wide rules and [ARCHITECTURE.md](ARCHITECTURE.md) for how this product 
 - Type-check web apps: `npm run check:ui && npm run check:setup`.
 - Type-check the runtime: `cd projects/start-os/container-runtime && npm run check`.
 - Build the UI: `make start-os-ui` (or `make start-os-uis` for ui + setup-wizard).
+- Host NUT packaging: read [build/nut/README.md](build/nut/README.md) before changing
+  the package version, provenance or delivery path. Pin the signed source inputs and
+  package revision together in `build/nut/version.env`; build with `make start-os-nut`
+  and verify with `make start-os-nut-test` for `ARCH=x86_64`, `aarch64` and `riscv64`.
+  Debian deployments use the `.debs.tar` bundle or `start-os-update-deb`, which carry
+  the matching NUT packages alongside the StartOS `.deb`.
 - Tests: `make test` (Rust + SDK + container-runtime + shell), `make start-core-test`, `make backup-fs-test` for all backup-fs library tests except the mount-based `/dev/fuse` suite, or `make start-os-scripts-test` for the shell suite under `build/tests/`.
 - Focused GRUB/diagnostic coverage: `make start-os-grub-test` (requires `grub-common`, no root privileges). This target is included in `start-os-scripts-test`.
 - Backup helper integration: `cargo build -p startos-backup-fs --bin startos-backup-fs`, then `bash projects/start-os/backup-fs/test-cli.sh target/debug/startos-backup-fs`. Requires Linux FUSE mount privileges, `fusermount3`, Node.js, and `attr`.

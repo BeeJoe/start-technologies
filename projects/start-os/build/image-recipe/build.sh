@@ -126,6 +126,9 @@ lb config \
 
 mkdir -p config/packages.chroot/
 cp $RESULTS_DIR/$IMAGE_BASENAME.deb config/packages.chroot/
+nut_packages="$RESULTS_DIR/nut/$IB_TARGET_ARCH"
+(cd "$nut_packages" && sha256sum --check SHA256SUMS)
+cp "$nut_packages"/*.deb config/packages.chroot/
 dpkg-name config/packages.chroot/*.deb
 
 mkdir -p config/includes.chroot/etc

@@ -183,7 +183,8 @@ pub async fn scan_nut(_: RpcContext, _: Empty) -> Result<Vec<NutDevice>, Error> 
     let output = tokio::time::timeout(
         Duration::from_secs(30),
         Command::new("nut-scanner")
-            .args(["--usb_scan", "--quiet"])
+            // Repeating USB scan requests bus and port matching fields.
+            .args(["--usb_scan", "--usb_scan", "--quiet"])
             .kill_on_drop(true)
             .output(),
     )
