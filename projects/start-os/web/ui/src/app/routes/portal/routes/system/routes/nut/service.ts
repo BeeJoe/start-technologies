@@ -1,4 +1,4 @@
-import { inject, Injectable } from '@angular/core'
+import { inject, Service } from '@angular/core'
 import { toSignal } from '@angular/core/rxjs-interop'
 import { getErrorMessage } from '@start9labs/shared'
 import { T } from '@start9labs/start-core'
@@ -29,7 +29,7 @@ const EMPTY_STATE: StatusState = {
   refreshing: false,
 }
 
-@Injectable()
+@Service({ autoProvided: false })
 export class NutStatusService {
   private readonly api = inject(ApiService)
   private readonly patch = inject<PatchDB<DataModel>>(PatchDB)
