@@ -99,6 +99,8 @@ rockchip, riscv64).
 Trixie for amd64, arm64 and riscv64. Image assembly and full local updates install
 the resulting matching runtime packages; the StartOS `.deb` depends on their
 exact version and must travel with them. See the [package inputs and delivery path](build/nut/README.md).
+`.github/workflows/nut-updates.yml` discovers newer signed sources weekly, verifies
+all three architecture builds and package tests, then proposes a signed update PR.
 
 Persistent administrator GRUB drop-ins live in `/media/startos/config/grub.d/*.cfg`.
 The packaged `build/lib/grub-user.cfg` loader is installed as

@@ -37,7 +37,7 @@ container-runtime-test: projects/start-os/container-runtime/node_modules/.packag
 start-os-grub-test: projects/start-os/build/tests/grub-overrides-test.sh projects/start-os/build/lib/grub-user.cfg projects/start-os/build/lib/scripts/nvme-isolation-test projects/start-os/debian/postinst projects/start-os/build/image-recipe/raspberrypi/squashfs/etc/default/grub.d/raspberrypi.cfg
 	./projects/start-os/build/tests/grub-overrides-test.sh
 
-start-os-scripts-test: projects/start-os/build/tests/nut-package-selection-test.sh $(NUT_PACKAGE_SRC) projects/start-os/build/dpkg-deps/generate.sh
+start-os-scripts-test: start-os-nut-update-test projects/start-os/build/tests/nut-package-selection-test.sh $(NUT_PACKAGE_SRC) projects/start-os/build/dpkg-deps/generate.sh
 start-os-scripts-test: start-os-grub-test projects/start-os/build/tests/dns-config-test.sh projects/start-os/build/lib/resolved.conf projects/start-os/container-runtime/deb-install.sh projects/start-os/container-runtime/update-image.sh projects/start-os/build/lib/scripts/normalize-fstab projects/start-os/build/tests/normalize-fstab-test.sh projects/start-os/build/tests/init-resize-test.sh projects/start-os/build/image-recipe/raspberrypi/img/usr/lib/startos/scripts/init_resize.sh projects/start-os/build/lib/scripts/gather-debug-info projects/start-os/debian/postinst projects/start-os/build/tests/crash-diagnostics-test.sh projects/start-os/build/tests/btrfsmaintenance-test.sh projects/start-os/build/dpkg-deps/depends projects/start-os/build/tests/runtime-package-upgrade-test.sh projects/start-os/build/tests/migration-images-test.sh projects/start-os/build/save-migration-images.sh projects/start-os/build/image-recipe/build.sh projects/start-os/build/tests/backports-pref-test.sh
 	./projects/start-os/build/tests/nut-package-selection-test.sh
 	./projects/start-os/build/tests/migration-images-test.sh
@@ -61,6 +61,15 @@ results/$(BASENAME).debs.tar: results/$(BASENAME).deb $(NUT_PACKAGE_DIR)/.done p
 
 .PHONY: start-os-nut start-os-nut-test start-os-stage-nut
 start-os-nut: $(NUT_PACKAGE_DIR)/.done
+
+.PHONY: start-os-nut-update-check start-os-nut-update-test
+start-os-nut-update-check:
+	python3 projects/start-os/build/nut/update.py
+
+start-os-nut-update-test:
+	PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s projects/start-os/build/nut -p 'test_update.py'
+	node --test projects/start-os/build/nut/test-workflow.test.mjs
+	bash -n projects/start-os/build/nut/open-update-pr.sh
 
 start-os-nut-test: $(NUT_PACKAGE_DIR)/.done
 	@for mode in fresh upgrade; do \
