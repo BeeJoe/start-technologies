@@ -1,7 +1,7 @@
 # NUT packages
 
-StartOS rebuilds Debian NUT 2.8.5-1 against Trixie as
-`2.8.5-1~startos13.1`. `version.env` pins the upstream archive, Debian packaging,
+StartOS rebuilds the Debian NUT source selected in `version.env` against Trixie.
+`version.env` pins the upstream archive, Debian packaging,
 source manifest, signing-key fingerprint, package revision and runtime package set.
 The signer is Laurent Bigonville's Debian key
 `7E0ED3D2B34A03B15F9F3121C7F7F9660D82A682`, published in the
@@ -35,11 +35,40 @@ upgrade installs in disposable Trixie containers, cross-version client/server
 reads, and a calibration/on-battery/low-battery sequence with a harmless shutdown
 marker in place of powering off a machine.
 
-NUT updates are explicit: a Debian security patch or upstream release needs a
-reviewed source/hash/revision change and a rebuilt image. Trixie dependency
-security updates remain available through normal image rebuilds. Exact NUT
-dependencies prevent an OS build from silently selecting another upstream
-release or reverting to Trixie's older NUT.
+NUT updates are reviewed source/hash/revision changes followed by rebuilt images.
+The [NUT Updates workflow](../../../../.github/workflows/nut-updates.yml) checks
+every Tuesday at 05:23 UTC, or on manual dispatch from `master`. It discovers
+stable upstream releases and newer Debian source revisions. A release without
+matching Debian source is reported as waiting; the deployed version stays pinned.
+The updater verifies the pinned maintainer signature, downloaded source archives,
+runtime package names and GitHub's upstream archive digest before preparing a
+change. A changed signer, archive format or missing upstream digest requires
+manual review. It retains the builder image, signer, package set and Trixie target.
+
+For a new source revision the workflow builds and tests fresh/upgrade installs on
+amd64, arm64 and riscv64 before opening a PR. It updates the pending UPS feature's
+fragment when present, otherwise adds a routine patch fragment. A failed StartOS
+release-version check makes the PR a draft with the check output and a link to
+the version-bump procedure. It does not generate migration nodes or decide the
+OS release version. Existing proposals, including closed ones, are left alone;
+interrupted publication can resume without overwriting a maintainer's changes.
+
+The workflow uses `GITHUB_TOKEN` with write permissions confined to the proposal
+job, and the shared signed-commit API helper. Enable **Allow GitHub Actions to
+create and approve pull requests** in repository Actions settings. No GitHub App
+or new secret is needed. GitHub may require **Approve workflows to run** on the
+resulting PR; the three NUT architecture checks already ran before PR creation.
+Merge and release remain maintainer actions. This workflow never deploys to a
+device or writes directly to `master`.
+
+Run `make start-os-nut-update-check` for a read-only live check, or
+`python3 projects/start-os/build/nut/update.py --write` to apply verified pins and
+the fragment locally. `make start-os-nut-update-test` runs offline signed-source
+and workflow/publication regressions (requires Python 3, GnuPG, dpkg, Node and
+root npm dependencies); it is included in `start-os-scripts-test`.
+Trixie dependency security updates remain available through normal image rebuilds.
+Exact NUT dependencies prevent an OS build from silently selecting another
+upstream release or reverting to Trixie's older NUT.
 
 Trixie 2.8.1-5+deb13u1 already fixes the lingering calibration-state shutdown bug.
 The full upgrade additionally brings USB driver support and reading improvements
